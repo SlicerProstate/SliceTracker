@@ -33,14 +33,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
 
+    # Parameters
+    self.settings = qt.QSettings()
+    self.temp = None
+
     # Create PushButtons for Workflow-Steps 1-4
-    #
 
     # Set Icon Size for the 4 Icon Items
     size=qt.QSize(130,130)
 
     # Create Data Selection Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/dunkel_rund_DATA_pressed.png')
+    #pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/bright_rund_DATA.png')
     icon=qt.QIcon(pixmap)
     dataButton=qt.QPushButton()
     dataButton.setIcon(icon)
@@ -93,9 +97,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     lm=slicer.app.layoutManager()
     lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
 
+
+
+
     #
     # Step 1: Data Selection
     #
+
+
+
 
     # Create collapsible Button << Step 1: Data Selection >>
     dataSectionCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -110,19 +120,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Create PatientSelector
     patientSelector=ctk.ctkComboBox()
-
-    # patientSelector.setDefaultText('Select a Patient')
     selectPatientRowLayout.addWidget(patientSelector)
-
     dataSectionFormLayout.addRow("Select Patient: ", selectPatientRowLayout)
+
+    # make all patient in dicom data base available
+    # TODO: Update if database changed
+    # Problem: Only available if preop data has DICOM format
+
     db = slicer.dicomDatabase
 
     patientNames = []
     patientIDs = []
-    studies = []
-    series = []
-    patientsForPatientSelector = []
-
 
     if db.patients()==None:
       patientSelector.addItem('None patient found')
@@ -138,38 +146,62 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
                patientIDs.append(db.fileValue(file,'0010,0020'))
 
 
-
-    """
-    # Combination of patientID and patientName for Patient Selection
-    index=0
-    for patient in patientIDs:
-      combination = "Patient ID : "+str(patient)+" Name : "+str(patientNames[index])
-      patientsForPatientSelector.append(combination)
-      index+=1
-    print patientsForPatientSelector
-    """
-
     # add patientNames and patientIDs to patientSelector
     for patient in patientIDs:
      patientSelector.addItem(patient)
 
+    # "load Preop Data" - Button
+    self.loadPreopDataButton = qt.QPushButton("Load Preop Data")
+    self.loadPreopDataButton.toolTip = "Load preprocedural data into Slicer"
+    self.loadPreopDataButton.enabled = True
 
-    # TODO: CHOOSE SERIES
+    # "Watch Directory" - Button
+    self.watchIntraopCheckbox=qt.QCheckBox()
+    self.watchIntraopCheckbox.toolTip = "Watch Directory"
 
-
-    # TODO: CHOOSE INTRAOP DIR
-
-    # TODO: BUTTON: SET 'WATCH DIR'
-
-
+    # Preop Directory Button
     self.preopDirButton = ctk.ctkDirectoryButton()
-    self.preopDirButton.text = "Choose the preop annotation directory"
+    self.preopDirButton.text = "Choose the preop data directory"
     dataSectionFormLayout.addRow("Preop directory selection:",self.preopDirButton)
+    dataSectionFormLayout.addWidget(self.loadPreopDataButton)
+
+    # Preop Directory Button
+    self.intraopDirButton = ctk.ctkDirectoryButton()
+    self.intraopDirButton.text = "Choose the intraop data directory"
+    dataSectionFormLayout.addRow("Intraop directory selection:",self.intraopDirButton)
+    dataSectionFormLayout.addRow("Watch Intraop Directory for new Data", self.watchIntraopCheckbox)
+
+    # SERIES SELECTION
+    self.step3frame = ctk.ctkCollapsibleGroupBox()
+    self.step3frame.setTitle("Intraop Series selection")
+    dataSectionFormLayout.addRow(self.step3frame)
+    step3Layout = qt.QFormLayout(self.step3frame)
+
+    # create ListView for intraop series selection
+    self.seriesView = qt.QListView()
+    self.seriesView.setObjectName('SeriesTable')
+    self.seriesView.setSpacing(3)
+    self.seriesModel = qt.QStandardItemModel()
+    self.seriesModel.setHorizontalHeaderLabels(['Series ID'])
+    self.seriesView.setModel(self.seriesModel)
+    self.seriesView.setSelectionMode(qt.QAbstractItemView.ExtendedSelection)
+    # self.seriesView.connect('clicked(QModelIndex)', self.seriesSelected)
+    self.seriesView.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
+    step3Layout.addWidget(self.seriesView)
+
+    # Load Series into Slicer Button
+    self.loadIntraopDataButton = qt.QPushButton("Load Series into Slicer")
+    self.loadIntraopDataButton.toolTip = "Load Series into Slicer"
+    self.loadIntraopDataButton.enabled = True
+    dataSectionFormLayout.addWidget(self.loadIntraopDataButton)
+
 
 
     #
     # Step 2: Label Selection
     #
+
+
     labelSelectionCollapsibleButton = ctk.ctkCollapsibleButton()
     labelSelectionCollapsibleButton.text = "Step 2: Label Selection"
     self.layout.addWidget(labelSelectionCollapsibleButton)
@@ -177,10 +209,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Layout within the dummy collapsible button
     labelSelectionFormLayout = qt.QFormLayout(labelSelectionCollapsibleButton)
 
+    #
+    # preop label selector
+    #
 
-    #
-    # input label selector
-    #
     self.preopLabelSelector = slicer.qMRMLNodeComboBox()
     self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
     self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
@@ -193,6 +225,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
     self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
     labelSelectionFormLayout.addRow("Preop Image label: ", self.preopLabelSelector)
+
+    #
+    # intraop label selector
+    #
+
 
     self.intraopLabelSelector = slicer.qMRMLNodeComboBox()
     self.intraopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
@@ -243,16 +280,25 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # connections
     self.startSegmentationButton.connect('clicked(bool)', self.onStartSegmentationButton)
     self.applySegmentationButton.connect('clicked(bool)', self.onApplySegmentationButton)
+    self.watchIntraopCheckbox.connect('clicked(bool)', self.initializeListener)
+    # add condition: watchIntraopCheckbox needs to be clicked AND checked == True
+    self.loadIntraopDataButton.connect('clicked(bool)',self.tryFunction)
+
+
 
     #
-    #                     <<< Step 3: Registration >>>
+    # Step 3: Registration
     #
+
+
+
     registrationSectionCollapsibleButton = ctk.ctkCollapsibleButton()
     registrationSectionCollapsibleButton.text = "Step 3: Registration"
     self.layout.addWidget(registrationSectionCollapsibleButton)
 
     # Layout within the dummy collapsible button
     registrationSectionFormLayout = qt.QFormLayout(registrationSectionCollapsibleButton)
+
 
 
 
@@ -267,46 +313,110 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     evaluationSectionFormLayout = qt.QFormLayout(evaluationSectionCollapsibleButton)
 
 
-  """
-
-
-    #
-    # output volume selector
-    #
-    self.outputSelector = slicer.qMRMLNodeComboBox()
-    self.outputSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.outputSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
-    self.outputSelector.selectNodeUponCreation = False
-    self.outputSelector.addEnabled = True
-    self.outputSelector.removeEnabled = True
-    self.outputSelector.noneEnabled = False
-    self.outputSelector.showHidden = False
-    self.outputSelector.showChildNodeTypes = False
-    self.outputSelector.setMRMLScene( slicer.mrmlScene )
-    self.outputSelector.setToolTip( "Pick the output to the algorithm." )
-    parametersFormLayout.addRow("Output Volume: ", self.outputSelector)
-
-
-
-    #
-    # Apply Button
-    #
-    self.applyButton = qt.QPushButton("Apply")
-    self.applyButton.toolTip = "Run the algorithm."
-    self.applyButton.enabled = False
-    parametersFormLayout.addRow(self.applyButton)
-
-    # connections
-    self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    self.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-    self.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-
-    # Add vertical spacer
-    self.layout.addStretch(1)
-  """
 
   def cleanup(self):
     pass
+
+  def waitingForSeriesToBeCompleted(self):
+
+    print ('waiting for Series to be completed')
+    # wait 5 seconds for series to be completed
+
+    qt.QTimer.singleShot(5000,self.importDICOMseries)
+
+  def importDICOMseries(self):
+
+    newFileList= []
+    seriesList= []
+    indexer = ctk.ctkDICOMIndexer()
+    db=slicer.dicomDatabase
+
+    # create a List NewFileList that contains only new files in the intraop directory
+    for item in os.listdir(self.intraopDirButton.directory):
+      if item not in self.currentFileList:
+        newFileList.append(item)
+
+    # import file in DICOM database
+    for file in newFileList:
+     indexer.addFile(db,str(self.intraopDirButton.directory+'/'+file),None)
+
+     # add Series to seriesList
+     if db.fileValue(str(self.intraopDirButton.directory+'/'+file),'0008,103E') not in seriesList:
+       importfile=str(self.intraopDirButton.directory+'/'+file)
+       seriesList.append(db.fileValue(importfile,'0008,103E'))
+
+    # create Checkable Item in GUI
+    for series in seriesList:
+       self.currentSeries=series
+       self.currentItem=qt.QStandardItem(series)
+       self.seriesModel.appendRow(self.currentItem)
+       self.currentItem.setCheckable(1)
+
+    print('DICOM import finished')
+    print('Those series are imported: '+seriesList)
+
+    # notify the user
+    self.notifyUser(self.currentSeries)
+
+    return None
+
+  def createCurrentFileList(self):
+
+    self.currentFileList=[]
+    for item in os.listdir(self.intraopDirButton.directory):
+      self.currentFileList.append(item)
+
+    print self.currentFileList
+
+  def initializeListener(self):
+    numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
+    self.temp=numberOfFiles
+    self.setlastNumberOfFiles(numberOfFiles)
+    self.createCurrentFileList()
+    self.startTimer()
+
+  def startTimer(self):
+    numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
+    # print ('number of files : ',numberOfFiles)
+
+    if self.getlastNumberOfFiles() < numberOfFiles:
+     self.waitingForSeriesToBeCompleted()
+
+     self.setlastNumberOfFiles(numberOfFiles)
+     qt.QTimer.singleShot(5000,self.startTimer)
+
+    else:
+     self.setlastNumberOfFiles(numberOfFiles)
+     qt.QTimer.singleShot(5000,self.startTimer)
+
+  def setlastNumberOfFiles(self,number):
+    self.temp = number
+
+  def getlastNumberOfFiles(self):
+    return self.temp
+
+  def notifyUser(self,seriesName):
+    # create Pop-Up Window
+    self.notifyUserWindow = qt.QDialog(slicer.util.mainWindow())
+    self.notifyUserWindow.setWindowTitle("New Series")
+    self.notifyUserWindow.setLayout(qt.QVBoxLayout())
+
+    # create Text Label
+    self.textLabel = qt.QLabel()
+    self.notifyUserWindow.layout().addWidget(self.textLabel)
+    self.textLabel.setText("New Series are ready to be imported")
+
+    # create Push Button
+    self.pushButton = qt.QPushButton("Import new series"+"  "+seriesName)
+    self.notifyUserWindow.layout().addWidget(self.pushButton)
+
+    # create Push Button
+    self.pushButton2 = qt.QPushButton("Not Now")
+    self.notifyUserWindow.layout().addWidget(self.pushButton2)
+    self.notifyUserWindow.show()
+
+  def startTimer1(self):
+    print ('Timer started')
 
   def onStartSegmentationButton(self):
     logic = RegistrationModuleLogic()
@@ -514,27 +624,4 @@ class RegistrationModuleTest(ScriptedLoadableModuleTest):
     module.  For example, if a developer removes a feature that you depend on,
     your test should break so they know that the feature is needed.
     """
-
-    self.delayDisplay("Starting the test")
-    #
-    # first, get some data
-    #
-    import urllib
-    downloads = (
-        ('http://slicer.kitware.com/midas3/download?items=5767', 'FA.nrrd', slicer.util.loadVolume),
-        )
-
-    for url,name,loader in downloads:
-      filePath = slicer.app.temporaryPath + '/' + name
-      if not os.path.exists(filePath) or os.stat(filePath).st_size == 0:
-        print('Requesting download %s from %s...\n' % (name, url))
-        urllib.urlretrieve(url, filePath)
-      if loader:
-        print('Loading %s...\n' % (name,))
-        loader(filePath)
-    self.delayDisplay('Finished with download and loading\n')
-
-    volumeNode = slicer.util.getNode(pattern="FA")
-    logic = RegistrationModuleLogic()
-    self.assertTrue( logic.hasImageData(volumeNode) )
-    self.delayDisplay('Test passed!')
+    self.intraopDirButton.directory='/Users/peterbehringer/MyImageData/Test_PreopAnnotationDir/targets.fcsv'
