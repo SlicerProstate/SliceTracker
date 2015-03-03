@@ -43,7 +43,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     size=qt.QSize(130,130)
 
     # Create Data Selection Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/dunkel_rund_DATA_pressed.png')
+    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/dunkel_rund_DATA.png')
     #pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/bright_rund_DATA.png')
     icon=qt.QIcon(pixmap)
     dataButton=qt.QPushButton()
@@ -282,7 +282,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applySegmentationButton.connect('clicked(bool)', self.onApplySegmentationButton)
     self.watchIntraopCheckbox.connect('clicked(bool)', self.initializeListener)
     # add condition: watchIntraopCheckbox needs to be clicked AND checked == True
-    self.loadIntraopDataButton.connect('clicked(bool)',self.tryFunction)
+    self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
 
 
 
@@ -299,6 +299,83 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Layout within the dummy collapsible button
     registrationSectionFormLayout = qt.QFormLayout(registrationSectionCollapsibleButton)
 
+    #
+    # preop volume selector
+    #
+
+    self.preopLabelSelector = slicer.qMRMLNodeComboBox()
+    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.preopLabelSelector.selectNodeUponCreation = True
+    self.preopLabelSelector.addEnabled = False
+    self.preopLabelSelector.removeEnabled = False
+    self.preopLabelSelector.noneEnabled = False
+    self.preopLabelSelector.showHidden = False
+    self.preopLabelSelector.showChildNodeTypes = False
+    self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
+    self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
+    registrationSectionFormLayout.addRow("Preop Image Volume: ", self.preopLabelSelector)
+
+    #
+    # preop label selector
+    #
+
+    self.preopLabelSelector = slicer.qMRMLNodeComboBox()
+    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.preopLabelSelector.selectNodeUponCreation = True
+    self.preopLabelSelector.addEnabled = False
+    self.preopLabelSelector.removeEnabled = False
+    self.preopLabelSelector.noneEnabled = False
+    self.preopLabelSelector.showHidden = False
+    self.preopLabelSelector.showChildNodeTypes = False
+    self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
+    self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
+    registrationSectionFormLayout.addRow("Preop Label Volume: ", self.preopLabelSelector)
+
+    #
+    # intraop volume selector
+    #
+
+    self.preopLabelSelector = slicer.qMRMLNodeComboBox()
+    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.preopLabelSelector.selectNodeUponCreation = True
+    self.preopLabelSelector.addEnabled = False
+    self.preopLabelSelector.removeEnabled = False
+    self.preopLabelSelector.noneEnabled = False
+    self.preopLabelSelector.showHidden = False
+    self.preopLabelSelector.showChildNodeTypes = False
+    self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
+    self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
+    registrationSectionFormLayout.addRow("Intraop Image Volume: ", self.preopLabelSelector)
+
+    #
+    # intraop label selector
+    #
+
+    self.preopLabelSelector = slicer.qMRMLNodeComboBox()
+    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.preopLabelSelector.selectNodeUponCreation = True
+    self.preopLabelSelector.addEnabled = False
+    self.preopLabelSelector.removeEnabled = False
+    self.preopLabelSelector.noneEnabled = False
+    self.preopLabelSelector.showHidden = False
+    self.preopLabelSelector.showChildNodeTypes = False
+    self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
+    self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
+    registrationSectionFormLayout.addRow("Intraop Label Volume: ", self.preopLabelSelector)
+
+
+    #
+    # Apply Segmentation
+    #
+
+    self.applyRegistrationButton = qt.QPushButton("Apply Registration")
+    self.applyRegistrationButton.toolTip = "Run the algorithm."
+    self.applyRegistrationButton.enabled = True
+    registrationSectionFormLayout.addRow(self.applyRegistrationButton)
 
 
 
@@ -311,6 +388,32 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Layout within the dummy collapsible button
     evaluationSectionFormLayout = qt.QFormLayout(evaluationSectionCollapsibleButton)
+
+
+  def loadSeriesIntoSlicer(self):
+
+    # TODO: Load only sections into slicer that are checked in Series Selection
+    # try to load directory from entries in dicom database
+    dcmList = []
+    for dcm in os.listdir(self.intraopDirButton.directory):
+      if len(dcm)-dcm.rfind('.dcm') == 4:
+        dcmList.append(self.intraopDirButton.directory+'/'+dcm)
+
+    print dcmList
+
+    scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
+
+    loadables = scalarVolumePlugin.examine([dcmList])
+
+    print loadables
+
+    if len(loadables) == 0:
+      print 'Could not parse the DICOM Study!'
+      exit()
+
+    inputVolume = scalarVolumePlugin.load(loadables[0])
+    slicer.mrmlScene.AddNode(inputVolume)
+    print('Input volume loaded!')
 
 
 
@@ -346,14 +449,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
        seriesList.append(db.fileValue(importfile,'0008,103E'))
 
     # create Checkable Item in GUI
-    for series in seriesList:
-       self.currentSeries=series
-       self.currentItem=qt.QStandardItem(series)
+    for item in seriesList:
+       self.currentSeries=item
+       self.currentItem=qt.QStandardItem(item)
        self.seriesModel.appendRow(self.currentItem)
        self.currentItem.setCheckable(1)
 
     print('DICOM import finished')
-    print('Those series are imported: '+seriesList)
+    print('Those series are imported')
+    print seriesList
 
     # notify the user
     self.notifyUser(self.currentSeries)
