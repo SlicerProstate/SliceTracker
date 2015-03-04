@@ -40,48 +40,48 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Create PushButtons for Workflow-Steps 1-4
 
     # Set Icon Size for the 4 Icon Items
-    size=qt.QSize(130,130)
+    size=qt.QSize(120,120)
 
     # Create Data Selection Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/dunkel_rund_DATA.png')
+    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection1.png')
     #pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/bright_rund_DATA.png')
     icon=qt.QIcon(pixmap)
     dataButton=qt.QPushButton()
     dataButton.setIcon(icon)
     dataButton.setIconSize(size)
-    dataButton.setFixedHeight(140)
+    dataButton.setFixedHeight(60)
     dataButton.setFixedWidth(140)
-    dataButton.setStyleSheet("background-color: rgb(48,48,48)")
+    dataButton.setStyleSheet("background-color: rgb(255,255,255)")
 
     # Create Label Selection Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/dunkel_rund_LABEL.png')
+    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection2.png')
     icon=qt.QIcon(pixmap)
     labelButton=qt.QPushButton()
     labelButton.setIcon(icon)
     labelButton.setIconSize(size)
-    labelButton.setFixedHeight(140)
+    labelButton.setFixedHeight(60)
     labelButton.setFixedWidth(140)
-    labelButton.setStyleSheet("background-color: rgb(48,48,48)")
+    labelButton.setStyleSheet("background-color: rgb(255,255,255)")
 
     # Create Registration Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/dunkel_rund.png')
+    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection3.png')
     icon=qt.QIcon(pixmap)
     regButton=qt.QPushButton()
     regButton.setIcon(icon)
     regButton.setIconSize(size)
-    regButton.setFixedHeight(140)
+    regButton.setFixedHeight(60)
     regButton.setFixedWidth(140)
-    regButton.setStyleSheet("background-color: rgb(48,48,48)")
+    regButton.setStyleSheet("background-color: rgb(255,255,255)")
 
     # Create Data Selection Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/dunkel_rund_EVALUATIOn.png')
+    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection4.png')
     icon=qt.QIcon(pixmap)
     evalButton=qt.QPushButton()
     evalButton.setIcon(icon)
     evalButton.setIconSize(size)
-    evalButton.setFixedHeight(140)
+    evalButton.setFixedHeight(60)
     evalButton.setFixedWidth(140)
-    evalButton.setStyleSheet("background-color: rgb(48,48,48)")
+    evalButton.setStyleSheet("background-color: rgb(255,255,255)")
 
     # Create ButtonBox to put in Workstep Buttons
     buttonBox=qt.QDialogButtonBox()
@@ -171,6 +171,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     dataSectionFormLayout.addRow("Intraop directory selection:",self.intraopDirButton)
     dataSectionFormLayout.addRow("Watch Intraop Directory for new Data", self.watchIntraopCheckbox)
 
+    # set Directory to my Test folder
+    self.intraopDirButton.directory='/Applications/A_INTRAOP_DIR'
+    self.preopDirButton.directory='/Applications/A_PREOP_DIR'
+
     # SERIES SELECTION
     self.step3frame = ctk.ctkCollapsibleGroupBox()
     self.step3frame.setTitle("Intraop Series selection")
@@ -194,6 +198,19 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.loadIntraopDataButton.toolTip = "Load Series into Slicer"
     self.loadIntraopDataButton.enabled = True
     dataSectionFormLayout.addWidget(self.loadIntraopDataButton)
+
+    # TEST BUTTON
+    self.testButton = qt.QPushButton("Test Button")
+    self.testButton.toolTip = "Test Button"
+    self.testButton.enabled = True
+    dataSectionFormLayout.addWidget(self.testButton)
+
+    # TEST BUTTON II
+    self.testButton2 = qt.QPushButton("Show selected")
+    self.testButton2.toolTip = "Test Button"
+    self.testButton2.enabled = True
+    dataSectionFormLayout.addWidget(self.testButton2)
+
 
 
 
@@ -281,8 +298,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.startSegmentationButton.connect('clicked(bool)', self.onStartSegmentationButton)
     self.applySegmentationButton.connect('clicked(bool)', self.onApplySegmentationButton)
     self.watchIntraopCheckbox.connect('clicked(bool)', self.initializeListener)
-    # add condition: watchIntraopCheckbox needs to be clicked AND checked == True
+    # TODO add condition: watchIntraopCheckbox needs to be clicked AND checked == True
     self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
+    self.loadPreopDataButton.connect('clicked(bool)',self.loadPreopData)
+    self.testButton.connect('clicked(bool)',self.testFunction)
+    self.testButton2.connect('clicked(bool)',self.testFunction2)
+
 
 
 
@@ -389,48 +410,114 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Layout within the dummy collapsible button
     evaluationSectionFormLayout = qt.QFormLayout(evaluationSectionCollapsibleButton)
 
+  def loadPreopData(self):
+
+
+    fidList=[]
+    volumeList=[]
+    labelList=[]
+
+    for nrrd in os.listdir(self.preopDirButton.directory):
+      if len(nrrd)-nrrd.rfind('.nrrd') == 5:
+        volumeList.append(self.preopDirButton.directory+'/'+nrrd)
+
+    print ('VOLUME LIST :')
+    print volumeList
+
+
+  def testFunction(self):
+
+    print ('Hello')
+
+    seriesList=[]
+    series1='3 plane loc'
+    series2='AX FSPGR FS T1 PRE'
+    seriesList.append(series1)
+    seriesList.append(series2)
+
+    self.seriesModel.clear()
+    self.seriesItems = []
+    print seriesList
+
+    for s in range(len(seriesList)):
+      seriesText = seriesList[s]
+      sItem = qt.QStandardItem(seriesText)
+      self.seriesItems.append(sItem)
+      self.seriesModel.appendRow(sItem)
+      sItem.setCheckable(1)
+
+   # self.createLoadableFileListFromSelection()
+
+  def testFunction2(self):
+
+   return None
+
+  def getSelectedSeriesFromSelector(self):
+
+    # this function returns a List of names of the series
+    # that are selected in Intraop Series Selector
+
+    checkedItems = [x for x in self.seriesItems if x.checkState()]
+    self.selectedSeries=[]
+
+    for x in checkedItems:
+      self.selectedSeries.append(x.text())
+
+    return self.selectedSeries
+
+  def createLoadableFileListFromSelection(self):
+
+    # create dcmFileList that lists all .dcm files in directory
+    dcmFileList = []
+    self.selectedFileList=[]
+    db=slicer.dicomDatabase
+
+    for dcm in os.listdir(self.intraopDirButton.directory):
+      if len(dcm)-dcm.rfind('.dcm') == 4:
+        dcmFileList.append(self.intraopDirButton.directory+'/'+dcm)
+
+    # get the selected Series List
+    selectedSeriesList=self.getSelectedSeriesFromSelector()
+
+    # write all selected files in selectedFileList
+    for file in dcmFileList:
+     if db.fileValue(file,'0008,103E') in selectedSeriesList:
+       self.selectedFileList.append(file)
 
   def loadSeriesIntoSlicer(self):
 
-    # TODO: Load only sections into slicer that are checked in Series Selection
-    # try to load directory from entries in dicom database
-    dcmList = []
-    for dcm in os.listdir(self.intraopDirButton.directory):
-      if len(dcm)-dcm.rfind('.dcm') == 4:
-        dcmList.append(self.intraopDirButton.directory+'/'+dcm)
+    self.createLoadableFileListFromSelection()
 
-    print dcmList
-
+    # create DICOMScalarVolumePlugin and load selectedSeries data from files into slicer
     scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
 
-    loadables = scalarVolumePlugin.examine([dcmList])
-
-    print loadables
-
-    if len(loadables) == 0:
-      print 'Could not parse the DICOM Study!'
-      exit()
-
-    inputVolume = scalarVolumePlugin.load(loadables[0])
-    slicer.mrmlScene.AddNode(inputVolume)
-    print('Input volume loaded!')
+    try:
+      loadables = scalarVolumePlugin.examine([self.selectedFileList])
+    except:
+      print ('There is nothing to load. You have to select series')
 
 
+    for s in range(len(self.selectedSeries)):
+     inputVolume = scalarVolumePlugin.load(loadables[s])
+     # inputVolume.setName(selectedSeries[s])
+     # TODO: change name of imported series; right now its still very strange
+     slicer.mrmlScene.AddNode(inputVolume)
+     print('Input volume '+str(s)+' : '+self.selectedSeries[s]+' loaded!')
 
   def cleanup(self):
     pass
 
   def waitingForSeriesToBeCompleted(self):
 
-    print ('waiting for Series to be completed')
-    # wait 5 seconds for series to be completed
+    print ('***** New Data in intraop directory detected ***** ')
+    print ('waiting 5 more seconds for Series to be completed')
 
     qt.QTimer.singleShot(5000,self.importDICOMseries)
 
   def importDICOMseries(self):
 
     newFileList= []
-    seriesList= []
+    self.seriesList= []
     indexer = ctk.ctkDICOMIndexer()
     db=slicer.dicomDatabase
 
@@ -444,33 +531,36 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      indexer.addFile(db,str(self.intraopDirButton.directory+'/'+file),None)
 
      # add Series to seriesList
-     if db.fileValue(str(self.intraopDirButton.directory+'/'+file),'0008,103E') not in seriesList:
+     if db.fileValue(str(self.intraopDirButton.directory+'/'+file),'0008,103E') not in self.seriesList:
        importfile=str(self.intraopDirButton.directory+'/'+file)
-       seriesList.append(db.fileValue(importfile,'0008,103E'))
+       self.seriesList.append(db.fileValue(importfile,'0008,103E'))
 
     # create Checkable Item in GUI
-    for item in seriesList:
-       self.currentSeries=item
-       self.currentItem=qt.QStandardItem(item)
-       self.seriesModel.appendRow(self.currentItem)
-       self.currentItem.setCheckable(1)
+
+    self.seriesModel.clear()
+    self.seriesItems = []
+
+    for s in range(len(self.seriesList)):
+      seriesText = self.seriesList[s]
+      self.currentSeries=seriesText
+      sItem = qt.QStandardItem(seriesText)
+      self.seriesItems.append(sItem)
+      self.seriesModel.appendRow(sItem)
+      sItem.setCheckable(1)
 
     print('DICOM import finished')
     print('Those series are imported')
-    print seriesList
+    print self.seriesList
 
     # notify the user
-    self.notifyUser(self.currentSeries)
 
-    return None
+    # self.notifyUser(self.currentSeries)
 
   def createCurrentFileList(self):
 
     self.currentFileList=[]
     for item in os.listdir(self.intraopDirButton.directory):
       self.currentFileList.append(item)
-
-    print self.currentFileList
 
   def initializeListener(self):
     numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
@@ -513,6 +603,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # create Push Button
     self.pushButton = qt.QPushButton("Import new series"+"  "+seriesName)
     self.notifyUserWindow.layout().addWidget(self.pushButton)
+    self.pushButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
+
 
     # create Push Button
     self.pushButton2 = qt.QPushButton("Not Now")
