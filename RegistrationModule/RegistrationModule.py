@@ -290,7 +290,58 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.referenceVolumeSelector.setToolTip( "Pick the input to the algorithm." )
     labelSelectionFormLayout.addRow("Reference Volume: ", self.referenceVolumeSelector)
 
+    # Set Icon Size for the 4 Icon Items
+    size=qt.QSize(60,60)
 
+    # Create Data Selection Button
+    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-quickSegmentation.png')
+    icon=qt.QIcon(pixmap)
+    dataButton=qt.QPushButton()
+    dataButton.setIcon(icon)
+    dataButton.setIconSize(size)
+    dataButton.setFixedHeight(70)
+    dataButton.setFixedWidth(70)
+    dataButton.setStyleSheet("background-color: rgb(255,255,255)")
+
+
+    # Create Label Selection Button
+    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-labelSegmentation.png')
+    icon=qt.QIcon(pixmap)
+    labelButton=qt.QPushButton()
+    labelButton.setIcon(icon)
+    labelButton.setIconSize(size)
+    labelButton.setFixedHeight(70)
+    labelButton.setFixedWidth(70)
+    labelButton.setStyleSheet("background-color: rgb(255,255,255)")
+
+    # Create Apply Segmentation Button
+    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-applySegmentation.png')
+    icon=qt.QIcon(pixmap)
+    applyButton=qt.QPushButton()
+    applyButton.setIcon(icon)
+    applyButton.setIconSize(size)
+    applyButton.setFixedHeight(70)
+    applyButton.setFixedWidth(70)
+    applyButton.setStyleSheet("background-color: rgb(255,255,255)")
+
+
+    buttonBox1=qt.QDialogButtonBox()
+    buttonBox1.addButton(applyButton,buttonBox.ActionRole)
+    buttonBox1.addButton(dataButton,buttonBox.ActionRole)
+    buttonBox1.addButton(labelButton,buttonBox.ActionRole)
+
+    buttonBox1.setLayoutDirection(1)
+    buttonBox1.centerButtons=False
+    labelSelectionFormLayout.addWidget(buttonBox1)
+
+    # connections
+
+    dataButton.connect('clicked(bool)',self.onStartSegmentationButton)
+    labelButton.connect('clicked(bool)',self.onApplySegmentationButton)
+
+
+
+    """
     #
     # Quick Organ Segmentation Button
     #
@@ -306,7 +357,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applySegmentationButton.toolTip = "Run the algorithm."
     self.applySegmentationButton.enabled = True
     labelSelectionFormLayout.addWidget(self.applySegmentationButton)
-
+    """
     #
     # Editor Widget
     #
@@ -324,8 +375,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     # connections
-    self.startSegmentationButton.connect('clicked(bool)', self.onStartSegmentationButton)
-    self.applySegmentationButton.connect('clicked(bool)', self.onApplySegmentationButton)
+    #self.startSegmentationButton.connect('clicked(bool)', self.onStartSegmentationButton)
+    #self.applySegmentationButton.connect('clicked(bool)', self.onApplySegmentationButton)
     self.watchIntraopCheckbox.connect('clicked(bool)', self.initializeListener)
     # TODO add condition: watchIntraopCheckbox needs to be clicked AND checked == True
     self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
@@ -507,7 +558,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     preopImageVolumeNode=slicer.mrmlScene.GetNodesByName('Case1-t2ax-N4').GetItemAsObject(0)
 
     preopTargets=slicer.util.loadMarkupsFiducialList('/Applications/A_PREOP_DIR/Case1-landmarks.fcsv')
-    preopTargetsNode=slicer.mrmlScene.GetNodesByName('case1-landmarks').GetItemAsObject(0)
+    preopTargetsNode=slicer.mrmlScene.GetNodesByName('Case1-landmarks').GetItemAsObject(0)
 
     # use label contours
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
@@ -529,10 +580,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     redLogic.FitSliceToAll()
 
     # set markups visible
+
     markupsLogic=slicer.modules.markups.logic()
     markupsLogic.SetAllMarkupsVisibility(preopTargetsNode,1)
 
-    # jump to markup slice
+    # TODO: jump to first markup slice
     # slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(preopTargetsNode, index, 1)
 
 
@@ -941,8 +993,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     Parameter (1/2): OutputVolume
     """
 
+    # TODO: check if parameters == None
+
     # define params
-    params = {'sampleDistance': 0.1, 'labelValue': 1, 'InputVolume' : inputVolume, 'surface' : inputModel, 'OutputVolume' : outputLabelMap}
+    params = {'sampleDistance': 0.01, 'labelValue': 1, 'InputVolume' : inputVolume, 'surface' : inputModel, 'OutputVolume' : outputLabelMap}
 
     # run ModelToLabelMap-CLI Module
     slicer.cli.run(slicer.modules.modeltolabelmap, None, params)
