@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/">
+    <file>Icons/icon-dataselection1.png</file>
+
+  </qresource>
+</RCC>

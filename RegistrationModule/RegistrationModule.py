@@ -2,6 +2,12 @@ import os
 import unittest
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
+from Editor import EditorWidget
+from EditorLib import EditColor
+import Editor
+from EditorLib import EditUtil
+from EditorLib import EditorLib
+
 
 #
 # RegistrationModule
@@ -199,6 +205,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.loadIntraopDataButton.enabled = True
     dataSectionFormLayout.addWidget(self.loadIntraopDataButton)
 
+    """
     # TEST BUTTON
     self.testButton = qt.QPushButton("Test Button")
     self.testButton.toolTip = "Test Button"
@@ -210,7 +217,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.testButton2.toolTip = "Test Button"
     self.testButton2.enabled = True
     dataSectionFormLayout.addWidget(self.testButton2)
-
+    """
 
 
 
@@ -221,9 +228,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     labelSelectionCollapsibleButton = ctk.ctkCollapsibleButton()
     labelSelectionCollapsibleButton.text = "Step 2: Label Selection"
+    labelSelectionCollapsibleButton.collapsed=1
     self.layout.addWidget(labelSelectionCollapsibleButton)
 
-    # Layout within the dummy collapsible button
+    # Layout within the collapsible button
     labelSelectionFormLayout = qt.QFormLayout(labelSelectionCollapsibleButton)
 
     #
@@ -232,7 +240,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.preopLabelSelector = slicer.qMRMLNodeComboBox()
     self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 1 )
     self.preopLabelSelector.selectNodeUponCreation = True
     self.preopLabelSelector.addEnabled = False
     self.preopLabelSelector.removeEnabled = False
@@ -250,11 +258,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.intraopLabelSelector = slicer.qMRMLNodeComboBox()
     self.intraopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.intraopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.intraopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 1 )
     self.intraopLabelSelector.selectNodeUponCreation = True
     self.intraopLabelSelector.addEnabled = False
     self.intraopLabelSelector.removeEnabled = False
-    self.intraopLabelSelector.noneEnabled = False
+    self.intraopLabelSelector.noneEnabled = True
     self.intraopLabelSelector.showHidden = False
     self.intraopLabelSelector.showChildNodeTypes = False
     self.intraopLabelSelector.setMRMLScene( slicer.mrmlScene )
@@ -267,10 +275,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.referenceVolumeSelector = slicer.qMRMLNodeComboBox()
     self.referenceVolumeSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.referenceVolumeSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
     self.referenceVolumeSelector.selectNodeUponCreation = True
     self.referenceVolumeSelector.addEnabled = False
     self.referenceVolumeSelector.removeEnabled = False
-    self.referenceVolumeSelector.noneEnabled = False
+    self.referenceVolumeSelector.noneEnabled = True
     self.referenceVolumeSelector.showHidden = False
     self.referenceVolumeSelector.showChildNodeTypes = False
     self.referenceVolumeSelector.setMRMLScene( slicer.mrmlScene )
@@ -292,7 +301,24 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applySegmentationButton = qt.QPushButton("Apply Segmentation")
     self.applySegmentationButton.toolTip = "Run the algorithm."
     self.applySegmentationButton.enabled = True
-    labelSelectionFormLayout.addRow(self.applySegmentationButton)
+    labelSelectionFormLayout.addWidget(self.applySegmentationButton)
+
+    #
+    # Editor Widget
+    #
+
+
+    self.editUtil = EditorLib.EditUtil.EditUtil()
+    editorWidgetParent = slicer.qMRMLWidget()
+    editorWidgetParent.setLayout(qt.QVBoxLayout())
+    editorWidgetParent.setMRMLScene(slicer.mrmlScene)
+    self.editorWidget = EditorWidget(parent=editorWidgetParent,showVolumesFrame=False)
+    self.editorWidget.setup()
+    self.editorParameterNode = self.editUtil.getParameterNode()
+    labelSelectionFormLayout.addRow(editorWidgetParent)
+
+
+
 
     # connections
     self.startSegmentationButton.connect('clicked(bool)', self.onStartSegmentationButton)
@@ -301,8 +327,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # TODO add condition: watchIntraopCheckbox needs to be clicked AND checked == True
     self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
     self.loadPreopDataButton.connect('clicked(bool)',self.loadPreopData)
-    self.testButton.connect('clicked(bool)',self.testFunction)
-    self.testButton2.connect('clicked(bool)',self.testFunction2)
+    #self.testButton.connect('clicked(bool)',self.testFunction)
+    #self.testButton2.connect('clicked(bool)',self.testFunction2)
+
 
 
 
@@ -315,6 +342,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     registrationSectionCollapsibleButton = ctk.ctkCollapsibleButton()
     registrationSectionCollapsibleButton.text = "Step 3: Registration"
+    registrationSectionCollapsibleButton.collapsed=1
     self.layout.addWidget(registrationSectionCollapsibleButton)
 
     # Layout within the dummy collapsible button
@@ -324,18 +352,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # preop volume selector
     #
 
-    self.preopLabelSelector = slicer.qMRMLNodeComboBox()
-    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
-    self.preopLabelSelector.selectNodeUponCreation = True
-    self.preopLabelSelector.addEnabled = False
-    self.preopLabelSelector.removeEnabled = False
-    self.preopLabelSelector.noneEnabled = False
-    self.preopLabelSelector.showHidden = False
-    self.preopLabelSelector.showChildNodeTypes = False
-    self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
-    self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
-    registrationSectionFormLayout.addRow("Preop Image Volume: ", self.preopLabelSelector)
+    self.preopVolumeSelector = slicer.qMRMLNodeComboBox()
+    self.preopVolumeSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.preopVolumeSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.preopVolumeSelector.selectNodeUponCreation = True
+    self.preopVolumeSelector.addEnabled = False
+    self.preopVolumeSelector.removeEnabled = False
+    self.preopVolumeSelector.noneEnabled = False
+    self.preopVolumeSelector.showHidden = False
+    self.preopVolumeSelector.showChildNodeTypes = False
+    self.preopVolumeSelector.setMRMLScene( slicer.mrmlScene )
+    self.preopVolumeSelector.setToolTip( "Pick the input to the algorithm." )
+    registrationSectionFormLayout.addRow("Preop Image Volume: ", self.preopVolumeSelector)
 
     #
     # preop label selector
@@ -343,7 +371,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.preopLabelSelector = slicer.qMRMLNodeComboBox()
     self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 1 )
     self.preopLabelSelector.selectNodeUponCreation = True
     self.preopLabelSelector.addEnabled = False
     self.preopLabelSelector.removeEnabled = False
@@ -358,46 +386,46 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # intraop volume selector
     #
 
-    self.preopLabelSelector = slicer.qMRMLNodeComboBox()
-    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
-    self.preopLabelSelector.selectNodeUponCreation = True
-    self.preopLabelSelector.addEnabled = False
-    self.preopLabelSelector.removeEnabled = False
-    self.preopLabelSelector.noneEnabled = False
-    self.preopLabelSelector.showHidden = False
-    self.preopLabelSelector.showChildNodeTypes = False
-    self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
-    self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
-    registrationSectionFormLayout.addRow("Intraop Image Volume: ", self.preopLabelSelector)
+    self.intraopVolumeSelector = slicer.qMRMLNodeComboBox()
+    self.intraopVolumeSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.intraopVolumeSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.intraopVolumeSelector.selectNodeUponCreation = True
+    self.intraopVolumeSelector.addEnabled = False
+    self.intraopVolumeSelector.removeEnabled = False
+    self.intraopVolumeSelector.noneEnabled = True
+    self.intraopVolumeSelector.showHidden = False
+    self.intraopVolumeSelector.showChildNodeTypes = False
+    self.intraopVolumeSelector.setMRMLScene( slicer.mrmlScene )
+    self.intraopVolumeSelector.setToolTip( "Pick the input to the algorithm." )
+    registrationSectionFormLayout.addRow("Intraop Image Volume: ", self.intraopVolumeSelector)
 
     #
     # intraop label selector
     #
 
-    self.preopLabelSelector = slicer.qMRMLNodeComboBox()
-    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
-    self.preopLabelSelector.selectNodeUponCreation = True
-    self.preopLabelSelector.addEnabled = False
-    self.preopLabelSelector.removeEnabled = False
-    self.preopLabelSelector.noneEnabled = False
-    self.preopLabelSelector.showHidden = False
-    self.preopLabelSelector.showChildNodeTypes = False
-    self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
-    self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
-    registrationSectionFormLayout.addRow("Intraop Label Volume: ", self.preopLabelSelector)
+    self.intraopLabelSelector = slicer.qMRMLNodeComboBox()
+    self.intraopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.intraopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.intraopLabelSelector.selectNodeUponCreation = True
+    self.intraopLabelSelector.addEnabled = False
+    self.intraopLabelSelector.removeEnabled = False
+    self.intraopLabelSelector.noneEnabled = True
+    self.intraopLabelSelector.showHidden = False
+    self.intraopLabelSelector.showChildNodeTypes = False
+    self.intraopLabelSelector.setMRMLScene( slicer.mrmlScene )
+    self.intraopLabelSelector.setToolTip( "Pick the input to the algorithm." )
+    registrationSectionFormLayout.addRow("Intraop Label Volume: ", self.intraopLabelSelector)
 
 
     #
-    # Apply Segmentation
+    # Apply Registration
     #
 
     self.applyRegistrationButton = qt.QPushButton("Apply Registration")
     self.applyRegistrationButton.toolTip = "Run the algorithm."
     self.applyRegistrationButton.enabled = True
     registrationSectionFormLayout.addRow(self.applyRegistrationButton)
-
+    self.applyRegistrationButton.connect('clicked(bool)',self.applyRegistration)
 
 
     #
@@ -410,8 +438,88 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Layout within the dummy collapsible button
     evaluationSectionFormLayout = qt.QFormLayout(evaluationSectionCollapsibleButton)
 
+
+
+  def applyRegistration(self):
+
+    cliModule = slicer.modules.brainsfit
+    n=cliModule.cliModuleLogic().CreateNode()
+    for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
+      for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
+        print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
+  """
+  Parameter (0/0): fixedVolume
+  Parameter (0/1): movingVolume
+  Parameter (0/2): samplingPercentage
+  Parameter (0/3): splineGridSize
+  Parameter (1/0): linearTransform
+  Parameter (1/1): bsplineTransform
+  Parameter (1/2): outputVolume
+  Parameter (2/0): initialTransform
+  Parameter (2/1): initializeTransformMode
+  Parameter (3/0): useRigid
+  Parameter (3/1): useScaleVersor3D
+  Parameter (3/2): useScaleSkewVersor3D
+  Parameter (3/3): useAffine
+  Parameter (3/4): useBSpline
+  Parameter (3/5): useSyN
+  Parameter (3/6): useComposite
+  Parameter (4/0): maskProcessingMode
+  Parameter (4/1): fixedBinaryVolume
+  Parameter (4/2): movingBinaryVolume
+  Parameter (4/3): outputFixedVolumeROI
+  Parameter (4/4): outputMovingVolumeROI
+  Parameter (4/5): useROIBSpline
+  Parameter (4/6): histogramMatch
+  Parameter (4/7): medianFilterSize
+  Parameter (4/8): removeIntensityOutliers
+  Parameter (5/0): fixedVolume2
+  Parameter (5/1): movingVolume2
+  Parameter (5/2): outputVolumePixelType
+  Parameter (5/3): backgroundFillValue
+  Parameter (5/4): scaleOutputValues
+  Parameter (5/5): interpolationMode
+  Parameter (6/0): numberOfIterations
+  Parameter (6/1): maximumStepLength
+  Parameter (6/2): minimumStepLength
+  Parameter (6/3): relaxationFactor
+  Parameter (6/4): translationScale
+  Parameter (6/5): reproportionScale
+  Parameter (6/6): skewScale
+  Parameter (6/7): maxBSplineDisplacement
+  Parameter (7/0): fixedVolumeTimeIndex
+  Parameter (7/1): movingVolumeTimeIndex
+  Parameter (7/2): numberOfHistogramBins
+  Parameter (7/3): numberOfMatchPoints
+  Parameter (7/4): costMetric
+  Parameter (7/5): maskInferiorCutOffFromCenter
+  Parameter (7/6): ROIAutoDilateSize
+  Parameter (7/7): ROIAutoClosingSize
+  Parameter (7/8): numberOfSamples
+  Parameter (7/9): strippedOutputTransform
+  Parameter (7/10): transformType
+  Parameter (7/11): outputTransform
+  Parameter (7/12): initializeRegistrationByCurrentGenericTransform
+  Parameter (8/0): failureExitCode
+  Parameter (8/1): writeTransformOnFailure
+  Parameter (8/2): numberOfThreads
+  Parameter (8/3): debugLevel
+  Parameter (8/4): costFunctionConvergenceFactor
+  Parameter (8/5): projectedGradientTolerance
+  Parameter (8/6): maximumNumberOfEvaluations
+  Parameter (8/7): maximumNumberOfCorrections
+  Parameter (8/8): UseDebugImageViewer
+  Parameter (8/9): PromptAfterImageSend
+  Parameter (8/10): metricSamplingStrategy
+  Parameter (8/11): logFileReport
+  """
+
+
+
+
   def loadPreopData(self):
 
+    # this function finds all volumes and fiducials in a directory and loads them into slicer
 
     fidList=[]
     volumeList=[]
@@ -421,8 +529,54 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       if len(nrrd)-nrrd.rfind('.nrrd') == 5:
         volumeList.append(self.preopDirButton.directory+'/'+nrrd)
 
-    print ('VOLUME LIST :')
+    print ('volumes found :')
     print volumeList
+
+    for fcsv in os.listdir(self.preopDirButton.directory):
+      if len(fcsv)-fcsv.rfind('.fcsv') == 5:
+        fidList.append(self.preopDirButton.directory+'/'+fcsv)
+
+    print ('fiducials found :')
+    print fidList
+
+    # TODO: distinguish between image data volumes and labelmaps
+
+    # load testdata and create Nodes
+    preoplabelVolume=slicer.util.loadLabelVolume('/Applications/A_PREOP_DIR/Case1-t2ax-TG-rater1.nrrd')
+    preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('Case1-t2ax-TG-rater1').GetItemAsObject(0)
+
+    preopImageVolume=slicer.util.loadVolume('/Applications/A_PREOP_DIR/Case1-t2ax-N4.nrrd')
+    preopImageVolumeNode=slicer.mrmlScene.GetNodesByName('Case1-t2ax-N4').GetItemAsObject(0)
+
+    preopTargets=slicer.util.loadMarkupsFiducialList('/Applications/A_PREOP_DIR/Case1-landmarks.fcsv')
+    preopTargetsNode=slicer.mrmlScene.GetNodesByName('case1-landmarks').GetItemAsObject(0)
+
+    # use label contours
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").SetUseLabelOutline(True)
+
+    # rotate volume to plane
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(preopImageVolumeNode)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(preopImageVolumeNode)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(preopImageVolumeNode)
+
+    # set Layout to redSliceViewOnly
+    lm=slicer.app.layoutManager()
+    lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+
+    # fit Slice View to FOV
+    red=lm.sliceWidget('Red')
+    redLogic=red.sliceLogic()
+    redLogic.FitSliceToAll()
+
+    # set markups visible
+    markupsLogic=slicer.modules.markups.logic()
+    markupsLogic.SetAllMarkupsVisibility(preopTargetsNode,1)
+
+    # jump to markup slice
+    # slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(preopTargetsNode, index, 1)
+
 
 
   def testFunction(self):
@@ -500,9 +654,21 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     for s in range(len(self.selectedSeries)):
      inputVolume = scalarVolumePlugin.load(loadables[s])
      # inputVolume.setName(selectedSeries[s])
+
      # TODO: change name of imported series; right now its still very strange
      slicer.mrmlScene.AddNode(inputVolume)
      print('Input volume '+str(s)+' : '+self.selectedSeries[s]+' loaded!')
+
+     # added: print name
+     print('name is ')
+     print(str(inputVolume))
+
+    # TODO:
+    # set inputVolume Node as Reference Volume in Label Selection
+    # set inputVolume Node as Intraop Image Volume in Registration
+
+
+
 
   def cleanup(self):
     pass
@@ -628,6 +794,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # initialize Label Map
     outputLabelMap=slicer.vtkMRMLScalarVolumeNode()
     outputLabelMap.SetLabelMap(1)
+    outputLabelMap.SetName('Intraop Label Map')
     slicer.mrmlScene.AddNode(outputLabelMap)
 
     # get clippingModel Node
@@ -636,11 +803,38 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # run CLI-Module
     logic.modelToLabelmap(self.referenceVolumeSelector.currentNode(),clippingModel,outputLabelMap)
+    """
+    clipModelNode=slicer.mrmlScene.GetNodesByName('clipModelNode')
+    clippingModel=clipModelNode.GetItemAsObject(0)
+    slicer.mrmlScene.RemoveNode(clippingModel)
+    """
 
-    # set Label Outline
+
+
+    # use label contours
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").SetUseLabelOutline(True)
+    """
+    # rotate volume to plane
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(outputLabelMap)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(outputLabelMap)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(outputLabelMap)
+    """
+    # set Layout to redSliceViewOnly
+    lm=slicer.app.layoutManager()
+    lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+
+    # fit Slice View to FOV
+    red=lm.sliceWidget('Red')
+    redLogic=red.sliceLogic()
+    redLogic.FitSliceToAll()
+
+
+
+
+
+
 #
 # RegistrationModuleLogic
 #
@@ -727,13 +921,20 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
   def setVolumeClipUserMode(self):
 
-    # set Four Up View
+    # set Layout to redSliceViewOnly
     lm=slicer.app.layoutManager()
-    lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
+    lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+
+    # fit Slice View to FOV
+    red=lm.sliceWidget('Red')
+    redLogic=red.sliceLogic()
+    redLogic.FitSliceToAll()
 
     # set the mouse mode into Markups fiducial placement
     placeModePersistence = 1
     slicer.modules.markups.logic().StartPlaceMode(placeModePersistence)
+
+
 
     return True
 
@@ -783,13 +984,55 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     """
 
     # define params
-    params = {'sampleDistance': 0.1, 'labelValue': 5, 'InputVolume' : inputVolume, 'surface' : inputModel, 'OutputVolume' : outputLabelMap}
+    params = {'sampleDistance': 0.1, 'labelValue': 1, 'InputVolume' : inputVolume, 'surface' : inputModel, 'OutputVolume' : outputLabelMap}
 
     # run ModelToLabelMap-CLI Module
     slicer.cli.run(slicer.modules.modeltolabelmap, None, params)
 
     return True
 
+  def runBRAINSFit(self,movingImage,fixedImage,movingImageLabel,fixedImageLabel):
+
+
+    # rigidly register followup to baseline
+    # TODO: do this in a separate step and allow manual adjustment?
+    # TODO: add progress reporting (BRAINSfit does not report progress though)
+    pNode = self.parameterNode()
+    baselineVolumeID = pNode.GetParameter('baselineVolumeID')
+    followupVolumeID = pNode.GetParameter('followupVolumeID')
+    self.__followupTransform = slicer.vtkMRMLLinearTransformNode()
+    slicer.mrmlScene.AddNode(self.__followupTransform)
+
+    parameters = {}
+    parameters["fixedVolume"] = baselineVolumeID
+    parameters["movingVolume"] = followupVolumeID
+    parameters["initializeTransformMode"] = "useMomentsAlign"
+    parameters["useRigid"] = True
+    parameters["useScaleVersor3D"] = True
+    parameters["useScaleSkewVersor3D"] = True
+    parameters["useAffine"] = True
+    parameters["linearTransform"] = self.__followupTransform.GetID()
+
+    self.__cliNode = None
+    self.__cliNode = slicer.cli.run(slicer.modules.brainsfit, self.__cliNode, parameters)
+
+    self.__cliObserverTag = self.__cliNode.AddObserver('ModifiedEvent', self.processRegistrationCompletion)
+    self.__registrationStatus.setText('Wait ...')
+    self.__registrationButton.setEnabled(0)
+
+"""def processRegistrationCompletion(self, node, event):
+    status = node.GetStatusString()
+    self.__registrationStatus.setText('Registration '+status)
+    if status == 'Completed':
+      self.__registrationButton.setEnabled(1)
+
+      pNode = self.parameterNode()
+      followupNode = slicer.mrmlScene.GetNodeByID(pNode.GetParameter('followupVolumeID'))
+      followupNode.SetAndObserveTransformNodeID(self.__followupTransform.GetID())
+
+      Helper.SetBgFgVolumes(pNode.GetParameter('baselineVolumeID'),pNode.GetParameter('followupVolumeID'))
+
+      pNode.SetParameter('followupTransformID', self.__followupTransform.GetID())"""
 
 class RegistrationModuleTest(ScriptedLoadableModuleTest):
   """
