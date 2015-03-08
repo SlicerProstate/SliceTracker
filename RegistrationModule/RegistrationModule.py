@@ -14,16 +14,13 @@ from EditorLib import EditorLib
 #
 
 class RegistrationModule(ScriptedLoadableModule):
-  """Uses ScriptedLoadableModule base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "RegistrationModule" # TODO make this more human readable by adding spaces
+    self.parent.title = "RegistrationModule"
     self.parent.categories = ["Examples"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Peter Behringer (SPL), Andriy Fedorov (SPL)"] # replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Peter Behringer (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ Module for easy registration. """
     self.parent.acknowledgementText = """SPL, Brigham & Womens""" # replace with organization, grant and thanks.
 
@@ -40,7 +37,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     ScriptedLoadableModuleWidget.setup(self)
 
     # Parameters
-    self.settings = qt.QSettings()
+    self.settings = qt.QSettings() #TODO: write path settings as in PCAMP Review
     self.temp = None
 
     # Create PushButtons for Workflow-Steps 1-4
@@ -50,7 +47,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Create Data Selection Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection1.png')
-    #pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/bright_rund_DATA.png')
     icon=qt.QIcon(pixmap)
     dataButton=qt.QPushButton()
     dataButton.setIcon(icon)
@@ -58,6 +54,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     dataButton.setFixedHeight(60)
     dataButton.setFixedWidth(140)
     dataButton.setStyleSheet("background-color: rgb(255,255,255)")
+
 
     # Create Label Selection Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection2.png')
@@ -79,6 +76,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     regButton.setFixedWidth(140)
     regButton.setStyleSheet("background-color: rgb(255,255,255)")
 
+
     # Create Data Selection Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection4.png')
     icon=qt.QIcon(pixmap)
@@ -88,6 +86,13 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     evalButton.setFixedHeight(60)
     evalButton.setFixedWidth(140)
     evalButton.setStyleSheet("background-color: rgb(255,255,255)")
+
+    # connections
+
+    evalButton.connect('clicked(bool)',self.onStep4Evaluation)
+    regButton.connect('clicked(bool)',self.onStep3Registration)
+    labelButton.connect('clicked(bool)',self.onStep2LabelSelection)
+    dataButton.connect('clicked(bool)',self.onStep1DataSelection)
 
     # Create ButtonBox to put in Workstep Buttons
     buttonBox=qt.QDialogButtonBox()
@@ -105,21 +110,19 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
 
-
     #
     # Step 1: Data Selection
     #
 
 
 
-
     # Create collapsible Button << Step 1: Data Selection >>
-    dataSectionCollapsibleButton = ctk.ctkCollapsibleButton()
-    dataSectionCollapsibleButton.text = "Step 1: Data Selection"
-    self.layout.addWidget(dataSectionCollapsibleButton)
+    self.dataSectionCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.dataSectionCollapsibleButton.text = "Step 1: Data Selection"
+    self.layout.addWidget(self.dataSectionCollapsibleButton)
 
     # Layout within the collapsible Button section
-    dataSectionFormLayout = qt.QFormLayout(dataSectionCollapsibleButton)
+    dataSectionFormLayout = qt.QFormLayout(self.dataSectionCollapsibleButton)
 
     # Layout within a row of that section
     selectPatientRowLayout = qt.QHBoxLayout()
@@ -129,9 +132,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     selectPatientRowLayout.addWidget(patientSelector)
     dataSectionFormLayout.addRow("Select Patient: ", selectPatientRowLayout)
 
-    # make all patient in dicom data base available
-    # TODO: Update if database changed
-    # Problem: Only available if preop data has DICOM format
+    # TODO: Update Section if database changed
 
     db = slicer.dicomDatabase
 
@@ -176,6 +177,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopDirButton.text = "Choose the intraop data directory"
     dataSectionFormLayout.addRow("Intraop directory selection:",self.intraopDirButton)
     dataSectionFormLayout.addRow("Watch Intraop Directory for new Data", self.watchIntraopCheckbox)
+    self.layout.addStretch(1)
 
     # set Directory to my Test folder
     self.intraopDirButton.directory='/Applications/A_INTRAOP_DIR'
@@ -226,14 +228,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     #
 
 
-    labelSelectionCollapsibleButton = ctk.ctkCollapsibleButton()
-    labelSelectionCollapsibleButton.text = "Step 2: Label Selection"
-    labelSelectionCollapsibleButton.collapsed=1
-    self.layout.addWidget(labelSelectionCollapsibleButton)
+    self.labelSelectionCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.labelSelectionCollapsibleButton.text = "Step 2: Label Selection"
+    self.labelSelectionCollapsibleButton.collapsed=0
+    self.labelSelectionCollapsibleButton.hide()
+    self.layout.addWidget(self.labelSelectionCollapsibleButton)
 
     # Layout within the collapsible button
-    labelSelectionFormLayout = qt.QFormLayout(labelSelectionCollapsibleButton)
+    labelSelectionFormLayout = qt.QFormLayout(self.labelSelectionCollapsibleButton)
 
+    #labelSelectionFormLayout.setFormAlignment(0x0020)
     #
     # preop label selector
     #
@@ -319,7 +323,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
 
-
     # connections
     self.startSegmentationButton.connect('clicked(bool)', self.onStartSegmentationButton)
     self.applySegmentationButton.connect('clicked(bool)', self.onApplySegmentationButton)
@@ -339,14 +342,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     #
 
 
-
-    registrationSectionCollapsibleButton = ctk.ctkCollapsibleButton()
-    registrationSectionCollapsibleButton.text = "Step 3: Registration"
-    registrationSectionCollapsibleButton.collapsed=1
-    self.layout.addWidget(registrationSectionCollapsibleButton)
+    self.registrationSectionCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.registrationSectionCollapsibleButton.text = "Step 3: Registration"
+    self.layout.addWidget(self.registrationSectionCollapsibleButton)
+    self.registrationSectionCollapsibleButton.collapsed=0
+    self.registrationSectionCollapsibleButton.hide()
 
     # Layout within the dummy collapsible button
-    registrationSectionFormLayout = qt.QFormLayout(registrationSectionCollapsibleButton)
+    registrationSectionFormLayout = qt.QFormLayout(self.registrationSectionCollapsibleButton)
+
+
 
     #
     # preop volume selector
@@ -425,96 +430,49 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applyRegistrationButton.toolTip = "Run the algorithm."
     self.applyRegistrationButton.enabled = True
     registrationSectionFormLayout.addRow(self.applyRegistrationButton)
-    self.applyRegistrationButton.connect('clicked(bool)',self.applyRegistration)
+    self.applyRegistrationButton.connect('clicked(bool)',RegistrationModuleLogic().applyRegistration)
 
 
     #
     # Step 4: Registration Evaluation
     #
-    evaluationSectionCollapsibleButton = ctk.ctkCollapsibleButton()
-    evaluationSectionCollapsibleButton.text = "Step 4: Evaluation"
-    self.layout.addWidget(evaluationSectionCollapsibleButton)
+    self.evaluationSectionCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.evaluationSectionCollapsibleButton.text = "Step 4: Evaluation"
+
+    self.layout.addWidget(self.evaluationSectionCollapsibleButton)
+    self.evaluationSectionCollapsibleButton.collapsed=0
+    self.evaluationSectionCollapsibleButton.hide()
 
     # Layout within the dummy collapsible button
-    evaluationSectionFormLayout = qt.QFormLayout(evaluationSectionCollapsibleButton)
+    evaluationSectionFormLayout = qt.QFormLayout(self.evaluationSectionCollapsibleButton)
+    tryLayout = qt.QHBoxLayout()
+    evaluationSectionFormLayout.addRow("Select Patient: ", tryLayout)
 
 
+  def onStep1DataSelection(self):
 
-  def applyRegistration(self):
+    self.dataSectionCollapsibleButton.show()
+    self.labelSelectionCollapsibleButton.show()
+    self.registrationSectionCollapsibleButton.show()
+    self.evaluationSectionCollapsibleButton.show()
 
-    cliModule = slicer.modules.brainsfit
-    n=cliModule.cliModuleLogic().CreateNode()
-    for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
-      for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
-        print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
-  """
-  Parameter (0/0): fixedVolume
-  Parameter (0/1): movingVolume
-  Parameter (0/2): samplingPercentage
-  Parameter (0/3): splineGridSize
-  Parameter (1/0): linearTransform
-  Parameter (1/1): bsplineTransform
-  Parameter (1/2): outputVolume
-  Parameter (2/0): initialTransform
-  Parameter (2/1): initializeTransformMode
-  Parameter (3/0): useRigid
-  Parameter (3/1): useScaleVersor3D
-  Parameter (3/2): useScaleSkewVersor3D
-  Parameter (3/3): useAffine
-  Parameter (3/4): useBSpline
-  Parameter (3/5): useSyN
-  Parameter (3/6): useComposite
-  Parameter (4/0): maskProcessingMode
-  Parameter (4/1): fixedBinaryVolume
-  Parameter (4/2): movingBinaryVolume
-  Parameter (4/3): outputFixedVolumeROI
-  Parameter (4/4): outputMovingVolumeROI
-  Parameter (4/5): useROIBSpline
-  Parameter (4/6): histogramMatch
-  Parameter (4/7): medianFilterSize
-  Parameter (4/8): removeIntensityOutliers
-  Parameter (5/0): fixedVolume2
-  Parameter (5/1): movingVolume2
-  Parameter (5/2): outputVolumePixelType
-  Parameter (5/3): backgroundFillValue
-  Parameter (5/4): scaleOutputValues
-  Parameter (5/5): interpolationMode
-  Parameter (6/0): numberOfIterations
-  Parameter (6/1): maximumStepLength
-  Parameter (6/2): minimumStepLength
-  Parameter (6/3): relaxationFactor
-  Parameter (6/4): translationScale
-  Parameter (6/5): reproportionScale
-  Parameter (6/6): skewScale
-  Parameter (6/7): maxBSplineDisplacement
-  Parameter (7/0): fixedVolumeTimeIndex
-  Parameter (7/1): movingVolumeTimeIndex
-  Parameter (7/2): numberOfHistogramBins
-  Parameter (7/3): numberOfMatchPoints
-  Parameter (7/4): costMetric
-  Parameter (7/5): maskInferiorCutOffFromCenter
-  Parameter (7/6): ROIAutoDilateSize
-  Parameter (7/7): ROIAutoClosingSize
-  Parameter (7/8): numberOfSamples
-  Parameter (7/9): strippedOutputTransform
-  Parameter (7/10): transformType
-  Parameter (7/11): outputTransform
-  Parameter (7/12): initializeRegistrationByCurrentGenericTransform
-  Parameter (8/0): failureExitCode
-  Parameter (8/1): writeTransformOnFailure
-  Parameter (8/2): numberOfThreads
-  Parameter (8/3): debugLevel
-  Parameter (8/4): costFunctionConvergenceFactor
-  Parameter (8/5): projectedGradientTolerance
-  Parameter (8/6): maximumNumberOfEvaluations
-  Parameter (8/7): maximumNumberOfCorrections
-  Parameter (8/8): UseDebugImageViewer
-  Parameter (8/9): PromptAfterImageSend
-  Parameter (8/10): metricSamplingStrategy
-  Parameter (8/11): logFileReport
-  """
+  def onStep2LabelSelection(self):
+    self.dataSectionCollapsibleButton.hide()
+    self.labelSelectionCollapsibleButton.show()
+    self.registrationSectionCollapsibleButton.hide()
+    self.evaluationSectionCollapsibleButton.hide()
 
+  def onStep3Registration(self):
+    self.dataSectionCollapsibleButton.hide()
+    self.labelSelectionCollapsibleButton.hide()
+    self.registrationSectionCollapsibleButton.show()
+    self.evaluationSectionCollapsibleButton.hide()
 
+  def onStep4Evaluation(self):
+    self.dataSectionCollapsibleButton.hide()
+    self.labelSelectionCollapsibleButton.hide()
+    self.registrationSectionCollapsibleButton.hide()
+    self.evaluationSectionCollapsibleButton.show()
 
 
   def loadPreopData(self):
@@ -991,8 +949,8 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     return True
 
-  def runBRAINSFit(self,movingImage,fixedImage,movingImageLabel,fixedImageLabel):
 
+  def runBRAINSFit(self,movingImage,fixedImage,movingImageLabel,fixedImageLabel):
 
     # rigidly register followup to baseline
     # TODO: do this in a separate step and allow manual adjustment?
@@ -1020,7 +978,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     self.__registrationStatus.setText('Wait ...')
     self.__registrationButton.setEnabled(0)
 
-"""def processRegistrationCompletion(self, node, event):
+    """def processRegistrationCompletion(self, node, event):
     status = node.GetStatusString()
     self.__registrationStatus.setText('Registration '+status)
     if status == 'Completed':
@@ -1033,6 +991,98 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       Helper.SetBgFgVolumes(pNode.GetParameter('baselineVolumeID'),pNode.GetParameter('followupVolumeID'))
 
       pNode.SetParameter('followupTransformID', self.__followupTransform.GetID())"""
+
+  def applyRegistration(self):
+
+    cliModule = slicer.modules.brainsfit
+    n=cliModule.cliModuleLogic().CreateNode()
+    for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
+      for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
+        print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
+    """
+  Parameter (0/0): fixedVolume
+  Parameter (0/1): movingVolume
+  Parameter (0/2): samplingPercentage
+  Parameter (0/3): splineGridSize
+  Parameter (1/0): linearTransform
+  Parameter (1/1): bsplineTransform
+  Parameter (1/2): outputVolume
+  Parameter (2/0): initialTransform
+  Parameter (2/1): initializeTransformMode
+  Parameter (3/0): useRigid
+  Parameter (3/1): useScaleVersor3D
+  Parameter (3/2): useScaleSkewVersor3D
+  Parameter (3/3): useAffine
+  Parameter (3/4): useBSpline
+  Parameter (3/5): useSyN
+  Parameter (3/6): useComposite
+  Parameter (4/0): maskProcessingMode
+  Parameter (4/1): fixedBinaryVolume
+  Parameter (4/2): movingBinaryVolume
+  Parameter (4/3): outputFixedVolumeROI
+  Parameter (4/4): outputMovingVolumeROI
+  Parameter (4/5): useROIBSpline
+  Parameter (4/6): histogramMatch
+  Parameter (4/7): medianFilterSize
+  Parameter (4/8): removeIntensityOutliers
+  Parameter (5/0): fixedVolume2
+  Parameter (5/1): movingVolume2
+  Parameter (5/2): outputVolumePixelType
+  Parameter (5/3): backgroundFillValue
+  Parameter (5/4): scaleOutputValues
+  Parameter (5/5): interpolationMode
+  Parameter (6/0): numberOfIterations
+  Parameter (6/1): maximumStepLength
+  Parameter (6/2): minimumStepLength
+  Parameter (6/3): relaxationFactor
+  Parameter (6/4): translationScale
+  Parameter (6/5): reproportionScale
+  Parameter (6/6): skewScale
+  Parameter (6/7): maxBSplineDisplacement
+  Parameter (7/0): fixedVolumeTimeIndex
+  Parameter (7/1): movingVolumeTimeIndex
+  Parameter (7/2): numberOfHistogramBins
+  Parameter (7/3): numberOfMatchPoints
+  Parameter (7/4): costMetric
+  Parameter (7/5): maskInferiorCutOffFromCenter
+  Parameter (7/6): ROIAutoDilateSize
+  Parameter (7/7): ROIAutoClosingSize
+  Parameter (7/8): numberOfSamples
+  Parameter (7/9): strippedOutputTransform
+  Parameter (7/10): transformType
+  Parameter (7/11): outputTransform
+  Parameter (7/12): initializeRegistrationByCurrentGenericTransform
+  Parameter (8/0): failureExitCode
+  Parameter (8/1): writeTransformOnFailure
+  Parameter (8/2): numberOfThreads
+  Parameter (8/3): debugLevel
+  Parameter (8/4): costFunctionConvergenceFactor
+  Parameter (8/5): projectedGradientTolerance
+  Parameter (8/6): maximumNumberOfEvaluations
+  Parameter (8/7): maximumNumberOfCorrections
+  Parameter (8/8): UseDebugImageViewer
+  Parameter (8/9): PromptAfterImageSend
+  Parameter (8/10): metricSamplingStrategy
+  Parameter (8/11): logFileReport
+  """
+
+    """
+    PARAMETER FOR MODELTOLABELMAP CLI MODULE:
+    Parameter (0/0): sampleDistance
+    Parameter (0/1): labelValue
+    Parameter (1/0): InputVolume
+    Parameter (1/1): surface
+    Parameter (1/2): OutputVolume
+    """
+
+    # define params
+    params = {'sampleDistance': 0.1, 'labelValue': 1, 'InputVolume' : inputVolume, 'surface' : inputModel, 'OutputVolume' : outputLabelMap}
+
+    # run ModelToLabelMap-CLI Module
+    slicer.cli.run(slicer.modules.modeltolabelmap, None, params)
+
+    return True
+
 
 class RegistrationModuleTest(ScriptedLoadableModuleTest):
   """
