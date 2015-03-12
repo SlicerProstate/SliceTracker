@@ -45,6 +45,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Set Icon Size for the 4 Icon Items
     size=qt.QSize(120,120)
 
+    # TODO: Integrate icons into Resources folder and add them to CMAKE file
+
     # Create Data Selection Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection1.png')
     icon=qt.QIcon(pixmap)
@@ -237,7 +239,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Layout within the collapsible button
     labelSelectionFormLayout = qt.QFormLayout(self.labelSelectionCollapsibleButton)
 
-    #labelSelectionFormLayout.setFormAlignment(0x0020)
+
     #
     # preop label selector
     #
@@ -378,7 +380,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     #self.startSegmentationButton.connect('clicked(bool)', self.onStartSegmentationButton)
     #self.applySegmentationButton.connect('clicked(bool)', self.onApplySegmentationButton)
     self.watchIntraopCheckbox.connect('clicked(bool)', self.initializeListener)
-    # TODO add condition: watchIntraopCheckbox needs to be clicked AND checked == True
     self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
     self.loadPreopDataButton.connect('clicked(bool)',self.loadPreopData)
     #self.testButton.connect('clicked(bool)',self.testFunction)
@@ -461,7 +462,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.intraopLabelSelector = slicer.qMRMLNodeComboBox()
     self.intraopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.intraopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.intraopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 1 )
     self.intraopLabelSelector.selectNodeUponCreation = True
     self.intraopLabelSelector.addEnabled = False
     self.intraopLabelSelector.removeEnabled = False
@@ -481,7 +482,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applyRegistrationButton.toolTip = "Run the algorithm."
     self.applyRegistrationButton.enabled = True
     registrationSectionFormLayout.addRow(self.applyRegistrationButton)
-    self.applyRegistrationButton.connect('clicked(bool)',RegistrationModuleLogic().applyRegistration)
+    # self.applyRegistrationButton.connect('clicked(bool)',RegistrationModuleLogic().applyRegistration(self.intraopVolumeSelector.currentNode(),self.preopVolumeSelector.currentNode(),self.intraopLabelSelector.currentNode(),self.preopLabelSelector.currentNode()))
+    self.applyRegistrationButton.connect('clicked(bool)',self.applyRegistration(self.intraopVolumeSelector.currentNode(),self.preopVolumeSelector.currentNode(),self.intraopLabelSelector.currentNode(),self.preopLabelSelector.currentNode()))
 
 
     #
@@ -739,11 +741,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.currentFileList.append(item)
 
   def initializeListener(self):
-    numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
-    self.temp=numberOfFiles
-    self.setlastNumberOfFiles(numberOfFiles)
-    self.createCurrentFileList()
-    self.startTimer()
+    # check, if button is checked:
+
+    if self.watchIntraopCheckbox.isChecked():
+     numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
+     self.temp=numberOfFiles
+     self.setlastNumberOfFiles(numberOfFiles)
+     self.createCurrentFileList()
+     self.startTimer()
+
 
   def startTimer(self):
     numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
@@ -840,6 +846,47 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     redLogic=red.sliceLogic()
     redLogic.FitSliceToAll()
 
+
+  def applyRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel):
+
+    print ('apply Registration')
+
+    # check, if import is correct
+    if not fixedVolume or not movingVolume or not fixedLabel or not movingLabel:
+      print 'Please see input parameters'
+
+    # print out params helper
+    cliModule = slicer.modules.brainsfit
+    n=cliModule.cliModuleLogic().CreateNode()
+    for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
+      for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
+        print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
+
+    # define output transform
+    outputTransform=slicer.vtkMRMLLinearTransformNode()
+    outputTransform.SetName('Output Transform')
+    slicer.mrmlScene.AddNode(outputTransform)
+
+    # define output volume
+    outputVolume=slicer.vtkMRMLScalarVolumeNode()
+    outputVolume.SetName('Output Volume')
+    slicer.mrmlScene.AddNode(outputVolume)
+
+
+    # define params
+    params = {'fixedVolume': fixedVolume,
+              'movingVolume': movingVolume,
+              'fixedBinaryVolume' : fixedLabel,
+              'movingBinaryVolume' : movingLabel,
+              'outputTransform' : outputTransform,
+              'outputVolume' : outputVolume,
+              'useAffine' : True,
+              'initializeTransformMode' : "useMomentsAlign",
+              'useScaleVersor3D' : True,
+              'useScaleSkewVersor3D' : True}
+
+    # run ModelToLabelMap-CLI Module
+    slicer.cli.run(slicer.modules.brainsfit, None, params)
 
 
 
@@ -1045,97 +1092,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       Helper.SetBgFgVolumes(pNode.GetParameter('baselineVolumeID'),pNode.GetParameter('followupVolumeID'))
 
       pNode.SetParameter('followupTransformID', self.__followupTransform.GetID())"""
-
-  def applyRegistration(self):
-
-    cliModule = slicer.modules.brainsfit
-    n=cliModule.cliModuleLogic().CreateNode()
-    for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
-      for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
-        print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
-    """
-  Parameter (0/0): fixedVolume
-  Parameter (0/1): movingVolume
-  Parameter (0/2): samplingPercentage
-  Parameter (0/3): splineGridSize
-  Parameter (1/0): linearTransform
-  Parameter (1/1): bsplineTransform
-  Parameter (1/2): outputVolume
-  Parameter (2/0): initialTransform
-  Parameter (2/1): initializeTransformMode
-  Parameter (3/0): useRigid
-  Parameter (3/1): useScaleVersor3D
-  Parameter (3/2): useScaleSkewVersor3D
-  Parameter (3/3): useAffine
-  Parameter (3/4): useBSpline
-  Parameter (3/5): useSyN
-  Parameter (3/6): useComposite
-  Parameter (4/0): maskProcessingMode
-  Parameter (4/1): fixedBinaryVolume
-  Parameter (4/2): movingBinaryVolume
-  Parameter (4/3): outputFixedVolumeROI
-  Parameter (4/4): outputMovingVolumeROI
-  Parameter (4/5): useROIBSpline
-  Parameter (4/6): histogramMatch
-  Parameter (4/7): medianFilterSize
-  Parameter (4/8): removeIntensityOutliers
-  Parameter (5/0): fixedVolume2
-  Parameter (5/1): movingVolume2
-  Parameter (5/2): outputVolumePixelType
-  Parameter (5/3): backgroundFillValue
-  Parameter (5/4): scaleOutputValues
-  Parameter (5/5): interpolationMode
-  Parameter (6/0): numberOfIterations
-  Parameter (6/1): maximumStepLength
-  Parameter (6/2): minimumStepLength
-  Parameter (6/3): relaxationFactor
-  Parameter (6/4): translationScale
-  Parameter (6/5): reproportionScale
-  Parameter (6/6): skewScale
-  Parameter (6/7): maxBSplineDisplacement
-  Parameter (7/0): fixedVolumeTimeIndex
-  Parameter (7/1): movingVolumeTimeIndex
-  Parameter (7/2): numberOfHistogramBins
-  Parameter (7/3): numberOfMatchPoints
-  Parameter (7/4): costMetric
-  Parameter (7/5): maskInferiorCutOffFromCenter
-  Parameter (7/6): ROIAutoDilateSize
-  Parameter (7/7): ROIAutoClosingSize
-  Parameter (7/8): numberOfSamples
-  Parameter (7/9): strippedOutputTransform
-  Parameter (7/10): transformType
-  Parameter (7/11): outputTransform
-  Parameter (7/12): initializeRegistrationByCurrentGenericTransform
-  Parameter (8/0): failureExitCode
-  Parameter (8/1): writeTransformOnFailure
-  Parameter (8/2): numberOfThreads
-  Parameter (8/3): debugLevel
-  Parameter (8/4): costFunctionConvergenceFactor
-  Parameter (8/5): projectedGradientTolerance
-  Parameter (8/6): maximumNumberOfEvaluations
-  Parameter (8/7): maximumNumberOfCorrections
-  Parameter (8/8): UseDebugImageViewer
-  Parameter (8/9): PromptAfterImageSend
-  Parameter (8/10): metricSamplingStrategy
-  Parameter (8/11): logFileReport
-  """
-
-    """
-    PARAMETER FOR MODELTOLABELMAP CLI MODULE:
-    Parameter (0/0): sampleDistance
-    Parameter (0/1): labelValue
-    Parameter (1/0): InputVolume
-    Parameter (1/1): surface
-    Parameter (1/2): OutputVolume
-    """
-
-    # define params
-    params = {'sampleDistance': 0.1, 'labelValue': 1, 'InputVolume' : inputVolume, 'surface' : inputModel, 'OutputVolume' : outputLabelMap}
-
-    # run ModelToLabelMap-CLI Module
-    slicer.cli.run(slicer.modules.modeltolabelmap, None, params)
-
-    return True
 
 
 class RegistrationModuleTest(ScriptedLoadableModuleTest):
