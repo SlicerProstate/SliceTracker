@@ -40,91 +40,65 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.settings = qt.QSettings() #TODO: write path settings as in PCAMP Review
     self.temp = None
 
-    # Create PushButtons for Workflow-Steps 1-4
+    # create TabWidget
+    self.tabWidget=qt.QTabWidget()
+    self.layout.addWidget(self.tabWidget)
 
-    # Set Icon Size for the 4 Icon Items
-    size=qt.QSize(120,120)
+    # create Widgets inside each tab
+    dataSelectionGroupBox=qt.QGroupBox()
+    labelSelectionGroupBox=qt.QGroupBox()
+    registrationGroupBox=qt.QGroupBox()
+    evaluationGroupBox=qt.QGroupBox()
+
+    # set up PixMaps
+    dataSelectionIconPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection_fit.png')
+    labelSelectionIconPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-labelselection_fit.png')
+    registrationSectionPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-registration_fit.png')
+    evaluationSectionPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-evaluation_fit.png')
+
+    # set up Icons
+    dataSelectionIcon=qt.QIcon(dataSelectionIconPixmap)
+    labelSelectionIcon=qt.QIcon(labelSelectionIconPixmap)
+    registrationSectionIcon=qt.QIcon(registrationSectionPixmap)
+    evaluationSectionIcon=qt.QIcon(evaluationSectionPixmap)
+
+    # set up Icon Size
+    size=qt.QSize()
+    size.setHeight(50)
+    size.setWidth(110)
+    self.tabWidget.setIconSize(size)
+
+    # create Layout for each groupBox
+    self.dataSelectionGroupBoxLayout=qt.QFormLayout()
+    self.labelSelectionGroupBoxLayout=qt.QFormLayout()
+    self.registrationGroupBoxLayout=qt.QFormLayout()
+    self.evaluationGroupBoxLayout=qt.QFormLayout()
+
+    # set Layout
+    dataSelectionGroupBox.setLayout(self.dataSelectionGroupBoxLayout)
+    labelSelectionGroupBox.setLayout(self.labelSelectionGroupBoxLayout)
+    registrationGroupBox.setLayout(self.registrationGroupBoxLayout)
+    evaluationGroupBox.setLayout(self.evaluationGroupBoxLayout)
+
+    # add Tabs
+    self.tabWidget.addTab(dataSelectionGroupBox,dataSelectionIcon,'')
+    self.tabWidget.addTab(labelSelectionGroupBox,labelSelectionIcon,'')
+    self.tabWidget.addTab(registrationGroupBox,registrationSectionIcon,'')
+    self.tabWidget.addTab(evaluationGroupBox,evaluationSectionIcon,'')
+
+    # TODO: set window layout for every step
+    # self.tabWidget.currentIndex returns current user Tab position
 
     # TODO: Integrate icons into Resources folder and add them to CMAKE file
-
-    # Create Data Selection Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection1.png')
-    icon=qt.QIcon(pixmap)
-    dataButton=qt.QPushButton()
-    dataButton.setIcon(icon)
-    dataButton.setIconSize(size)
-    dataButton.setFixedHeight(60)
-    dataButton.setFixedWidth(140)
-    dataButton.setStyleSheet("background-color: rgb(255,255,255)")
-
-
-    # Create Label Selection Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection2.png')
-    icon=qt.QIcon(pixmap)
-    labelButton=qt.QPushButton()
-    labelButton.setIcon(icon)
-    labelButton.setIconSize(size)
-    labelButton.setFixedHeight(60)
-    labelButton.setFixedWidth(140)
-    labelButton.setStyleSheet("background-color: rgb(255,255,255)")
-
-    # Create Registration Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection3.png')
-    icon=qt.QIcon(pixmap)
-    regButton=qt.QPushButton()
-    regButton.setIcon(icon)
-    regButton.setIconSize(size)
-    regButton.setFixedHeight(60)
-    regButton.setFixedWidth(140)
-    regButton.setStyleSheet("background-color: rgb(255,255,255)")
-
-
-    # Create Data Selection Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection4.png')
-    icon=qt.QIcon(pixmap)
-    evalButton=qt.QPushButton()
-    evalButton.setIcon(icon)
-    evalButton.setIconSize(size)
-    evalButton.setFixedHeight(60)
-    evalButton.setFixedWidth(140)
-    evalButton.setStyleSheet("background-color: rgb(255,255,255)")
-
-    # connections
-
-    evalButton.connect('clicked(bool)',self.onStep4Evaluation)
-    regButton.connect('clicked(bool)',self.onStep3Registration)
-    labelButton.connect('clicked(bool)',self.onStep2LabelSelection)
-    dataButton.connect('clicked(bool)',self.onStep1DataSelection)
-
-    # Create ButtonBox to put in Workstep Buttons
-    buttonBox=qt.QDialogButtonBox()
-    buttonBox.addButton(evalButton,buttonBox.ActionRole)
-    buttonBox.addButton(regButton,buttonBox.ActionRole)
-    buttonBox.addButton(labelButton,buttonBox.ActionRole)
-    buttonBox.addButton(dataButton,buttonBox.ActionRole)
-    buttonBox.setLayoutDirection(1)
-    buttonBox.centerButtons=True
-    self.layout.addWidget(buttonBox)
 
     # Set Layout
     lm=slicer.app.layoutManager()
     lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
 
 
-
     #
     # Step 1: Data Selection
     #
-
-
-
-    # Create collapsible Button << Step 1: Data Selection >>
-    self.dataSectionCollapsibleButton = ctk.ctkCollapsibleButton()
-    self.dataSectionCollapsibleButton.text = "Step 1: Data Selection"
-    self.layout.addWidget(self.dataSectionCollapsibleButton)
-
-    # Layout within the collapsible Button section
-    dataSectionFormLayout = qt.QFormLayout(self.dataSectionCollapsibleButton)
 
     # Layout within a row of that section
     selectPatientRowLayout = qt.QHBoxLayout()
@@ -132,7 +106,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Create PatientSelector
     patientSelector=ctk.ctkComboBox()
     selectPatientRowLayout.addWidget(patientSelector)
-    dataSectionFormLayout.addRow("Select Patient: ", selectPatientRowLayout)
+    self.dataSelectionGroupBoxLayout.addRow("Select Patient: ", selectPatientRowLayout)
 
     # TODO: Update Section if database changed
 
@@ -160,7 +134,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      patientSelector.addItem(patient)
 
     # "load Preop Data" - Button
-    self.loadPreopDataButton = qt.QPushButton("Load Preop Data")
+    self.loadPreopDataButton = qt.QPushButton("Load and Present Preop Data")
     self.loadPreopDataButton.toolTip = "Load preprocedural data into Slicer"
     self.loadPreopDataButton.enabled = True
 
@@ -171,14 +145,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Preop Directory Button
     self.preopDirButton = ctk.ctkDirectoryButton()
     self.preopDirButton.text = "Choose the preop data directory"
-    dataSectionFormLayout.addRow("Preop directory selection:",self.preopDirButton)
-    dataSectionFormLayout.addWidget(self.loadPreopDataButton)
+    self.dataSelectionGroupBoxLayout.addRow("Preop directory selection:",self.preopDirButton)
+    self.dataSelectionGroupBoxLayout.addWidget(self.loadPreopDataButton)
 
     # Preop Directory Button
     self.intraopDirButton = ctk.ctkDirectoryButton()
     self.intraopDirButton.text = "Choose the intraop data directory"
-    dataSectionFormLayout.addRow("Intraop directory selection:",self.intraopDirButton)
-    dataSectionFormLayout.addRow("Watch Intraop Directory for new Data", self.watchIntraopCheckbox)
+    self.dataSelectionGroupBoxLayout.addRow("Intraop directory selection:",self.intraopDirButton)
+    self.dataSelectionGroupBoxLayout.addRow("Watch Intraop Directory for new Data", self.watchIntraopCheckbox)
     self.layout.addStretch(1)
 
     # set Directory to my Test folder
@@ -188,7 +162,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # SERIES SELECTION
     self.step3frame = ctk.ctkCollapsibleGroupBox()
     self.step3frame.setTitle("Intraop Series selection")
-    dataSectionFormLayout.addRow(self.step3frame)
+    self.dataSelectionGroupBoxLayout.addRow(self.step3frame)
     step3Layout = qt.QFormLayout(self.step3frame)
 
     # create ListView for intraop series selection
@@ -207,22 +181,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.loadIntraopDataButton = qt.QPushButton("Load Series into Slicer")
     self.loadIntraopDataButton.toolTip = "Load Series into Slicer"
     self.loadIntraopDataButton.enabled = True
-    dataSectionFormLayout.addWidget(self.loadIntraopDataButton)
-
-    """
-    # TEST BUTTON
-    self.testButton = qt.QPushButton("Test Button")
-    self.testButton.toolTip = "Test Button"
-    self.testButton.enabled = True
-    dataSectionFormLayout.addWidget(self.testButton)
-
-    # TEST BUTTON II
-    self.testButton2 = qt.QPushButton("Show selected")
-    self.testButton2.toolTip = "Test Button"
-    self.testButton2.enabled = True
-    dataSectionFormLayout.addWidget(self.testButton2)
-    """
-
+    self.dataSelectionGroupBoxLayout.addWidget(self.loadIntraopDataButton)
 
 
     #
@@ -236,8 +195,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.labelSelectionCollapsibleButton.hide()
     self.layout.addWidget(self.labelSelectionCollapsibleButton)
 
-    # Layout within the collapsible button
-    labelSelectionFormLayout = qt.QFormLayout(self.labelSelectionCollapsibleButton)
 
 
     #
@@ -255,7 +212,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopLabelSelector.showChildNodeTypes = False
     self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
     self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
-    labelSelectionFormLayout.addRow("Preop Image label: ", self.preopLabelSelector)
+    self.labelSelectionGroupBoxLayout.addRow("Preop Image label: ", self.preopLabelSelector)
 
     #
     # intraop label selector
@@ -273,7 +230,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopLabelSelector.showChildNodeTypes = False
     self.intraopLabelSelector.setMRMLScene( slicer.mrmlScene )
     self.intraopLabelSelector.setToolTip( "Pick the input to the algorithm." )
-    labelSelectionFormLayout.addRow("Intraop Image label: ", self.intraopLabelSelector)
+    self.labelSelectionGroupBoxLayout.addRow("Intraop Image label: ", self.intraopLabelSelector)
 
     #
     # reference volume selector
@@ -290,31 +247,31 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.referenceVolumeSelector.showChildNodeTypes = False
     self.referenceVolumeSelector.setMRMLScene( slicer.mrmlScene )
     self.referenceVolumeSelector.setToolTip( "Pick the input to the algorithm." )
-    labelSelectionFormLayout.addRow("Reference Volume: ", self.referenceVolumeSelector)
+    self.labelSelectionGroupBoxLayout.addRow("New Segmentation: ", self.referenceVolumeSelector)
 
     # Set Icon Size for the 4 Icon Items
     size=qt.QSize(60,60)
 
-    # Create Data Selection Button
+    # Create Quick Segmentation Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-quickSegmentation.png')
     icon=qt.QIcon(pixmap)
-    dataButton=qt.QPushButton()
-    dataButton.setIcon(icon)
-    dataButton.setIconSize(size)
-    dataButton.setFixedHeight(70)
-    dataButton.setFixedWidth(70)
-    dataButton.setStyleSheet("background-color: rgb(255,255,255)")
+    startQuickSegmentationButton=qt.QPushButton()
+    startQuickSegmentationButton.setIcon(icon)
+    startQuickSegmentationButton.setIconSize(size)
+    startQuickSegmentationButton.setFixedHeight(70)
+    startQuickSegmentationButton.setFixedWidth(70)
+    startQuickSegmentationButton.setStyleSheet("background-color: rgb(255,255,255)")
 
 
-    # Create Label Selection Button
+    # Create Label Segmentation Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-labelSegmentation.png')
     icon=qt.QIcon(pixmap)
-    labelButton=qt.QPushButton()
-    labelButton.setIcon(icon)
-    labelButton.setIconSize(size)
-    labelButton.setFixedHeight(70)
-    labelButton.setFixedWidth(70)
-    labelButton.setStyleSheet("background-color: rgb(255,255,255)")
+    startLabelSegmentationButton=qt.QPushButton()
+    startLabelSegmentationButton.setIcon(icon)
+    startLabelSegmentationButton.setIconSize(size)
+    startLabelSegmentationButton.setFixedHeight(70)
+    startLabelSegmentationButton.setFixedWidth(70)
+    startLabelSegmentationButton.setStyleSheet("background-color: rgb(255,255,255)")
 
     # Create Apply Segmentation Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-applySegmentation.png')
@@ -326,40 +283,22 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     applyButton.setFixedWidth(70)
     applyButton.setStyleSheet("background-color: rgb(255,255,255)")
 
-
+    # Create ButtonBox to fill in those Buttons
     buttonBox1=qt.QDialogButtonBox()
-    buttonBox1.addButton(applyButton,buttonBox.ActionRole)
-    buttonBox1.addButton(dataButton,buttonBox.ActionRole)
-    buttonBox1.addButton(labelButton,buttonBox.ActionRole)
+    buttonBox1.addButton(applyButton,buttonBox1.ActionRole)
+    buttonBox1.addButton(startQuickSegmentationButton,buttonBox1.ActionRole)
+    buttonBox1.addButton(startLabelSegmentationButton,buttonBox1.ActionRole)
 
     buttonBox1.setLayoutDirection(1)
     buttonBox1.centerButtons=False
-    labelSelectionFormLayout.addWidget(buttonBox1)
+    self.labelSelectionGroupBoxLayout.addWidget(buttonBox1)
 
     # connections
 
-    dataButton.connect('clicked(bool)',self.onStartSegmentationButton)
-    labelButton.connect('clicked(bool)',self.onApplySegmentationButton)
+    startQuickSegmentationButton.connect('clicked(bool)',self.onStartSegmentationButton)
+    startLabelSegmentationButton.connect('clicked(bool)',self.onApplySegmentationButton)
 
 
-
-    """
-    #
-    # Quick Organ Segmentation Button
-    #
-    self.startSegmentationButton = qt.QPushButton("Start Prostate Segmentation")
-    self.startSegmentationButton.enabled = True
-    labelSelectionFormLayout.addRow(self.startSegmentationButton)
-
-    #
-    # Apply Segmentation
-    #
-
-    self.applySegmentationButton = qt.QPushButton("Apply Segmentation")
-    self.applySegmentationButton.toolTip = "Run the algorithm."
-    self.applySegmentationButton.enabled = True
-    labelSelectionFormLayout.addWidget(self.applySegmentationButton)
-    """
     #
     # Editor Widget
     #
@@ -369,22 +308,19 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     editorWidgetParent = slicer.qMRMLWidget()
     editorWidgetParent.setLayout(qt.QVBoxLayout())
     editorWidgetParent.setMRMLScene(slicer.mrmlScene)
+
     self.editorWidget = EditorWidget(parent=editorWidgetParent,showVolumesFrame=False)
     self.editorWidget.setup()
     self.editorParameterNode = self.editUtil.getParameterNode()
-    labelSelectionFormLayout.addRow(editorWidgetParent)
+    self.labelSelectionGroupBoxLayout.addRow(editorWidgetParent)
 
 
 
     # connections
-    #self.startSegmentationButton.connect('clicked(bool)', self.onStartSegmentationButton)
-    #self.applySegmentationButton.connect('clicked(bool)', self.onApplySegmentationButton)
+
     self.watchIntraopCheckbox.connect('clicked(bool)', self.initializeListener)
     self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
     self.loadPreopDataButton.connect('clicked(bool)',self.loadPreopData)
-    #self.testButton.connect('clicked(bool)',self.testFunction)
-    #self.testButton2.connect('clicked(bool)',self.testFunction2)
-
 
 
 
@@ -392,17 +328,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     #
     # Step 3: Registration
     #
-
-
-    self.registrationSectionCollapsibleButton = ctk.ctkCollapsibleButton()
-    self.registrationSectionCollapsibleButton.text = "Step 3: Registration"
-    self.layout.addWidget(self.registrationSectionCollapsibleButton)
-    self.registrationSectionCollapsibleButton.collapsed=0
-    self.registrationSectionCollapsibleButton.hide()
-
-    # Layout within the dummy collapsible button
-    registrationSectionFormLayout = qt.QFormLayout(self.registrationSectionCollapsibleButton)
-
 
 
     #
@@ -420,7 +345,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopVolumeSelector.showChildNodeTypes = False
     self.preopVolumeSelector.setMRMLScene( slicer.mrmlScene )
     self.preopVolumeSelector.setToolTip( "Pick the input to the algorithm." )
-    registrationSectionFormLayout.addRow("Preop Image Volume: ", self.preopVolumeSelector)
+    self.registrationGroupBoxLayout.addRow("Preop Image Volume: ", self.preopVolumeSelector)
 
     #
     # preop label selector
@@ -437,7 +362,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopLabelSelector.showChildNodeTypes = False
     self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
     self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
-    registrationSectionFormLayout.addRow("Preop Label Volume: ", self.preopLabelSelector)
+    self.registrationGroupBoxLayout.addRow("Preop Label Volume: ", self.preopLabelSelector)
 
     #
     # intraop volume selector
@@ -454,7 +379,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopVolumeSelector.showChildNodeTypes = False
     self.intraopVolumeSelector.setMRMLScene( slicer.mrmlScene )
     self.intraopVolumeSelector.setToolTip( "Pick the input to the algorithm." )
-    registrationSectionFormLayout.addRow("Intraop Image Volume: ", self.intraopVolumeSelector)
+    self.registrationGroupBoxLayout.addRow("Intraop Image Volume: ", self.intraopVolumeSelector)
 
     #
     # intraop label selector
@@ -471,8 +396,25 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopLabelSelector.showChildNodeTypes = False
     self.intraopLabelSelector.setMRMLScene( slicer.mrmlScene )
     self.intraopLabelSelector.setToolTip( "Pick the input to the algorithm." )
-    registrationSectionFormLayout.addRow("Intraop Label Volume: ", self.intraopLabelSelector)
+    self.registrationGroupBoxLayout.addRow("Intraop Label Volume: ", self.intraopLabelSelector)
 
+
+
+    #
+    # fiducial node selector
+    #
+
+    self.fiducialSelector = slicer.qMRMLNodeComboBox()
+    self.fiducialSelector.nodeTypes = ( ("vtkMRMLMarkupsFiducialNode"), "" )
+    self.fiducialSelector.selectNodeUponCreation = True
+    self.fiducialSelector.addEnabled = False
+    self.fiducialSelector.removeEnabled = False
+    self.fiducialSelector.noneEnabled = True
+    self.fiducialSelector.showHidden = False
+    self.fiducialSelector.showChildNodeTypes = False
+    self.fiducialSelector.setMRMLScene( slicer.mrmlScene )
+    self.fiducialSelector.setToolTip( "Select the Targets" )
+    self.registrationGroupBoxLayout.addRow("Targets: ", self.fiducialSelector)
 
     #
     # Apply Registration
@@ -481,51 +423,96 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applyRegistrationButton = qt.QPushButton("Apply Registration")
     self.applyRegistrationButton.toolTip = "Run the algorithm."
     self.applyRegistrationButton.enabled = True
-    registrationSectionFormLayout.addRow(self.applyRegistrationButton)
-    # self.applyRegistrationButton.connect('clicked(bool)',RegistrationModuleLogic().applyRegistration(self.intraopVolumeSelector.currentNode(),self.preopVolumeSelector.currentNode(),self.intraopLabelSelector.currentNode(),self.preopLabelSelector.currentNode()))
-    self.applyRegistrationButton.connect('clicked(bool)',self.applyRegistration(self.intraopVolumeSelector.currentNode(),self.preopVolumeSelector.currentNode(),self.intraopLabelSelector.currentNode(),self.preopLabelSelector.currentNode()))
+    self.registrationGroupBoxLayout.addRow(self.applyRegistrationButton)
+    self.applyRegistrationButton.connect('clicked(bool)',self.applyRegistration)
 
+    #
+    # Load and Set Data
+    #
+
+    self.loadAndSetDataButton = qt.QPushButton("load And Set data")
+    self.loadAndSetDataButton.toolTip = "Run the algorithm."
+    self.loadAndSetDataButton.enabled = True
+    self.registrationGroupBoxLayout.addRow(self.loadAndSetDataButton)
+    self.loadAndSetDataButton.connect('clicked(bool)',self.loadAndSetdata)
 
     #
     # Step 4: Registration Evaluation
     #
-    self.evaluationSectionCollapsibleButton = ctk.ctkCollapsibleButton()
-    self.evaluationSectionCollapsibleButton.text = "Step 4: Evaluation"
 
-    self.layout.addWidget(self.evaluationSectionCollapsibleButton)
-    self.evaluationSectionCollapsibleButton.collapsed=0
-    self.evaluationSectionCollapsibleButton.hide()
+    # does not work
+    self.evaluationGroupBoxLayout.setAlignment(qt.Qt.AlignRight)
+    #
+
+    self.rigidCheckBox=qt.QCheckBox()
+    self.rigidCheckBox.setText('Show Rigid Registration')
+    self.affineCheckBox=qt.QCheckBox()
+    self.affineCheckBox.setText('Show Affine Registration')
+    self.bsplineCheckBox=qt.QCheckBox()
+    self.bsplineCheckBox.setText('Show BSpline Registration')
+
+    self.targetCheckBox=qt.QCheckBox()
+    self.targetCheckBox.setText('Show Transformed Targets')
+
+    self.evaluationGroupBoxLayout.addWidget(self.rigidCheckBox)
+    self.evaluationGroupBoxLayout.addWidget(self.affineCheckBox)
+    self.evaluationGroupBoxLayout.addWidget(self.bsplineCheckBox)
+    self.evaluationGroupBoxLayout.addWidget(self.targetCheckBox)
+
+
+    control = qt.QWidget()
+    self.opacitySlider = qt.QSlider(qt.Qt.Horizontal,control)
+    self.opacitySlider.connect('valueChanged(int)', self.moveOpacity)
+    self.opacitySlider.setObjectName("opacitySlider")
+    self.opacitySlider.setMaximum(100)
+    self.opacitySlider.setMinimum(1)
+    self.opacitySlider.setValue(100)
+    # self.meshOpacitySlider.setOrientation(1) #horizontal
+
+
+
+    self.evaluationGroupBoxLayout.addWidget(self.opacitySlider)
+
+    self.saveDataButton=qt.QPushButton('Save Data')
+    self.saveDataButton.setMaximumWidth(150)
+    self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
+
 
     # Layout within the dummy collapsible button
-    evaluationSectionFormLayout = qt.QFormLayout(self.evaluationSectionCollapsibleButton)
-    tryLayout = qt.QHBoxLayout()
-    evaluationSectionFormLayout.addRow("Select Patient: ", tryLayout)
 
 
-  def onStep1DataSelection(self):
+  def moveOpacity(self):
+   print("move roi x to" , x)
+   vrdn = getNode('vtkMRMLVolumeRenderingDisplayNode')
+   vrdn.SetCroppingEnabled(1)
+   roin = vrdn.GetROINode()
+   xyz = [0,0,0]
+   roin.GetXYZ(xyz)
+   roin.SetXYZ(x,xyz[1],xyz[2])
+   roin.Modified()
+   v = viewImageData()
 
-    self.dataSectionCollapsibleButton.show()
-    self.labelSelectionCollapsibleButton.show()
-    self.registrationSectionCollapsibleButton.show()
-    self.evaluationSectionCollapsibleButton.show()
 
-  def onStep2LabelSelection(self):
-    self.dataSectionCollapsibleButton.hide()
-    self.labelSelectionCollapsibleButton.show()
-    self.registrationSectionCollapsibleButton.hide()
-    self.evaluationSectionCollapsibleButton.hide()
+  def loadAndSetdata(self):
 
-  def onStep3Registration(self):
-    self.dataSectionCollapsibleButton.hide()
-    self.labelSelectionCollapsibleButton.hide()
-    self.registrationSectionCollapsibleButton.show()
-    self.evaluationSectionCollapsibleButton.hide()
+    #load data
+    slicer.util.loadLabelVolume('/Applications/A_PREOP_DIR/Case1-t2ax-TG-rater1.nrrd')
+    preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('Case1-t2ax-TG-rater1').GetItemAsObject(0)
 
-  def onStep4Evaluation(self):
-    self.dataSectionCollapsibleButton.hide()
-    self.labelSelectionCollapsibleButton.hide()
-    self.registrationSectionCollapsibleButton.hide()
-    self.evaluationSectionCollapsibleButton.show()
+    slicer.util.loadVolume('/Applications/A_PREOP_DIR/Case1-t2ax-N4.nrrd')
+    preopImageVolumeNode=slicer.mrmlScene.GetNodesByName('Case1-t2ax-N4').GetItemAsObject(0)
+
+    slicer.util.loadLabelVolume('/Users/peterbehringer/MyImageData/ProstateRegistrationValidation/Segmentations/Rater1/Case1-t2ax-intraop-TG-rater1.nrrd')
+    intraopLabelVolume=slicer.mrmlScene.GetNodesByName('Case1-t2ax-intraop-TG-rater1').GetItemAsObject(0)
+
+    slicer.util.loadVolume('/Users/peterbehringer/MyImageData/ProstateRegistrationValidation/Images/Case1-t2ax-intraop.nrrd')
+    intraopImageVolume=slicer.mrmlScene.GetNodesByName('Case1-t2ax-intraop').GetItemAsObject(0)
+
+    # set nodes in Selector
+    self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
+    self.preopLabelSelector.setCurrentNode(preoplabelVolumeNode)
+    self.intraopVolumeSelector.setCurrentNode(intraopImageVolume)
+    self.intraopLabelSelector.setCurrentNode(intraopLabelVolume)
 
 
   def loadPreopData(self):
@@ -593,8 +580,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def testFunction(self):
 
-    print ('Hello')
-
     seriesList=[]
     series1='3 plane loc'
     series2='AX FSPGR FS T1 PRE'
@@ -614,9 +599,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
    # self.createLoadableFileListFromSelection()
 
-  def testFunction2(self):
-
-   return None
 
   def getSelectedSeriesFromSelector(self):
 
@@ -676,11 +658,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      print(str(inputVolume))
 
     # TODO:
+
     # set inputVolume Node as Reference Volume in Label Selection
     # set inputVolume Node as Intraop Image Volume in Registration
-
-
-
 
   def cleanup(self):
     pass
@@ -749,7 +729,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      self.setlastNumberOfFiles(numberOfFiles)
      self.createCurrentFileList()
      self.startTimer()
-
 
   def startTimer(self):
     numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
@@ -847,54 +826,82 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     redLogic.FitSliceToAll()
 
 
-  def applyRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel):
+  def applyRegistration(self):
 
-    print ('apply Registration')
+    fixedVolume= self.intraopVolumeSelector.currentNode()
+    movingVolume = self.preopVolumeSelector.currentNode()
+    fixedLabel=self.intraopLabelSelector.currentNode()
+    movingLabel=self.preopLabelSelector.currentNode()
 
-    # check, if import is correct
-    if not fixedVolume or not movingVolume or not fixedLabel or not movingLabel:
-      print 'Please see input parameters'
+    if fixedVolume and movingVolume and fixedLabel and movingLabel:
+     print ('apply Registration')
 
-    # print out params helper
-    cliModule = slicer.modules.brainsfit
-    n=cliModule.cliModuleLogic().CreateNode()
-    for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
-      for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
-        print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
+     # check, if import is correct
+     if not fixedVolume or not movingVolume or not fixedLabel or not movingLabel:
+       print 'Please see input parameters'
 
-    # define output transform
-    outputTransform=slicer.vtkMRMLLinearTransformNode()
-    outputTransform.SetName('Output Transform')
-    slicer.mrmlScene.AddNode(outputTransform)
+     # print out params helper
+     cliModule = slicer.modules.brainsfit
+     n=cliModule.cliModuleLogic().CreateNode()
+     for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
+       for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
+         print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
 
-    # define output volume
-    outputVolume=slicer.vtkMRMLScalarVolumeNode()
-    outputVolume.SetName('Output Volume')
-    slicer.mrmlScene.AddNode(outputVolume)
+     # define output transform
+     outputTransform=slicer.vtkMRMLLinearTransformNode()
+     outputTransform.SetName('transform-REG')
+     # outputTransformNode=slicer.mrmlScene.GetNodesByName('transform-REG').GetItemAsObject(0)
+
+     # define output volume
+     outputVolume=slicer.vtkMRMLScalarVolumeNode()
+     outputVolume.SetName('preop-REG')
+     # outputVolumeNode=slicer.mrmlScene.GetNodesByName('preop-REG').GetItemAsObject(0)
+
+     slicer.mrmlScene.AddNode(outputVolume)
+     slicer.mrmlScene.AddNode(outputTransform)
+
+     # define params
+     params = {'fixedVolume': fixedVolume,
+               'movingVolume': movingVolume,
+               'fixedBinaryVolume' : fixedLabel,
+               'movingBinaryVolume' : movingLabel,
+               'outputTransform' : outputTransform.GetID(),
+               'outputVolume' : outputVolume.GetID(),
+               'maskProcessingMode' : "ROI",
+               'initializeTransformMode' : "useCenterOfROIAlign",
+               'useAffine' : True}
+
+     # run ModelToLabelMap-CLI Module
+     cliNode=None
+     cliNode=slicer.cli.run(slicer.modules.brainsfit, cliNode, params, wait_for_completion = True)
 
 
-    # define params
-    params = {'fixedVolume': fixedVolume,
-              'movingVolume': movingVolume,
-              'fixedBinaryVolume' : fixedLabel,
-              'movingBinaryVolume' : movingLabel,
-              'outputTransform' : outputTransform,
-              'outputVolume' : outputVolume,
-              'useAffine' : True,
-              'initializeTransformMode' : "useMomentsAlign",
-              'useScaleVersor3D' : True,
-              'useScaleSkewVersor3D' : True}
-
-    # run ModelToLabelMap-CLI Module
-    slicer.cli.run(slicer.modules.brainsfit, None, params)
-
-
+     self.tabWidget.setCurrentIndex(2)
+    # TODO: hide labels
 
 
 
 #
 # RegistrationModuleLogic
 #
+
+def transformFiducials(fiducials, transform, fiducialsOut):
+
+  fidLogic = slicer.modules.markups.logic()
+  tfmLogic = slicer.modules.transforms.logic()
+  #fidId = fidLogic.LoadMarkupsFiducials(fiducialsIn, 'na')
+
+  #print 'Fiducials loaded:',fidId
+  #fid = slicer.mrmlScene.GetNodeByID(fidId)
+  tfm = tfmLogic.AddTransform(transform, slicer.mrmlScene)
+  fiducials.SetAndObserveTransformNodeID(tfm.GetID())
+  tfmLogic.hardenTransform(fiducials)
+
+  fidStorage = fid.GetStorageNode()
+  fidStorage.SetFileName(fiducialsOut)
+  fidStorage.WriteData(fiducials)
+  #slicer.mrmlScene.Clear()
+
 
 class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
