@@ -462,14 +462,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     control = qt.QWidget()
     self.opacitySlider = qt.QSlider(qt.Qt.Horizontal,control)
-    self.opacitySlider.connect('valueChanged(int)', self.moveOpacity)
+    self.opacitySlider.connect('valueChanged(int)', self.changeOpacity)
     self.opacitySlider.setObjectName("opacitySlider")
     self.opacitySlider.setMaximum(100)
-    self.opacitySlider.setMinimum(1)
+    self.opacitySlider.setMinimum(0)
     self.opacitySlider.setValue(100)
-    # self.meshOpacitySlider.setOrientation(1) #horizontal
+    self.opacitySlider.setMaximumWidth(200)
 
 
+    # TODO: Set interval to 0.1
+    # self.opacitySlider.setTickInterval(0.1)
+    # self.opacitySlider.setSingleStep(0.1)
 
     self.evaluationGroupBoxLayout.addWidget(self.opacitySlider)
 
@@ -481,17 +484,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Layout within the dummy collapsible button
 
 
-  def moveOpacity(self):
-   print("move roi x to" , x)
-   vrdn = getNode('vtkMRMLVolumeRenderingDisplayNode')
-   vrdn.SetCroppingEnabled(1)
-   roin = vrdn.GetROINode()
-   xyz = [0,0,0]
-   roin.GetXYZ(xyz)
-   roin.SetXYZ(x,xyz[1],xyz[2])
-   roin.Modified()
-   v = viewImageData()
+  def changeOpacity(self,node):
 
+    # current slider value
+    opacity=float(self.opacitySlider.value)
+
+    # set opactiy
+    layoutManager=slicer.app.layoutManager()
+    redWidget = layoutManager.sliceWidget('Red')
+    compositNode = redWidget.mrmlSliceCompositeNode()
+    compositNode.SetForegroundOpacity((opacity/100))
 
   def loadAndSetdata(self):
 
