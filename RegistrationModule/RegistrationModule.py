@@ -442,26 +442,30 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Step 4: Registration Evaluation
     #
 
-    # does not work
-    self.evaluationGroupBoxLayout.setAlignment(qt.Qt.AlignRight)
-    #
-
+    # Show Rigid Registration
     self.rigidCheckBox=qt.QCheckBox()
     self.rigidCheckBox.setText('Show Rigid Registration')
+
+    # Show Rigid Registration
     self.affineCheckBox=qt.QCheckBox()
     self.affineCheckBox.setText('Show Affine Registration')
+    self.affineCheckBox.setChecked(1)
+
+    # Show Rigid Registration
     self.bsplineCheckBox=qt.QCheckBox()
     self.bsplineCheckBox.setText('Show BSpline Registration')
 
+    # Show Rigid Registration
     self.targetCheckBox=qt.QCheckBox()
     self.targetCheckBox.setText('Show Transformed Targets')
+
 
     self.evaluationGroupBoxLayout.addWidget(self.rigidCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.affineCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.bsplineCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.targetCheckBox)
 
-
+    # create Slider
     control = qt.QWidget()
     self.opacitySlider = qt.QSlider(qt.Qt.Horizontal,control)
     self.opacitySlider.connect('valueChanged(int)', self.changeOpacity)
@@ -484,7 +488,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     # Layout within the dummy collapsible button
-
 
   def changeOpacity(self,node):
 
@@ -512,11 +515,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     slicer.util.loadVolume('/Users/peterbehringer/MyImageData/ProstateRegistrationValidation/Images/Case1-t2ax-intraop.nrrd')
     intraopImageVolume=slicer.mrmlScene.GetNodesByName('Case1-t2ax-intraop').GetItemAsObject(0)
 
+    slicer.util.loadMarkupsFiducialList('/Applications/A_PREOP_DIR/Case1-landmarks.fcsv')
+    preopTargets=slicer.mrmlScene.GetNodesByName('Case1-landmarks').GetItemAsObject(0)
+
     # set nodes in Selector
     self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
     self.preopLabelSelector.setCurrentNode(preoplabelVolumeNode)
     self.intraopVolumeSelector.setCurrentNode(intraopImageVolume)
     self.intraopLabelSelector.setCurrentNode(intraopLabelVolume)
+    self.fiducialSelector.setCurrentNode(preopTargets)
 
   def loadPreopData(self):
 
@@ -578,7 +585,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # TODO: jump to first markup slice
     # slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(preopTargetsNode, index, 1)
-
 
   def testFunction(self):
 
@@ -796,8 +802,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # run CLI-Module
     logic.modelToLabelmap(inputVolume,clippingModel)
 
-
   def onStartLabelSegmentationButton(self):
+
+    #TODO: Create LabelMap, Choose Paint-Tool
 
     return True
 
@@ -825,12 +832,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      # define output transform
      outputTransform=slicer.vtkMRMLLinearTransformNode()
      outputTransform.SetName('transform-REG')
-     # outputTransformNode=slicer.mrmlScene.GetNodesByName('transform-REG').GetItemAsObject(0)
 
      # define output volume
      outputVolume=slicer.vtkMRMLScalarVolumeNode()
      outputVolume.SetName('preop-REG')
-     # outputVolumeNode=slicer.mrmlScene.GetNodesByName('preop-REG').GetItemAsObject(0)
 
      slicer.mrmlScene.AddNode(outputVolume)
      slicer.mrmlScene.AddNode(outputTransform)
@@ -850,27 +855,31 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      cliNode=None
      cliNode=slicer.cli.run(slicer.modules.brainsfit, cliNode, params, wait_for_completion = True)
 
-     self.tabWidget.setCurrentIndex(2)
-    # TODO: hide labels
-  """
-def transformFiducials(fiducials, transform, fiducialsOut):
+     # TRANSFORM FIDUCIAL TARGETS
+     if self.fiducialSelector.currentNode() != None:
 
-  fidLogic = slicer.modules.markups.logic()
-  tfmLogic = slicer.modules.transforms.logic()
-  #fidId = fidLogic.LoadMarkupsFiducials(fiducialsIn, 'na')
+       print ("Perform Target Transform")
 
-  #print 'Fiducials loaded:',fidId
-  #fid = slicer.mrmlScene.GetNodeByID(fidId)
-  tfm = tfmLogic.AddTransform(transform, slicer.mrmlScene)
-  fiducials.SetAndObserveTransformNodeID(tfm.GetID())
-  tfmLogic.hardenTransform(fiducials)
+       # get transform
+       transformNode=slicer.mrmlScene.GetNodesByName('transform-REG').GetItemAsObject(0)
 
-  fidStorage = fid.GetStorageNode()
-  fidStorage.SetFileName(fiducialsOut)
-  fidStorage.WriteData(fiducials)
-  #slicer.mrmlScene.Clear()
-  """
+       # get fiducials
+       fiducialNode=slicer.mrmlScene.GetNodesByName('Case1-landmarks').GetItemAsObject(0)
 
+       # apply transform
+       fiducialNode.SetAndObserveTransformNodeID(transformNode.GetID())
+
+
+
+
+    # switch to Evaluation Section
+    self.tabWidget.setCurrentIndex(3)
+
+    # Hide all Labels in Red Slice View
+    layoutManager=slicer.app.layoutManager()
+    redWidget = layoutManager.sliceWidget('Red')
+    compositNode = redWidget.mrmlSliceCompositeNode()
+    compositNode.SetLabelOpacity(0)
 #
 # RegistrationModuleLogic
 #
@@ -950,7 +959,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     # let user place Fiducials
     self.placeFiducials()
-
 
   def setVolumeClipUserMode(self):
 
@@ -1052,7 +1060,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     # set Intraop Label Volume
     RegistrationModuleWidget.intraopLabelSelector.setCurrentNode(outputLabelMap)
 
-
   def modelToLabelmapfinished(self):
 
     print "Remove everything useless"
@@ -1098,7 +1105,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       Helper.SetBgFgVolumes(pNode.GetParameter('baselineVolumeID'),pNode.GetParameter('followupVolumeID'))
 
       pNode.SetParameter('followupTransformID', self.__followupTransform.GetID())"""
-
 
 class RegistrationModuleTest(ScriptedLoadableModuleTest):
   """
