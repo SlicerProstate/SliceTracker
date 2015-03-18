@@ -276,16 +276,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Create Apply Segmentation Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-applySegmentation.png')
     icon=qt.QIcon(pixmap)
-    applyButton=qt.QPushButton()
-    applyButton.setIcon(icon)
-    applyButton.setIconSize(size)
-    applyButton.setFixedHeight(70)
-    applyButton.setFixedWidth(70)
-    applyButton.setStyleSheet("background-color: rgb(255,255,255)")
+    applySegmentationButton=qt.QPushButton()
+    applySegmentationButton.setIcon(icon)
+    applySegmentationButton.setIconSize(size)
+    applySegmentationButton.setFixedHeight(70)
+    applySegmentationButton.setFixedWidth(70)
+    applySegmentationButton.setStyleSheet("background-color: rgb(255,255,255)")
 
     # Create ButtonBox to fill in those Buttons
     buttonBox1=qt.QDialogButtonBox()
-    buttonBox1.addButton(applyButton,buttonBox1.ActionRole)
+    buttonBox1.addButton(applySegmentationButton,buttonBox1.ActionRole)
     buttonBox1.addButton(startQuickSegmentationButton,buttonBox1.ActionRole)
     buttonBox1.addButton(startLabelSegmentationButton,buttonBox1.ActionRole)
 
@@ -296,7 +296,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # connections
 
     startQuickSegmentationButton.connect('clicked(bool)',self.onStartSegmentationButton)
-    startLabelSegmentationButton.connect('clicked(bool)',self.onApplySegmentationButton)
+    startLabelSegmentationButton.connect('clicked(bool)',self.onStartLabelSegmentationButton)
+    applySegmentationButton.connect('clicked(bool)',self.onApplySegmentationButton)
+
 
 
     #
@@ -516,7 +518,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopVolumeSelector.setCurrentNode(intraopImageVolume)
     self.intraopLabelSelector.setCurrentNode(intraopLabelVolume)
 
-
   def loadPreopData(self):
 
     # this function finds all volumes and fiducials in a directory and loads them into slicer
@@ -579,7 +580,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(preopTargetsNode, index, 1)
 
 
-
   def testFunction(self):
 
     seriesList=[]
@@ -600,7 +600,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       sItem.setCheckable(1)
 
    # self.createLoadableFileListFromSelection()
-
 
   def getSelectedSeriesFromSelector(self):
 
@@ -780,53 +779,27 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def onStartSegmentationButton(self):
     logic = RegistrationModuleLogic()
 
-    print("Run the algorithm")
-
     logic.run()
 
   def onApplySegmentationButton(self):
+
+    # create logic
     logic = RegistrationModuleLogic()
-    print("onApplySegmentationButton")
 
-    # initialize Label Map
-    outputLabelMap=slicer.vtkMRMLScalarVolumeNode()
-    outputLabelMap.SetLabelMap(1)
-    outputLabelMap.SetName('Intraop Label Map')
-    slicer.mrmlScene.AddNode(outputLabelMap)
+    # set parameter for modelToLabelmap CLI Module
+    inputVolume=self.referenceVolumeSelector.currentNode()
 
-    # get clippingModel Node
+    # get InputModel
     clipModelNode=slicer.mrmlScene.GetNodesByName('clipModelNode')
     clippingModel=clipModelNode.GetItemAsObject(0)
 
     # run CLI-Module
-    logic.modelToLabelmap(self.referenceVolumeSelector.currentNode(),clippingModel,outputLabelMap)
-    """
-    clipModelNode=slicer.mrmlScene.GetNodesByName('clipModelNode')
-    clippingModel=clipModelNode.GetItemAsObject(0)
-    slicer.mrmlScene.RemoveNode(clippingModel)
-    """
+    logic.modelToLabelmap(inputVolume,clippingModel)
 
 
+  def onStartLabelSegmentationButton(self):
 
-    # use label contours
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").SetUseLabelOutline(True)
-    """
-    # rotate volume to plane
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(outputLabelMap)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(outputLabelMap)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(outputLabelMap)
-    """
-    # set Layout to redSliceViewOnly
-    lm=slicer.app.layoutManager()
-    lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
-
-    # fit Slice View to FOV
-    red=lm.sliceWidget('Red')
-    redLogic=red.sliceLogic()
-    redLogic.FitSliceToAll()
-
+    return True
 
   def applyRegistration(self):
 
@@ -877,16 +850,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      cliNode=None
      cliNode=slicer.cli.run(slicer.modules.brainsfit, cliNode, params, wait_for_completion = True)
 
-
      self.tabWidget.setCurrentIndex(2)
     # TODO: hide labels
-
-
-
-#
-# RegistrationModuleLogic
-#
-
+  """
 def transformFiducials(fiducials, transform, fiducialsOut):
 
   fidLogic = slicer.modules.markups.logic()
@@ -903,6 +869,12 @@ def transformFiducials(fiducials, transform, fiducialsOut):
   fidStorage.SetFileName(fiducialsOut)
   fidStorage.WriteData(fiducials)
   #slicer.mrmlScene.Clear()
+  """
+
+#
+# RegistrationModuleLogic
+#
+
 
 
 class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
@@ -973,16 +945,11 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     Run the actual algorithm
     """
 
-    self.delayDisplay('Running the aglorithm')
-
     # set four up view, select persistent fiducial marker as crosshair
     self.setVolumeClipUserMode()
 
     # let user place Fiducials
     self.placeFiducials()
-
-    return True
-
 
 
   def setVolumeClipUserMode(self):
@@ -1000,28 +967,24 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     placeModePersistence = 1
     slicer.modules.markups.logic().StartPlaceMode(placeModePersistence)
 
-
-
-    return True
-
   def updateModel(self,observer,caller):
 
     clipModelNode=slicer.mrmlScene.GetNodesByName('clipModelNode')
-    clippingModel=clipModelNode.GetItemAsObject(0)
+    self.clippingModel=clipModelNode.GetItemAsObject(0)
 
     inputMarkupNode=slicer.mrmlScene.GetNodesByName('inputMarkupNode')
     inputMarkup=inputMarkupNode.GetItemAsObject(0)
 
     import VolumeClipWithModel
     clipLogic=VolumeClipWithModel.VolumeClipWithModelLogic()
-    clipLogic.updateModelFromMarkup(inputMarkup, clippingModel)
+    clipLogic.updateModelFromMarkup(inputMarkup, self.clippingModel)
 
   def placeFiducials(self):
 
     # Create empty model node
-    clippingModel = slicer.vtkMRMLModelNode()
-    clippingModel.SetName('clipModelNode')
-    slicer.mrmlScene.AddNode(clippingModel)
+    self.clippingModel = slicer.vtkMRMLModelNode()
+    self.clippingModel.SetName('clipModelNode')
+    slicer.mrmlScene.AddNode(self.clippingModel)
 
     # Create markup display fiducials - why do i need that?
     displayNode = slicer.vtkMRMLMarkupsDisplayNode()
@@ -1036,9 +999,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     # add Observer
     inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateModel)
 
-    return True
-
-  def modelToLabelmap(self,inputVolume,inputModel,outputLabelMap):
+  def modelToLabelmap(self,inputVolume,clippingModel):
 
     """
     PARAMETER FOR MODELTOLABELMAP CLI MODULE:
@@ -1049,16 +1010,52 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     Parameter (1/2): OutputVolume
     """
 
+    # initialize Label Map
+    outputLabelMap=slicer.vtkMRMLScalarVolumeNode()
+    outputLabelMap.SetLabelMap(1)
+    outputLabelMap.SetName('Intraop Label Map')
+    slicer.mrmlScene.AddNode(outputLabelMap)
+
     # TODO: check if parameters == None
 
     # define params
-    params = {'sampleDistance': 0.01, 'labelValue': 1, 'InputVolume' : inputVolume, 'surface' : inputModel, 'OutputVolume' : outputLabelMap}
+    params = {'sampleDistance': 0.2, 'labelValue': 5, 'InputVolume' : inputVolume.GetID(), 'surface' : clippingModel.GetID(), 'OutputVolume' : outputLabelMap.GetID()}
 
     # run ModelToLabelMap-CLI Module
-    slicer.cli.run(slicer.modules.modeltolabelmap, None, params)
+    cliNode=slicer.cli.run(slicer.modules.modeltolabelmap, None, params, wait_for_completion=True)
 
-    return True
+    # use label contours
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").SetUseLabelOutline(True)
 
+    # rotate volume to plane
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(outputLabelMap)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(outputLabelMap)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(outputLabelMap)
+
+    # set Layout to redSliceViewOnly
+    lm=slicer.app.layoutManager()
+    lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+
+    # fit Slice View to FOV
+    red=lm.sliceWidget('Red')
+    redLogic=red.sliceLogic()
+    redLogic.FitSliceToAll()
+
+    # remove markup fiducial node
+    slicer.mrmlScene.RemoveNode(slicer.mrmlScene.GetNodesByName('clipModelNode').GetItemAsObject(0))
+
+    # remove model node
+    slicer.mrmlScene.RemoveNode(slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0))
+
+    # set Intraop Label Volume
+    RegistrationModuleWidget.intraopLabelSelector.setCurrentNode(outputLabelMap)
+
+
+  def modelToLabelmapfinished(self):
+
+    print "Remove everything useless"
 
   def runBRAINSFit(self,movingImage,fixedImage,movingImageLabel,fixedImageLabel):
 
