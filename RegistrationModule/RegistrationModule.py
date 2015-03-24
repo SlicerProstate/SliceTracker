@@ -40,6 +40,23 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.settings = qt.QSettings() #TODO: write path settings as in PCAMP Review
     self.temp = None
 
+    layoutManager=slicer.app.layoutManager()
+
+    # set Compare Screen
+    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+
+    # set Axia Views only
+    redWidget = layoutManager.sliceWidget('Red')
+    yellowWidget = layoutManager.sliceWidget('Yellow')
+    redLogic=redWidget.sliceLogic()
+    yellowLogic=yellowWidget.sliceLogic()
+    sliceNodeRed=redLogic.GetSliceNode()
+    sliceNodeYellow=yellowLogic.GetSliceNode()
+    sliceNodeRed.SetOrientationToAxial()
+    sliceNodeYellow.SetOrientationToAxial()
+
+
+
     # create TabWidget
     self.tabWidget=qt.QTabWidget()
     self.layout.addWidget(self.tabWidget)
@@ -183,6 +200,24 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.loadIntraopDataButton.enabled = True
     self.dataSelectionGroupBoxLayout.addWidget(self.loadIntraopDataButton)
 
+    # Delete Everything in folder
+    self.simulateDataIncomeButton = qt.QPushButton("Delete Everything in IntraopFolder")
+    self.simulateDataIncomeButton.toolTip = ("Delete Everthing in IntraopFolder")
+    self.simulateDataIncomeButton.enabled = True
+    self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton)
+
+    # Simulate DICOM Income 2
+    self.simulateDataIncomeButton2 = qt.QPushButton("Simulate Data Income 1")
+    self.simulateDataIncomeButton2.toolTip = ("Simulate Data Income 1")
+    self.simulateDataIncomeButton2.enabled = True
+    self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton2)
+
+    # Simulate DICOM Income 3
+    self.simulateDataIncomeButton3 = qt.QPushButton("Simulate Data Income 2")
+    self.simulateDataIncomeButton3.toolTip = ("Simulate Data Income 2")
+    self.simulateDataIncomeButton3.enabled = True
+    self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton3)
+
 
     #
     # Step 2: Label Selection
@@ -298,6 +333,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     startQuickSegmentationButton.connect('clicked(bool)',self.onStartSegmentationButton)
     startLabelSegmentationButton.connect('clicked(bool)',self.onStartLabelSegmentationButton)
     applySegmentationButton.connect('clicked(bool)',self.onApplySegmentationButton)
+    self.simulateDataIncomeButton.connect('clicked(bool)',self.onsimulateDataIncomeButton1)
+    self.simulateDataIncomeButton2.connect('clicked(bool)',self.onsimulateDataIncomeButton2)
+    self.simulateDataIncomeButton3.connect('clicked(bool)',self.onsimulateDataIncomeButton3)
 
 
 
@@ -356,7 +394,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopLabelSelector = slicer.qMRMLNodeComboBox()
     self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
     self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 1 )
-    self.preopLabelSelector.selectNodeUponCreation = True
+    self.preopLabelSelector.selectNodeUponCreation = False
     self.preopLabelSelector.addEnabled = False
     self.preopLabelSelector.removeEnabled = False
     self.preopLabelSelector.noneEnabled = False
@@ -393,10 +431,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopLabelSelector.selectNodeUponCreation = True
     self.intraopLabelSelector.addEnabled = False
     self.intraopLabelSelector.removeEnabled = False
-    self.intraopLabelSelector.noneEnabled = True
+    self.intraopLabelSelector.noneEnabled = False
     self.intraopLabelSelector.showHidden = False
     self.intraopLabelSelector.showChildNodeTypes = False
     self.intraopLabelSelector.setMRMLScene( slicer.mrmlScene )
+    self.intraopLabelSelector.setToolTip( "Pick the input to the algorithm." )
     self.intraopLabelSelector.setToolTip( "Pick the input to the algorithm." )
     self.registrationGroupBoxLayout.addRow("Intraop Label Volume: ", self.intraopLabelSelector)
 
@@ -408,7 +447,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.fiducialSelector = slicer.qMRMLNodeComboBox()
     self.fiducialSelector.nodeTypes = ( ("vtkMRMLMarkupsFiducialNode"), "" )
-    self.fiducialSelector.selectNodeUponCreation = True
+    self.fiducialSelector.selectNodeUponCreation = False
     self.fiducialSelector.addEnabled = False
     self.fiducialSelector.removeEnabled = False
     self.fiducialSelector.noneEnabled = True
@@ -458,7 +497,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Show Rigid Registration
     self.targetCheckBox=qt.QCheckBox()
     self.targetCheckBox.setText('Show Transformed Targets')
-
+    self.targetCheckBox.setChecked(1)
 
     self.evaluationGroupBoxLayout.addWidget(self.rigidCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.affineCheckBox)
@@ -481,13 +520,69 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # self.opacitySlider.setSingleStep(0.1)
 
     self.evaluationGroupBoxLayout.addWidget(self.opacitySlider)
-
+    # self.evaluationGroupBoxLayout.addRow("Opacity ", self.opacitySlider)
     self.saveDataButton=qt.QPushButton('Save Data')
     self.saveDataButton.setMaximumWidth(150)
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
-
     # Layout within the dummy collapsible button
+
+
+  def onsimulateDataIncomeButton1(self):
+
+    # delete all files in intraop folder
+
+    # create fileList
+    fileList=[]
+    for item in os.listdir(self.intraopDirButton.directory):
+      fileList.append(item)
+
+    for file in fileList:
+     cmd = ('rm -Rf '+str(self.intraopDirButton.directory)+'/'+file)
+
+     os.system(cmd)
+
+  def onsimulateDataIncomeButton2(self):
+
+
+    # copy DICOM Files into intraop folder
+
+    imagePath= '/Users/peterbehringer/MyImageData/Prostate_AX_T2/'
+    intraopPath=self.intraopDirButton.directory
+
+    filesToCopy = []
+    for item in os.listdir(imagePath):
+      filesToCopy.append(item)
+
+    for file in filesToCopy:
+
+      cmd1=('pbcopy < '+imagePath+file)
+      os.system(cmd1)
+
+      cmd2=('pbpaste > '+intraopPath+'/'+file)
+      os.system(cmd2)
+
+  def onsimulateDataIncomeButton3(self):
+
+
+    # copy DICOM Files into intraop folder
+
+    imagePath= '/Users/peterbehringer/MyImageData/Prostate_AX_DWI/'
+    intraopPath=self.intraopDirButton.directory
+
+    filesToCopy = []
+    for item in os.listdir(imagePath):
+      filesToCopy.append(item)
+
+    print filesToCopy
+
+    for file in filesToCopy:
+
+      cmd1=('pbcopy < '+imagePath+file)
+      os.system(cmd1)
+
+      cmd2=('pbpaste > '+intraopPath+'/'+file)
+      os.system(cmd2)
 
   def changeOpacity(self,node):
 
@@ -564,46 +659,37 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").SetUseLabelOutline(True)
 
-    # rotate volume to plane
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(preopImageVolumeNode)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(preopImageVolumeNode)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(preopImageVolumeNode)
-
     # set Layout to redSliceViewOnly
     lm=slicer.app.layoutManager()
     lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
-    # fit Slice View to FOV
-    red=lm.sliceWidget('Red')
-    redLogic=red.sliceLogic()
-    redLogic.FitSliceToAll()
+    # set orientation to axial
+
+    layoutManager=slicer.app.layoutManager()
+    redWidget = layoutManager.sliceWidget('Red')
+    redLogic=redWidget.sliceLogic()
+    sliceNodeRed=redLogic.GetSliceNode()
+    sliceNodeRed.SetOrientationToAxial()
 
     # set markups visible
 
     markupsLogic=slicer.modules.markups.logic()
     markupsLogic.SetAllMarkupsVisibility(preopTargetsNode,1)
 
-    # TODO: jump to first markup slice
-    # slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(preopTargetsNode, index, 1)
+    # rotate volume to plane
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(preoplabelVolumeNode)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(preoplabelVolumeNode)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(preoplabelVolumeNode)
+
+    # jump to first markup slice
+    slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(preopTargetsNode.GetID(),1)
+
+    # Fit Volume To Screen
+    slicer.app.applicationLogic().FitSliceToAll()
 
   def testFunction(self):
 
-    seriesList=[]
-    series1='3 plane loc'
-    series2='AX FSPGR FS T1 PRE'
-    seriesList.append(series1)
-    seriesList.append(series2)
-
-    self.seriesModel.clear()
-    self.seriesItems = []
-    print seriesList
-
-    for s in range(len(seriesList)):
-      seriesText = seriesList[s]
-      sItem = qt.QStandardItem(seriesText)
-      self.seriesItems.append(sItem)
-      self.seriesModel.appendRow(sItem)
-      sItem.setCheckable(1)
+     print 'TestFUNCTION ENTERED'
 
    # self.createLoadableFileListFromSelection()
 
@@ -646,23 +732,47 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # create DICOMScalarVolumePlugin and load selectedSeries data from files into slicer
     scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
 
+    print ('SelectedFileList : ',self.selectedFileList)
+
     try:
       loadables = scalarVolumePlugin.examine([self.selectedFileList])
     except:
       print ('There is nothing to load. You have to select series')
 
+    """
+    print ('LOADABLES[0].FILES :')
+    print loadables[0].files
 
-    for s in range(len(self.selectedSeries)):
-     inputVolume = scalarVolumePlugin.load(loadables[s])
-     # inputVolume.setName(selectedSeries[s])
+    print ('LOADABLES[1].FILES :')
+    print loadables[1].files
 
-     # TODO: change name of imported series; right now its still very strange
-     slicer.mrmlScene.AddNode(inputVolume)
-     print('Input volume '+str(s)+' : '+self.selectedSeries[s]+' loaded!')
+    print ('LOADABLES[0].NAMES :')
+    print loadables[0].name
 
-     # added: print name
-     print('name is ')
-     print(str(inputVolume))
+    print ('LOADABLES[1].NAMES :')
+    print loadables[1].name
+    """
+
+    # for s in range(len(self.selectedSeries)):
+    for s in range(len(loadables)):
+      print ('loadables name : '+str(loadables[s].name))
+
+    inputVolume1 = scalarVolumePlugin.load(loadables[0])
+    # inputVolume1.setName('inputVolume1')
+    slicer.mrmlScene.AddNode(inputVolume1)
+
+    inputVolume2= scalarVolumePlugin.load(loadables[1])
+    # inputVolume2.setName('inputVolume2')
+    slicer.mrmlScene.AddNode(inputVolume2)
+
+    inputVolume3= scalarVolumePlugin.load(loadables[2])
+    # inputVolume.setName('inputVolume3')
+    slicer.mrmlScene.AddNode(inputVolume3)
+
+
+      # TODO: change name of imported series; right now its still very strange
+      # print('Input volume '+str(s)+' : '+self.selectedSeries[s]+' loaded!')
+
 
     # TODO:
 
@@ -691,6 +801,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       if item not in self.currentFileList:
         newFileList.append(item)
 
+    # print ('those new Files are ready to be imported into dicomDatabase :')
+    # print (newFileList)
+
+
     # import file in DICOM database
     for file in newFileList:
      indexer.addFile(db,str(self.intraopDirButton.directory+'/'+file),None)
@@ -713,8 +827,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.seriesModel.appendRow(sItem)
       sItem.setCheckable(1)
 
+    print('')
     print('DICOM import finished')
-    print('Those series are imported')
+    print('Those series are indexed into slicer.dicomDatabase')
     print self.seriesList
 
     # notify the user
@@ -837,6 +952,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      outputVolume=slicer.vtkMRMLScalarVolumeNode()
      outputVolume.SetName('preop-REG')
 
+     # add output nodes
      slicer.mrmlScene.AddNode(outputVolume)
      slicer.mrmlScene.AddNode(outputTransform)
 
@@ -852,8 +968,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
                'useAffine' : True}
 
      # run ModelToLabelMap-CLI Module
-     cliNode=None
-     cliNode=slicer.cli.run(slicer.modules.brainsfit, cliNode, params, wait_for_completion = True)
+     self.cliNode=None
+     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, params, wait_for_completion = True)
 
      # TRANSFORM FIDUCIAL TARGETS
      if self.fiducialSelector.currentNode() != None:
@@ -875,11 +991,49 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # switch to Evaluation Section
     self.tabWidget.setCurrentIndex(3)
 
-    # Hide all Labels in Red Slice View
+    # Hide all Labels in Red and Yellow
     layoutManager=slicer.app.layoutManager()
+
     redWidget = layoutManager.sliceWidget('Red')
-    compositNode = redWidget.mrmlSliceCompositeNode()
-    compositNode.SetLabelOpacity(0)
+    yellowWidget = layoutManager.sliceWidget('Yellow')
+
+    compositNodeRed = redWidget.mrmlSliceCompositeNode()
+    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+
+    compositNodeRed.SetLabelOpacity(0)
+    compositNodeYellow.SetLabelOpacity(0)
+
+    # Set Intraop Image Foreground in Red
+    compositNodeRed.SetBackgroundVolumeID(fixedVolume.GetID())
+
+    # Set REG Image Background in Red
+    compositNodeRed.SetForegroundVolumeID(outputVolume.GetID())
+
+    # Hide Targets in Red
+    compositNodeRed.SetFiducialVisibility(0)
+
+    # set Intraop Image Foreground in Yellow
+    compositNodeRed.SetForegroundVolumeID(fixedVolume.GetID())
+
+    # set markups visible
+    markupsLogic=slicer.modules.markups.logic()
+    markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
+
+    # show Targets in Yellow
+    slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNode.GetID(),1)
+
+    # set both orientations to axial
+    redLogic=redWidget.sliceLogic()
+    yellowLogic=yellowWidget.sliceLogic()
+
+    sliceNodeRed=redLogic.GetSliceNode()
+    sliceNodeYellow=yellowLogic.GetSliceNode()
+
+    sliceNodeRed.SetOrientationToAxial()
+    sliceNodeYellow.SetOrientationToAxial()
+
+
+
 #
 # RegistrationModuleLogic
 #
@@ -962,6 +1116,8 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
   def setVolumeClipUserMode(self):
 
+    # TODO: Hide all other label
+
     # set Layout to redSliceViewOnly
     lm=slicer.app.layoutManager()
     lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
@@ -989,6 +1145,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
   def placeFiducials(self):
 
+
     # Create empty model node
     self.clippingModel = slicer.vtkMRMLModelNode()
     self.clippingModel.SetName('clipModelNode')
@@ -1003,6 +1160,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     inputMarkup.SetName('inputMarkupNode')
     slicer.mrmlScene.AddNode(inputMarkup)
     inputMarkup.SetAndObserveDisplayNodeID(displayNode.GetID())
+
+    # set Text Scale to 0
+    self.markupsLogic=slicer.modules.markups.logic()
+    self.markupsLogic.SetDefaultMarkupsDisplayNodeTextScale(0)
 
     # add Observer
     inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateModel)
@@ -1060,9 +1221,9 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     # set Intraop Label Volume
     RegistrationModuleWidget.intraopLabelSelector.setCurrentNode(outputLabelMap)
 
-  def modelToLabelmapfinished(self):
+    # reset MarkupsText Scale
+    self.markupsLogic.SetDefaultMarkupsDisplayNodeTextScale(3.4)
 
-    print "Remove everything useless"
 
   def runBRAINSFit(self,movingImage,fixedImage,movingImageLabel,fixedImageLabel):
 
@@ -1118,6 +1279,7 @@ class RegistrationModuleTest(ScriptedLoadableModuleTest):
     """
     slicer.mrmlScene.Clear(0)
 
+
   def runTest(self):
     """Run as few or as many tests as needed here.
     """
@@ -1135,4 +1297,4 @@ class RegistrationModuleTest(ScriptedLoadableModuleTest):
     module.  For example, if a developer removes a feature that you depend on,
     your test should break so they know that the feature is needed.
     """
-    self.intraopDirButton.directory='/Users/peterbehringer/MyImageData/Test_PreopAnnotationDir/targets.fcsv'
+    print (' ___ performing selfTest ___ ')
