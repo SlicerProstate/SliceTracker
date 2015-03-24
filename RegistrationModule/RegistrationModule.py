@@ -282,7 +282,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.referenceVolumeSelector.showChildNodeTypes = False
     self.referenceVolumeSelector.setMRMLScene( slicer.mrmlScene )
     self.referenceVolumeSelector.setToolTip( "Pick the input to the algorithm." )
-    self.labelSelectionGroupBoxLayout.addRow("New Segmentation: ", self.referenceVolumeSelector)
+    self.labelSelectionGroupBoxLayout.addRow("Reference Volume: ", self.referenceVolumeSelector)
 
     # Set Icon Size for the 4 Icon Items
     size=qt.QSize(60,60)
@@ -718,12 +718,33 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         dcmFileList.append(self.intraopDirButton.directory+'/'+dcm)
 
     # get the selected Series List
-    selectedSeriesList=self.getSelectedSeriesFromSelector()
+    self.selectedSeriesList=self.getSelectedSeriesFromSelector()
 
     # write all selected files in selectedFileList
     for file in dcmFileList:
-     if db.fileValue(file,'0008,103E') in selectedSeriesList:
+     if db.fileValue(file,'0008,103E') in self.selectedSeriesList:
        self.selectedFileList.append(file)
+
+    # create a list with lists of files of each series in them
+
+    self.loadableList=[]
+
+    print ('selectedSeriesList : ')
+    print self.selectedSeriesList
+    print ('single file value, just checking : ')
+    print db.fileValue(self.selectedFileList[0],'0008,103E')
+    print ('selectedFileList : ')
+    print self.selectedFileList
+
+    for series in self.selectedSeriesList:
+      fileListOfSeries =[]
+      for file in self.selectedFileList:
+        if db.fileValue(file,'0008,103E') == series:
+          fileListOfSeries.append(file)
+      self.loadableList.append(fileListOfSeries)
+
+    print ('loadableList = ')
+    print self.loadableList
 
   def loadSeriesIntoSlicer(self):
 
@@ -732,47 +753,24 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # create DICOMScalarVolumePlugin and load selectedSeries data from files into slicer
     scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
 
-    print ('SelectedFileList : ',self.selectedFileList)
-
     try:
-      loadables = scalarVolumePlugin.examine([self.selectedFileList])
+      loadables = scalarVolumePlugin.examine(self.loadableList)
     except:
       print ('There is nothing to load. You have to select series')
 
-    """
-    print ('LOADABLES[0].FILES :')
-    print loadables[0].files
-
-    print ('LOADABLES[1].FILES :')
-    print loadables[1].files
-
-    print ('LOADABLES[0].NAMES :')
-    print loadables[0].name
-
-    print ('LOADABLES[1].NAMES :')
-    print loadables[1].name
-    """
 
     # for s in range(len(self.selectedSeries)):
     for s in range(len(loadables)):
+      print str(len(loadables))
       print ('loadables name : '+str(loadables[s].name))
-
-    inputVolume1 = scalarVolumePlugin.load(loadables[0])
-    # inputVolume1.setName('inputVolume1')
-    slicer.mrmlScene.AddNode(inputVolume1)
-
-    inputVolume2= scalarVolumePlugin.load(loadables[1])
-    # inputVolume2.setName('inputVolume2')
-    slicer.mrmlScene.AddNode(inputVolume2)
-
-    inputVolume3= scalarVolumePlugin.load(loadables[2])
-    # inputVolume.setName('inputVolume3')
-    slicer.mrmlScene.AddNode(inputVolume3)
+      name = loadables[s].name
+      v=scalarVolumePlugin.load(loadables[s])
+      v.SetName(name)
+      slicer.mrmlScene.AddNode(v)
 
 
-      # TODO: change name of imported series; right now its still very strange
-      # print('Input volume '+str(s)+' : '+self.selectedSeries[s]+' loaded!')
-
+    # Fit Volume To Screen
+    slicer.app.applicationLogic().FitSliceToAll()
 
     # TODO:
 
@@ -787,9 +785,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print ('***** New Data in intraop directory detected ***** ')
     print ('waiting 5 more seconds for Series to be completed')
 
-    qt.QTimer.singleShot(5000,self.importDICOMseries)
+    qt.QTimer.singleShot(2000,self.importDICOMseries)
 
   def importDICOMseries(self):
+
 
     newFileList= []
     self.seriesList= []
@@ -801,10 +800,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       if item not in self.currentFileList:
         newFileList.append(item)
 
-    # print ('those new Files are ready to be imported into dicomDatabase :')
-    # print (newFileList)
-
-
     # import file in DICOM database
     for file in newFileList:
      indexer.addFile(db,str(self.intraopDirButton.directory+'/'+file),None)
@@ -814,6 +809,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
        importfile=str(self.intraopDirButton.directory+'/'+file)
        self.seriesList.append(db.fileValue(importfile,'0008,103E'))
 
+
+    indexer.addDirectory(db,str(self.intraopDirButton.directory))
+    indexer.waitForImportFinished()
     # create Checkable Item in GUI
 
     self.seriesModel.clear()
@@ -860,11 +858,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      self.waitingForSeriesToBeCompleted()
 
      self.setlastNumberOfFiles(numberOfFiles)
-     qt.QTimer.singleShot(5000,self.startTimer)
+     qt.QTimer.singleShot(1000,self.startTimer)
 
     else:
      self.setlastNumberOfFiles(numberOfFiles)
-     qt.QTimer.singleShot(5000,self.startTimer)
+     qt.QTimer.singleShot(1000,self.startTimer)
 
   def setlastNumberOfFiles(self,number):
     self.temp = number
