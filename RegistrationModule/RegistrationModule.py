@@ -458,14 +458,25 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.registrationGroupBoxLayout.addRow("Targets: ", self.fiducialSelector)
 
     #
-    # Apply Registration
+    # Apply Affine Registration
     #
 
-    self.applyRegistrationButton = qt.QPushButton("Apply Registration")
+    self.applyRegistrationButton = qt.QPushButton("Apply Affine Registration")
     self.applyRegistrationButton.toolTip = "Run the algorithm."
     self.applyRegistrationButton.enabled = True
     self.registrationGroupBoxLayout.addRow(self.applyRegistrationButton)
     self.applyRegistrationButton.connect('clicked(bool)',self.applyRegistration)
+
+    #
+    # Apply BSpline Registration
+    #
+
+    self.applyBSplineRegistrationButton = qt.QPushButton("Apply BSpline Registration")
+    self.applyBSplineRegistrationButton.toolTip = "Run the algorithm."
+    self.applyBSplineRegistrationButton.enabled = True
+    self.registrationGroupBoxLayout.addRow(self.applyBSplineRegistrationButton)
+    self.applyBSplineRegistrationButton.connect('clicked(bool)',self.onApplyBSplineRegistrationButton)
+
 
     #
     # Load and Set Data
@@ -534,7 +545,36 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.affineCheckBox.setChecked(0)
       self.rigidCheckBox.setChecked(0)
 
-    return True
+      # Get SliceWidgets
+      layoutManager=slicer.app.layoutManager()
+
+      redWidget = layoutManager.sliceWidget('Red')
+      yellowWidget = layoutManager.sliceWidget('Yellow')
+
+      compositNodeRed = redWidget.mrmlSliceCompositeNode()
+      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+
+      # Get the Affine Volume Node
+      bsplineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-BSpline').GetItemAsObject(0)
+
+      # Get the Intraop Volume Node
+
+      intraopVolumeNode=self.intraopVolumeSelector.currentNode()
+
+      # Red Slice View:
+
+        # Set Foreground: intraop image
+      compositNodeRed.SetForegroundVolumeID(bsplineVolumeNode.GetID())
+        # Set Background: Affine Image
+      compositNodeRed.SetBackgroundVolumeID(intraopVolumeNode.GetID())
+
+
+      # Yellow Slice View:
+
+        # Set Foreground: Intraop Image + Fidicuals Affine transformed
+
+        # Set Background: -
+
 
   def onAffineCheckBoxClicked(self):
 
@@ -544,7 +584,36 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.bsplineCheckBox.setChecked(0)
       self.rigidCheckBox.setChecked(0)
 
-    return True
+      # Get SliceWidgets
+      layoutManager=slicer.app.layoutManager()
+
+      redWidget = layoutManager.sliceWidget('Red')
+      yellowWidget = layoutManager.sliceWidget('Yellow')
+
+      compositNodeRed = redWidget.mrmlSliceCompositeNode()
+      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+
+      # Get the Affine Volume Node
+      affineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Affine').GetItemAsObject(0)
+
+      # Get the Intraop Volume Node
+
+      intraopVolumeNode=self.intraopVolumeSelector.currentNode()
+
+      # Red Slice View:
+
+        # Set Foreground: intraop image
+      compositNodeRed.SetForegroundVolumeID(affineVolumeNode.GetID())
+        # Set Background: Affine Image
+      compositNodeRed.SetBackgroundVolumeID(intraopVolumeNode.GetID())
+
+
+      # Yellow Slice View:
+
+        # Set Foreground: Intraop Image + Fidicuals Affine transformed
+
+        # Set Background: -
+
 
   def onRigidCheckBoxClicked(self):
 
@@ -553,8 +622,41 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.affineCheckBox.setChecked(0)
       self.bsplineCheckBox.setChecked(0)
 
+      # uncheck the other Buttons
+      self.bsplineCheckBox.setChecked(0)
+      self.affineCheckBox.setChecked(0)
 
-    return True
+      # Get SliceWidgets
+      layoutManager=slicer.app.layoutManager()
+
+      redWidget = layoutManager.sliceWidget('Red')
+      yellowWidget = layoutManager.sliceWidget('Yellow')
+
+      compositNodeRed = redWidget.mrmlSliceCompositeNode()
+      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+
+      # Get the Affine Volume Node
+      affineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Affine').GetItemAsObject(0)
+
+      # Get the Intraop Volume Node
+
+      intraopVolumeNode=self.intraopVolumeSelector.currentNode()
+
+      # Red Slice View:
+
+        # Set Foreground: intraop image
+      compositNodeRed.SetForegroundVolumeID(affineVolumeNode.GetID())
+        # Set Background: Affine Image
+      compositNodeRed.SetBackgroundVolumeID(intraopVolumeNode.GetID())
+
+
+      # Yellow Slice View:
+
+        # Set Foreground: Intraop Image + Fidicuals Affine transformed
+
+        # Set Background: -
+
+
 
   def onTargetCheckBox(self):
 
@@ -964,6 +1066,237 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     movingLabel=self.preopLabelSelector.currentNode()
 
     if fixedVolume and movingVolume and fixedLabel and movingLabel:
+
+
+     # check, if import is correct
+     if not fixedVolume or not movingVolume or not fixedLabel or not movingLabel:
+       print 'Please see input parameters'
+
+     """
+     # print out params helper
+     cliModule = slicer.modules.brainsfit
+     n=cliModule.cliModuleLogic().CreateNode()
+     for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
+       for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
+         print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
+     """
+
+     ##### OUTPUT TRANSFORMS
+
+     # define output linear Rigid transform
+     outputTransformRigid=slicer.vtkMRMLLinearTransformNode()
+     outputTransformRigid.SetName('transform-Rigid')
+
+     # define output linear Affine transform
+     outputTransformAffine=slicer.vtkMRMLLinearTransformNode()
+     outputTransformAffine.SetName('transform-Affine')
+
+     # define output BSpline transform
+     outputTransformBSpline=slicer.vtkMRMLBSplineTransformNode()
+     outputTransformBSpline.SetName('transform-BSpline')
+
+     ##### OUTPUT VOLUMES
+
+     # define output volume Rigid
+     outputVolumeRigid=slicer.vtkMRMLScalarVolumeNode()
+     outputVolumeRigid.SetName('reg-Rigid')
+
+     # define output volume Affine
+     outputVolumeAffine=slicer.vtkMRMLScalarVolumeNode()
+     outputVolumeAffine.SetName('reg-Affine')
+
+     # define output volume BSpline
+     outputVolumeBSpline=slicer.vtkMRMLScalarVolumeNode()
+     outputVolumeBSpline.SetName('reg-BSpline')
+
+     # add output nodes
+     slicer.mrmlScene.AddNode(outputVolumeRigid)
+     slicer.mrmlScene.AddNode(outputVolumeBSpline)
+     slicer.mrmlScene.AddNode(outputVolumeAffine)
+     slicer.mrmlScene.AddNode(outputTransformRigid)
+     slicer.mrmlScene.AddNode(outputTransformAffine)
+     slicer.mrmlScene.AddNode(outputTransformBSpline)
+
+
+     #   ++++++++++      RIGID REGISTRATION       ++++++++++
+
+     paramsRigid = {'fixedVolume': fixedVolume,
+                    'movingVolume': movingVolume,
+                    'fixedBinaryVolume' : fixedLabel,
+                    'movingBinaryVolume' : movingLabel,
+                    'outputTransform' : outputTransformRigid.GetID(),
+                    'outputVolume' : outputVolumeRigid.GetID(),
+                    'maskProcessingMode' : "ROI",
+                    'initializeTransformMode' : "useCenterOfROIAlign",
+                    'useRigid' : True,
+                    'useAffine' : False,
+                    'useScaleVersor3D' : False,
+                    'useScaleSkewVersor3D' : False,
+                    'useROIBSpline' : False,
+                    'useBSpline' : False,}
+
+     # run ModelToLabelMap-CLI Module
+     self.cliNode=None
+     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
+
+
+     #   ++++++++++      AFFINE REGISTRATION       ++++++++++
+
+     paramsAffine = {'fixedVolume': fixedVolume,
+               'movingVolume': movingVolume,
+               'fixedBinaryVolume' : fixedLabel,
+               'movingBinaryVolume' : movingLabel,
+               'outputTransform' : outputTransformAffine.GetID(),
+               'outputVolume' : outputVolumeAffine.GetID(),
+               'maskProcessingMode' : "ROI",
+               'initializeTransformMode' : "useCenterOfROIAlign",
+               'useAffine' : True}
+
+     # run ModelToLabelMap-CLI Module
+     self.cliNode=None
+     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsAffine, wait_for_completion = True)
+
+     #   ++++++++++      BSPLINE REGISTRATION       ++++++++++
+
+     paramsBSpline = {'fixedVolume': fixedVolume,
+                      'movingVolume': movingVolume,
+                      'outputVolume' : outputVolumeBSpline.GetID(),
+                      'bsplineTransform' : outputTransformBSpline.GetID(),
+                      'movingBinaryVolume' : movingLabel,
+                      'fixedBinaryVolume' : fixedLabel,
+                      # 'linearTransform' : outputTransformLinear.GetID(),
+                      'initializeTransformMode' : "useCenterOfROIAlign",
+                      'samplingPercentage' : "0.002",
+                      'useRigid' : True,
+                      'useAffine' : True,
+                      'useROIBSpline' : True,
+                      'useBSpline' : True,
+                      'useScaleVersor3D' : True,
+                      'useScaleSkewVersor3D' : True,
+                      'splineGridSize' : "3,3,3",
+                      'numberOfIterations' : "1500",
+                      'maskProcessing' : "ROI",
+                      'outputVolumePixelType' : "float",
+                      'backgroundFillValue' : "0",
+                      'maskInferiorCutOffFromCenter' : "1000",
+                      'interpolationMode' : "Linear",
+                      'minimumStepLength' : "0.005",
+                      'translationScale' : "1000",
+                      'reproportionScale' : "1",
+                      'skewScale' : "1",
+                      'numberOfHistogramBins' : "50",
+                      'numberOfMatchPoints': "10",
+                      'numberOfSamples' : "100000",
+                      'fixedVolumeTimeIndex' : "0",
+                      'movingVolumeTimeIndex' : "0",
+                      'medianFilterSize' : "0,0,0",
+                      'ROIAutoDilateSize' : "0",
+                      'relaxationFactor' : "0.5",
+                      'maximumStepLength' : "0.2",
+                      'failureExitCode' : "-1",
+                      'numberOfThreads': "-1",
+                      'debugLevel': "0",
+                      'costFunctionConvergenceFactor' : "1.00E+09",
+                      'projectedGradientTolerance' : "1.00E-05",
+                      'maxBSplineDisplacement' : "0",
+                      'maximumNumberOfEvaluations' : "900",
+                      'maximumNumberOfCorrections': "25",
+                      'metricSamplingStrategy' : "Random",
+                      'costMetric' : "MMI",
+                      'removeIntensityOutliers' : "0",
+                      'ROIAutoClosingSize' : "9",
+                      'maskProcessingMode' : "ROI"}
+
+
+     # run ModelToLabelMap-CLI Module
+     self.cliNode=None
+     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsBSpline, wait_for_completion = True)
+
+
+     #   ++++++++++      TRANSFORM FIDUCIALS        ++++++++++
+
+
+     if self.fiducialSelector.currentNode() != None:
+
+       print ("Perform Target Transform")
+
+       # TODO: Clone Fiducials 3 times more
+       # create fiducials for every transform and harden them
+
+       # get transform
+       transformNode=slicer.mrmlScene.GetNodesByName('transform-BSpline').GetItemAsObject(0)
+
+       # get fiducials
+       fiducialNode=slicer.mrmlScene.GetNodesByName('Case1-landmarks').GetItemAsObject(0)
+
+       # apply transform
+       fiducialNode.SetAndObserveTransformNodeID(transformNode.GetID())
+       fiducialNode.SetName('targets-REG')
+
+       # harden the transform
+       tfmLogic = slicer.modules.transforms.logic()
+       tfmLogic.hardenTransform(fiducialNode)
+
+
+    # switch to Evaluation Section
+    self.tabWidget.setCurrentIndex(3)
+
+    # Get SliceWidgets
+    layoutManager=slicer.app.layoutManager()
+
+    redWidget = layoutManager.sliceWidget('Red')
+    yellowWidget = layoutManager.sliceWidget('Yellow')
+
+    compositNodeRed = redWidget.mrmlSliceCompositeNode()
+    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+
+    # set Side By Side View to compare volumes
+    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+
+    # Hide Labels
+    compositNodeRed.SetLabelOpacity(0)
+    compositNodeYellow.SetLabelOpacity(0)
+
+    # Set Intraop Image Foreground in Red
+    compositNodeRed.SetBackgroundVolumeID(fixedVolume.GetID())
+
+    # Set REG Image Background in Red
+    compositNodeRed.SetForegroundVolumeID(outputVolumeBSpline.GetID())
+
+
+    # set markups visible
+    self.markupsLogic=slicer.modules.markups.logic()
+    self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
+
+    # TODO: Hide Targets in Red; show Targets in Yellow
+    compositNodeRed.SetFiducialVisibility(0)
+    compositNodeYellow.SetFiducialVisibility(1)
+
+    # set Intraop Image Foreground in Yellow
+    compositNodeYellow.SetBackgroundVolumeID(fixedVolume.GetID())
+
+    # jump slice to show Targets in Yellow
+    slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNode.GetID(),1)
+
+    # set both orientations to axial
+    redLogic=redWidget.sliceLogic()
+    yellowLogic=yellowWidget.sliceLogic()
+
+    sliceNodeRed=redLogic.GetSliceNode()
+    sliceNodeYellow=yellowLogic.GetSliceNode()
+
+    sliceNodeRed.SetOrientationToAxial()
+    sliceNodeYellow.SetOrientationToAxial()
+
+  def applyAffineRegistration(self):
+
+
+    fixedVolume= self.intraopVolumeSelector.currentNode()
+    movingVolume = self.preopVolumeSelector.currentNode()
+    fixedLabel=self.intraopLabelSelector.currentNode()
+    movingLabel=self.preopLabelSelector.currentNode()
+
+    if fixedVolume and movingVolume and fixedLabel and movingLabel:
      print ('apply Registration')
 
      # check, if import is correct
@@ -1074,11 +1407,94 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     sliceNodeRed.SetOrientationToAxial()
     sliceNodeYellow.SetOrientationToAxial()
 
-  def setVolumeToWidget(self,volume):
+  def onApplyBSplineRegistrationButton(self):
 
-    self.intraopLabelSelector.setCurrentNode(volume)
+    fixedVolume= self.intraopVolumeSelector.currentNode()
+    movingVolume = self.preopVolumeSelector.currentNode()
+    fixedLabel=self.intraopLabelSelector.currentNode()
+    movingLabel=self.preopLabelSelector.currentNode()
 
-    return True
+    if fixedVolume and movingVolume and fixedLabel and movingLabel:
+     print ('apply Registration')
+
+     # print out params helper
+     cliModule = slicer.modules.brainsfit
+     n=cliModule.cliModuleLogic().CreateNode()
+     for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
+       for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
+         print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
+
+     # define output linear transform
+     outputTransformLinear=slicer.vtkMRMLLinearTransformNode()
+     outputTransformLinear.SetName('transform-Linear')
+
+     # define output BSpline transform
+     outputTransformBSpline=slicer.vtkMRMLBSplineTransformNode()
+     outputTransformBSpline.SetName('transform-BSpline')
+
+     # define output volume
+     outputVolumeBSpline=slicer.vtkMRMLScalarVolumeNode()
+     outputVolumeBSpline.SetName('reg-BSpline')
+
+     # add output nodes
+     slicer.mrmlScene.AddNode(outputVolumeBSpline)
+     slicer.mrmlScene.AddNode(outputTransformLinear)
+     slicer.mrmlScene.AddNode(outputTransformBSpline)
+
+     # define params
+     params = {'fixedVolume': fixedVolume,
+               'movingVolume': movingVolume,
+               'outputVolume' : outputVolumeBSpline.GetID(),
+               'bsplineTransform' : outputTransformBSpline.GetID(),
+               'movingBinaryVolume' : movingLabel,
+               'fixedBinaryVolume' : fixedLabel,
+               # 'linearTransform' : outputTransformLinear.GetID(),
+               'initializeTransformMode' : "useCenterOfROIAlign",
+               'samplingPercentage' : "0.002",
+               'useRigid' : True,
+               'useAffine' : True,
+               'useROIBSpline' : True,
+               'useBSpline' : True,
+               'useScaleVersor3D' : True,
+               'useScaleSkewVersor3D' : True,
+               'splineGridSize' : "3,3,3",
+               'numberOfIterations' : "1500",
+               'maskProcessing' : "ROI",
+               'outputVolumePixelType' : "float",
+               'backgroundFillValue' : "0",
+               'maskInferiorCutOffFromCenter' : "1000",
+               'interpolationMode' : "Linear",
+               'minimumStepLength' : "0.005",
+               'translationScale' : "1000",
+               'reproportionScale' : "1",
+               'skewScale' : "1",
+               'numberOfHistogramBins' : "50",
+               'numberOfMatchPoints': "10",
+               'numberOfSamples' : "100000",
+               'fixedVolumeTimeIndex' : "0",
+               'movingVolumeTimeIndex' : "0",
+               'medianFilterSize' : "0,0,0",
+               'ROIAutoDilateSize' : "0",
+               'relaxationFactor' : "0.5",
+               'maximumStepLength' : "0.2",
+               'failureExitCode' : "-1",
+               'numberOfThreads': "-1",
+               'debugLevel': "0",
+               'costFunctionConvergenceFactor' : "1.00E+09",
+               'projectedGradientTolerance' : "1.00E-05",
+               'maxBSplineDisplacement' : "0",
+               'maximumNumberOfEvaluations' : "900",
+               'maximumNumberOfCorrections': "25",
+               'metricSamplingStrategy' : "Random",
+               'costMetric' : "MMI",
+               'removeIntensityOutliers' : "0",
+               'ROIAutoClosingSize' : "9",
+               'maskProcessingMode' : "ROI"}
+
+
+     # run ModelToLabelMap-CLI Module
+     self.cliNode=None
+     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, params, wait_for_completion = True)
 
 
 
