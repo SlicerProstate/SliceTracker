@@ -484,21 +484,26 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Show Rigid Registration
     self.rigidCheckBox=qt.QCheckBox()
     self.rigidCheckBox.setText('Show Rigid Registration')
+    self.rigidCheckBox.connect('clicked(bool)',self.onRigidCheckBoxClicked)
 
     # Show Rigid Registration
     self.affineCheckBox=qt.QCheckBox()
     self.affineCheckBox.setText('Show Affine Registration')
     self.affineCheckBox.setChecked(1)
+    self.affineCheckBox.connect('clicked(bool)',self.onAffineCheckBoxClicked)
 
     # Show Rigid Registration
     self.bsplineCheckBox=qt.QCheckBox()
     self.bsplineCheckBox.setText('Show BSpline Registration')
+    self.bsplineCheckBox.connect('clicked(bool)',self.onBSplineCheckBoxClicked)
 
     # Show Rigid Registration
     self.targetCheckBox=qt.QCheckBox()
     self.targetCheckBox.setText('Show Transformed Targets')
     self.targetCheckBox.setChecked(1)
+    self.targetCheckBox.connect('clicked(bool)',self.onTargetCheckBox)
 
+    # Add widgets to layout
     self.evaluationGroupBoxLayout.addWidget(self.rigidCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.affineCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.bsplineCheckBox)
@@ -513,20 +518,52 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.opacitySlider.setMinimum(0)
     self.opacitySlider.setValue(100)
     self.opacitySlider.setMaximumWidth(200)
-
-
-    # TODO: Set interval to 0.1
-    # self.opacitySlider.setTickInterval(0.1)
-    # self.opacitySlider.setSingleStep(0.1)
-
     self.evaluationGroupBoxLayout.addWidget(self.opacitySlider)
-    # self.evaluationGroupBoxLayout.addRow("Opacity ", self.opacitySlider)
+
+    # Save Data Button
     self.saveDataButton=qt.QPushButton('Save Data')
     self.saveDataButton.setMaximumWidth(150)
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
-    # Layout within the dummy collapsible button
 
+  def onBSplineCheckBoxClicked(self):
+
+    if self.bsplineCheckBox.isChecked():
+
+      # uncheck the other Buttons
+      self.affineCheckBox.setChecked(0)
+      self.rigidCheckBox.setChecked(0)
+
+    return True
+
+  def onAffineCheckBoxClicked(self):
+
+    if self.affineCheckBox.isChecked():
+
+      # uncheck the other Buttons
+      self.bsplineCheckBox.setChecked(0)
+      self.rigidCheckBox.setChecked(0)
+
+    return True
+
+  def onRigidCheckBoxClicked(self):
+
+    if self.rigidCheckBox.isChecked():
+      # uncheck the other Buttons
+      self.affineCheckBox.setChecked(0)
+      self.bsplineCheckBox.setChecked(0)
+
+
+    return True
+
+  def onTargetCheckBox(self):
+
+    fiducialNode=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
+    self.markupsLogic=slicer.modules.markups.logic()
+    if self.targetCheckBox.isChecked():
+      self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
+    if not self.targetCheckBox.isChecked():
+      self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,0)
 
   def onsimulateDataIncomeButton1(self):
 
@@ -673,8 +710,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # set markups visible
 
-    markupsLogic=slicer.modules.markups.logic()
-    markupsLogic.SetAllMarkupsVisibility(preopTargetsNode,1)
+    self.markupsLogic=slicer.modules.markups.logic()
+    self.markupsLogic.SetAllMarkupsVisibility(preopTargetsNode,1)
 
     # rotate volume to plane
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(preoplabelVolumeNode)
@@ -768,14 +805,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       v.SetName(name)
       slicer.mrmlScene.AddNode(v)
 
+    # set last inputVolume Node as Reference Volume in Label Selection
+    self.referenceVolumeSelector.setCurrentNode(v)
+
+    # set last inputVolume Node as Intraop Image Volume in Registration
+    self.intraopVolumeSelector.setCurrentNode(v)
 
     # Fit Volume To Screen
     slicer.app.applicationLogic().FitSliceToAll()
-
-    # TODO:
-
-    # set inputVolume Node as Reference Volume in Label Selection
-    # set inputVolume Node as Intraop Image Volume in Registration
 
   def cleanup(self):
     pass
@@ -841,7 +878,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.currentFileList.append(item)
 
   def initializeListener(self):
-    # check, if button is checked:
 
     if self.watchIntraopCheckbox.isChecked():
      numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
@@ -852,7 +888,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def startTimer(self):
     numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
-    # print ('number of files : ',numberOfFiles)
 
     if self.getlastNumberOfFiles() < numberOfFiles:
      self.waitingForSeriesToBeCompleted()
@@ -982,14 +1017,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
        # apply transform
        fiducialNode.SetAndObserveTransformNodeID(transformNode.GetID())
+       fiducialNode.SetName('targets-REG')
 
-
+       # harden the transform
+       tfmLogic = slicer.modules.transforms.logic()
+       tfmLogic.hardenTransform(fiducialNode)
 
 
     # switch to Evaluation Section
     self.tabWidget.setCurrentIndex(3)
 
-    # Hide all Labels in Red and Yellow
+    # Get SliceWidgets
     layoutManager=slicer.app.layoutManager()
 
     redWidget = layoutManager.sliceWidget('Red')
@@ -998,26 +1036,32 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     compositNodeRed = redWidget.mrmlSliceCompositeNode()
     compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
 
+    # set Side By Side View to compare volumes
+    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+
+    # Hide Labels
     compositNodeRed.SetLabelOpacity(0)
     compositNodeYellow.SetLabelOpacity(0)
 
     # Set Intraop Image Foreground in Red
-    compositNodeRed.SetBackgroundVolumeID(fixedVolume.GetID())
+    compositNodeRed.SetBackgroundVolumeID(outputVolume.GetID())
 
     # Set REG Image Background in Red
-    compositNodeRed.SetForegroundVolumeID(outputVolume.GetID())
+    compositNodeRed.SetForegroundVolumeID(fixedVolume.GetID())
 
-    # Hide Targets in Red
+
+    # set markups visible
+    self.markupsLogic=slicer.modules.markups.logic()
+    self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
+
+    # TODO: Hide Targets in Red; show Targets in Yellow
     compositNodeRed.SetFiducialVisibility(0)
+    compositNodeYellow.SetFiducialVisibility(1)
 
     # set Intraop Image Foreground in Yellow
     compositNodeRed.SetForegroundVolumeID(fixedVolume.GetID())
 
-    # set markups visible
-    markupsLogic=slicer.modules.markups.logic()
-    markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
-
-    # show Targets in Yellow
+    # jump slice to show Targets in Yellow
     slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNode.GetID(),1)
 
     # set both orientations to axial
@@ -1029,6 +1073,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     sliceNodeRed.SetOrientationToAxial()
     sliceNodeYellow.SetOrientationToAxial()
+
+  def setVolumeToWidget(self,volume):
+
+    self.intraopLabelSelector.setCurrentNode(volume)
+
+    return True
 
 
 
@@ -1217,11 +1267,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.RemoveNode(slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0))
 
     # set Intraop Label Volume
-    RegistrationModuleWidget.intraopLabelSelector.setCurrentNode(outputLabelMap)
+    RegistrationModuleWidget.setVolumeToWidget(outputLabelMap)
 
     # reset MarkupsText Scale
     self.markupsLogic.SetDefaultMarkupsDisplayNodeTextScale(3.4)
-
 
   def runBRAINSFit(self,movingImage,fixedImage,movingImageLabel,fixedImageLabel):
 
