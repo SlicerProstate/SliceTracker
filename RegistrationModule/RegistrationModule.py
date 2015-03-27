@@ -55,6 +55,33 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     sliceNodeRed.SetOrientationToAxial()
     sliceNodeYellow.SetOrientationToAxial()
 
+    # create Patient WatchBox
+
+    self.patientViewBox=qt.QGroupBox()
+    self.patientViewBox.setStyleSheet('background-color: rgb(230,230,230)')
+    self.patientViewBox.setFixedHeight(80)
+    self.patientViewBoxLayout=qt.QGridLayout()
+    self.patientViewBox.setLayout(self.patientViewBoxLayout)
+    self.patientViewBoxLayout.setColumnMinimumWidth(1,100)
+    self.patientViewBoxLayout.setColumnMinimumWidth(2,100)
+    self.layout.addWidget(self.patientViewBox)
+
+    self.patientID=qt.QLabel()
+    self.patientID.setText('Patient ID: ')
+    self.patientViewBoxLayout.addWidget(self.patientID,1,1)
+
+    self.patientName=qt.QLabel()
+    self.patientName.setText('Patient Name: ')
+    self.patientViewBoxLayout.addWidget(self.patientName,2,1)
+
+    self.patientSex=qt.QLabel()
+    self.patientSex.setText('Date of Birth: ')
+    self.patientViewBoxLayout.addWidget(self.patientSex,3,1)
+
+    self.patientHeight=qt.QLabel()
+    self.patientHeight.setText('Date of Study:')
+    self.patientViewBoxLayout.addWidget(self.patientHeight,4,1)
+
 
 
     # create TabWidget
@@ -121,9 +148,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     selectPatientRowLayout = qt.QHBoxLayout()
 
     # Create PatientSelector
-    patientSelector=ctk.ctkComboBox()
-    selectPatientRowLayout.addWidget(patientSelector)
-    self.dataSelectionGroupBoxLayout.addRow("Select Patient: ", selectPatientRowLayout)
+    self.patientSelector=ctk.ctkComboBox()
+    selectPatientRowLayout.addWidget(self.patientSelector)
+    self.dataSelectionGroupBoxLayout.addRow("Choose Patient: ", selectPatientRowLayout)
 
     # TODO: Update Section if database changed
 
@@ -131,9 +158,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     patientNames = []
     patientIDs = []
+    patientSexs = []
+    patientHeights = []
 
     if db.patients()==None:
-      patientSelector.addItem('None patient found')
+      self.patientSelector.addItem('None patient found')
     for patient in db.patients():
       for study in db.studiesForPatient(patient):
         for series in db.seriesForStudy(study):
@@ -146,9 +175,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
                patientIDs.append(db.fileValue(file,'0010,0020'))
 
 
+
+
+    print patientNames
+    print patientIDs
+
     # add patientNames and patientIDs to patientSelector
     for patient in patientIDs:
-     patientSelector.addItem(patient)
+     self.patientSelector.addItem(patient)
 
     # "load Preop Data" - Button
     self.loadPreopDataButton = qt.QPushButton("Load and Present Preop Data")
@@ -204,18 +238,21 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.simulateDataIncomeButton = qt.QPushButton("Delete Everything in IntraopFolder")
     self.simulateDataIncomeButton.toolTip = ("Delete Everthing in IntraopFolder")
     self.simulateDataIncomeButton.enabled = True
+    self.simulateDataIncomeButton.setStyleSheet('background-color: rgb(255,102,0)')
     self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton)
 
     # Simulate DICOM Income 2
     self.simulateDataIncomeButton2 = qt.QPushButton("Simulate Data Income 1")
     self.simulateDataIncomeButton2.toolTip = ("Simulate Data Income 1")
     self.simulateDataIncomeButton2.enabled = True
+    self.simulateDataIncomeButton2.setStyleSheet('background-color: rgb(255,102,0)')
     self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton2)
 
     # Simulate DICOM Income 3
     self.simulateDataIncomeButton3 = qt.QPushButton("Simulate Data Income 2")
     self.simulateDataIncomeButton3.toolTip = ("Simulate Data Income 2")
     self.simulateDataIncomeButton3.enabled = True
+    self.simulateDataIncomeButton3.setStyleSheet('background-color: rgb(255,102,0)')
     self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton3)
 
 
@@ -323,7 +360,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     buttonBox1.addButton(applySegmentationButton,buttonBox1.ActionRole)
     buttonBox1.addButton(startQuickSegmentationButton,buttonBox1.ActionRole)
     buttonBox1.addButton(startLabelSegmentationButton,buttonBox1.ActionRole)
-
     buttonBox1.setLayoutDirection(1)
     buttonBox1.centerButtons=False
     self.labelSelectionGroupBoxLayout.addWidget(buttonBox1)
@@ -461,21 +497,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Apply Affine Registration
     #
 
-    self.applyRegistrationButton = qt.QPushButton("Apply Affine Registration")
+
+
+    greenCheckPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-greenCheck.png')
+    greenCheckIcon=qt.QIcon(greenCheckPixmap)
+    self.applyRegistrationButton = qt.QPushButton("Apply Registration")
+    self.applyRegistrationButton.setIcon(greenCheckIcon)
     self.applyRegistrationButton.toolTip = "Run the algorithm."
     self.applyRegistrationButton.enabled = True
+    self.applyRegistrationButton.setFixedHeight(45)
     self.registrationGroupBoxLayout.addRow(self.applyRegistrationButton)
     self.applyRegistrationButton.connect('clicked(bool)',self.applyRegistration)
 
-    #
-    # Apply BSpline Registration
-    #
-
-    self.applyBSplineRegistrationButton = qt.QPushButton("Apply BSpline Registration")
-    self.applyBSplineRegistrationButton.toolTip = "Run the algorithm."
-    self.applyBSplineRegistrationButton.enabled = True
-    self.registrationGroupBoxLayout.addRow(self.applyBSplineRegistrationButton)
-    self.applyBSplineRegistrationButton.connect('clicked(bool)',self.onApplyBSplineRegistrationButton)
 
 
     #
@@ -485,6 +518,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.loadAndSetDataButton = qt.QPushButton("load And Set data")
     self.loadAndSetDataButton.toolTip = "Run the algorithm."
     self.loadAndSetDataButton.enabled = True
+    self.loadAndSetDataButton.setStyleSheet('background-color: rgb(255,102,0)')
     self.registrationGroupBoxLayout.addRow(self.loadAndSetDataButton)
     self.loadAndSetDataButton.connect('clicked(bool)',self.loadAndSetdata)
 
@@ -532,8 +566,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBoxLayout.addWidget(self.opacitySlider)
 
     # Save Data Button
+    littleDiscPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-littleDisc.png')
+    littleDiscIcon=qt.QIcon(littleDiscPixmap)
     self.saveDataButton=qt.QPushButton('Save Data')
     self.saveDataButton.setMaximumWidth(150)
+    self.saveDataButton.setIcon(littleDiscIcon)
+
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
 
@@ -575,7 +613,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
         # Set Background: -
 
-
   def onAffineCheckBoxClicked(self):
 
     if self.affineCheckBox.isChecked():
@@ -614,7 +651,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
         # Set Background: -
 
-
   def onRigidCheckBoxClicked(self):
 
     if self.rigidCheckBox.isChecked():
@@ -636,7 +672,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
 
       # Get the Affine Volume Node
-      affineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Affine').GetItemAsObject(0)
+      rigidVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Rigid').GetItemAsObject(0)
 
       # Get the Intraop Volume Node
 
@@ -645,7 +681,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # Red Slice View:
 
         # Set Foreground: intraop image
-      compositNodeRed.SetForegroundVolumeID(affineVolumeNode.GetID())
+      compositNodeRed.SetForegroundVolumeID(rigidVolumeNode.GetID())
         # Set Background: Affine Image
       compositNodeRed.SetBackgroundVolumeID(intraopVolumeNode.GetID())
 
@@ -655,8 +691,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         # Set Foreground: Intraop Image + Fidicuals Affine transformed
 
         # Set Background: -
-
-
 
   def onTargetCheckBox(self):
 
@@ -1263,14 +1297,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Set REG Image Background in Red
     compositNodeRed.SetForegroundVolumeID(outputVolumeBSpline.GetID())
 
-
     # set markups visible
     self.markupsLogic=slicer.modules.markups.logic()
     self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
-
-    # TODO: Hide Targets in Red; show Targets in Yellow
-    compositNodeRed.SetFiducialVisibility(0)
-    compositNodeYellow.SetFiducialVisibility(1)
 
     # set Intraop Image Foreground in Yellow
     compositNodeYellow.SetBackgroundVolumeID(fixedVolume.GetID())
@@ -1288,214 +1317,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     sliceNodeRed.SetOrientationToAxial()
     sliceNodeYellow.SetOrientationToAxial()
 
-  def applyAffineRegistration(self):
-
-
-    fixedVolume= self.intraopVolumeSelector.currentNode()
-    movingVolume = self.preopVolumeSelector.currentNode()
-    fixedLabel=self.intraopLabelSelector.currentNode()
-    movingLabel=self.preopLabelSelector.currentNode()
-
-    if fixedVolume and movingVolume and fixedLabel and movingLabel:
-     print ('apply Registration')
-
-     # check, if import is correct
-     if not fixedVolume or not movingVolume or not fixedLabel or not movingLabel:
-       print 'Please see input parameters'
-
-     # print out params helper
-     cliModule = slicer.modules.brainsfit
-     n=cliModule.cliModuleLogic().CreateNode()
-     for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
-       for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
-         print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
-
-     # define output transform
-     outputTransform=slicer.vtkMRMLLinearTransformNode()
-     outputTransform.SetName('transform-REG')
-
-     # define output volume
-     outputVolume=slicer.vtkMRMLScalarVolumeNode()
-     outputVolume.SetName('preop-REG')
-
-     # add output nodes
-     slicer.mrmlScene.AddNode(outputVolume)
-     slicer.mrmlScene.AddNode(outputTransform)
-
-     # define params
-     params = {'fixedVolume': fixedVolume,
-               'movingVolume': movingVolume,
-               'fixedBinaryVolume' : fixedLabel,
-               'movingBinaryVolume' : movingLabel,
-               'outputTransform' : outputTransform.GetID(),
-               'outputVolume' : outputVolume.GetID(),
-               'maskProcessingMode' : "ROI",
-               'initializeTransformMode' : "useCenterOfROIAlign",
-               'useAffine' : True}
-
-     # run ModelToLabelMap-CLI Module
-     self.cliNode=None
-     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, params, wait_for_completion = True)
-
-     # TRANSFORM FIDUCIAL TARGETS
-     if self.fiducialSelector.currentNode() != None:
-
-       print ("Perform Target Transform")
-
-       # get transform
-       transformNode=slicer.mrmlScene.GetNodesByName('transform-REG').GetItemAsObject(0)
-
-       # get fiducials
-       fiducialNode=slicer.mrmlScene.GetNodesByName('Case1-landmarks').GetItemAsObject(0)
-
-       # apply transform
-       fiducialNode.SetAndObserveTransformNodeID(transformNode.GetID())
-       fiducialNode.SetName('targets-REG')
-
-       # harden the transform
-       tfmLogic = slicer.modules.transforms.logic()
-       tfmLogic.hardenTransform(fiducialNode)
-
-
-    # switch to Evaluation Section
-    self.tabWidget.setCurrentIndex(3)
-
-    # Get SliceWidgets
-    layoutManager=slicer.app.layoutManager()
-
-    redWidget = layoutManager.sliceWidget('Red')
-    yellowWidget = layoutManager.sliceWidget('Yellow')
-
-    compositNodeRed = redWidget.mrmlSliceCompositeNode()
-    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
-
-    # set Side By Side View to compare volumes
-    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
-
-    # Hide Labels
-    compositNodeRed.SetLabelOpacity(0)
-    compositNodeYellow.SetLabelOpacity(0)
-
-    # Set Intraop Image Foreground in Red
-    compositNodeRed.SetBackgroundVolumeID(outputVolume.GetID())
-
-    # Set REG Image Background in Red
-    compositNodeRed.SetForegroundVolumeID(fixedVolume.GetID())
-
-
-    # set markups visible
-    self.markupsLogic=slicer.modules.markups.logic()
-    self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
-
-    # TODO: Hide Targets in Red; show Targets in Yellow
-    compositNodeRed.SetFiducialVisibility(0)
-    compositNodeYellow.SetFiducialVisibility(1)
-
-    # set Intraop Image Foreground in Yellow
-    compositNodeRed.SetForegroundVolumeID(fixedVolume.GetID())
-
-    # jump slice to show Targets in Yellow
-    slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNode.GetID(),1)
-
-    # set both orientations to axial
-    redLogic=redWidget.sliceLogic()
-    yellowLogic=yellowWidget.sliceLogic()
-
-    sliceNodeRed=redLogic.GetSliceNode()
-    sliceNodeYellow=yellowLogic.GetSliceNode()
-
-    sliceNodeRed.SetOrientationToAxial()
-    sliceNodeYellow.SetOrientationToAxial()
-
-  def onApplyBSplineRegistrationButton(self):
-
-    fixedVolume= self.intraopVolumeSelector.currentNode()
-    movingVolume = self.preopVolumeSelector.currentNode()
-    fixedLabel=self.intraopLabelSelector.currentNode()
-    movingLabel=self.preopLabelSelector.currentNode()
-
-    if fixedVolume and movingVolume and fixedLabel and movingLabel:
-     print ('apply Registration')
-
-     # print out params helper
-     cliModule = slicer.modules.brainsfit
-     n=cliModule.cliModuleLogic().CreateNode()
-     for groupIndex in xrange(0,n.GetNumberOfParameterGroups()):
-       for parameterIndex in xrange(0,n.GetNumberOfParametersInGroup(groupIndex)):
-         print '  Parameter ({0}/{1}): {2}'.format(groupIndex, parameterIndex, n.GetParameterName(groupIndex, parameterIndex))
-
-     # define output linear transform
-     outputTransformLinear=slicer.vtkMRMLLinearTransformNode()
-     outputTransformLinear.SetName('transform-Linear')
-
-     # define output BSpline transform
-     outputTransformBSpline=slicer.vtkMRMLBSplineTransformNode()
-     outputTransformBSpline.SetName('transform-BSpline')
-
-     # define output volume
-     outputVolumeBSpline=slicer.vtkMRMLScalarVolumeNode()
-     outputVolumeBSpline.SetName('reg-BSpline')
-
-     # add output nodes
-     slicer.mrmlScene.AddNode(outputVolumeBSpline)
-     slicer.mrmlScene.AddNode(outputTransformLinear)
-     slicer.mrmlScene.AddNode(outputTransformBSpline)
-
-     # define params
-     params = {'fixedVolume': fixedVolume,
-               'movingVolume': movingVolume,
-               'outputVolume' : outputVolumeBSpline.GetID(),
-               'bsplineTransform' : outputTransformBSpline.GetID(),
-               'movingBinaryVolume' : movingLabel,
-               'fixedBinaryVolume' : fixedLabel,
-               # 'linearTransform' : outputTransformLinear.GetID(),
-               'initializeTransformMode' : "useCenterOfROIAlign",
-               'samplingPercentage' : "0.002",
-               'useRigid' : True,
-               'useAffine' : True,
-               'useROIBSpline' : True,
-               'useBSpline' : True,
-               'useScaleVersor3D' : True,
-               'useScaleSkewVersor3D' : True,
-               'splineGridSize' : "3,3,3",
-               'numberOfIterations' : "1500",
-               'maskProcessing' : "ROI",
-               'outputVolumePixelType' : "float",
-               'backgroundFillValue' : "0",
-               'maskInferiorCutOffFromCenter' : "1000",
-               'interpolationMode' : "Linear",
-               'minimumStepLength' : "0.005",
-               'translationScale' : "1000",
-               'reproportionScale' : "1",
-               'skewScale' : "1",
-               'numberOfHistogramBins' : "50",
-               'numberOfMatchPoints': "10",
-               'numberOfSamples' : "100000",
-               'fixedVolumeTimeIndex' : "0",
-               'movingVolumeTimeIndex' : "0",
-               'medianFilterSize' : "0,0,0",
-               'ROIAutoDilateSize' : "0",
-               'relaxationFactor' : "0.5",
-               'maximumStepLength' : "0.2",
-               'failureExitCode' : "-1",
-               'numberOfThreads': "-1",
-               'debugLevel': "0",
-               'costFunctionConvergenceFactor' : "1.00E+09",
-               'projectedGradientTolerance' : "1.00E-05",
-               'maxBSplineDisplacement' : "0",
-               'maximumNumberOfEvaluations' : "900",
-               'maximumNumberOfCorrections': "25",
-               'metricSamplingStrategy' : "Random",
-               'costMetric' : "MMI",
-               'removeIntensityOutliers' : "0",
-               'ROIAutoClosingSize' : "9",
-               'maskProcessingMode' : "ROI"}
-
-
-     # run ModelToLabelMap-CLI Module
-     self.cliNode=None
-     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, params, wait_for_completion = True)
-
+    # make markups visible in yellow slice view
+    dispNode = fiducialNode.GetDisplayNode()
+    yellowSliceNode=slicer.mrmlScene.GetNodesByName('Yellow').GetItemAsObject(0)
+    dispNode.AddViewNodeID(yellowSliceNode.GetID())
 
 
 #
