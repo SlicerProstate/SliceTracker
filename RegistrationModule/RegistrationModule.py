@@ -586,16 +586,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
+
+
   def updatePatientViewBox(self):
 
     if self.patientSelector.currentIndex != None:
 
-      currentPatientName=None
+      self.currentPatientName=None
       # get the current index from patientSelector comboBox
       currentIndex=self.patientSelector.currentIndex
 
       # get the current patient ID
-      currentID=self.patientIDs[currentIndex]
+      self.currentID=self.patientIDs[currentIndex]
 
       # initialize dicomDatabase
       db = slicer.dicomDatabase
@@ -607,7 +609,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
           for series in db.seriesForStudy(study):
             for file in db.filesForSeries(series):
 
-               if db.fileValue(file,'0010,00020') == currentID:
+               if db.fileValue(file,'0010,00020') == self.currentID:
                  currentPatientNameDicom= db.fileValue(file,'0010,0010')
                  try:
                    currentBirthDateDicom = db.fileValue(file,'0010,0030')
@@ -619,34 +621,71 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       else:
         # convert date of birth from 19550112 (yyyymmdd) to 1955-01-12
         currentBirthDateDicom=str(currentBirthDateDicom)
-        currentBirthDate=currentBirthDateDicom[0:4]+"-"+currentBirthDateDicom[4:6]+"-"+currentBirthDateDicom[6:8]
+        self.currentBirthDate=currentBirthDateDicom[0:4]+"-"+currentBirthDateDicom[4:6]+"-"+currentBirthDateDicom[6:8]
 
       # convert patient name from XXXX^XXXX to XXXXX, XXXXX
       if "^" in currentPatientNameDicom:
-        print currentPatientNameDicom
         length=len(currentPatientNameDicom)
-        print ('length '+str(length))
         index=currentPatientNameDicom.index('^')
-        print ('index '+str(index))
-        currentPatientName=currentPatientNameDicom[0:index]+", "+currentPatientNameDicom[index+1:length]
-        print currentPatientName
-
+        self.currentPatientName=currentPatientNameDicom[0:index]+", "+currentPatientNameDicom[index+1:length]
 
       # get today date
-      currentStudyDate=qt.QDate().currentDate()
+      self.currentStudyDate=qt.QDate().currentDate()
 
       # update patientViewBox
       try:
-        self.patientBirthDate.setText(currentBirthDate)
+        self.patientBirthDate.setText(self.currentBirthDate)
       except:
         pass
-      if currentPatientName != None:
-        self.patientName.setText(currentPatientName)
+      if self.currentPatientName != None:
+        self.patientName.setText(self.currentPatientName)
       else:
         self.patientName.setText(currentPatientNameDicom)
-      self.patientID.setText(currentID)
-      self.studyDate.setText(str(currentStudyDate))
+        self.currentPatientName=currentPatientNameDicom
+      self.patientID.setText(self.currentID)
+      self.studyDate.setText(str(self.currentStudyDate))
 
+      # call updateAnnotation
+      self.updateAnnotationDisplays()
+
+  def updateAnnotationDisplays(self):
+
+    try:
+      self.redRenderer.RemoveViewProp(self.cornerAnnotationDisplay)
+    except:
+      pass
+
+    self.rightUpperMessage = str(self.currentStudyDate)
+    self.rightBottomMessage = ""
+    self.leftUpperMessage = ('Patient Name :' + str(self.currentPatientName)
+                             +'\n'+ 'Patient ID :' + str(self.currentID))
+    self.leftBottomMessage = ""
+
+    # Corner annotation function
+
+    self.cornerAnnotationDisplay = vtk.vtkCornerAnnotation()
+    self.cornerAnnotationDisplay.SetLinearFontScaleFactor(2)
+    self.cornerAnnotationDisplay.SetNonlinearFontScaleFactor(1)
+    self.cornerAnnotationDisplay.SetMaximumFontSize(12)
+    self.cornerAnnotationDisplay.GetTextProperty().SetColor(1,1,1)
+
+    self.cornerAnnotationDisplay.SetText(0,self.leftBottomMessage)
+    self.cornerAnnotationDisplay.SetText(1,self.rightBottomMessage)
+    self.cornerAnnotationDisplay.SetText(2,self.leftUpperMessage)
+    self.cornerAnnotationDisplay.SetText(3,self.rightUpperMessage)
+    self.cornerAnnotationDisplay.VisibilityOn()
+
+    layout=slicer.app.layoutManager()
+    self.redRenderer = layout.sliceWidget('Red').sliceView().renderWindow().GetRenderers().GetFirstRenderer()
+
+    self.redRenderer.AddViewProp(self.cornerAnnotationDisplay)
+    self.redRenderWindow = self.redRenderer.GetRenderWindow()
+    self.redRenderWindow.Render()
+
+    self.yellowRenderer = layout.sliceWidget('Yellow').sliceView().renderWindow().GetRenderers().GetFirstRenderer()
+    self.yellowRenderer.AddViewProp(self.cornerAnnotationDisplay)
+    self.yellowRenderWindow = self.yellowRenderer.GetRenderWindow()
+    self.yellowRenderWindow.Render()
 
   def updatePatientSelector(self):
     # TODO: How to observe dicom database for changes
@@ -1003,13 +1042,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # create DICOMScalarVolumePlugin and load selectedSeries data from files into slicer
     scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
 
+    # check if selectedPatient == importPatient
+
     try:
       loadables = scalarVolumePlugin.examine(self.loadableList)
     except:
       print ('There is nothing to load. You have to select series')
 
-
-    # for s in range(len(self.selectedSeries)):
+    # load series into slicer
     for s in range(len(loadables)):
       print str(len(loadables))
       print ('loadables name : '+str(loadables[s].name))
@@ -1178,9 +1218,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     if fixedVolume and movingVolume and fixedLabel and movingLabel:
 
-
      # check, if import is correct
-     if not fixedVolume or not movingVolume or not fixedLabel or not movingLabel:
+     if fixedVolume == None or movingVolume == None or fixedLabel == None or movingLabel == None:
        print 'Please see input parameters'
 
      """
@@ -1398,6 +1437,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     dispNode = fiducialNode.GetDisplayNode()
     yellowSliceNode=slicer.mrmlScene.GetNodesByName('Yellow').GetItemAsObject(0)
     dispNode.AddViewNodeID(yellowSliceNode.GetID())
+
 
 
 #
