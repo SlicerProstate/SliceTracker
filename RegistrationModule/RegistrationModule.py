@@ -62,25 +62,42 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.patientViewBox.setFixedHeight(80)
     self.patientViewBoxLayout=qt.QGridLayout()
     self.patientViewBox.setLayout(self.patientViewBoxLayout)
-    self.patientViewBoxLayout.setColumnMinimumWidth(1,100)
-    self.patientViewBoxLayout.setColumnMinimumWidth(2,100)
+    self.patientViewBoxLayout.setColumnMinimumWidth(1,50)
+    self.patientViewBoxLayout.setColumnMinimumWidth(2,50)
+    self.patientViewBoxLayout.setHorizontalSpacing(0)
     self.layout.addWidget(self.patientViewBox)
 
+    self.kategoryPatientID=qt.QLabel()
+    self.kategoryPatientID.setText('Patient ID: ')
+    self.patientViewBoxLayout.addWidget(self.kategoryPatientID,1,1)
+
+    self.kategoryPatientName=qt.QLabel()
+    self.kategoryPatientName.setText('Patient Name: ')
+    self.patientViewBoxLayout.addWidget(self.kategoryPatientName,2,1)
+
+    self.kategoryPatientBirthDate=qt.QLabel()
+    self.kategoryPatientBirthDate.setText('Date of Birth: ')
+    self.patientViewBoxLayout.addWidget(self.kategoryPatientBirthDate,3,1)
+
+    self.kategoryStudyDate=qt.QLabel()
+    self.kategoryStudyDate.setText('Date of Study:')
+    self.patientViewBoxLayout.addWidget(self.kategoryStudyDate,4,1)
+
     self.patientID=qt.QLabel()
-    self.patientID.setText('Patient ID: ')
-    self.patientViewBoxLayout.addWidget(self.patientID,1,1)
+    self.patientID.setText('None')
+    self.patientViewBoxLayout.addWidget(self.patientID,1,2)
 
     self.patientName=qt.QLabel()
-    self.patientName.setText('Patient Name: ')
-    self.patientViewBoxLayout.addWidget(self.patientName,2,1)
+    self.patientName.setText('None')
+    self.patientViewBoxLayout.addWidget(self.patientName,2,2)
 
-    self.patientSex=qt.QLabel()
-    self.patientSex.setText('Date of Birth: ')
-    self.patientViewBoxLayout.addWidget(self.patientSex,3,1)
+    self.patientBirthDate=qt.QLabel()
+    self.patientBirthDate.setText('None')
+    self.patientViewBoxLayout.addWidget(self.patientBirthDate,3,2)
 
-    self.patientHeight=qt.QLabel()
-    self.patientHeight.setText('Date of Study:')
-    self.patientViewBoxLayout.addWidget(self.patientHeight,4,1)
+    self.studyDate=qt.QLabel()
+    self.studyDate.setText('None')
+    self.patientViewBoxLayout.addWidget(self.studyDate,4,2)
 
 
 
@@ -149,17 +166,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Create PatientSelector
     self.patientSelector=ctk.ctkComboBox()
+    # self.patientSelector.setDefaultText('Please Choose a Patient')
+    self.patientSelector.connect('currentIndexChanged(int)',self.updatePatientViewBox)
     selectPatientRowLayout.addWidget(self.patientSelector)
-    self.dataSelectionGroupBoxLayout.addRow("Choose Patient: ", selectPatientRowLayout)
+    self.dataSelectionGroupBoxLayout.addRow("Choose Patient ID: ", selectPatientRowLayout)
 
     # TODO: Update Section if database changed
 
     db = slicer.dicomDatabase
 
-    patientNames = []
-    patientIDs = []
-    patientSexs = []
-    patientHeights = []
+    self.patientNames = []
+    self.patientIDs = []
 
     if db.patients()==None:
       self.patientSelector.addItem('None patient found')
@@ -168,20 +185,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         for series in db.seriesForStudy(study):
           for file in db.filesForSeries(series):
 
-             if db.fileValue(file,'0010,0010') not in patientNames:
-               patientNames.append(db.fileValue(file,'0010,0010'))
+             if db.fileValue(file,'0010,0010') not in self.patientNames:
+               self.patientNames.append(db.fileValue(file,'0010,0010'))
 
-             if db.fileValue(file,'0010,0020') not in patientIDs:
-               patientIDs.append(db.fileValue(file,'0010,0020'))
-
-
+             if db.fileValue(file,'0010,0020') not in self.patientIDs:
+               self.patientIDs.append(db.fileValue(file,'0010,0020'))
 
 
-    print patientNames
-    print patientIDs
 
     # add patientNames and patientIDs to patientSelector
-    for patient in patientIDs:
+    for patient in self.patientIDs:
      self.patientSelector.addItem(patient)
 
     # "load Preop Data" - Button
@@ -400,7 +413,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
 
-
     #
     # Step 3: Registration
     #
@@ -574,6 +586,71 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
+  def updatePatientViewBox(self):
+
+    if self.patientSelector.currentIndex != None:
+
+      currentPatientName=None
+      # get the current index from patientSelector comboBox
+      currentIndex=self.patientSelector.currentIndex
+
+      # get the current patient ID
+      currentID=self.patientIDs[currentIndex]
+
+      # initialize dicomDatabase
+      db = slicer.dicomDatabase
+      db.connect('databaseChanged(int)',self.updatePatientSelector)
+
+      # looking for currentPatientName and currentBirthDate
+      for patient in db.patients():
+        for study in db.studiesForPatient(patient):
+          for series in db.seriesForStudy(study):
+            for file in db.filesForSeries(series):
+
+               if db.fileValue(file,'0010,00020') == currentID:
+                 currentPatientNameDicom= db.fileValue(file,'0010,0010')
+                 try:
+                   currentBirthDateDicom = db.fileValue(file,'0010,0030')
+                 except:
+                   currentBirthDateDicom = None
+
+      if currentBirthDateDicom == None:
+        self.patientBirthDate.setText('No Date found')
+      else:
+        # convert date of birth from 19550112 (yyyymmdd) to 1955-01-12
+        currentBirthDateDicom=str(currentBirthDateDicom)
+        currentBirthDate=currentBirthDateDicom[0:4]+"-"+currentBirthDateDicom[4:6]+"-"+currentBirthDateDicom[6:8]
+
+      # convert patient name from XXXX^XXXX to XXXXX, XXXXX
+      if "^" in currentPatientNameDicom:
+        print currentPatientNameDicom
+        length=len(currentPatientNameDicom)
+        print ('length '+str(length))
+        index=currentPatientNameDicom.index('^')
+        print ('index '+str(index))
+        currentPatientName=currentPatientNameDicom[0:index]+", "+currentPatientNameDicom[index+1:length]
+        print currentPatientName
+
+
+      # get today date
+      currentStudyDate=qt.QDate().currentDate()
+
+      # update patientViewBox
+      try:
+        self.patientBirthDate.setText(currentBirthDate)
+      except:
+        pass
+      if currentPatientName != None:
+        self.patientName.setText(currentPatientName)
+      else:
+        self.patientName.setText(currentPatientNameDicom)
+      self.patientID.setText(currentID)
+      self.studyDate.setText(str(currentStudyDate))
+
+
+  def updatePatientSelector(self):
+    # TODO: How to observe dicom database for changes
+    print ('DATA BASE CHANGED!!')
 
   def onBSplineCheckBoxClicked(self):
 
