@@ -39,6 +39,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Parameters
     self.settings = qt.QSettings() #TODO: write path settings as in PCAMP Review
     self.temp = None
+    self.updatePatientSelectorFlag = True
+    self.warningFlag = False
+    self.patientNames = []
+    self.patientIDs = []
+    self.addedPatients = []
 
     layoutManager=slicer.app.layoutManager()
 
@@ -54,6 +59,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     sliceNodeYellow=yellowLogic.GetSliceNode()
     sliceNodeRed.SetOrientationToAxial()
     sliceNodeYellow.SetOrientationToAxial()
+
+    """
+    moduleDir = os.path.dirname(self.parent.path)
+    print ('moduleDir = '+moduleDir)
+    """
 
     # create Patient WatchBox
 
@@ -98,7 +108,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.studyDate=qt.QLabel()
     self.studyDate.setText('None')
     self.patientViewBoxLayout.addWidget(self.studyDate,4,2)
-
 
 
     # create TabWidget
@@ -171,31 +180,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     selectPatientRowLayout.addWidget(self.patientSelector)
     self.dataSelectionGroupBoxLayout.addRow("Choose Patient ID: ", selectPatientRowLayout)
 
-    # TODO: Update Section if database changed
-
+    # fill PatientSelector with Patients that are currently in slicer.dicomDatabase
     db = slicer.dicomDatabase
-
-    self.patientNames = []
-    self.patientIDs = []
-
-    if db.patients()==None:
-      self.patientSelector.addItem('None patient found')
-    for patient in db.patients():
-      for study in db.studiesForPatient(patient):
-        for series in db.seriesForStudy(study):
-          for file in db.filesForSeries(series):
-
-             if db.fileValue(file,'0010,0010') not in self.patientNames:
-               self.patientNames.append(db.fileValue(file,'0010,0010'))
-
-             if db.fileValue(file,'0010,0020') not in self.patientIDs:
-               self.patientIDs.append(db.fileValue(file,'0010,0020'))
-
-
-
-    # add patientNames and patientIDs to patientSelector
-    for patient in self.patientIDs:
-     self.patientSelector.addItem(patient)
+    db.connect('databaseChanged()', self.updatePatientSelector)
+    self.updatePatientSelector()
 
     # "load Preop Data" - Button
     self.loadPreopDataButton = qt.QPushButton("Load and Present Preop Data")
@@ -587,6 +575,33 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
 
+  def updatePatientSelector(self):
+
+    if self.updatePatientSelectorFlag:
+
+      db = slicer.dicomDatabase
+
+      # check current patients and patient ID's in the slicer.dicomDatabase
+      if db.patients()==None:
+        self.patientSelector.addItem('None patient found')
+      for patient in db.patients():
+        for study in db.studiesForPatient(patient):
+          for series in db.seriesForStudy(study):
+            for file in db.filesForSeries(series):
+
+               if db.fileValue(file,'0010,0010') not in self.patientNames:
+                 self.patientNames.append(db.fileValue(file,'0010,0010'))
+
+               if db.fileValue(file,'0010,0020') not in self.patientIDs:
+                 self.patientIDs.append(db.fileValue(file,'0010,0020'))
+
+      # add patientNames and patientIDs to patientSelector
+      for patient in self.patientIDs:
+       if patient not in self.addedPatients:
+        self.patientSelector.addItem(patient)
+        self.addedPatients.append(patient)
+       else:
+         pass
 
   def updatePatientViewBox(self):
 
@@ -601,7 +616,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
       # initialize dicomDatabase
       db = slicer.dicomDatabase
-      db.connect('databaseChanged(int)',self.updatePatientSelector)
 
       # looking for currentPatientName and currentBirthDate
       for patient in db.patients():
@@ -686,10 +700,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.yellowRenderer.AddViewProp(self.cornerAnnotationDisplay)
     self.yellowRenderWindow = self.yellowRenderer.GetRenderWindow()
     self.yellowRenderWindow.Render()
-
-  def updatePatientSelector(self):
-    # TODO: How to observe dicom database for changes
-    print ('DATA BASE CHANGED!!')
 
   def onBSplineCheckBoxClicked(self):
 
@@ -853,7 +863,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onsimulateDataIncomeButton3(self):
 
-
     # copy DICOM Files into intraop folder
 
     imagePath= '/Users/peterbehringer/MyImageData/Prostate_AX_DWI/'
@@ -862,8 +871,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     filesToCopy = []
     for item in os.listdir(imagePath):
       filesToCopy.append(item)
-
-    print filesToCopy
 
     for file in filesToCopy:
 
@@ -1015,25 +1022,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
        self.selectedFileList.append(file)
 
     # create a list with lists of files of each series in them
-
     self.loadableList=[]
 
-    print ('selectedSeriesList : ')
-    print self.selectedSeriesList
-    print ('single file value, just checking : ')
-    print db.fileValue(self.selectedFileList[0],'0008,103E')
-    print ('selectedFileList : ')
-    print self.selectedFileList
-
+    # add all found series to loadableList
     for series in self.selectedSeriesList:
       fileListOfSeries =[]
       for file in self.selectedFileList:
         if db.fileValue(file,'0008,103E') == series:
           fileListOfSeries.append(file)
       self.loadableList.append(fileListOfSeries)
-
-    print ('loadableList = ')
-    print self.loadableList
 
   def loadSeriesIntoSlicer(self):
 
@@ -1046,6 +1043,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     try:
       loadables = scalarVolumePlugin.examine(self.loadableList)
+      print self.loadableList
     except:
       print ('There is nothing to load. You have to select series')
 
@@ -1067,18 +1065,22 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Fit Volume To Screen
     slicer.app.applicationLogic().FitSliceToAll()
 
+    # Allow PatientSelector to be updated
+    self.updatePatientSelectorFlag = True
+
   def cleanup(self):
     pass
 
   def waitingForSeriesToBeCompleted(self):
 
+    self.updatePatientSelectorFlag = False
+
     print ('***** New Data in intraop directory detected ***** ')
-    print ('waiting 5 more seconds for Series to be completed')
+    print ('waiting 2 more seconds for Series to be completed')
 
     qt.QTimer.singleShot(2000,self.importDICOMseries)
 
   def importDICOMseries(self):
-
 
     newFileList= []
     self.seriesList= []
@@ -1099,9 +1101,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
        importfile=str(self.intraopDirButton.directory+'/'+file)
        self.seriesList.append(db.fileValue(importfile,'0008,103E'))
 
-
     indexer.addDirectory(db,str(self.intraopDirButton.directory))
     indexer.waitForImportFinished()
+
     # create Checkable Item in GUI
 
     self.seriesModel.clear()
@@ -1120,9 +1122,36 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print('Those series are indexed into slicer.dicomDatabase')
     print self.seriesList
 
-    # notify the user
+    # check, if selectedPatient == incomePatient
+    for file in newFileList:
+      if db.fileValue(str(self.intraopDirButton.directory+'/'+file),'0010,0020') != self.patientSelector.currentText:
+        self.warningFlag=True
+    if self.warningFlag:
+      self.patientNotMatching(self.patientSelector.currentText,db.fileValue(str(self.intraopDirButton.directory+'/'+newFileList[0]),'0010,0020'))
 
-    # self.notifyUser(self.currentSeries)
+
+  def patientNotMatching(self,selectedPatient,incomePatient):
+
+    # create Pop-Up Window
+    self.notifyUserWindow = qt.QDialog(slicer.util.mainWindow())
+    self.notifyUserWindow.setWindowTitle("Patients Not Matching")
+    self.notifyUserWindow.setLayout(qt.QVBoxLayout())
+
+    # create Text Label
+    self.textLabel = qt.QLabel()
+    self.notifyUserWindow.layout().addWidget(self.textLabel)
+    self.textLabel.setText('WARNING: You selected Patient ID '+selectedPatient+', but Patient ID '+incomePatient+' just arrived in the income folder. ')
+
+    # create Push Button
+    self.pushButton = qt.QPushButton("OK")
+    self.notifyUserWindow.layout().addWidget(self.pushButton)
+    self.pushButton.connect('clicked(bool)',self.hideWindow)
+
+    # show the window
+    self.notifyUserWindow.show()
+
+  def hideWindow(self):
+    self.notifyUserWindow.hide()
 
   def createCurrentFileList(self):
 
@@ -1180,8 +1209,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.notifyUserWindow.layout().addWidget(self.pushButton2)
     self.notifyUserWindow.show()
 
-  def startTimer1(self):
-    print ('Timer started')
+  def showPatientWarning(self):
+
+    return True
+
 
   def onStartSegmentationButton(self):
     logic = RegistrationModuleLogic()
