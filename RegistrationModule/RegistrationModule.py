@@ -186,31 +186,40 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     db = slicer.dicomDatabase
     db.connect('databaseChanged()', self.updatePatientSelector)
 
+    """
     # "load Preop Data" - Button
     self.loadPreopDataButton = qt.QPushButton("Load preop data")
     self.loadPreopDataButton.toolTip = "Load preprocedural data into Slicer"
     self.loadPreopDataButton.enabled = True
-
+    self.dataSelectionGroupBoxLayout.addWidget(self.loadPreopDataButton)
+    """
+    """
     # "Watch Directory" - Button
     self.watchIntraopCheckbox=qt.QCheckBox()
     self.watchIntraopCheckbox.toolTip = "Watch Directory"
-
-    # Preop Directory Button
-    self.preopDirButton = ctk.ctkDirectoryButton()
-    self.preopDirButton.text = "Choose the preop data directory"
-    self.dataSelectionGroupBoxLayout.addRow("Preop directory selection:",self.preopDirButton)
-    self.dataSelectionGroupBoxLayout.addWidget(self.loadPreopDataButton)
-
-    # Preop Directory Button
-    self.intraopDirButton = ctk.ctkDirectoryButton()
-    self.intraopDirButton.text = "Choose the intraop data directory"
-    self.dataSelectionGroupBoxLayout.addRow("Intraop directory selection:",self.intraopDirButton)
     self.dataSelectionGroupBoxLayout.addRow("Watch Intraop Directory for new Data", self.watchIntraopCheckbox)
-    self.layout.addStretch(1)
+    """
 
-    # set Directory to my Test folder
-    self.intraopDirButton.directory='/Applications/A_INTRAOP_DIR'
-    self.preopDirButton.directory='/Applications/A_PREOP_DIR'
+    # Folder Button
+    folderPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-folder.png')
+    folderIcon=qt.QIcon(folderPixmap)
+
+
+    # Preop Directory Button
+    self.preopDirButton = qt.QPushButton(str(self.settings.value('RegistrationModule/PreopLocation')))
+    self.preopDirButton.connect('clicked()', self.onPreopDirSelected)
+    self.preopDirButton.setIcon(folderIcon)
+    self.dataSelectionGroupBoxLayout.addRow("Select data directory:", self.preopDirButton)
+
+
+    # Intraop Directory Button
+    self.intraopDirButton = qt.QPushButton(str(self.settings.value('RegistrationModule/PreopLocation')))
+    self.intraopDirButton.connect('clicked()', self.onIntraopDirSelected)
+    self.intraopDirButton.setIcon(folderIcon)
+    self.dataSelectionGroupBoxLayout.addRow("Select data directory:", self.intraopDirButton)
+
+
+    self.layout.addStretch(1)
 
     # SERIES SELECTION
     self.step3frame = ctk.ctkCollapsibleGroupBox()
@@ -396,9 +405,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # connections
 
-    self.watchIntraopCheckbox.connect('clicked(bool)', self.initializeListener)
+    # self.watchIntraopCheckbox.connect('clicked(bool)', self.initializeListener)
     self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
-    self.loadPreopDataButton.connect('clicked(bool)',self.loadPreopData)
+    # self.loadPreopDataButton.connect('clicked(bool)',self.loadPreopData)
     self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
 
 
@@ -576,15 +585,34 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
-    # enter Tab 1
-
+    # enter Module on Tab 1
     self.onTab1clicked()
+
+
+  def onPreopDirSelected(self):
+    self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory', '/Users/peterbehringer/MyImageData')
+    self.preopDirButton.text = self.preopDataDir
+    self.settings.setValue('RegistrationModule/PreopLocation', self.preopDataDir)
+    print('Directory selected:')
+    print(self.preopDataDir)
+    print(self.settings.value('RegistrationModule/PreopLocation'))
+
+  def onIntraopDirSelected(self):
+    self.intraopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Intraop data directory', '/Users/peterbehringer/MyImageData')
+    self.intraopDirButton.text = self.intraopDataDir
+    self.settings.setValue('RegistrationModule/IntraopLocation', self.intraopDataDir)
+    print('Directory selected:')
+    print(self.intraopDataDir)
+    print(self.settings.value('RegistrationModule/IntraopLocation'))
+    self.initializeListener()
+    print ('Listener initialized')
 
 
   def enterLabelSelectionSection(self):
 
     self.tabWidget.setCurrentIndex(1)
 
+    # TODO:
     # left side: show imported new Intraop Image as Reference
 
     # set Reference Volume -> new Intraop Image
@@ -621,13 +649,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # update the patients in patient selector
     self.updatePatientSelector()
 
+    # grab the settings from last session
+    settings = qt.QSettings()
+    # resultsLocation = settings.value('RegistrationModule/ResultsLocation')
+    preopLocation = settings.value('RegistrationModule/PreopLocation')
+    # outputLocation = settings.value('RegistrationModule/InputLocation')
 
+    print preopLocation
 
     # SCREEN SETUP
     # =========================================================================
 
     self.markupsLogic.SetDefaultMarkupsDisplayNodeTextScale(10)
-
 
     # =========================================================================
 
@@ -900,11 +933,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # create fileList
     fileList=[]
-    for item in os.listdir(self.intraopDirButton.directory):
+    for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir')):
       fileList.append(item)
 
     for file in fileList:
-     cmd = ('rm -Rf '+str(self.intraopDirButton.directory)+'/'+file)
+     cmd = ('rm -Rf '+str(self.settings.value('RegistrationModule/IntraopDir'))+'/'+file)
 
      os.system(cmd)
 
@@ -914,7 +947,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # copy DICOM Files into intraop folder
 
     imagePath= '/Users/peterbehringer/MyImageData/Prostate_AX_T2/'
-    intraopPath=self.intraopDirButton.directory
+    intraopPath=self.settings.value('RegistrationModule/IntraopDir')
 
     filesToCopy = []
     for item in os.listdir(imagePath):
@@ -933,7 +966,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # copy DICOM Files into intraop folder
 
     imagePath= '/Users/peterbehringer/MyImageData/Prostate_AX_DWI/'
-    intraopPath=self.intraopDirButton.directory
+    intraopPath=self.settings.value('RegistrationModule/IntraopDir')
 
     filesToCopy = []
     for item in os.listdir(imagePath):
@@ -991,16 +1024,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     volumeList=[]
     labelList=[]
 
-    for nrrd in os.listdir(self.preopDirButton.directory):
+    for nrrd in os.listdir(self.settings.value('RegistrationModule/preopLocation')):
       if len(nrrd)-nrrd.rfind('.nrrd') == 5:
-        volumeList.append(self.preopDirButton.directory+'/'+nrrd)
+        volumeList.append(self.settings.value('RegistrationModule/preopLocation')+'/'+nrrd)
 
     print ('volumes found :')
     print volumeList
 
-    for fcsv in os.listdir(self.preopDirButton.directory):
+    for fcsv in os.listdir(self.settings.value('RegistrationModule/preopLocation')):
       if len(fcsv)-fcsv.rfind('.fcsv') == 5:
-        fidList.append(self.preopDirButton.directory+'/'+fcsv)
+        fidList.append(self.settings.value('RegistrationModule/preopLocation')+'/'+fcsv)
+
 
     print ('fiducials found :')
     print fidList
@@ -1085,13 +1119,13 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.selectedFileList=[]
     db=slicer.dicomDatabase
 
-    for dcm in os.listdir(self.intraopDirButton.directory):
+    for dcm in os.listdir(self.settings.value('RegistrationModule/IntraopDir')):
       print ('current file = ' +str(dcm))
       if len(dcm)-dcm.rfind('.dcm') == 4 and dcm != ".DS_Store":
-        dcmFileList.append(self.intraopDirButton.directory+'/'+dcm)
+        dcmFileList.append(self.settings.value('RegistrationModule/IntraopDir')+'/'+dcm)
       if dcm != ".DS_Store":
         print (' files doesnt have DICOM ending')
-        dcmFileList.append(self.intraopDirButton.directory+'/'+dcm)
+        dcmFileList.append(self.settings.value('RegistrationModule/IntraopDir')+'/'+dcm)
 
     print ('dcmFileList is ready')
     print dcmFileList
@@ -1189,7 +1223,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     db=slicer.dicomDatabase
 
     # create a List NewFileList that contains only new files in the intraop directory
-    for item in os.listdir(self.intraopDirButton.directory):
+    for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir')):
       if item not in self.currentFileList:
         newFileList.append(item)
 
@@ -1200,15 +1234,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # import file in DICOM database
     for file in newFileList:
      if not file == ".DS_Store":
-       indexer.addFile(db,str(self.intraopDirButton.directory+'/'+file),None)
+       indexer.addFile(db,str(self.settings.value('RegistrationModule/IntraopDir')+'/'+file),None)
        print ('file '+str(file)+' was added by Indexer')
 
        # add Series to seriesList
-       if db.fileValue(str(self.intraopDirButton.directory+'/'+file),'0008,103E') not in self.seriesList:
-         importfile=str(self.intraopDirButton.directory+'/'+file)
+       if db.fileValue(str(self.settings.value('RegistrationModule/IntraopDir')+'/'+file),'0008,103E') not in self.seriesList:
+         importfile=str(self.settings.value('RegistrationModule/IntraopDir')+'/'+file)
          self.seriesList.append(db.fileValue(importfile,'0008,103E'))
 
-    indexer.addDirectory(db,str(self.intraopDirButton.directory))
+    indexer.addDirectory(db,str(self.settings.value('RegistrationModule/IntraopDir')))
     indexer.waitForImportFinished()
 
     print ('Step 2: seriesList: ')
@@ -1239,10 +1273,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # check, if selectedPatient == incomePatient
     for file in newFileList:
-      if db.fileValue(str(self.intraopDirButton.directory+'/'+file),'0010,0020') != self.patientSelector.currentText:
+      if db.fileValue(str(self.settings.value('RegistrationModule/IntraopDir')+'/'+file),'0010,0020') != self.patientSelector.currentText:
         self.warningFlag=True
     if self.warningFlag:
-      self.patientNotMatching(self.patientSelector.currentText,db.fileValue(str(self.intraopDirButton.directory+'/'+newFileList[0]),'0010,0020'))
+      self.patientNotMatching(self.patientSelector.currentText,db.fileValue(str(self.settings.value('RegistrationModule/IntraopDir')+'/'+newFileList[0]),'0010,0020'))
 
   def patientNotMatching(self,selectedPatient,incomePatient):
 
@@ -1270,20 +1304,19 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def createCurrentFileList(self):
 
     self.currentFileList=[]
-    for item in os.listdir(self.intraopDirButton.directory):
+    for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir')):
       self.currentFileList.append(item)
 
   def initializeListener(self):
 
-    if self.watchIntraopCheckbox.isChecked():
-     numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
-     self.temp=numberOfFiles
-     self.setlastNumberOfFiles(numberOfFiles)
-     self.createCurrentFileList()
-     self.startTimer()
+    numberOfFiles = len([item for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir'))])
+    self.temp=numberOfFiles
+    self.setlastNumberOfFiles(numberOfFiles)
+    self.createCurrentFileList()
+    self.startTimer()
 
   def startTimer(self):
-    numberOfFiles = len([item for item in os.listdir(self.intraopDirButton.directory)])
+    numberOfFiles = len([item for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir'))])
 
     if self.getlastNumberOfFiles() < numberOfFiles:
      self.waitingForSeriesToBeCompleted()
@@ -1353,6 +1386,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     intraopLabelMap.SetName('intraop-label')
     slicer.mrmlScene.AddNode(intraopLabelMap)
 
+    # TODO : Set Master Volume and Labelmap
 
     print ('after entering')
 
@@ -1373,9 +1407,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # set Value of labelmap
     editUtil.setLabel(1)
-
-
-
 
   def applyRegistration(self):
 
