@@ -45,6 +45,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.patientIDs = []
     self.addedPatients = []
 
+    self.markupsLogic=slicer.modules.markups.logic()
+
     layoutManager=slicer.app.layoutManager()
 
     # set Compare Screen
@@ -158,7 +160,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # TODO: set window layout for every step
     # self.tabWidget.currentIndex returns current user Tab position
-
+    self.tabWidget.connect('currentChanged(int)',self.tabWidgetClicked)
     # TODO: Integrate icons into Resources folder and add them to CMAKE file
 
     # Set Layout
@@ -183,10 +185,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # fill PatientSelector with Patients that are currently in slicer.dicomDatabase
     db = slicer.dicomDatabase
     db.connect('databaseChanged()', self.updatePatientSelector)
-    self.updatePatientSelector()
 
     # "load Preop Data" - Button
-    self.loadPreopDataButton = qt.QPushButton("Load and Present Preop Data")
+    self.loadPreopDataButton = qt.QPushButton("Load preop data")
     self.loadPreopDataButton.toolTip = "Load preprocedural data into Slicer"
     self.loadPreopDataButton.enabled = True
 
@@ -230,8 +231,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     step3Layout.addWidget(self.seriesView)
 
     # Load Series into Slicer Button
-    self.loadIntraopDataButton = qt.QPushButton("Load Series into Slicer")
-    self.loadIntraopDataButton.toolTip = "Load Series into Slicer"
+    self.loadIntraopDataButton = qt.QPushButton("Load and Segment")
+    self.loadIntraopDataButton.toolTip = "Load and Segment"
     self.loadIntraopDataButton.enabled = True
     self.dataSelectionGroupBoxLayout.addWidget(self.loadIntraopDataButton)
 
@@ -398,6 +399,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.watchIntraopCheckbox.connect('clicked(bool)', self.initializeListener)
     self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
     self.loadPreopDataButton.connect('clicked(bool)',self.loadPreopData)
+    self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
 
 
 
@@ -574,26 +576,92 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
+    # enter Tab 1
+
+    self.onTab1clicked()
+
+
+  def enterLabelSelectionSection(self):
+
+    self.tabWidget.setCurrentIndex(1)
+
+    # left side: show imported new Intraop Image as Reference
+
+    # set Reference Volume -> new Intraop Image
+
+    # right side:
+
+    # show preop T2-Image
+
+    # show segmentation label
+
+    # show contours only
+
+
+  def tabWidgetClicked(self):
+
+    if self.tabWidget.currentIndex==0:
+      self.onTab1clicked()
+
+        # set up window mode
+
+    if self.tabWidget.currentIndex==1:
+      self.onTab2clicked()
+
+        # show reference image
+
+    if self.tabWidget.currentIndex==2:
+      self.onTab3clicked()
+    if self.tabWidget.currentIndex==3:
+      self.onTab4clicked()
+
+  def onTab1clicked(self):
+    print 'entered Tab 1'
+
+    # update the patients in patient selector
+    self.updatePatientSelector()
+
+
+
+    # SCREEN SETUP
+    # =========================================================================
+
+    self.markupsLogic.SetDefaultMarkupsDisplayNodeTextScale(10)
+
+
+    # =========================================================================
+
+  def onTab2clicked(self):
+    print 'on Tab 2 clicked'
+
+  def onTab3clicked(self):
+    print 'on Tab 3 clicked'
+
+  def onTab4clicked(self):
+    print 'on Tab 4 clicked'
 
   def updatePatientSelector(self):
 
     if self.updatePatientSelectorFlag:
 
       db = slicer.dicomDatabase
+      indexer = ctk.ctkDICOMIndexer()
 
       # check current patients and patient ID's in the slicer.dicomDatabase
       if db.patients()==None:
         self.patientSelector.addItem('None patient found')
+
       for patient in db.patients():
         for study in db.studiesForPatient(patient):
           for series in db.seriesForStudy(study):
             for file in db.filesForSeries(series):
 
+               indexer.addFile(db,file,None)
                if db.fileValue(file,'0010,0010') not in self.patientNames:
-                 self.patientNames.append(db.fileValue(file,'0010,0010'))
+                 self.patientNames.append(slicer.dicomDatabase.fileValue(file,'0010,0010'))
 
-               if db.fileValue(file,'0010,0020') not in self.patientIDs:
-                 self.patientIDs.append(db.fileValue(file,'0010,0020'))
+               if slicer.dicomDatabase.fileValue(file,'0010,0020') not in self.patientIDs:
+                 self.patientIDs.append(slicer.dicomDatabase.fileValue(file,'0010,0020'))
 
       # add patientNames and patientIDs to patientSelector
       for patient in self.patientIDs:
@@ -660,7 +728,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.studyDate.setText(str(self.currentStudyDate))
 
       # call updateAnnotation
-      self.updateAnnotationDisplays()
+      # self.updateAnnotationDisplays()
 
   def updateAnnotationDisplays(self):
 
@@ -821,7 +889,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def onTargetCheckBox(self):
 
     fiducialNode=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
-    self.markupsLogic=slicer.modules.markups.logic()
     if self.targetCheckBox.isChecked():
       self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
     if not self.targetCheckBox.isChecked():
@@ -913,7 +980,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
     self.preopLabelSelector.setCurrentNode(preoplabelVolumeNode)
     self.intraopVolumeSelector.setCurrentNode(intraopImageVolume)
-    self.intraopLabelSelector.setCurrentNode(intraopLabelVolume)
+    # self.intraopLabelSelector.setCurrentNode(intraopLabelVolume)
     self.fiducialSelector.setCurrentNode(preopTargets)
 
   def loadPreopData(self):
@@ -983,6 +1050,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Fit Volume To Screen
     slicer.app.applicationLogic().FitSliceToAll()
 
+    # Set Fiducial Properties
+    markupsDisplayNode=preopTargetsNode.GetDisplayNode()
+
+    # Set Textscale
+    markupsDisplayNode.SetTextScale(1.6)
+
+    # Set Glyph Size
+    markupsDisplayNode.SetGlyphScale(1.0)
+
   def testFunction(self):
 
      print 'TestFUNCTION ENTERED'
@@ -1010,17 +1086,27 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     db=slicer.dicomDatabase
 
     for dcm in os.listdir(self.intraopDirButton.directory):
-      if len(dcm)-dcm.rfind('.dcm') == 4:
+      print ('current file = ' +str(dcm))
+      if len(dcm)-dcm.rfind('.dcm') == 4 and dcm != ".DS_Store":
         dcmFileList.append(self.intraopDirButton.directory+'/'+dcm)
+      if dcm != ".DS_Store":
+        print (' files doesnt have DICOM ending')
+        dcmFileList.append(self.intraopDirButton.directory+'/'+dcm)
+
+    print ('dcmFileList is ready')
+    print dcmFileList
 
     # get the selected Series List
     self.selectedSeriesList=self.getSelectedSeriesFromSelector()
 
+
     # write all selected files in selectedFileList
     for file in dcmFileList:
+     print ('current file L1101 : '+str(file))
      if db.fileValue(file,'0008,103E') in self.selectedSeriesList:
        self.selectedFileList.append(file)
 
+    print self.selectedFileList
     # create a list with lists of files of each series in them
     self.loadableList=[]
 
@@ -1031,6 +1117,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         if db.fileValue(file,'0008,103E') == series:
           fileListOfSeries.append(file)
       self.loadableList.append(fileListOfSeries)
+
+    print ('loadableList :')
+    print self.loadableList
 
   def loadSeriesIntoSlicer(self):
 
@@ -1043,10 +1132,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     try:
       loadables = scalarVolumePlugin.examine(self.loadableList)
-      print self.loadableList
+
     except:
       print ('There is nothing to load. You have to select series')
 
+    """
     # load series into slicer
     for s in range(len(loadables)):
       print str(len(loadables))
@@ -1055,6 +1145,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       v=scalarVolumePlugin.load(loadables[s])
       v.SetName(name)
       slicer.mrmlScene.AddNode(v)
+    """
+
+    name = loadables[0].name
+    v=scalarVolumePlugin.load(loadables[0])
+    v.SetName(name)
+    slicer.mrmlScene.AddNode(v)
+
+
+
 
     # set last inputVolume Node as Reference Volume in Label Selection
     self.referenceVolumeSelector.setCurrentNode(v)
@@ -1068,6 +1167,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Allow PatientSelector to be updated
     self.updatePatientSelectorFlag = True
 
+    self.enterLabelSelectionSection()
+
   def cleanup(self):
     pass
 
@@ -1078,7 +1179,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print ('***** New Data in intraop directory detected ***** ')
     print ('waiting 2 more seconds for Series to be completed')
 
-    qt.QTimer.singleShot(2000,self.importDICOMseries)
+    qt.QTimer.singleShot(5000,self.importDICOMseries)
 
   def importDICOMseries(self):
 
@@ -1092,17 +1193,27 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       if item not in self.currentFileList:
         newFileList.append(item)
 
+    print ('Step 1: newFileList: ')
+    print newFileList
+    print ()
+
     # import file in DICOM database
     for file in newFileList:
-     indexer.addFile(db,str(self.intraopDirButton.directory+'/'+file),None)
+     if not file == ".DS_Store":
+       indexer.addFile(db,str(self.intraopDirButton.directory+'/'+file),None)
+       print ('file '+str(file)+' was added by Indexer')
 
-     # add Series to seriesList
-     if db.fileValue(str(self.intraopDirButton.directory+'/'+file),'0008,103E') not in self.seriesList:
-       importfile=str(self.intraopDirButton.directory+'/'+file)
-       self.seriesList.append(db.fileValue(importfile,'0008,103E'))
+       # add Series to seriesList
+       if db.fileValue(str(self.intraopDirButton.directory+'/'+file),'0008,103E') not in self.seriesList:
+         importfile=str(self.intraopDirButton.directory+'/'+file)
+         self.seriesList.append(db.fileValue(importfile,'0008,103E'))
 
     indexer.addDirectory(db,str(self.intraopDirButton.directory))
     indexer.waitForImportFinished()
+
+    print ('Step 2: seriesList: ')
+    print self.seriesList
+    print ''
 
     # create Checkable Item in GUI
 
@@ -1116,6 +1227,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.seriesItems.append(sItem)
       self.seriesModel.appendRow(sItem)
       sItem.setCheckable(1)
+      if "PROSTATE" or "GUIDANCE" in seriesText:
+        print 'there is a prostate series here'
+        sItem.setCheckState(1)
+
 
     print('')
     print('DICOM import finished')
@@ -1128,7 +1243,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         self.warningFlag=True
     if self.warningFlag:
       self.patientNotMatching(self.patientSelector.currentText,db.fileValue(str(self.intraopDirButton.directory+'/'+newFileList[0]),'0010,0020'))
-
 
   def patientNotMatching(self,selectedPatient,incomePatient):
 
@@ -1209,11 +1323,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.notifyUserWindow.layout().addWidget(self.pushButton2)
     self.notifyUserWindow.show()
 
-  def showPatientWarning(self):
-
-    return True
-
-
   def onStartSegmentationButton(self):
     logic = RegistrationModuleLogic()
 
@@ -1236,9 +1345,37 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onStartLabelSegmentationButton(self):
 
-    #TODO: Create LabelMap, Choose Paint-Tool
 
-    return True
+    #TODO: Create LabelMap
+
+    intraopLabelMap=slicer.vtkMRMLScalarVolumeNode()
+    intraopLabelMap.SetLabelMap(1)
+    intraopLabelMap.SetName('intraop-label')
+    slicer.mrmlScene.AddNode(intraopLabelMap)
+
+
+    print ('after entering')
+
+    # choose Draw-Tool
+
+    import EditorLib
+    editUtil = EditorLib.EditUtil.EditUtil()
+
+    lm = slicer.app.layoutManager()
+
+    drawEffect=EditorLib.DrawEffectOptions()
+    drawEffect.setMRMLDefaults()
+    drawEffect.__del__()
+
+    # select drawTool in red Slice Widget
+    sliceWidget = lm.sliceWidget('Red')
+    drawTool=EditorLib.DrawEffectTool(sliceWidget)
+
+    # set Value of labelmap
+    editUtil.setLabel(1)
+
+
+
 
   def applyRegistration(self):
 
@@ -1599,8 +1736,13 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     inputMarkup.SetAndObserveDisplayNodeID(displayNode.GetID())
 
     # set Text Scale to 0
-    self.markupsLogic=slicer.modules.markups.logic()
-    self.markupsLogic.SetDefaultMarkupsDisplayNodeTextScale(0)
+    inputMarkupDisplayNode=slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0).GetDisplayNode()
+
+    # Set Textscale
+    inputMarkupDisplayNode.SetTextScale(0)
+
+    # Set Glyph Size
+    inputMarkupDisplayNode.SetGlyphScale(1.0)
 
     # add Observer
     inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateModel)
@@ -1656,7 +1798,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.RemoveNode(slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0))
 
     # set Intraop Label Volume
-    RegistrationModuleWidget.setVolumeToWidget(outputLabelMap)
+    # RegistrationModuleWidget.setVolumeToWidget(outputLabelMap)
 
     # reset MarkupsText Scale
     self.markupsLogic.SetDefaultMarkupsDisplayNodeTextScale(3.4)
