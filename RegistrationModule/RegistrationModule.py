@@ -588,6 +588,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # enter Module on Tab 1
     self.onTab1clicked()
 
+    print ('settings')
+    print (self.settings.value('RegistrationModule/IntraopDir'))
 
   def onPreopDirSelected(self):
     self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory', '/Users/peterbehringer/MyImageData')
@@ -604,8 +606,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print('Directory selected:')
     print(self.intraopDataDir)
     print(self.settings.value('RegistrationModule/IntraopLocation'))
-    self.initializeListener()
-    print ('Listener initialized')
+
+    print ('Now initialize listener')
+    if self.intraopDataDir != None:
+      self.initializeListener()
+
 
 
   def enterLabelSelectionSection(self):
@@ -933,11 +938,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # create fileList
     fileList=[]
-    for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir')):
+    for item in os.listdir(self.intraopDataDir):
       fileList.append(item)
 
     for file in fileList:
-     cmd = ('rm -Rf '+str(self.settings.value('RegistrationModule/IntraopDir'))+'/'+file)
+     cmd = ('rm -Rf '+str(self.intraopDataDir)+'/'+file)
 
      os.system(cmd)
 
@@ -947,7 +952,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # copy DICOM Files into intraop folder
 
     imagePath= '/Users/peterbehringer/MyImageData/Prostate_AX_T2/'
-    intraopPath=self.settings.value('RegistrationModule/IntraopDir')
+    intraopPath=self.intraopDataDir
 
     filesToCopy = []
     for item in os.listdir(imagePath):
@@ -966,7 +971,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # copy DICOM Files into intraop folder
 
     imagePath= '/Users/peterbehringer/MyImageData/Prostate_AX_DWI/'
-    intraopPath=self.settings.value('RegistrationModule/IntraopDir')
+    intraopPath=self.intraopDataDir
 
     filesToCopy = []
     for item in os.listdir(imagePath):
@@ -1119,13 +1124,13 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.selectedFileList=[]
     db=slicer.dicomDatabase
 
-    for dcm in os.listdir(self.settings.value('RegistrationModule/IntraopDir')):
+    for dcm in os.listdir(self.intraopDataDir):
       print ('current file = ' +str(dcm))
       if len(dcm)-dcm.rfind('.dcm') == 4 and dcm != ".DS_Store":
-        dcmFileList.append(self.settings.value('RegistrationModule/IntraopDir')+'/'+dcm)
+        dcmFileList.append(self.intraopDataDir+'/'+dcm)
       if dcm != ".DS_Store":
         print (' files doesnt have DICOM ending')
-        dcmFileList.append(self.settings.value('RegistrationModule/IntraopDir')+'/'+dcm)
+        dcmFileList.append(self.intraopDataDir+'/'+dcm)
 
     print ('dcmFileList is ready')
     print dcmFileList
@@ -1223,7 +1228,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     db=slicer.dicomDatabase
 
     # create a List NewFileList that contains only new files in the intraop directory
-    for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir')):
+    for item in os.listdir(self.intraopDataDir):
       if item not in self.currentFileList:
         newFileList.append(item)
 
@@ -1234,15 +1239,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # import file in DICOM database
     for file in newFileList:
      if not file == ".DS_Store":
-       indexer.addFile(db,str(self.settings.value('RegistrationModule/IntraopDir')+'/'+file),None)
+       indexer.addFile(db,str(self.intraopDataDir+'/'+file),None)
        print ('file '+str(file)+' was added by Indexer')
 
        # add Series to seriesList
-       if db.fileValue(str(self.settings.value('RegistrationModule/IntraopDir')+'/'+file),'0008,103E') not in self.seriesList:
-         importfile=str(self.settings.value('RegistrationModule/IntraopDir')+'/'+file)
+       if db.fileValue(str(self.intraopDataDir+'/'+file),'0008,103E') not in self.seriesList:
+         importfile=str(self.intraopDataDir+'/'+file)
          self.seriesList.append(db.fileValue(importfile,'0008,103E'))
 
-    indexer.addDirectory(db,str(self.settings.value('RegistrationModule/IntraopDir')))
+    indexer.addDirectory(db,str(self.intraopDataDir))
     indexer.waitForImportFinished()
 
     print ('Step 2: seriesList: ')
@@ -1273,10 +1278,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # check, if selectedPatient == incomePatient
     for file in newFileList:
-      if db.fileValue(str(self.settings.value('RegistrationModule/IntraopDir')+'/'+file),'0010,0020') != self.patientSelector.currentText:
+      if db.fileValue(self.intraopDataDir+'/'+file,'0010,0020') != self.patientSelector.currentText:
         self.warningFlag=True
     if self.warningFlag:
-      self.patientNotMatching(self.patientSelector.currentText,db.fileValue(str(self.settings.value('RegistrationModule/IntraopDir')+'/'+newFileList[0]),'0010,0020'))
+      self.patientNotMatching(self.patientSelector.currentText,db.fileValue(str(self.intraopDataDir+'/'+newFileList[0]),'0010,0020'))
 
   def patientNotMatching(self,selectedPatient,incomePatient):
 
@@ -1304,19 +1309,19 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def createCurrentFileList(self):
 
     self.currentFileList=[]
-    for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir')):
+    for item in os.listdir(self.intraopDataDir):
       self.currentFileList.append(item)
 
   def initializeListener(self):
 
-    numberOfFiles = len([item for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir'))])
+    numberOfFiles = len([item for item in os.listdir(self.intraopDataDir)])
     self.temp=numberOfFiles
     self.setlastNumberOfFiles(numberOfFiles)
     self.createCurrentFileList()
     self.startTimer()
 
   def startTimer(self):
-    numberOfFiles = len([item for item in os.listdir(self.settings.value('RegistrationModule/IntraopDir'))])
+    numberOfFiles = len([item for item in os.listdir(self.intraopDataDir)])
 
     if self.getlastNumberOfFiles() < numberOfFiles:
      self.waitingForSeriesToBeCompleted()
