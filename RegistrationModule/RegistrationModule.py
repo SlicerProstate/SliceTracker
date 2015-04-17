@@ -161,6 +161,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # TODO: set window layout for every step
     # self.tabWidget.currentIndex returns current user Tab position
     self.tabWidget.connect('currentChanged(int)',self.tabWidgetClicked)
+
+
     # TODO: Integrate icons into Resources folder and add them to CMAKE file
 
     # Set Layout
@@ -323,6 +325,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.startLabelSegmentationButton.setFixedWidth(70)
     self.startLabelSegmentationButton.setStyleSheet("background-color: rgb(255,255,255)")
 
+
     # Create Apply Segmentation Button
     pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-applySegmentation.png')
     icon=qt.QIcon(pixmap)
@@ -332,6 +335,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applySegmentationButton.setFixedHeight(70)
     self.applySegmentationButton.setFixedWidth(70)
     self.applySegmentationButton.setStyleSheet("background-color: rgb(255,255,255)")
+    self.applySegmentationButton.setEnabled(0)
 
     # Create ButtonBox to fill in those Buttons
     buttonBox1=qt.QDialogButtonBox()
@@ -669,11 +673,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     if self.referenceVolumeSelector.currentNode() == None:
       self.startLabelSegmentationButton.setEnabled(0)
       self.startQuickSegmentationButton.setEnabled(0)
-      self.applySegmentationButton.setEnabled(0)
+
     else:
       self.startLabelSegmentationButton.setEnabled(1)
       self.startQuickSegmentationButton.setEnabled(1)
-      self.applySegmentationButton.setEnabled(1)
+
 
 
 
@@ -1275,9 +1279,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.seriesModel.appendRow(sItem)
       sItem.setCheckable(1)
       if "PROSTATE" in seriesText:
-        print ('seriesText : ')
-        print seriesText
-        print '-> there is a prostate series here'
         sItem.setCheckState(1)
 
 
@@ -1287,7 +1288,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print self.seriesList
 
     # check, if selectedPatient == incomePatient
-
+    # set warning Flag = False if not
 
     for file in newFileList:
       print ('current file')
@@ -1298,6 +1299,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         print ('patientSelectorValue : '+str(self.patientSelector.currentText))
         print ('now setting true !')
         self.warningFlag=True
+      else:
+        self.warningFlag=False
 
 
     if self.warningFlag:
@@ -1383,16 +1386,22 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onStartSegmentationButton(self):
 
-    # unable startLabeling Button
-    self.startLabelSegmentationButton.setEnabled(0)
-
-
+    self.setQuickSegmentationModeON()
     logic = RegistrationModuleLogic()
-
     logic.run()
 
-    # unable startLabeling Button
+
+  def setQuickSegmentationModeON(self):
+    self.startLabelSegmentationButton.setEnabled(0)
+    self.startQuickSegmentationButton.setEnabled(0)
+    self.applySegmentationButton.setEnabled(1)
+
+  def setQuickSegmentationModeOFF(self):
     self.startLabelSegmentationButton.setEnabled(1)
+    self.startQuickSegmentationButton.setEnabled(1)
+    self.applySegmentationButton.setEnabled(0)
+
+
 
   def onApplySegmentationButton(self):
 
@@ -1412,6 +1421,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set Labelmap for Registration
     self.intraopLabelSelector.setCurrentNode(outputLabelmap)
 
+    # re-set Buttons
+    self.setQuickSegmentationModeOFF()
     # take draw tool with label 0 for correction
 
     import EditorLib
@@ -1656,7 +1667,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
        print ('number of targets : '+str(numberOfTargets))
 
        for index in range(numberOfTargets):
-         index+=1
          oldname=fiducialNode.GetNthFiducialLabel(index)
          fiducialNode.SetNthFiducialLabel(index,str(oldname)+'-REG')
          print ('changed name from '+oldname+' to '+str(oldname)+'-REG')
