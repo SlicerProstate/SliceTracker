@@ -37,7 +37,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     ScriptedLoadableModuleWidget.setup(self)
 
     # Parameters
-    self.settings = qt.QSettings() #TODO: write path settings as in PCAMP Review
+    self.settings = qt.QSettings()
     self.temp = None
     self.updatePatientSelectorFlag = True
     self.warningFlag = False
@@ -116,23 +116,28 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.tabWidget=qt.QTabWidget()
     self.layout.addWidget(self.tabWidget)
 
+    # get the TabBar
+    self.tabBar=self.tabWidget.childAt(1,1)
+
     # create Widgets inside each tab
-    dataSelectionGroupBox=qt.QGroupBox()
-    labelSelectionGroupBox=qt.QGroupBox()
-    registrationGroupBox=qt.QGroupBox()
-    evaluationGroupBox=qt.QGroupBox()
+    self.dataSelectionGroupBox=qt.QGroupBox()
+    self.labelSelectionGroupBox=qt.QGroupBox()
+    self.registrationGroupBox=qt.QGroupBox()
+    self.evaluationGroupBox=qt.QGroupBox()
 
     # set up PixMaps
-    dataSelectionIconPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection_fit.png')
-    labelSelectionIconPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-labelselection_fit.png')
-    registrationSectionPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-registration_fit.png')
-    evaluationSectionPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-evaluation_fit.png')
+    self.dataSelectionIconPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection_fit.png')
+    self.labelSelectionIconPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-labelselection_fit.png')
+    self.registrationSectionPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-registration_fit.png')
+    self.evaluationSectionPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-evaluation_fit.png')
+    self.newImageDataPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-newImageData.png')
 
     # set up Icons
-    dataSelectionIcon=qt.QIcon(dataSelectionIconPixmap)
-    labelSelectionIcon=qt.QIcon(labelSelectionIconPixmap)
-    registrationSectionIcon=qt.QIcon(registrationSectionPixmap)
-    evaluationSectionIcon=qt.QIcon(evaluationSectionPixmap)
+    self.dataSelectionIcon=qt.QIcon(self.dataSelectionIconPixmap)
+    self.labelSelectionIcon=qt.QIcon(self.labelSelectionIconPixmap)
+    self.registrationSectionIcon=qt.QIcon(self.registrationSectionPixmap)
+    self.evaluationSectionIcon=qt.QIcon(self.evaluationSectionPixmap)
+    self.newImageDataIcon=qt.QIcon(self.newImageDataPixmap)
 
     # set up Icon Size
     size=qt.QSize()
@@ -147,16 +152,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBoxLayout=qt.QFormLayout()
 
     # set Layout
-    dataSelectionGroupBox.setLayout(self.dataSelectionGroupBoxLayout)
-    labelSelectionGroupBox.setLayout(self.labelSelectionGroupBoxLayout)
-    registrationGroupBox.setLayout(self.registrationGroupBoxLayout)
-    evaluationGroupBox.setLayout(self.evaluationGroupBoxLayout)
+    self.dataSelectionGroupBox.setLayout(self.dataSelectionGroupBoxLayout)
+    self.labelSelectionGroupBox.setLayout(self.labelSelectionGroupBoxLayout)
+    self.registrationGroupBox.setLayout(self.registrationGroupBoxLayout)
+    self.evaluationGroupBox.setLayout(self.evaluationGroupBoxLayout)
 
     # add Tabs
-    self.tabWidget.addTab(dataSelectionGroupBox,dataSelectionIcon,'')
-    self.tabWidget.addTab(labelSelectionGroupBox,labelSelectionIcon,'')
-    self.tabWidget.addTab(registrationGroupBox,registrationSectionIcon,'')
-    self.tabWidget.addTab(evaluationGroupBox,evaluationSectionIcon,'')
+    self.tabWidget.addTab(self.dataSelectionGroupBox,self.dataSelectionIcon,'')
+    self.tabWidget.addTab(self.labelSelectionGroupBox,self.labelSelectionIcon,'')
+    self.tabWidget.addTab(self.registrationGroupBox,self.registrationSectionIcon,'')
+    self.tabWidget.addTab(self.evaluationGroupBox,self.evaluationSectionIcon,'')
 
     # TODO: set window layout for every step
     # self.tabWidget.currentIndex returns current user Tab position
@@ -252,6 +257,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.simulateDataIncomeButton4.setStyleSheet('background-color: rgb(255,102,0)')
     self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton4)
 
+    # Load Series into Slicer Button
+    self.updateAnnotationButton = qt.QPushButton("Update Annotation")
+    self.updateAnnotationButton.toolTip = "Load and Segment"
+    self.updateAnnotationButton.enabled = True
+    self.dataSelectionGroupBoxLayout.addWidget(self.updateAnnotationButton)
+    self.updateAnnotationButton.connect('clicked(bool)',self.updateAnnotationDisplays)
 
     #
     # Step 2: Label Selection
@@ -562,9 +573,82 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
+    # DEBUG: prepare IntraopFolder for tests
+    self.removeEverythingInIntraopTestFolder()
+
     # enter Module on Tab 1
     self.onTab1clicked()
 
+    # self.updateAnnotationDisplays()
+
+    self.newAnnotation()
+
+
+  def newAnnotation(self):
+
+
+    self.layoutManager = slicer.app.layoutManager()
+
+    redWidget = self.layoutManager.sliceWidget('Red')
+    redLogic=redWidget.sliceLogic()
+
+    backgroundLayer = redLogic.GetBackgroundLayer()
+    sliceNode = backgroundLayer.GetSliceNode()
+    sliceViewName = sliceNode.GetLayoutName()
+
+    self.renderers = {}
+
+    sliceWidget = self.layoutManager.sliceWidget(sliceViewName)
+    sliceView = sliceWidget.sliceView()
+
+    renderWindow = sliceView.renderWindow()
+    renderWindow.GetRenderers()
+    renderer = renderWindow.GetRenderers().GetItemAsObject(0)
+    self.renderers[sliceViewName] = renderer
+
+    sliceViewName = sliceNode.GetLayoutName()
+
+    textActor = vtk.vtkTextActor()
+    textActor.SetInput("PREOP")
+    textProperty = textActor.GetTextProperty()
+
+    # set font size
+    textProperty.SetFontSize(40)
+    textProperty.SetBold(1)
+
+    """
+    # set font family
+    if self.fontFamily == 'Times':
+      textProperty.SetFontFamilyToTimes()
+    else:
+      textProperty.SetFontFamilyToArial()
+    """
+
+    # set ruler text actor position
+
+    redWidget = self.layoutManager.sliceWidget('Red')
+    sliceView = redWidget.sliceView()
+
+    viewWidth=sliceView.width
+
+    print ('viewWidth = '+ str(viewWidth))
+    print str(int(0.5*viewWidth))
+
+    viewHeight=sliceView.height
+
+    print ('viewHeight = '+ str(viewHeight))
+    print str(int(0.8*viewHeight))
+
+    textActor.SetDisplayPosition(int(0.5*viewWidth),int(0.8*viewHeight))
+
+    #renderer.AddActor2D(self.scalingRulerActors[sliceViewName])
+    renderer.RemoveActor2D(textActor)
+    renderer.AddActor2D(textActor)
+
+
+  def removeEverythingInIntraopTestFolder(self):
+    cmd="rm -rfv /Users/peterbehringer/MyImageData/A_INTRAOP_DIR/*"
+    os.system(cmd)
 
   def onPreopDirSelected(self):
     self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory', '/Users/peterbehringer/MyImageData/A_PREOP_DIR')
@@ -590,7 +674,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print ('Now initialize listener')
     if self.intraopDataDir != None:
       self.initializeListener()
-
 
 
   def enterLabelSelectionSection(self):
@@ -648,6 +731,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.onTab4clicked()
 
   def onTab1clicked(self):
+
+    # set the standard Icon
+    self.tabBar.setTabIcon(0,self.dataSelectionIcon)
 
     # grab the settings from last session
     settings = qt.QSettings()
@@ -791,44 +877,74 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # call updateAnnotation
       # self.updateAnnotationDisplays()
 
+      # TODO: Set EVALUATION TAB DISABLED AT BEGINNING
+
   def updateAnnotationDisplays(self):
 
     try:
-      self.redRenderer.RemoveViewProp(self.cornerAnnotationDisplay)
+      self.redRenderer.RemoveViewProp(self.cornerAnnotationDisplayRed)
     except:
       pass
 
-    self.rightUpperMessage = str(self.currentStudyDate)
+    self.rightUpperMessage = 'PREOP'
     self.rightBottomMessage = ""
-    self.leftUpperMessage = ('Patient Name :' + str(self.currentPatientName)
-                             +'\n'+ 'Patient ID :' + str(self.currentID))
+    self.leftUpperMessage = ""
     self.leftBottomMessage = ""
 
     # Corner annotation function
 
-    self.cornerAnnotationDisplay = vtk.vtkCornerAnnotation()
-    self.cornerAnnotationDisplay.SetLinearFontScaleFactor(2)
-    self.cornerAnnotationDisplay.SetNonlinearFontScaleFactor(1)
-    self.cornerAnnotationDisplay.SetMaximumFontSize(12)
-    self.cornerAnnotationDisplay.GetTextProperty().SetColor(1,1,1)
+    self.cornerAnnotationDisplayRed = vtk.vtkCornerAnnotation()
+    self.cornerAnnotationDisplayRed.SetLinearFontScaleFactor(1)
+    self.cornerAnnotationDisplayRed.SetNonlinearFontScaleFactor(1)
+    self.cornerAnnotationDisplayRed.SetMaximumFontSize(60)
+    self.cornerAnnotationDisplayRed.GetTextProperty().SetColor(1,1,1)
+    self.cornerAnnotationDisplayRed.GetTextProperty().SetBold(1)
+    self.cornerAnnotationDisplayRed.GetTextProperty().SetFontSize(20)
+    self.cornerAnnotationDisplayRed.SetPosition(5,5)
+    self.cornerAnnotationDisplayRed.SetPosition2(5,5)
+    self.cornerAnnotationDisplayRed.SetBoundsOn()
 
-    self.cornerAnnotationDisplay.SetText(0,self.leftBottomMessage)
-    self.cornerAnnotationDisplay.SetText(1,self.rightBottomMessage)
-    self.cornerAnnotationDisplay.SetText(2,self.leftUpperMessage)
-    self.cornerAnnotationDisplay.SetText(3,self.rightUpperMessage)
-    self.cornerAnnotationDisplay.VisibilityOn()
+
+
+    self.cornerAnnotationDisplayRed.SetText(0,self.leftBottomMessage)
+    self.cornerAnnotationDisplayRed.SetText(1,self.rightBottomMessage)
+    self.cornerAnnotationDisplayRed.SetText(2,self.leftUpperMessage)
+    self.cornerAnnotationDisplayRed.SetText(3,self.rightUpperMessage)
+    self.cornerAnnotationDisplayRed.VisibilityOn()
+
+
+    # Corner annotation function
+
+    self.cornerAnnotationDisplayYellow = vtk.vtkCornerAnnotation()
+    self.cornerAnnotationDisplayYellow.SetLinearFontScaleFactor(1)
+    self.cornerAnnotationDisplayYellow.SetNonlinearFontScaleFactor(1)
+    self.cornerAnnotationDisplayYellow.SetMaximumFontSize(60)
+    self.cornerAnnotationDisplayYellow.GetTextProperty().SetColor(1,1,1)
+    self.cornerAnnotationDisplayYellow.GetTextProperty().SetBold(1)
+    self.cornerAnnotationDisplayYellow.GetTextProperty().SetFontSize(20)
+    self.cornerAnnotationDisplayYellow.SetPosition(5,5)
+    self.cornerAnnotationDisplayYellow.SetPosition2(5,5)
+    self.cornerAnnotationDisplayYellow.UseBoundsOn()
+
+    self.cornerAnnotationDisplayYellow.SetText(0,self.leftBottomMessage)
+    self.cornerAnnotationDisplayYellow.SetText(1,self.rightBottomMessage)
+    self.cornerAnnotationDisplayYellow.SetText(2,self.leftUpperMessage)
+    self.cornerAnnotationDisplayYellow.SetText(3,'INTRAOP')
+    self.cornerAnnotationDisplayYellow.VisibilityOn()
 
     layout=slicer.app.layoutManager()
     self.redRenderer = layout.sliceWidget('Red').sliceView().renderWindow().GetRenderers().GetFirstRenderer()
 
-    self.redRenderer.AddViewProp(self.cornerAnnotationDisplay)
+    self.redRenderer.AddViewProp(self.cornerAnnotationDisplayRed)
     self.redRenderWindow = self.redRenderer.GetRenderWindow()
     self.redRenderWindow.Render()
 
     self.yellowRenderer = layout.sliceWidget('Yellow').sliceView().renderWindow().GetRenderers().GetFirstRenderer()
-    self.yellowRenderer.AddViewProp(self.cornerAnnotationDisplay)
+    self.yellowRenderer.AddViewProp(self.cornerAnnotationDisplayYellow)
     self.yellowRenderWindow = self.yellowRenderer.GetRenderWindow()
     self.yellowRenderWindow.Render()
+
+
 
   def onBSplineCheckBoxClicked(self):
 
@@ -1175,6 +1291,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print ('loadableList :')
     print self.loadableList
 
+
+
+
   def loadSeriesIntoSlicer(self):
 
     self.createLoadableFileListFromSelection()
@@ -1291,13 +1410,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set warning Flag = False if not
 
     for file in newFileList:
-      print ('current file')
-      print file
       if file != ".DS_Store" and db.fileValue(self.intraopDataDir+'/'+file,'0010,0020') != self.currentID:
-
-        print ('fileValue : '+str(db.fileValue(self.intraopDataDir+'/'+file,'0010,0020')))
-        print ('patientSelectorValue : '+str(self.patientSelector.currentText))
-        print ('now setting true !')
         self.warningFlag=True
       else:
         self.warningFlag=False
@@ -1305,6 +1418,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     if self.warningFlag:
       self.patientNotMatching(self.currentID,db.fileValue(str(self.intraopDataDir+'/'+newFileList[2]),'0010,0020'))
+
+    if not self.tabWidget.currentIndex == 0:
+      print ('here comes the change function')
+      self.tabBar.setTabIcon(0,self.newImageDataIcon)
+
+
+
+
 
   def patientNotMatching(self,selectedPatient,incomePatient):
 
@@ -1350,11 +1471,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      self.waitingForSeriesToBeCompleted()
 
      self.setlastNumberOfFiles(numberOfFiles)
-     qt.QTimer.singleShot(1000,self.startTimer)
+     qt.QTimer.singleShot(500,self.startTimer)
 
     else:
      self.setlastNumberOfFiles(numberOfFiles)
-     qt.QTimer.singleShot(1000,self.startTimer)
+     qt.QTimer.singleShot(500,self.startTimer)
 
   def setlastNumberOfFiles(self,number):
     self.temp = number
