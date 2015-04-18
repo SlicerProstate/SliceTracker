@@ -215,7 +215,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # SERIES SELECTION
     self.step3frame = ctk.ctkCollapsibleGroupBox()
-    self.step3frame.setTitle("Intraop Series selection")
+    self.step3frame.setTitle("Intraop Series")
     self.dataSelectionGroupBoxLayout.addRow(self.step3frame)
     step3Layout = qt.QFormLayout(self.step3frame)
 
@@ -581,7 +581,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # self.updateAnnotationDisplays()
 
-    self.newAnnotation()
 
 
   def newAnnotation(self):
@@ -639,12 +638,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print ('viewHeight = '+ str(viewHeight))
     print str(int(0.8*viewHeight))
 
-    textActor.SetDisplayPosition(int(0.5*viewWidth),int(0.8*viewHeight))
+    textActor.SetDisplayPosition(int(0.5*viewWidth)+300,int(0.8*viewHeight)+800)
 
     #renderer.AddActor2D(self.scalingRulerActors[sliceViewName])
     renderer.RemoveActor2D(textActor)
     renderer.AddActor2D(textActor)
-
 
   def removeEverythingInIntraopTestFolder(self):
     cmd="rm -rfv /Users/peterbehringer/MyImageData/A_INTRAOP_DIR/*"
@@ -674,7 +672,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print ('Now initialize listener')
     if self.intraopDataDir != None:
       self.initializeListener()
-
 
   def enterLabelSelectionSection(self):
 
@@ -711,7 +708,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # show segmentation label
 
     # show contours only
-
 
   def tabWidgetClicked(self):
 
@@ -776,9 +772,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.applyRegistrationButton.setEnabled(1)
     else:
       self.applyRegistrationButton.setEnabled(0)
-
-
-
 
   def onTab4clicked(self):
     print 'on Tab 4 clicked'
@@ -874,13 +867,88 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.patientID.setText(self.currentID)
       self.studyDate.setText(str(self.currentStudyDate))
 
-      # call updateAnnotation
-      # self.updateAnnotationDisplays()
-
       # TODO: Set EVALUATION TAB DISABLED AT BEGINNING
 
-  def updateAnnotationDisplays(self):
+  def updateAnnotation(self):
+    lm = slicer.app.layoutManager()
 
+    # get SliceWidgets
+    rw = lm.sliceWidget('Red')
+    rv = rw.sliceView()
+
+    # get sliceViews
+    yw=lm.sliceWidget('Yellow')
+    yv=yw.sliceView()
+
+    # get renderWindows
+    redRenderWindow = rv.renderWindow()
+    yellowRenderWindow=yv.renderWindow()
+
+    # get Interactors
+    redInteractor = redRenderWindow.GetInteractor()
+    yellowInteractor = yellowRenderWindow.GetInteractor()
+
+    # set Texts Actors
+    textRed = vtk.vtkTextActor()
+    textRed.SetInput('PREOP')
+    textPropertyRed = textRed.GetTextProperty()
+    textPropertyRed.SetFontSize(10)
+    textPropertyRed.SetColor(1,0,0)
+    textPropertyRed.SetBold(1)
+
+    textYellow = vtk.vtkTextActor()
+    textYellow.SetInput('INTRAOP')
+    textPropertyYellow = textYellow.GetTextProperty()
+    textPropertyYellow.SetFontSize(10)
+    textPropertyYellow.SetColor(1,0,0)
+    textPropertyYellow.SetBold(1)
+
+    # set Text Representation
+    text_representation = vtk.vtkTextRepresentation()
+    xsize = 0.15
+    ysize = 0.15
+    ypos = 0.05
+    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
+    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
+
+
+    # set Text Widgets
+    text_widget_red = vtk.vtkTextWidget()
+    text_widget_red.SetRepresentation(text_representation)
+    text_widget_red.SetInteractor(redInteractor)
+    text_widget_red.SetTextActor(textRed)
+    text_widget_red.SelectableOff()
+    text_widget_red.On()
+
+    text_widget_yellow = vtk.vtkTextWidget()
+    text_widget_yellow.SetRepresentation(text_representation)
+    text_widget_yellow.SetInteractor(yellowInteractor)
+    text_widget_yellow.SetTextActor(textYellow)
+    text_widget_yellow.SelectableOff()
+    text_widget_yellow.On()
+
+
+  def updateAnnotationDisplays(self):
+    # get SliceWidgets
+
+    rw=self.layout
+
+    self.layoutManager = slicer.app.layoutManager()
+    rw = self.layoutManager.sliceWidget('Red')
+    yw=self.layoutManager.sliceWidget('Yellow')
+
+    # update the Slice Annotation
+    sliceLogicRed = rw.sliceLogic()
+    sliceLogicYellow=yw.sliceLogic()
+
+
+    sliceLogicRed.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateAnnotation)
+    sliceLogicYellow.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateAnnotation)
+
+    self.updateAnnotation()
+
+
+    """
     try:
       self.redRenderer.RemoveViewProp(self.cornerAnnotationDisplayRed)
     except:
@@ -943,7 +1011,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.yellowRenderer.AddViewProp(self.cornerAnnotationDisplayYellow)
     self.yellowRenderWindow = self.yellowRenderer.GetRenderWindow()
     self.yellowRenderWindow.Render()
-
+    """
 
 
   def onBSplineCheckBoxClicked(self):
