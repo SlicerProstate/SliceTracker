@@ -45,6 +45,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.patientIDs = []
     self.addedPatients = []
 
+
+
     self.markupsLogic=slicer.modules.markups.logic()
 
     layoutManager=slicer.app.layoutManager()
@@ -215,7 +217,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # SERIES SELECTION
     self.step3frame = ctk.ctkCollapsibleGroupBox()
-    self.step3frame.setTitle("Intraop Series")
+    self.step3frame.setTitle("Intraop series")
     self.dataSelectionGroupBoxLayout.addRow(self.step3frame)
     step3Layout = qt.QFormLayout(self.step3frame)
 
@@ -261,9 +263,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.updateAnnotationButton = qt.QPushButton("Update Annotation")
     self.updateAnnotationButton.toolTip = "Load and Segment"
     self.updateAnnotationButton.enabled = True
-    self.dataSelectionGroupBoxLayout.addWidget(self.updateAnnotationButton)
-    self.updateAnnotationButton.connect('clicked(bool)',self.updateAnnotationDisplays)
-
+    # self.dataSelectionGroupBoxLayout.addWidget(self.updateAnnotationButton)
+    self.updateAnnotationButton.connect('clicked(bool)',self.updateAnnotation)
     #
     # Step 2: Label Selection
     #
@@ -511,14 +512,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     #
-    # Load and Set Data
+    # Load and Set Data (DISABLED)
     #
 
     self.loadAndSetDataButton = qt.QPushButton("load And Set data")
     self.loadAndSetDataButton.toolTip = "Run the algorithm."
     self.loadAndSetDataButton.enabled = True
     self.loadAndSetDataButton.setStyleSheet('background-color: rgb(255,102,0)')
-    self.registrationGroupBoxLayout.addRow(self.loadAndSetDataButton)
+    # self.registrationGroupBoxLayout.addRow(self.loadAndSetDataButton)
     self.loadAndSetDataButton.connect('clicked(bool)',self.loadAndSetdata)
 
     #
@@ -530,13 +531,13 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.rigidCheckBox.setText('Show Rigid Registration')
     self.rigidCheckBox.connect('clicked(bool)',self.onRigidCheckBoxClicked)
 
-    # Show Rigid Registration
+    # Show Affine Registration
     self.affineCheckBox=qt.QCheckBox()
     self.affineCheckBox.setText('Show Affine Registration')
-    self.affineCheckBox.setChecked(1)
+    self.affineCheckBox.setChecked(0)
     self.affineCheckBox.connect('clicked(bool)',self.onAffineCheckBoxClicked)
 
-    # Show Rigid Registration
+    # Show BSpline Registration
     self.bsplineCheckBox=qt.QCheckBox()
     self.bsplineCheckBox.setText('Show BSpline Registration')
     self.bsplineCheckBox.connect('clicked(bool)',self.onBSplineCheckBoxClicked)
@@ -544,7 +545,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Show Rigid Registration
     self.targetCheckBox=qt.QCheckBox()
     self.targetCheckBox.setText('Show Transformed Targets')
-    self.targetCheckBox.setChecked(1)
+    self.targetCheckBox.setChecked(0)
     self.targetCheckBox.connect('clicked(bool)',self.onTargetCheckBox)
 
     # Add widgets to layout
@@ -576,73 +577,85 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # DEBUG: prepare IntraopFolder for tests
     self.removeEverythingInIntraopTestFolder()
 
+    # initialy, set Evaluation Section disabled
+    self.tabBar.setTabEnabled(3,False)
+
+    # create Log data and start timers
+    self.startLog()
+
     # enter Module on Tab 1
     self.onTab1clicked()
 
-    # self.updateAnnotationDisplays()
+
+  def startLog(self):
+
+    # create a logfile called RegModule_Log-2015-04-24T20/08/32.txt
+    date=qt.QDateTime.currentDateTime()
+    name=('RegModule_Log-'+str(date))
+
+    cmd2=('touch /Users/peterbehringer/Desktop/TestFile/'+name+'.txt')
+    print cmd2
+    os.system(cmd2)
+
+    # create QTimers for every section
+    self.timer_section_1=qt.QTimer()
+    self.timer_section_2=qt.QTimer()
+    self.timer_section_3=qt.QTimer()
+    self.timer_section_4=qt.QTimer()
+
+    # connections
+
+    self.timer_section_1.connect('timeout()',self.timer1callback)
+    self.timer_section_2.connect('timeout()',self.timer2callback)
+    self.timer_section_3.connect('timeout()',self.timer3callback)
+    self.timer_section_4.connect('timeout()',self.timer4callback)
+
+    # time in Sections [in seconds]
+    self.time_in_section_1=0
+    self.time_in_section_2=0
+    self.time_in_section_3=0
+    self.time_in_section_4=0
 
 
+    # set up timer_freq [in ms]
+    self.timer_freq=1000
 
-  def newAnnotation(self):
+    # start Timer for Section 1
+    self.timer_section_1.start(self.timer_freq)
 
+  def timer1callback(self):
+    self.time_in_section_1 += 1
+    print ('time_in_section_1 :'+str(self.time_in_section_1))
+  def timer2callback(self):
+    self.time_in_section_2 += 1
+    print ('time_in_section_2 :'+str(self.time_in_section_2))
 
-    self.layoutManager = slicer.app.layoutManager()
+  def timer3callback(self):
+    self.time_in_section_3 += 1
+    print ('time_in_section_3 :'+str(self.time_in_section_3))
+  def timer4callback(self):
+    self.time_in_section_4 += 1
+    print ('time_in_section_4 :'+str(self.time_in_section_4))
 
-    redWidget = self.layoutManager.sliceWidget('Red')
-    redLogic=redWidget.sliceLogic()
+  def printTimers(self):
+    print ('time_in_section_1 :'+str(self.time_in_section_1))
+    print ('time_in_section_2 :'+str(self.time_in_section_2))
+    print ('time_in_section_3 :'+str(self.time_in_section_3))
+    print ('time_in_section_4 :'+str(self.time_in_section_4))
 
-    backgroundLayer = redLogic.GetBackgroundLayer()
-    sliceNode = backgroundLayer.GetSliceNode()
-    sliceViewName = sliceNode.GetLayoutName()
+  def stopTimers(self):
 
-    self.renderers = {}
+    if self.timer_section_1.active:
+      self.timer_section_1.stop()
 
-    sliceWidget = self.layoutManager.sliceWidget(sliceViewName)
-    sliceView = sliceWidget.sliceView()
+    if self.timer_section_2.active:
+      self.timer_section_2.stop()
 
-    renderWindow = sliceView.renderWindow()
-    renderWindow.GetRenderers()
-    renderer = renderWindow.GetRenderers().GetItemAsObject(0)
-    self.renderers[sliceViewName] = renderer
+    if self.timer_section_3.active:
+      self.timer_section_3.stop()
 
-    sliceViewName = sliceNode.GetLayoutName()
-
-    textActor = vtk.vtkTextActor()
-    textActor.SetInput("PREOP")
-    textProperty = textActor.GetTextProperty()
-
-    # set font size
-    textProperty.SetFontSize(40)
-    textProperty.SetBold(1)
-
-    """
-    # set font family
-    if self.fontFamily == 'Times':
-      textProperty.SetFontFamilyToTimes()
-    else:
-      textProperty.SetFontFamilyToArial()
-    """
-
-    # set ruler text actor position
-
-    redWidget = self.layoutManager.sliceWidget('Red')
-    sliceView = redWidget.sliceView()
-
-    viewWidth=sliceView.width
-
-    print ('viewWidth = '+ str(viewWidth))
-    print str(int(0.5*viewWidth))
-
-    viewHeight=sliceView.height
-
-    print ('viewHeight = '+ str(viewHeight))
-    print str(int(0.8*viewHeight))
-
-    textActor.SetDisplayPosition(int(0.5*viewWidth)+300,int(0.8*viewHeight)+800)
-
-    #renderer.AddActor2D(self.scalingRulerActors[sliceViewName])
-    renderer.RemoveActor2D(textActor)
-    renderer.AddActor2D(textActor)
+    if self.timer_section_4.active:
+      self.timer_section_4.stop()
 
   def removeEverythingInIntraopTestFolder(self):
     cmd="rm -rfv /Users/peterbehringer/MyImageData/A_INTRAOP_DIR/*"
@@ -728,6 +741,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onTab1clicked(self):
 
+    # stop timers
+    self.stopTimers()
+    # start timer 1
+    self.timer_section_1.start()
+
+
     # set the standard Icon
     self.tabBar.setTabIcon(0,self.dataSelectionIcon)
 
@@ -751,6 +770,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onTab2clicked(self):
 
+    # stop timers
+    self.stopTimers()
+    # start timer 1
+    self.timer_section_2.start(self.timer_freq)
+
+
     # ensure, that reference volume is set before making buttons clickable
     if self.referenceVolumeSelector.currentNode() == None:
       self.startLabelSegmentationButton.setEnabled(0)
@@ -761,11 +786,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.startQuickSegmentationButton.setEnabled(1)
 
 
-
-
     print 'on Tab 2 clicked'
 
   def onTab3clicked(self):
+
+    # stop timers
+    self.stopTimers()
+    # start timer 1
+    self.timer_section_3.start(self.timer_freq)
 
     # check, that Input is set
     if self.preopVolumeSelector.currentNode() != None and self.intraopVolumeSelector.currentNode() != None and self.preopLabelSelector.currentNode() != None and self.intraopLabelSelector.currentNode() != None and self.fiducialSelector.currentNode() != None:
@@ -774,6 +802,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.applyRegistrationButton.setEnabled(0)
 
   def onTab4clicked(self):
+    # stop timers
+    self.stopTimers()
+    # start timer 1
+    self.timer_section_4.start(self.timer_freq)
+
     print 'on Tab 4 clicked'
 
   def updatePatientSelector(self):
@@ -926,93 +959,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     text_widget_yellow.SetTextActor(textYellow)
     text_widget_yellow.SelectableOff()
     text_widget_yellow.On()
-
-
-  def updateAnnotationDisplays(self):
-    # get SliceWidgets
-
-    rw=self.layout
-
-    self.layoutManager = slicer.app.layoutManager()
-    rw = self.layoutManager.sliceWidget('Red')
-    yw=self.layoutManager.sliceWidget('Yellow')
-
-    # update the Slice Annotation
-    sliceLogicRed = rw.sliceLogic()
-    sliceLogicYellow=yw.sliceLogic()
-
-
-    sliceLogicRed.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateAnnotation)
-    sliceLogicYellow.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateAnnotation)
-
-    self.updateAnnotation()
-
-
-    """
-    try:
-      self.redRenderer.RemoveViewProp(self.cornerAnnotationDisplayRed)
-    except:
-      pass
-
-    self.rightUpperMessage = 'PREOP'
-    self.rightBottomMessage = ""
-    self.leftUpperMessage = ""
-    self.leftBottomMessage = ""
-
-    # Corner annotation function
-
-    self.cornerAnnotationDisplayRed = vtk.vtkCornerAnnotation()
-    self.cornerAnnotationDisplayRed.SetLinearFontScaleFactor(1)
-    self.cornerAnnotationDisplayRed.SetNonlinearFontScaleFactor(1)
-    self.cornerAnnotationDisplayRed.SetMaximumFontSize(60)
-    self.cornerAnnotationDisplayRed.GetTextProperty().SetColor(1,1,1)
-    self.cornerAnnotationDisplayRed.GetTextProperty().SetBold(1)
-    self.cornerAnnotationDisplayRed.GetTextProperty().SetFontSize(20)
-    self.cornerAnnotationDisplayRed.SetPosition(5,5)
-    self.cornerAnnotationDisplayRed.SetPosition2(5,5)
-    self.cornerAnnotationDisplayRed.SetBoundsOn()
-
-
-
-    self.cornerAnnotationDisplayRed.SetText(0,self.leftBottomMessage)
-    self.cornerAnnotationDisplayRed.SetText(1,self.rightBottomMessage)
-    self.cornerAnnotationDisplayRed.SetText(2,self.leftUpperMessage)
-    self.cornerAnnotationDisplayRed.SetText(3,self.rightUpperMessage)
-    self.cornerAnnotationDisplayRed.VisibilityOn()
-
-
-    # Corner annotation function
-
-    self.cornerAnnotationDisplayYellow = vtk.vtkCornerAnnotation()
-    self.cornerAnnotationDisplayYellow.SetLinearFontScaleFactor(1)
-    self.cornerAnnotationDisplayYellow.SetNonlinearFontScaleFactor(1)
-    self.cornerAnnotationDisplayYellow.SetMaximumFontSize(60)
-    self.cornerAnnotationDisplayYellow.GetTextProperty().SetColor(1,1,1)
-    self.cornerAnnotationDisplayYellow.GetTextProperty().SetBold(1)
-    self.cornerAnnotationDisplayYellow.GetTextProperty().SetFontSize(20)
-    self.cornerAnnotationDisplayYellow.SetPosition(5,5)
-    self.cornerAnnotationDisplayYellow.SetPosition2(5,5)
-    self.cornerAnnotationDisplayYellow.UseBoundsOn()
-
-    self.cornerAnnotationDisplayYellow.SetText(0,self.leftBottomMessage)
-    self.cornerAnnotationDisplayYellow.SetText(1,self.rightBottomMessage)
-    self.cornerAnnotationDisplayYellow.SetText(2,self.leftUpperMessage)
-    self.cornerAnnotationDisplayYellow.SetText(3,'INTRAOP')
-    self.cornerAnnotationDisplayYellow.VisibilityOn()
-
-    layout=slicer.app.layoutManager()
-    self.redRenderer = layout.sliceWidget('Red').sliceView().renderWindow().GetRenderers().GetFirstRenderer()
-
-    self.redRenderer.AddViewProp(self.cornerAnnotationDisplayRed)
-    self.redRenderWindow = self.redRenderer.GetRenderWindow()
-    self.redRenderWindow.Render()
-
-    self.yellowRenderer = layout.sliceWidget('Yellow').sliceView().renderWindow().GetRenderers().GetFirstRenderer()
-    self.yellowRenderer.AddViewProp(self.cornerAnnotationDisplayYellow)
-    self.yellowRenderWindow = self.yellowRenderer.GetRenderWindow()
-    self.yellowRenderWindow.Render()
-    """
-
 
   def onBSplineCheckBoxClicked(self):
 
@@ -1178,7 +1124,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     cmd = ('cp -a '+imagePath+'. '+intraopPath)
     os.system(cmd)
 
-
   def changeOpacity(self,node):
 
     # current slider value
@@ -1191,7 +1136,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     compositNode.SetForegroundOpacity((opacity/100))
 
   def loadAndSetdata(self):
-
+    """
     #load data
     slicer.util.loadLabelVolume('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Case1-t2ax-TG-rater1.nrrd')
     preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('Case1-t2ax-TG-rater1').GetItemAsObject(0)
@@ -1205,8 +1150,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     slicer.util.loadVolume('/Users/peterbehringer/MyImageData/ProstateRegistrationValidation/Images/Case1-t2ax-intraop.nrrd')
     intraopImageVolume=slicer.mrmlScene.GetNodesByName('Case1-t2ax-intraop').GetItemAsObject(0)
 
-    slicer.util.loadMarkupsFiducialList('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Case1-landmarks.fcsv')
-    preopTargets=slicer.mrmlScene.GetNodesByName('Case1-landmarks').GetItemAsObject(0)
+    slicer.util.loadMarkupsFiducialList('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Targets.fcsv')
+    preopTargets=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
 
     # set nodes in Selector
     self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
@@ -1214,6 +1159,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopVolumeSelector.setCurrentNode(intraopImageVolume)
     # self.intraopLabelSelector.setCurrentNode(intraopLabelVolume)
     self.fiducialSelector.setCurrentNode(preopTargets)
+    """
 
   def loadPreopData(self):
 
@@ -1250,6 +1196,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     preopTargets=slicer.util.loadMarkupsFiducialList('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Targets.fcsv')
     preopTargetsNode=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
 
+    preopTargetsPreserve=slicer.util.loadMarkupsFiducialList('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Targets.fcsv')
+    self.preopTargetsNodePreserve=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
 
     # use label contours
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
@@ -1272,6 +1220,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.markupsLogic=slicer.modules.markups.logic()
     self.markupsLogic.SetAllMarkupsVisibility(preopTargetsNode,1)
+    self.markupsLogic.SetAllMarkupsVisibility(self.preopTargetsNodePreserve,0)
 
     # set markups for registration
     self.fiducialSelector.setCurrentNode(preopTargetsNode)
@@ -1359,9 +1308,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print ('loadableList :')
     print self.loadableList
 
-
-
-
   def loadSeriesIntoSlicer(self):
 
     self.createLoadableFileListFromSelection()
@@ -1405,7 +1351,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Allow PatientSelector to be updated
     self.updatePatientSelectorFlag = True
 
+    # uncheck loaded items in the Intrap series selection
+
+    for item in range(len(self.seriesList)):
+      self.seriesModel.item(item).setCheckState(0)
+
+    # enter Label Selection Section
     self.enterLabelSelectionSection()
+
+
 
   def cleanup(self):
     pass
@@ -1467,12 +1421,19 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       sItem.setCheckable(1)
       if "PROSTATE" in seriesText:
         sItem.setCheckState(1)
+      if "GUIDANCE" in seriesText:
+        sItem.setCheckState(1)
+
+        rowsAboveCurrentItem=int(len(self.seriesList) - 1)
+        for item in range(rowsAboveCurrentItem):
+          self.seriesModel.item(item).setCheckState(0)
 
 
     print('')
     print('DICOM import finished')
     print('Those series are indexed into slicer.dicomDatabase')
     print self.seriesList
+
 
     # check, if selectedPatient == incomePatient
     # set warning Flag = False if not
@@ -1490,9 +1451,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     if not self.tabWidget.currentIndex == 0:
       print ('here comes the change function')
       self.tabBar.setTabIcon(0,self.newImageDataIcon)
-
-
-
 
 
   def patientNotMatching(self,selectedPatient,incomePatient):
@@ -1565,7 +1523,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # create Push Button
     self.pushButton = qt.QPushButton("Import new series"+"  "+seriesName)
     self.notifyUserWindow.layout().addWidget(self.pushButton)
-    self.pushButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
+    self.pushButton.connect('clicked(bool)',self.CH)
 
 
     # create Push Button
@@ -1579,7 +1537,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     logic = RegistrationModuleLogic()
     logic.run()
 
-
   def setQuickSegmentationModeON(self):
     self.startLabelSegmentationButton.setEnabled(0)
     self.startQuickSegmentationButton.setEnabled(0)
@@ -1589,8 +1546,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.startLabelSegmentationButton.setEnabled(1)
     self.startQuickSegmentationButton.setEnabled(1)
     self.applySegmentationButton.setEnabled(0)
-
-
 
   def onApplySegmentationButton(self):
 
@@ -1614,6 +1569,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.setQuickSegmentationModeOFF()
     # take draw tool with label 0 for correction
 
+    """
     import EditorLib
     editUtil = EditorLib.EditUtil.EditUtil()
 
@@ -1629,7 +1585,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # set Value of labelmap
     editUtil.setLabel(0)
-
+    """
 
   def onStartLabelSegmentationButton(self):
 
@@ -1836,7 +1792,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
        # get fiducials
        fiducialNode=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-       fiducialNode2=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
 
        #debug_start:
        if fiducialNode == None:
@@ -1861,8 +1816,19 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
          print ('changed name from '+oldname+' to '+str(oldname)+'-REG')
 
 
+    slicer.modules.markups.logic().StartPlaceMode(0)
+
+    # enable Evaluation Section
+    self.tabBar.setTabEnabled(3,True)
+
     # switch to Evaluation Section
     self.tabWidget.setCurrentIndex(3)
+
+    # set BSpline Checkbox
+    self.bsplineCheckBox.setChecked(1)
+
+    # set show Transformed Targets CheckBox
+    self.targetCheckBox.setChecked(1)
 
     # Get SliceWidgets
     layoutManager=slicer.app.layoutManager()
@@ -1886,15 +1852,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Set REG Image Background in Red
     compositNodeRed.SetForegroundVolumeID(outputVolumeBSpline.GetID())
 
-    # set markups visible
-    self.markupsLogic=slicer.modules.markups.logic()
-    self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
-
     # set Intraop Image Foreground in Yellow
     compositNodeYellow.SetBackgroundVolumeID(fixedVolume.GetID())
-
-    # jump slice to show Targets in Yellow
-    slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNode.GetID(),1)
 
     # set both orientations to axial
     redLogic=redWidget.sliceLogic()
@@ -1907,15 +1866,35 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     sliceNodeYellow.SetOrientationToAxial()
 
     # make REG markups visible in yellow slice view
-    dispNode = fiducialNode.GetDisplayNode()
-    yellowSliceNode=slicer.mrmlScene.GetNodesByName('Yellow').GetItemAsObject(0)
-    dispNode.AddViewNodeID(yellowSliceNode.GetID())
+    # make original markups visible in red slice view
 
-    # show preop markups in red slicer view
-
-    dispNode2=fiducialNode2.GetDisplayNode()
     redSliceNode=slicer.mrmlScene.GetNodesByName('Red').GetItemAsObject(0)
-    dispNode2.AddViewNodeID(redSliceNode.GetID())
+    yellowSliceNode=slicer.mrmlScene.GetNodesByName('Yellow').GetItemAsObject(0)
+
+    fiducialNodeTargetsREG=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
+    fiducialNodeTargetsPREOP=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
+
+    dispNodeTargetsREG = fiducialNodeTargetsREG.GetDisplayNode()
+    dispNodeTargetsPreop=fiducialNodeTargetsPREOP.GetDisplayNode()
+
+    dispNodeTargetsREG.AddViewNodeID(yellowSliceNode.GetID())
+    dispNodeTargetsPreop.AddViewNodeID(redSliceNode.GetID())
+
+    # set markups visible
+    self.markupsLogic=slicer.modules.markups.logic()
+    self.markupsLogic.SetAllMarkupsVisibility(fiducialNodeTargetsREG,1)
+    self.markupsLogic.SetAllMarkupsVisibility(fiducialNodeTargetsPREOP,1)
+
+    # jump slice to show Targets in Yellow
+    slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNodeTargetsREG.GetID(),1)
+    slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(dispNodeTargetsPreop.GetID(),1)
+
+    # Fit Volume To Screen
+    redLogic.FitSliceToAll()
+    yellowLogic.FitSliceToAll()
+
+    print ('Registration Function is done')
+
 
 
 
