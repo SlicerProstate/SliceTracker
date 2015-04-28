@@ -46,6 +46,33 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.addedPatients = []
 
 
+    # set Slice Annotations
+
+    lm = slicer.app.layoutManager()
+    rw = lm.sliceWidget('Red')
+    rv = rw.sliceView()
+    renderWindow = rv.renderWindow()
+    interactor = renderWindow.GetInteractor()
+    text = vtk.vtkTextActor()
+    text.SetInput('PREOP')
+    textProperty = text.GetTextProperty()
+    textProperty.SetFontSize(10)
+    textProperty.SetColor(1,0,0)
+    textProperty.SetBold(1)
+    text_representation = vtk.vtkTextRepresentation()
+    xsize = 0.15
+    ysize = 0.15
+    ypos = 0.05
+    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
+    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
+    text_widget = vtk.vtkTextWidget()
+    text_widget.SetRepresentation(text_representation)
+    text_widget.SetInteractor(interactor)
+    text_widget.SetTextActor(text)
+    text_widget.SelectableOff()
+    text_widget.On()
+
+    # set up widgets
 
     self.markupsLogic=slicer.modules.markups.logic()
 
@@ -590,12 +617,34 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def startLog(self):
 
     # create a logfile called RegModule_Log-2015-04-24T20/08/32.txt
-    date=qt.QDateTime.currentDateTime()
-    name=('RegModule_Log-'+str(date))
+    dateTime=str(qt.QDateTime.currentDateTime())
+
+    date=dateTime[0:10]
+    time=dateTime[11:19]
+
+    name=('RegModule_Log-'+dateTime)
 
     cmd2=('touch /Users/peterbehringer/Desktop/TestFile/'+name+'.txt')
-    print cmd2
     os.system(cmd2)
+
+    f = open('/Users/peterbehringer/Desktop/TestFile/'+name+'.txt', 'w')
+    f.write('Registration Module Logfile\n\n')
+    f.write('Date: '+date+'\n')
+    f.write('Time in Data Selection Section:\n')
+    f.write('Time Started: '+time+'\n')
+    f.write('Time Started: '+time+'\n')
+    f.write('Time Started: '+time+'\n')
+    f.write('Time Started: '+time+'\n')
+    f.write('Time Started: '+time+'\n')
+    f.write('Time Started: '+time+'\n')
+    f.write('Time Started: '+time+'\n')
+    f.write('Time Started: '+time+'\n')
+
+
+
+
+
+
 
     # create QTimers for every section
     self.timer_section_1=qt.QTimer()
@@ -625,17 +674,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def timer1callback(self):
     self.time_in_section_1 += 1
-    print ('time_in_section_1 :'+str(self.time_in_section_1))
   def timer2callback(self):
     self.time_in_section_2 += 1
-    print ('time_in_section_2 :'+str(self.time_in_section_2))
-
   def timer3callback(self):
     self.time_in_section_3 += 1
-    print ('time_in_section_3 :'+str(self.time_in_section_3))
   def timer4callback(self):
     self.time_in_section_4 += 1
-    print ('time_in_section_4 :'+str(self.time_in_section_4))
 
   def printTimers(self):
     print ('time_in_section_1 :'+str(self.time_in_section_1))
@@ -900,7 +944,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.patientID.setText(self.currentID)
       self.studyDate.setText(str(self.currentStudyDate))
 
-      # TODO: Set EVALUATION TAB DISABLED AT BEGINNING
 
   def updateAnnotation(self):
     lm = slicer.app.layoutManager()
