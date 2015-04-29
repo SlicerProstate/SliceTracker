@@ -47,31 +47,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.selectableSeries=[]
 
 
-    # set Slice Annotations
 
-    lm = slicer.app.layoutManager()
-    rw = lm.sliceWidget('Red')
-    rv = rw.sliceView()
-    renderWindow = rv.renderWindow()
-    interactor = renderWindow.GetInteractor()
-    text = vtk.vtkTextActor()
-    text.SetInput('PREOP')
-    textProperty = text.GetTextProperty()
-    textProperty.SetFontSize(10)
-    textProperty.SetColor(1,0,0)
-    textProperty.SetBold(1)
-    text_representation = vtk.vtkTextRepresentation()
-    xsize = 0.15
-    ysize = 0.15
-    ypos = 0.05
-    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
-    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
-    text_widget = vtk.vtkTextWidget()
-    text_widget.SetRepresentation(text_representation)
-    text_widget.SetInteractor(interactor)
-    text_widget.SetTextActor(text)
-    text_widget.SelectableOff()
-    text_widget.On()
 
     # set up widgets
 
@@ -576,7 +552,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.targetCheckBox.setChecked(0)
     self.targetCheckBox.connect('clicked(bool)',self.onTargetCheckBox)
 
+    # Show Preop Data with Targets
+    self.preopCheckBox=qt.QCheckBox()
+    self.preopCheckBox.setText('Show Preop Volume')
+    self.preopCheckBox.setChecked(0)
+    self.preopCheckBox.connect('clicked(bool)',self.onPreopCheckBoxClicked)
+
+
     # Add widgets to layout
+    self.evaluationGroupBoxLayout.addWidget(self.preopCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.rigidCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.affineCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.bsplineCheckBox)
@@ -1014,6 +998,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # uncheck the other Buttons
       self.affineCheckBox.setChecked(0)
       self.rigidCheckBox.setChecked(0)
+      self.preopCheckBox.setChecked(0)
+
+      # link images
+      layoutManager=slicer.app.layoutManager()
+      redWidget = layoutManager.sliceWidget('Red')
+      yellowWidget = layoutManager.sliceWidget('Yellow')
+      compositNodeRed = redWidget.mrmlSliceCompositeNode()
+      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+      compositNodeRed.SetLinkedControl(1)
+      compositNodeYellow.SetLinkedControl(1)
 
       # Get SliceWidgets
       layoutManager=slicer.app.layoutManager()
@@ -1034,9 +1028,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # Red Slice View:
 
         # Set Foreground: intraop image
-      compositNodeRed.SetForegroundVolumeID(bsplineVolumeNode.GetID())
+      compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
         # Set Background: Affine Image
-      compositNodeRed.SetBackgroundVolumeID(intraopVolumeNode.GetID())
+      compositNodeRed.SetBackgroundVolumeID(bsplineVolumeNode.GetID())
 
 
       # Yellow Slice View:
@@ -1052,6 +1046,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # uncheck the other Buttons
       self.bsplineCheckBox.setChecked(0)
       self.rigidCheckBox.setChecked(0)
+      self.preopCheckBox.setChecked(0)
+
+      # link images
+      layoutManager=slicer.app.layoutManager()
+      redWidget = layoutManager.sliceWidget('Red')
+      yellowWidget = layoutManager.sliceWidget('Yellow')
+      compositNodeRed = redWidget.mrmlSliceCompositeNode()
+      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+      compositNodeRed.SetLinkedControl(1)
+      compositNodeYellow.SetLinkedControl(1)
 
       # Get SliceWidgets
       layoutManager=slicer.app.layoutManager()
@@ -1072,9 +1076,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # Red Slice View:
 
         # Set Foreground: intraop image
-      compositNodeRed.SetForegroundVolumeID(affineVolumeNode.GetID())
+      compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
         # Set Background: Affine Image
-      compositNodeRed.SetBackgroundVolumeID(intraopVolumeNode.GetID())
+      compositNodeRed.SetBackgroundVolumeID(affineVolumeNode.GetID())
 
 
       # Yellow Slice View:
@@ -1089,10 +1093,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # uncheck the other Buttons
       self.affineCheckBox.setChecked(0)
       self.bsplineCheckBox.setChecked(0)
+      self.preopCheckBox.setChecked(0)
 
-      # uncheck the other Buttons
-      self.bsplineCheckBox.setChecked(0)
-      self.affineCheckBox.setChecked(0)
+      # link images
+      layoutManager=slicer.app.layoutManager()
+      redWidget = layoutManager.sliceWidget('Red')
+      yellowWidget = layoutManager.sliceWidget('Yellow')
+      compositNodeRed = redWidget.mrmlSliceCompositeNode()
+      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+      compositNodeRed.SetLinkedControl(1)
+      compositNodeYellow.SetLinkedControl(1)
 
       # Get SliceWidgets
       layoutManager=slicer.app.layoutManager()
@@ -1113,16 +1123,63 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # Red Slice View:
 
         # Set Foreground: intraop image
-      compositNodeRed.SetForegroundVolumeID(rigidVolumeNode.GetID())
+      compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
         # Set Background: Affine Image
-      compositNodeRed.SetBackgroundVolumeID(intraopVolumeNode.GetID())
+      compositNodeRed.SetBackgroundVolumeID(rigidVolumeNode.GetID())
+
+  def onPreopCheckBoxClicked(self):
+
+    if self.preopCheckBox.isChecked():
 
 
-      # Yellow Slice View:
+      # uncheck the other Buttons
+      self.affineCheckBox.setChecked(0)
+      self.bsplineCheckBox.setChecked(0)
+      self.rigidCheckBox.setChecked(0)
 
-        # Set Foreground: Intraop Image + Fidicuals Affine transformed
+      # un-link images
+      layoutManager=slicer.app.layoutManager()
+      redWidget = layoutManager.sliceWidget('Red')
+      yellowWidget = layoutManager.sliceWidget('Yellow')
+      compositNodeRed = redWidget.mrmlSliceCompositeNode()
+      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+      compositNodeRed.SetLinkedControl(0)
+      compositNodeYellow.SetLinkedControl(0)
 
-        # Set Background: -
+
+      # Get the Volume Node
+      preopVolumeNode=slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0)
+
+      # Get the Intraop Volume Node
+      intraopVolumeNode=self.intraopVolumeSelector.currentNode()
+
+      # Red Slice View:
+
+        # Set Foreground: intraop image
+      # compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
+        # Set Background: Affine Image
+      compositNodeRed.SetBackgroundVolumeID(preopVolumeNode.GetID())
+
+      # show preop Targets
+
+      layoutManager=slicer.app.layoutManager()
+      redWidget = layoutManager.sliceWidget('Red')
+      redLogic=redWidget.sliceLogic()
+      sliceNodeRed=redLogic.GetSliceNode()
+      fiducialNodeTargetsPREOP=slicer.mrmlScene.GetNodesByName('targets-PREOP').GetItemAsObject(0)
+      dispNodeTargetsPreop=fiducialNodeTargetsPREOP.GetDisplayNode()
+      dispNodeTargetsPreop.AddViewNodeID(sliceNodeRed.GetID())
+
+      # Set Textscale
+      dispNodeTargetsPreop.SetTextScale(1.9)
+
+      # Set Glyph Size
+      dispNodeTargetsPreop.SetGlyphScale(1.0)
+
+      # switch to fiducial
+      # jump to first markup slice
+      self.markupsLogic.SetAllMarkupsVisibility(self.preopTargetsNodePreserve,0)
+      slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNodeTargetsPREOP.GetID(),1)
 
   def onTargetCheckBox(self):
 
@@ -1253,12 +1310,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('t2-label').GetItemAsObject(0)
 
     slicer.util.loadVolume(self.settings.value('RegistrationModule/preopLocation')+'/t2-N4.nrrd')
-    preopImageVolumeNode=slicer.mrmlScene.GetNodesByName('t2-N4').GetItemAsObject(0)
+    self.preopImageVolumeNodePreserve=slicer.mrmlScene.GetNodesByName('t2-N4').GetItemAsObject(0)
+    self.preopImageVolumeNodePreserve.SetName('volume-PREOP')
+
+    slicer.util.loadVolume(self.settings.value('RegistrationModule/preopLocation')+'/t2-N4.nrrd')
+    preopImageVolumeNode=slicer.mrmlScene.GetNodesByName('t2-N4_1').GetItemAsObject(0)
+    self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
 
     # Load preop Targets that remain reserved to be shown after registration as preop Targets
     slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
     self.preopTargetsNodePreserve=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-    self.preopTargetsNodePreserve.SetName('Targets-PREOP')
+    self.preopTargetsNodePreserve.SetName('targets-PREOP')
 
     slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
     preopTargetsNode=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
@@ -1520,7 +1582,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     if not self.tabWidget.currentIndex == 0:
       print ('here comes the change function')
       self.tabBar.setTabIcon(0,self.newImageDataIcon)
-
 
   def patientNotMatching(self,selectedPatient,incomePatient):
 
@@ -1885,7 +1946,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
          print ('changed name from '+oldname+' to '+str(oldname)+'-REG')
 
 
-    slicer.modules.markups.logic().StartPlaceMode(0)
 
     # enable Evaluation Section
     self.tabBar.setTabEnabled(3,True)
@@ -1899,6 +1959,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set show Transformed Targets CheckBox
     self.targetCheckBox.setChecked(1)
 
+    # set fiducial place mode back to regular view mode
+    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+    interactionNode.SwitchToViewTransformMode()
+    interactionNode.SetPlaceModePersistence(0)
+
     # Get SliceWidgets
     layoutManager=slicer.app.layoutManager()
 
@@ -1911,15 +1976,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set Side By Side View to compare volumes
     layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
 
+    # set opacity fader to 0
+    self.opacitySlider.setValue(0)
+
     # Hide Labels
     compositNodeRed.SetLabelOpacity(0)
     compositNodeYellow.SetLabelOpacity(0)
 
     # Set Intraop Image Foreground in Red
-    compositNodeRed.SetBackgroundVolumeID(fixedVolume.GetID())
+    compositNodeRed.SetBackgroundVolumeID(outputVolumeBSpline.GetID())
 
     # Set REG Image Background in Red
-    compositNodeRed.SetForegroundVolumeID(outputVolumeBSpline.GetID())
+    compositNodeRed.SetForegroundVolumeID(fixedVolume.GetID())
 
     # set Intraop Image Foreground in Yellow
     compositNodeYellow.SetBackgroundVolumeID(fixedVolume.GetID())
@@ -1941,26 +2009,70 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     yellowSliceNode=slicer.mrmlScene.GetNodesByName('Yellow').GetItemAsObject(0)
 
     fiducialNodeTargetsREG=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
-    fiducialNodeTargetsPREOP=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
 
     dispNodeTargetsREG = fiducialNodeTargetsREG.GetDisplayNode()
-    dispNodeTargetsPreop=fiducialNodeTargetsPREOP.GetDisplayNode()
 
     dispNodeTargetsREG.AddViewNodeID(yellowSliceNode.GetID())
-    dispNodeTargetsPreop.AddViewNodeID(redSliceNode.GetID())
 
     # set markups visible
     self.markupsLogic=slicer.modules.markups.logic()
     self.markupsLogic.SetAllMarkupsVisibility(fiducialNodeTargetsREG,1)
-    self.markupsLogic.SetAllMarkupsVisibility(fiducialNodeTargetsPREOP,1)
 
     # jump slice to show Targets in Yellow
     slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNodeTargetsREG.GetID(),1)
-    slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(dispNodeTargetsPreop.GetID(),1)
 
-    # Fit Volume To Screen
-    redLogic.FitSliceToAll()
-    yellowLogic.FitSliceToAll()
+    # link images
+    compositNodeRed.SetLinkedControl(1)
+    compositNodeYellow.SetLinkedControl(1)
+
+    # zoom in (in red slice view)
+    fovRed=redSliceNode.GetFieldOfView()
+    print ('field of view Red'+str(fovRed))
+
+    fovYellow=yellowSliceNode.GetFieldOfView()
+    print ('field of view Yellow'+str(fovYellow))
+
+    redLogic.StartSliceNodeInteraction(2)
+    redSliceNode.SetFieldOfView(fovRed[0] * 0.52, fovRed[1] * 0.6, fovRed[2])
+    redLogic.EndSliceNodeInteraction()
+
+    # set the same field of view in yellow slice view
+
+    """
+    fovX=fovYellow[0]/redSliceNode.GetFieldOfView()[0]
+    fovY=fovYellow[1]/redSliceNode.GetFieldOfView()[1]
+    fovZ=fovYellow[2]/redSliceNode.GetFieldOfView()[2]
+
+    yellowLogic.StartSliceNodeInteraction(2)
+    yellowSliceNode.SetFieldOfView(fovYellow[0]*fovX,fovYellow[1]*fovY,fovYellow[2]*fovZ)
+    yellowLogic.EndSliceNodeInteraction()
+    """
+
+
+    # set Slice Annotations
+    lm = slicer.app.layoutManager()
+    rw = lm.sliceWidget('Red')
+    rv = rw.sliceView()
+    renderWindow = rv.renderWindow()
+    interactor = renderWindow.GetInteractor()
+    text = vtk.vtkTextActor()
+    text.SetInput('PREOP')
+    textProperty = text.GetTextProperty()
+    textProperty.SetFontSize(10)
+    textProperty.SetColor(1,0,0)
+    textProperty.SetBold(1)
+    text_representation = vtk.vtkTextRepresentation()
+    xsize = 0.15
+    ysize = 0.15
+    ypos = 0.05
+    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
+    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
+    text_widget = vtk.vtkTextWidget()
+    text_widget.SetRepresentation(text_representation)
+    text_widget.SetInteractor(interactor)
+    text_widget.SetTextActor(text)
+    text_widget.SelectableOff()
+    text_widget.On()
 
     print ('Registration Function is done')
 
