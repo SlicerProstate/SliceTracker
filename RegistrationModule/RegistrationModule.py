@@ -44,6 +44,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.patientNames = []
     self.patientIDs = []
     self.addedPatients = []
+    self.selectableSeries=[]
 
 
     # set Slice Annotations
@@ -613,7 +614,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # enter Module on Tab 1
     self.onTab1clicked()
 
-
   def startLog(self):
 
     # create a logfile called RegModule_Log-2015-04-24T20/08/32.txt
@@ -868,13 +868,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         for study in db.studiesForPatient(patient):
           for series in db.seriesForStudy(study):
             for file in db.filesForSeries(series):
+               try:
+                 indexer.addFile(db,file,None)
+                 if db.fileValue(file,'0010,0010') not in self.patientNames:
+                   self.patientNames.append(slicer.dicomDatabase.fileValue(file,'0010,0010'))
 
-               indexer.addFile(db,file,None)
-               if db.fileValue(file,'0010,0010') not in self.patientNames:
-                 self.patientNames.append(slicer.dicomDatabase.fileValue(file,'0010,0010'))
-
-               if slicer.dicomDatabase.fileValue(file,'0010,0020') not in self.patientIDs:
-                 self.patientIDs.append(slicer.dicomDatabase.fileValue(file,'0010,0020'))
+                 if slicer.dicomDatabase.fileValue(file,'0010,0020') not in self.patientIDs:
+                   self.patientIDs.append(slicer.dicomDatabase.fileValue(file,'0010,0020'))
+               except:
+                 pass
 
       # add patientNames and patientIDs to patientSelector
       for patient in self.patientIDs:
@@ -907,13 +909,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         for study in db.studiesForPatient(patient):
           for series in db.seriesForStudy(study):
             for file in db.filesForSeries(series):
-
-               if db.fileValue(file,'0010,00020') == self.currentID:
-                 currentPatientNameDicom= db.fileValue(file,'0010,0010')
-                 try:
-                   currentBirthDateDicom = db.fileValue(file,'0010,0030')
-                 except:
-                   currentBirthDateDicom = None
+               try:
+                 if db.fileValue(file,'0010,00020') == self.currentID:
+                   currentPatientNameDicom= db.fileValue(file,'0010,0010')
+                   try:
+                     currentBirthDateDicom = db.fileValue(file,'0010,0030')
+                   except:
+                     currentBirthDateDicom = None
+               except:
+                 pass
 
       if currentBirthDateDicom == None:
         self.patientBirthDate.setText('No Date found')
@@ -1162,6 +1166,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def onsimulateDataIncomeButton4(self):
 
     # copy DICOM Files into intraop folder
+    print ('simulate needle GUIDANCE income')
     imagePath= '/Users/peterbehringer/MyImageData/Prostate_TestData_ProstateBx/Case200-2014-12-12/DICOM/Intraop/_SIMULATION_03/'
     intraopPath=self.intraopDataDir
     cmd = ('cp -a '+imagePath+'. '+intraopPath)
@@ -1230,6 +1235,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # TODO: distinguish between image data volumes and labelmaps
 
     # load testdata and create Nodes
+    """
     preoplabelVolume=slicer.util.loadLabelVolume('/Users/peterbehringer/MyImageData/A_PREOP_DIR/t2ax-label.nrrd')
     preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('t2ax-label').GetItemAsObject(0)
 
@@ -1241,6 +1247,21 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     preopTargetsPreserve=slicer.util.loadMarkupsFiducialList('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Targets.fcsv')
     self.preopTargetsNodePreserve=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
+    """
+
+    slicer.util.loadLabelVolume(self.settings.value('RegistrationModule/preopLocation')+'/t2-label.nrrd')
+    preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('t2-label').GetItemAsObject(0)
+
+    slicer.util.loadVolume(self.settings.value('RegistrationModule/preopLocation')+'/t2-N4.nrrd')
+    preopImageVolumeNode=slicer.mrmlScene.GetNodesByName('t2-N4').GetItemAsObject(0)
+
+    # Load preop Targets that remain reserved to be shown after registration as preop Targets
+    slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
+    self.preopTargetsNodePreserve=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
+    self.preopTargetsNodePreserve.SetName('Targets-PREOP')
+
+    slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
+    preopTargetsNode=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
 
     # use label contours
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
@@ -1268,7 +1289,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set markups for registration
     self.fiducialSelector.setCurrentNode(preopTargetsNode)
 
-
     # rotate volume to plane
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(preoplabelVolumeNode)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(preoplabelVolumeNode)
@@ -1278,7 +1298,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(preopTargetsNode.GetID(),1)
 
     # Fit Volume To Screen
-    slicer.app.applicationLogic().FitSliceToAll()
+    # slicer.app.applicationLogic().FitSliceToAll()
 
     # Set Fiducial Properties
     markupsDisplayNode=preopTargetsNode.GetDisplayNode()
@@ -1332,7 +1352,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # write all selected files in selectedFileList
     for file in dcmFileList:
-     print ('current file L1101 : '+str(file))
+     print ('current file in selected file list: '+str(file))
      if db.fileValue(file,'0008,103E') in self.selectedSeriesList:
        self.selectedFileList.append(file)
 
@@ -1442,6 +1462,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
        if db.fileValue(str(self.intraopDataDir+'/'+file),'0008,103E') not in self.seriesList:
          importfile=str(self.intraopDataDir+'/'+file)
          self.seriesList.append(db.fileValue(importfile,'0008,103E'))
+         print ('seriesList = '+str(self.seriesList))
 
     indexer.addDirectory(db,str(self.intraopDataDir))
     indexer.waitForImportFinished()
@@ -1455,8 +1476,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.seriesModel.clear()
     self.seriesItems = []
 
-    for s in range(len(self.seriesList)):
-      seriesText = self.seriesList[s]
+    # pass items from seriesList to selectableSeries to keep them in the right order
+    for series in self.seriesList:
+      if series not in self.selectableSeries:
+        self.selectableSeries.append(series)
+        print ('selectableSeries = '+str(self.selectableSeries))
+
+    # write items in intraop series selection widget
+    for s in range(len(self.selectableSeries)):
+      seriesText = self.selectableSeries[s]
       self.currentSeries=seriesText
       sItem = qt.QStandardItem(seriesText)
       self.seriesItems.append(sItem)
@@ -1466,11 +1494,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         sItem.setCheckState(1)
       if "GUIDANCE" in seriesText:
         sItem.setCheckState(1)
-
         rowsAboveCurrentItem=int(len(self.seriesList) - 1)
         for item in range(rowsAboveCurrentItem):
           self.seriesModel.item(item).setCheckState(0)
-
 
     print('')
     print('DICOM import finished')
