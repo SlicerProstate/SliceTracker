@@ -391,7 +391,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # connections
 
     self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
-    self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
 
 
 
@@ -598,6 +597,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # enter Module on Tab 1
     self.onTab1clicked()
 
+  def enter(self):
+
+    # TODO: setup enter Function
+
+    return True
+
   def startLog(self):
 
     # create a logfile called RegModule_Log-2015-04-24T20/08/32.txt
@@ -623,11 +628,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     f.write('Time Started: '+time+'\n')
     f.write('Time Started: '+time+'\n')
     f.write('Time Started: '+time+'\n')
-
-
-
-
-
 
 
     # create QTimers for every section
@@ -853,7 +853,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
           for series in db.seriesForStudy(study):
             for file in db.filesForSeries(series):
                try:
-                 indexer.addFile(db,file,None)
+                 # indexer.addFile(db,file,None)
                  if db.fileValue(file,'0010,0010') not in self.patientNames:
                    self.patientNames.append(slicer.dicomDatabase.fileValue(file,'0010,0010'))
 
@@ -931,7 +931,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         self.currentPatientName=currentPatientNameDicom
       self.patientID.setText(self.currentID)
       self.studyDate.setText(str(self.currentStudyDate))
-
 
   def updateAnnotation(self):
     lm = slicer.app.layoutManager()
@@ -1458,6 +1457,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       v.SetName(name)
       slicer.mrmlScene.AddNode(v)
     """
+    print ('loadable list is : '+str(self.loadableList))
+    print ('loadables are : '+str(loadables))
+
+    # TODO: Just the first series is loaded here, even if several series are selected.
+    # from every list in the list loadables the [0] entry should be loaded
 
     name = loadables[0].name
     v=scalarVolumePlugin.load(loadables[0])
