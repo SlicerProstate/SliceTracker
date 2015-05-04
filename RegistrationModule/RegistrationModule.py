@@ -857,10 +857,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
                  if db.fileValue(file,'0010,0010') not in self.patientNames:
                    self.patientNames.append(slicer.dicomDatabase.fileValue(file,'0010,0010'))
 
+
                  if slicer.dicomDatabase.fileValue(file,'0010,0020') not in self.patientIDs:
                    self.patientIDs.append(slicer.dicomDatabase.fileValue(file,'0010,0020'))
+                 break
                except:
                  pass
+            break
+          break
+
+
+
 
       # add patientNames and patientIDs to patientSelector
       for patient in self.patientIDs:
