@@ -45,7 +45,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.patientIDs = []
     self.addedPatients = []
     self.selectableSeries=[]
-
+    self.rockCount = 0
+    self.rocking = False
+    self.rockTimer = None
+    self.flickerTimer = None
 
 
 
@@ -565,17 +568,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBoxLayout.addWidget(self.bsplineCheckBox)
     self.evaluationGroupBoxLayout.addWidget(self.targetCheckBox)
 
-    # create Slider
-    control = qt.QWidget()
-    self.opacitySlider = qt.QSlider(qt.Qt.Horizontal,control)
-    self.opacitySlider.connect('valueChanged(int)', self.changeOpacity)
-    self.opacitySlider.setObjectName("opacitySlider")
-    self.opacitySlider.setMaximum(100)
-    self.opacitySlider.setMinimum(0)
-    self.opacitySlider.setValue(100)
-    self.opacitySlider.setMaximumWidth(200)
-    self.evaluationGroupBoxLayout.addWidget(self.opacitySlider)
-
     # Save Data Button
     littleDiscPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-littleDisc.png')
     littleDiscIcon=qt.QIcon(littleDiscPixmap)
@@ -585,17 +577,103 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
+    fadeHolder = qt.QWidget()
+    fadeLayout = qt.QHBoxLayout()
+    fadeHolder.setLayout(fadeLayout)
+
+    self.groupBox = qt.QGroupBox("Visualization")
+    self.groupBoxLayout = qt.QFormLayout(self.groupBox)
+    self.evaluationGroupBoxLayout.addWidget(self.groupBox)
+
+    #
+    # fadeSlider
+    #
+
+
+    self.fadeSlider = ctk.ctkSliderWidget()
+    self.fadeSlider.minimum = 0
+    self.fadeSlider.maximum = 1.0
+    self.fadeSlider.value = 0
+    self.fadeSlider.singleStep = 0.05
+    self.fadeSlider.connect('valueChanged(double)', self.changeOpacity)
+    fadeLayout.addWidget(self.fadeSlider)
+
+    #
+    # Rock and Flicker
+    #
+
+    animaHolder = qt.QWidget()
+    animaLayout = qt.QVBoxLayout()
+    animaHolder.setLayout(animaLayout)
+    fadeLayout.addWidget(animaHolder)
+
+    # Rock
+    checkBox = qt.QCheckBox()
+    checkBox.text = "Rock"
+    checkBox.checked = False
+    checkBox.connect('toggled(bool)', self.onRockToggled)
+    animaLayout.addWidget(checkBox)
+
+    # Flicker
+    checkBox = qt.QCheckBox()
+    checkBox.text = "Flicker"
+    checkBox.checked = False
+    checkBox.connect('toggled(bool)', self.onFlickerToggled)
+    animaLayout.addWidget(checkBox)
+
+    self.groupBoxLayout.addRow("Fade", fadeHolder)
+
+
+
+
     # DEBUG: prepare IntraopFolder for tests
     self.removeEverythingInIntraopTestFolder()
 
-    # initialy, set Evaluation Section disabled
-    self.tabBar.setTabEnabled(3,False)
+    # initialy, set Evaluation Section disabled TODO: set False again
+    self.tabBar.setTabEnabled(3,True)
 
     # create Log data and start timers
     self.startLog()
 
     # enter Module on Tab 1
     self.onTab1clicked()
+
+
+  def rock(self):
+    if not self.rocking:
+      self.rockTimer = None
+      self.fadeSlider.value = 0.5
+    if self.rocking:
+      if not self.rockTimer:
+        self.rockTimer = qt.QTimer()
+        self.rockTimer.start(50)
+        self.rockTimer.connect('timeout()', self.rock)
+      import math
+      self.fadeSlider.value = 0.5 + math.sin(self.rockCount / 10. ) / 2.
+      self.rockCount += 1
+
+  def onRockToggled(self,checked):
+    self.rocking = checked
+    self.rock()
+
+  def flicker(self):
+    if not self.flickering:
+      self.flickerTimer = None
+      self.fadeSlider.value = 0.5
+    if self.flickering:
+      if not self.flickerTimer:
+        if self.fadeSlider.value == 0.5:
+          self.fadeSlider.value = 0.25
+        self.flickerTimer = qt.QTimer()
+        self.flickerTimer.start(300)
+        self.flickerTimer.connect('timeout()', self.flicker)
+      import math
+      self.fadeSlider.value = 1.0 - self.fadeSlider.value
+
+  def onFlickerToggled(self,checked):
+    self.flickering = checked
+    self.flicker()
+
 
   def enter(self):
 
@@ -1235,16 +1313,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     cmd = ('cp -a '+imagePath+'. '+intraopPath)
     os.system(cmd)
 
-  def changeOpacity(self,node):
+  def changeOpacity(self,value):
 
     # current slider value
-    opacity=float(self.opacitySlider.value)
+    # opacity=float(self.fadeSlider.value)
 
     # set opactiy
     layoutManager=slicer.app.layoutManager()
     redWidget = layoutManager.sliceWidget('Red')
     compositNode = redWidget.mrmlSliceCompositeNode()
-    compositNode.SetForegroundOpacity((opacity/100))
+    compositNode.SetForegroundOpacity(value)
 
   def loadAndSetdata(self):
     """
@@ -1988,7 +2066,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
 
     # set opacity fader to 0
-    self.opacitySlider.setValue(0)
+    # self.opacitySlider.setValue(0)
 
     # Hide Labels
     compositNodeRed.SetLabelOpacity(0)
