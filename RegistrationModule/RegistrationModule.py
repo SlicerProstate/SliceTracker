@@ -49,7 +49,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.rocking = False
     self.rockTimer = None
     self.flickerTimer = None
-
+    self.revealCursor = None
 
 
     # set up widgets
@@ -195,7 +195,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.patientSelector=ctk.ctkComboBox()
     self.patientSelector.connect('currentIndexChanged(int)',self.updatePatientViewBox)
     selectPatientRowLayout.addWidget(self.patientSelector)
+    self.pushButton = qt.QPushButton("Update Patient List")
+    selectPatientRowLayout.addWidget(self.pushButton)
+
     self.dataSelectionGroupBoxLayout.addRow("Choose Patient ID: ", selectPatientRowLayout)
+
+
 
     # fill PatientSelector with Patients that are currently in slicer.dicomDatabase
     db = slicer.dicomDatabase
@@ -532,63 +537,46 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Step 4: Registration Evaluation
     #
 
-    # Show Rigid Registration
-    self.rigidCheckBox=qt.QCheckBox()
-    self.rigidCheckBox.setText('Show Rigid Registration')
-    self.rigidCheckBox.connect('clicked(bool)',self.onRigidCheckBoxClicked)
 
-    # Show Affine Registration
-    self.affineCheckBox=qt.QCheckBox()
-    self.affineCheckBox.setText('Show Affine Registration')
-    self.affineCheckBox.setChecked(0)
-    self.affineCheckBox.connect('clicked(bool)',self.onAffineCheckBoxClicked)
+    selectPatientRowLayout = qt.QHBoxLayout()
 
-    # Show BSpline Registration
-    self.bsplineCheckBox=qt.QCheckBox()
-    self.bsplineCheckBox.setText('Show BSpline Registration')
-    self.bsplineCheckBox.connect('clicked(bool)',self.onBSplineCheckBoxClicked)
+    self.showPreopButton=qt.QPushButton('Show Preop')
+    self.showPreopButton.connect('clicked(bool)',self.onPreopCheckBoxClicked)
 
-    # Show Rigid Registration
-    self.targetCheckBox=qt.QCheckBox()
-    self.targetCheckBox.setText('Show Transformed Targets')
-    self.targetCheckBox.setChecked(0)
-    self.targetCheckBox.connect('clicked(bool)',self.onTargetCheckBox)
+    self.showRigidButton=qt.QPushButton('Show Rigid Result')
+    self.showRigidButton.connect('clicked(bool)',self.onRigidCheckBoxClicked)
 
-    # Show Preop Data with Targets
-    self.preopCheckBox=qt.QCheckBox()
-    self.preopCheckBox.setText('Show Preop Volume')
-    self.preopCheckBox.setChecked(0)
-    self.preopCheckBox.connect('clicked(bool)',self.onPreopCheckBoxClicked)
+    self.showAffineButton=qt.QPushButton('Show Affine Result')
+    self.showAffineButton.connect('clicked(bool)',self.onAffineCheckBoxClicked)
+
+    self.showBSplineButton=qt.QPushButton('Show BSpline Result')
+    self.showBSplineButton.connect('clicked(bool)',self.onBSplineCheckBoxClicked)
 
 
-    # Add widgets to layout
-    self.evaluationGroupBoxLayout.addWidget(self.preopCheckBox)
-    self.evaluationGroupBoxLayout.addWidget(self.rigidCheckBox)
-    self.evaluationGroupBoxLayout.addWidget(self.affineCheckBox)
-    self.evaluationGroupBoxLayout.addWidget(self.bsplineCheckBox)
-    self.evaluationGroupBoxLayout.addWidget(self.targetCheckBox)
+    selectPatientRowLayout.addWidget(self.showPreopButton)
+    selectPatientRowLayout.addWidget(self.showRigidButton)
+    selectPatientRowLayout.addWidget(self.showAffineButton)
+    selectPatientRowLayout.addWidget(self.showBSplineButton)
 
-    # Save Data Button
-    littleDiscPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-littleDisc.png')
-    littleDiscIcon=qt.QIcon(littleDiscPixmap)
-    self.saveDataButton=qt.QPushButton('Save Data')
-    self.saveDataButton.setMaximumWidth(150)
-    self.saveDataButton.setIcon(littleDiscIcon)
+    self.groupBoxDisplay = qt.QGroupBox("Display")
+    self.groupBoxDisplayLayout = qt.QFormLayout(self.groupBoxDisplay)
+    self.groupBoxDisplayLayout.addRow(selectPatientRowLayout)
+    self.evaluationGroupBoxLayout.addWidget(self.groupBoxDisplay)
 
-    self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
-    fadeHolder = qt.QWidget()
-    fadeLayout = qt.QHBoxLayout()
-    fadeHolder.setLayout(fadeLayout)
-
-    self.groupBox = qt.QGroupBox("Visualization")
-    self.groupBoxLayout = qt.QFormLayout(self.groupBox)
-    self.evaluationGroupBoxLayout.addWidget(self.groupBox)
 
     #
     # fadeSlider
     #
 
+
+    fadeHolder = qt.QWidget()
+    fadeLayout = qt.QHBoxLayout()
+    fadeHolder.setLayout(fadeLayout)
+
+    self.groupBox = qt.QGroupBox("Visual Evaluation")
+    self.groupBoxLayout = qt.QFormLayout(self.groupBox)
+    self.evaluationGroupBoxLayout.addWidget(self.groupBox)
 
     self.fadeSlider = ctk.ctkSliderWidget()
     self.fadeSlider.minimum = 0
@@ -621,9 +609,43 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     checkBox.connect('toggled(bool)', self.onFlickerToggled)
     animaLayout.addWidget(checkBox)
 
-    self.groupBoxLayout.addRow("Fade", fadeHolder)
+    self.groupBoxLayout.addRow("Opacity", fadeHolder)
+
+    checkBox = qt.QCheckBox()
+    checkBox.text = "Use RevealCursor"
+    checkBox.checked = False
+    checkBox.connect('toggled(bool)', self.revealToggled)
+
+    self.groupBoxLayout.addRow("",checkBox)
+
+    self.groupBoxTargets = qt.QGroupBox("Targets")
+    self.groupBoxLayoutTargets = qt.QFormLayout(self.groupBoxTargets)
+    self.evaluationGroupBoxLayout.addWidget(self.groupBoxTargets)
 
 
+
+
+    self.targetTable=qt.QTableWidget()
+    self.targetTable.setRowCount(3)
+    self.targetTable.setColumnCount(3)
+    self.targetTable.setColumnWidth(1,200)
+    self.targetTable.setColumnWidth(2,200)
+    self.targetTable.setHorizontalHeaderLabels(['Target','Distance to needle-tip 2D','Distance to needle-tip 3D'])
+
+    self.groupBoxLayoutTargets.addRow(self.targetTable)
+
+    self.needleTipButton=qt.QPushButton('Set needle-tip')
+    self.groupBoxLayoutTargets.addRow(self.needleTipButton)
+
+
+    # Save Data Button
+    littleDiscPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-littleDisc.png')
+    littleDiscIcon=qt.QIcon(littleDiscPixmap)
+    self.saveDataButton=qt.QPushButton('Save Data')
+    self.saveDataButton.setMaximumWidth(150)
+    self.saveDataButton.setIcon(littleDiscIcon)
+
+    self.evaluationGroupBoxLayout.addWidget(self.saveDataButton)
 
 
     # DEBUG: prepare IntraopFolder for tests
@@ -638,11 +660,19 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # enter Module on Tab 1
     self.onTab1clicked()
 
+  def revealToggled(self,checked):
+    """Turn the RevealCursor on or off
+    """
+    if self.revealCursor:
+      self.revealCursor.tearDown()
+    if checked:
+      import CompareVolumes
+      self.revealCursor = CompareVolumes.LayerReveal()
 
   def rock(self):
     if not self.rocking:
       self.rockTimer = None
-      self.fadeSlider.value = 0.5
+      self.fadeSlider.value = 0.0
     if self.rocking:
       if not self.rockTimer:
         self.rockTimer = qt.QTimer()
@@ -659,7 +689,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def flicker(self):
     if not self.flickering:
       self.flickerTimer = None
-      self.fadeSlider.value = 0.5
+      self.fadeSlider.value = 0.0
     if self.flickering:
       if not self.flickerTimer:
         if self.fadeSlider.value == 0.5:
@@ -1077,193 +1107,172 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onBSplineCheckBoxClicked(self):
 
-    if self.bsplineCheckBox.isChecked():
+    self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showBSplineButton.setStyleSheet('background-color: rgb(230,230,230)')
 
-      # uncheck the other Buttons
-      self.affineCheckBox.setChecked(0)
-      self.rigidCheckBox.setChecked(0)
-      self.preopCheckBox.setChecked(0)
+    # link images
+    layoutManager=slicer.app.layoutManager()
+    redWidget = layoutManager.sliceWidget('Red')
+    yellowWidget = layoutManager.sliceWidget('Yellow')
+    compositNodeRed = redWidget.mrmlSliceCompositeNode()
+    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+    compositNodeRed.SetLinkedControl(1)
+    compositNodeYellow.SetLinkedControl(1)
 
-      # link images
-      layoutManager=slicer.app.layoutManager()
-      redWidget = layoutManager.sliceWidget('Red')
-      yellowWidget = layoutManager.sliceWidget('Yellow')
-      compositNodeRed = redWidget.mrmlSliceCompositeNode()
-      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
-      compositNodeRed.SetLinkedControl(1)
-      compositNodeYellow.SetLinkedControl(1)
+    # Get SliceWidgets
+    layoutManager=slicer.app.layoutManager()
 
-      # Get SliceWidgets
-      layoutManager=slicer.app.layoutManager()
+    redWidget = layoutManager.sliceWidget('Red')
+    yellowWidget = layoutManager.sliceWidget('Yellow')
 
-      redWidget = layoutManager.sliceWidget('Red')
-      yellowWidget = layoutManager.sliceWidget('Yellow')
+    compositNodeRed = redWidget.mrmlSliceCompositeNode()
+    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
 
-      compositNodeRed = redWidget.mrmlSliceCompositeNode()
-      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+    # Get the Affine Volume Node
+    bsplineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-BSpline').GetItemAsObject(0)
 
-      # Get the Affine Volume Node
-      bsplineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-BSpline').GetItemAsObject(0)
+    # Get the Intraop Volume Node
 
-      # Get the Intraop Volume Node
+    intraopVolumeNode=self.intraopVolumeSelector.currentNode()
 
-      intraopVolumeNode=self.intraopVolumeSelector.currentNode()
+    # Red Slice View:
 
-      # Red Slice View:
+    # Set Foreground: intraop image
+    compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
+    # Set Background: Affine Image
+    compositNodeRed.SetBackgroundVolumeID(bsplineVolumeNode.GetID())
 
-        # Set Foreground: intraop image
-      compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-        # Set Background: Affine Image
-      compositNodeRed.SetBackgroundVolumeID(bsplineVolumeNode.GetID())
-
-
-      # Yellow Slice View:
-
-        # Set Foreground: Intraop Image + Fidicuals Affine transformed
-
-        # Set Background: -
 
   def onAffineCheckBoxClicked(self):
 
-    if self.affineCheckBox.isChecked():
 
-      # uncheck the other Buttons
-      self.bsplineCheckBox.setChecked(0)
-      self.rigidCheckBox.setChecked(0)
-      self.preopCheckBox.setChecked(0)
+    self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showAffineButton.setStyleSheet('background-color: rgb(230,230,230)')
+    self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
 
-      # link images
-      layoutManager=slicer.app.layoutManager()
-      redWidget = layoutManager.sliceWidget('Red')
-      yellowWidget = layoutManager.sliceWidget('Yellow')
-      compositNodeRed = redWidget.mrmlSliceCompositeNode()
-      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
-      compositNodeRed.SetLinkedControl(1)
-      compositNodeYellow.SetLinkedControl(1)
+    # link images
+    layoutManager=slicer.app.layoutManager()
+    redWidget = layoutManager.sliceWidget('Red')
+    yellowWidget = layoutManager.sliceWidget('Yellow')
+    compositNodeRed = redWidget.mrmlSliceCompositeNode()
+    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+    compositNodeRed.SetLinkedControl(1)
+    compositNodeYellow.SetLinkedControl(1)
 
-      # Get SliceWidgets
-      layoutManager=slicer.app.layoutManager()
+    # Get SliceWidgets
+    layoutManager=slicer.app.layoutManager()
 
-      redWidget = layoutManager.sliceWidget('Red')
-      yellowWidget = layoutManager.sliceWidget('Yellow')
+    redWidget = layoutManager.sliceWidget('Red')
+    yellowWidget = layoutManager.sliceWidget('Yellow')
 
-      compositNodeRed = redWidget.mrmlSliceCompositeNode()
-      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+    compositNodeRed = redWidget.mrmlSliceCompositeNode()
+    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
 
-      # Get the Affine Volume Node
-      affineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Affine').GetItemAsObject(0)
+    # Get the Affine Volume Node
+    affineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Affine').GetItemAsObject(0)
 
-      # Get the Intraop Volume Node
+    # Get the Intraop Volume Node
 
-      intraopVolumeNode=self.intraopVolumeSelector.currentNode()
+    intraopVolumeNode=self.intraopVolumeSelector.currentNode()
 
-      # Red Slice View:
+    # Red Slice View:
 
-        # Set Foreground: intraop image
-      compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-        # Set Background: Affine Image
-      compositNodeRed.SetBackgroundVolumeID(affineVolumeNode.GetID())
-
-
-      # Yellow Slice View:
-
-        # Set Foreground: Intraop Image + Fidicuals Affine transformed
-
-        # Set Background: -
+    # Set Foreground: intraop image
+    compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
+    # Set Background: Affine Image
+    compositNodeRed.SetBackgroundVolumeID(affineVolumeNode.GetID())
 
   def onRigidCheckBoxClicked(self):
 
-    if self.rigidCheckBox.isChecked():
-      # uncheck the other Buttons
-      self.affineCheckBox.setChecked(0)
-      self.bsplineCheckBox.setChecked(0)
-      self.preopCheckBox.setChecked(0)
+    self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showRigidButton.setStyleSheet('background-color: rgb(230,230,230)')
+    self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
 
-      # link images
-      layoutManager=slicer.app.layoutManager()
-      redWidget = layoutManager.sliceWidget('Red')
-      yellowWidget = layoutManager.sliceWidget('Yellow')
-      compositNodeRed = redWidget.mrmlSliceCompositeNode()
-      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
-      compositNodeRed.SetLinkedControl(1)
-      compositNodeYellow.SetLinkedControl(1)
 
-      # Get SliceWidgets
-      layoutManager=slicer.app.layoutManager()
+    # link images
+    layoutManager=slicer.app.layoutManager()
+    redWidget = layoutManager.sliceWidget('Red')
+    yellowWidget = layoutManager.sliceWidget('Yellow')
+    compositNodeRed = redWidget.mrmlSliceCompositeNode()
+    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+    compositNodeRed.SetLinkedControl(1)
+    compositNodeYellow.SetLinkedControl(1)
 
-      redWidget = layoutManager.sliceWidget('Red')
-      yellowWidget = layoutManager.sliceWidget('Yellow')
+    # Get SliceWidgets
+    layoutManager=slicer.app.layoutManager()
 
-      compositNodeRed = redWidget.mrmlSliceCompositeNode()
-      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+    redWidget = layoutManager.sliceWidget('Red')
+    yellowWidget = layoutManager.sliceWidget('Yellow')
 
-      # Get the Affine Volume Node
-      rigidVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Rigid').GetItemAsObject(0)
+    compositNodeRed = redWidget.mrmlSliceCompositeNode()
+    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
 
-      # Get the Intraop Volume Node
+    # Get the Affine Volume Node
+    rigidVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Rigid').GetItemAsObject(0)
 
-      intraopVolumeNode=self.intraopVolumeSelector.currentNode()
+    # Get the Intraop Volume Node
+    intraopVolumeNode=self.intraopVolumeSelector.currentNode()
 
-      # Red Slice View:
-
-        # Set Foreground: intraop image
-      compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-        # Set Background: Affine Image
-      compositNodeRed.SetBackgroundVolumeID(rigidVolumeNode.GetID())
+    # Red Slice View:
+    # Set Foreground: intraop image
+    compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
+    # Set Background: Affine Image
+    compositNodeRed.SetBackgroundVolumeID(rigidVolumeNode.GetID())
 
   def onPreopCheckBoxClicked(self):
 
-    if self.preopCheckBox.isChecked():
+    self.showPreopButton.setStyleSheet('background-color: rgb(230,230,230)')
+    self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
+
+    # un-link images
+    layoutManager=slicer.app.layoutManager()
+    redWidget = layoutManager.sliceWidget('Red')
+    yellowWidget = layoutManager.sliceWidget('Yellow')
+    compositNodeRed = redWidget.mrmlSliceCompositeNode()
+    compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
+    compositNodeRed.SetLinkedControl(0)
+    compositNodeYellow.SetLinkedControl(0)
 
 
-      # uncheck the other Buttons
-      self.affineCheckBox.setChecked(0)
-      self.bsplineCheckBox.setChecked(0)
-      self.rigidCheckBox.setChecked(0)
+    # Get the Volume Node
+    preopVolumeNode=slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0)
 
-      # un-link images
-      layoutManager=slicer.app.layoutManager()
-      redWidget = layoutManager.sliceWidget('Red')
-      yellowWidget = layoutManager.sliceWidget('Yellow')
-      compositNodeRed = redWidget.mrmlSliceCompositeNode()
-      compositNodeYellow = yellowWidget.mrmlSliceCompositeNode()
-      compositNodeRed.SetLinkedControl(0)
-      compositNodeYellow.SetLinkedControl(0)
+    # Get the Intraop Volume Node
+    intraopVolumeNode=self.intraopVolumeSelector.currentNode()
 
+    # Red Slice View:
 
-      # Get the Volume Node
-      preopVolumeNode=slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0)
+    # Set Foreground: intraop image
+    # compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
+    # Set Background: Affine Image
+    compositNodeRed.SetBackgroundVolumeID(preopVolumeNode.GetID())
 
-      # Get the Intraop Volume Node
-      intraopVolumeNode=self.intraopVolumeSelector.currentNode()
+     # show preop Targets
 
-      # Red Slice View:
+    layoutManager=slicer.app.layoutManager()
+    redWidget = layoutManager.sliceWidget('Red')
+    redLogic=redWidget.sliceLogic()
+    sliceNodeRed=redLogic.GetSliceNode()
+    fiducialNodeTargetsPREOP=slicer.mrmlScene.GetNodesByName('targets-PREOP').GetItemAsObject(0)
+    dispNodeTargetsPreop=fiducialNodeTargetsPREOP.GetDisplayNode()
+    dispNodeTargetsPreop.AddViewNodeID(sliceNodeRed.GetID())
 
-        # Set Foreground: intraop image
-      # compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-        # Set Background: Affine Image
-      compositNodeRed.SetBackgroundVolumeID(preopVolumeNode.GetID())
+    # Set Textscale
+    dispNodeTargetsPreop.SetTextScale(1.9)
 
-      # show preop Targets
+    # Set Glyph Size
+    dispNodeTargetsPreop.SetGlyphScale(1.0)
 
-      layoutManager=slicer.app.layoutManager()
-      redWidget = layoutManager.sliceWidget('Red')
-      redLogic=redWidget.sliceLogic()
-      sliceNodeRed=redLogic.GetSliceNode()
-      fiducialNodeTargetsPREOP=slicer.mrmlScene.GetNodesByName('targets-PREOP').GetItemAsObject(0)
-      dispNodeTargetsPreop=fiducialNodeTargetsPREOP.GetDisplayNode()
-      dispNodeTargetsPreop.AddViewNodeID(sliceNodeRed.GetID())
-
-      # Set Textscale
-      dispNodeTargetsPreop.SetTextScale(1.9)
-
-      # Set Glyph Size
-      dispNodeTargetsPreop.SetGlyphScale(1.0)
-
-      # switch to fiducial
-      # jump to first markup slice
-      self.markupsLogic.SetAllMarkupsVisibility(self.preopTargetsNodePreserve,0)
-      slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNodeTargetsPREOP.GetID(),1)
+    # switch to fiducial
+    # jump to first markup slice
+    self.markupsLogic.SetAllMarkupsVisibility(self.preopTargetsNodePreserve,0)
+    slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(fiducialNodeTargetsPREOP.GetID(),1)
 
   def onTargetCheckBox(self):
 
@@ -2043,10 +2052,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.tabWidget.setCurrentIndex(3)
 
     # set BSpline Checkbox
-    self.bsplineCheckBox.setChecked(1)
+    self.showBSplineButton.setStyleSheet('background-color: rgb(200,255,255)')
 
     # set show Transformed Targets CheckBox
-    self.targetCheckBox.setChecked(1)
+    # self.targetCheckBox.setChecked(1)
 
     # set fiducial place mode back to regular view mode
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
@@ -2284,7 +2293,15 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     self.clippingModel.SetName('clipModelNode')
     slicer.mrmlScene.AddNode(self.clippingModel)
 
-    # Create markup display fiducials - why do i need that?
+    # Create Display Node for Model
+    clippingModelDisplayNode=slicer.vtkMRMLModelDisplayNode()
+    clippingModelDisplayNode.SetSliceIntersectionThickness(3)
+    clippingModelDisplayNode.SetColor((20,180,250))
+    slicer.mrmlScene.AddNode(clippingModelDisplayNode)
+
+    self.clippingModel.SetAndObserveDisplayNodeID(clippingModelDisplayNode.GetID())
+
+    # Create markup display fiducials
     displayNode = slicer.vtkMRMLMarkupsDisplayNode()
     slicer.mrmlScene.AddNode(displayNode)
 
@@ -2302,6 +2319,9 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     # Set Glyph Size
     inputMarkupDisplayNode.SetGlyphScale(2.0)
+
+    # Set Color
+    inputMarkupDisplayNode.SetColor(0,0,0)
 
     # add Observer
     inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateModel)
