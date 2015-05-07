@@ -699,17 +699,20 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.tabBar.setTabEnabled(3,True)
 
     # create Log data and start timers
-    self.startLog()
+    #self.startLog()
 
     # enter Module on Tab 1
-    self.onTab1clicked()
+    #self.onTab1clicked()
 
 
     print ('start2')
     lm = slicer.app.layoutManager()
     rw = lm.sliceWidget('Red')
     rv = rw.sliceView()
+    width = rv.width
+    #height = rv.height
     renderWindow = rv.renderWindow()
+    renderer = renderWindow.GetRenderers().GetItemAsObject(0)
     interactor = renderWindow.GetInteractor()
     text = vtk.vtkTextActor()
     text.SetInput('PREOP')
@@ -717,18 +720,23 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     textProperty.SetFontSize(10)
     textProperty.SetColor(1,0,0)
     textProperty.SetBold(1)
+    text.SetTextProperty(textProperty)
+    textActor.SetDisplayPosition(width*0.5,10)
     text_representation = vtk.vtkTextRepresentation()
     xsize = 0.15
     ysize = 0.15
     ypos = 0.05
     text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
     text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
+    renderer.AddActor(text)
+    '''
     text_widget = vtk.vtkTextWidget()
     text_widget.SetRepresentation(text_representation)
     text_widget.SetInteractor(interactor)
     text_widget.SetTextActor(text)
     text_widget.SelectableOff()
     text_widget.On()
+    '''
 
   def onForwardButton(self):
 
