@@ -51,6 +51,32 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.flickerTimer = None
     self.revealCursor = None
 
+    self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
+    self.deletedMarkups.SetName('deletedMarkups')
+    print ('start')
+    lm = slicer.app.layoutManager()
+    rw = lm.sliceWidget('Red')
+    rv = rw.sliceView()
+    renderWindow = rv.renderWindow()
+    interactor = renderWindow.GetInteractor()
+    text = vtk.vtkTextActor()
+    text.SetInput('PREOP')
+    textProperty = text.GetTextProperty()
+    textProperty.SetFontSize(10)
+    textProperty.SetColor(1,0,0)
+    textProperty.SetBold(1)
+    text_representation = vtk.vtkTextRepresentation()
+    xsize = 0.15
+    ysize = 0.15
+    ypos = 0.05
+    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
+    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
+    text_widget = vtk.vtkTextWidget()
+    text_widget.SetRepresentation(text_representation)
+    text_widget.SetInteractor(interactor)
+    text_widget.SetTextActor(text)
+    text_widget.SelectableOff()
+    text_widget.On()
 
     # set up widgets
 
@@ -361,13 +387,30 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applySegmentationButton.setStyleSheet("background-color: rgb(255,255,255)")
     self.applySegmentationButton.setEnabled(0)
 
+
+    # forward and back buttons
+
+    self.forwardButton=qt.QPushButton('Step forward')
+    self.forwardButton.setEnabled(0)
+    self.forwardButton.connect('clicked(bool)',self.onForwardButton)
+
+    self.backButton=qt.QPushButton('Step back')
+    self.backButton.setEnabled(0)
+    self.backButton.connect('clicked(bool)',self.onBackButton)
+
     # Create ButtonBox to fill in those Buttons
     buttonBox1=qt.QDialogButtonBox()
+
+    buttonBox1.setLayoutDirection(1)
+    buttonBox1.centerButtons=False
+
+    buttonBox1.addButton(self.forwardButton,buttonBox1.ActionRole)
+    buttonBox1.addButton(self.backButton,buttonBox1.ActionRole)
+
     buttonBox1.addButton(self.applySegmentationButton,buttonBox1.ActionRole)
     buttonBox1.addButton(self.startQuickSegmentationButton,buttonBox1.ActionRole)
     buttonBox1.addButton(self.startLabelSegmentationButton,buttonBox1.ActionRole)
-    buttonBox1.setLayoutDirection(1)
-    buttonBox1.centerButtons=False
+
     self.labelSelectionGroupBoxLayout.addWidget(buttonBox1)
 
     # connections
@@ -659,6 +702,93 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # enter Module on Tab 1
     self.onTab1clicked()
+
+
+    print ('start2')
+    lm = slicer.app.layoutManager()
+    rw = lm.sliceWidget('Red')
+    rv = rw.sliceView()
+    renderWindow = rv.renderWindow()
+    interactor = renderWindow.GetInteractor()
+    text = vtk.vtkTextActor()
+    text.SetInput('PREOP')
+    textProperty = text.GetTextProperty()
+    textProperty.SetFontSize(10)
+    textProperty.SetColor(1,0,0)
+    textProperty.SetBold(1)
+    text_representation = vtk.vtkTextRepresentation()
+    xsize = 0.15
+    ysize = 0.15
+    ypos = 0.05
+    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
+    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
+    text_widget = vtk.vtkTextWidget()
+    text_widget.SetRepresentation(text_representation)
+    text_widget.SetInteractor(interactor)
+    text_widget.SetTextActor(text)
+    text_widget.SelectableOff()
+    text_widget.On()
+
+  def onForwardButton(self):
+
+    # grab the last fiducial of deletedMarkups
+    activeFiducials=slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0)
+    print ('activeFiducials found')
+    numberOfTargets=self.deletedMarkups.GetNumberOfFiducials()
+    print ('numberOfTargets in deletedMarkups is'+str(numberOfTargets))
+    pos=[0.0,0.0,0.0]
+
+    if numberOfTargets==0:
+      pass
+    else:
+      self.deletedMarkups.GetNthFiducialPosition(numberOfTargets-1,pos)
+
+    print ('deletedMarkups.position = '+str(pos))
+
+    if pos == [0.0,0.0,0.0]:
+      print ('pos was 0,0,0 -> go on')
+      pass
+    else:
+      # add it to activeFiducials
+      activeFiducials.AddFiducialFromArray(pos)
+
+      # delete it in deletedMarkups
+      self.deletedMarkups.RemoveMarkup(numberOfTargets-1)
+
+
+
+  def onBackButton(self):
+
+    # grab the last fiducial of inputMarkupsNode
+    activeFiducials=slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0)
+    print ('activeFiducials found')
+    numberOfTargets=activeFiducials.GetNumberOfFiducials()
+    print ('numberOfTargets is'+str(numberOfTargets))
+    pos=[0.0,0.0,0.0]
+    activeFiducials.GetNthFiducialPosition(numberOfTargets-1,pos)
+    print ('activeFiducials.position = '+str(pos))
+
+    if numberOfTargets==0:
+      pass
+    else:
+      self.deletedMarkups.GetNthFiducialPosition(numberOfTargets-1,pos)
+
+    activeFiducials.GetNthFiducialPosition(numberOfTargets-1,pos)
+    print ('POS BEFORE ENTRY = '+str(pos))
+    if pos == [0.0,0.0,0.0]:
+      print ('pos was 0,0,0 -> go on')
+      pass
+    else:
+      # add it to deletedMarkups
+      activeFiducials.GetNthFiducialPosition(numberOfTargets-1,pos)
+      print ('pos = '+str(pos))
+      self.deletedMarkups.AddFiducialFromArray(pos)
+      print ('added Markup with position '+str(pos)+' to the deletedMarkupsList')
+      # delete it in activeFiducials
+      activeFiducials.RemoveMarkup(numberOfTargets-1)
+
+
+
 
   def revealToggled(self,checked):
     """Turn the RevealCursor on or off
@@ -1769,11 +1899,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.startLabelSegmentationButton.setEnabled(0)
     self.startQuickSegmentationButton.setEnabled(0)
     self.applySegmentationButton.setEnabled(1)
+    self.backButton.setEnabled(1)
+    self.forwardButton.setEnabled(1)
 
   def setQuickSegmentationModeOFF(self):
     self.startLabelSegmentationButton.setEnabled(1)
     self.startQuickSegmentationButton.setEnabled(1)
     self.applySegmentationButton.setEnabled(0)
+    self.backButton.setEnabled(0)
+    self.forwardButton.setEnabled(0)
 
   def onApplySegmentationButton(self):
 
