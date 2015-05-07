@@ -161,11 +161,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBox=qt.QGroupBox()
 
     # set up PixMaps
-    self.dataSelectionIconPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-dataselection_fit.png')
-    self.labelSelectionIconPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-labelselection_fit.png')
-    self.registrationSectionPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-registration_fit.png')
-    self.evaluationSectionPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-evaluation_fit.png')
-    self.newImageDataPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-newImageData.png')
+    self.modulePath = slicer.modules.registrationmodule.path.replace("RegistrationModule.py","")
+    self.dataSelectionIconPixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-dataselection_fit.png')
+    self.labelSelectionIconPixmap=qt.QPixmap(self.modulePath + 'Resources/Icons/icon-labelselection_fit.png')
+    self.registrationSectionPixmap=qt.QPixmap(self.modulePath + 'Resources/Icons/icon-registration_fit.png')
+    self.evaluationSectionPixmap=qt.QPixmap(self.modulePath + 'Resources/Icons/icon-evaluation_fit.png')
+    self.newImageDataPixmap=qt.QPixmap(self.modulePath + 'Resources/Icons/icon-newImageData.png')
 
     # set up Icons
     self.dataSelectionIcon=qt.QIcon(self.dataSelectionIconPixmap)
