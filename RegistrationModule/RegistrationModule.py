@@ -38,6 +38,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Parameters
     self.settings = qt.QSettings()
+    self.modulePath = slicer.modules.registrationmodule.path.replace("RegistrationModule.py","")
     self.temp = None
     self.updatePatientSelectorFlag = True
     self.warningFlag = False
@@ -45,6 +46,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.patientIDs = []
     self.addedPatients = []
     self.selectableSeries=[]
+    self.selectablePatientItems=[]
     self.rockCount = 0
     self.rocking = False
     self.rockTimer = None
@@ -53,30 +55,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
     self.deletedMarkups.SetName('deletedMarkups')
-    print ('start')
-    lm = slicer.app.layoutManager()
-    rw = lm.sliceWidget('Red')
-    rv = rw.sliceView()
-    renderWindow = rv.renderWindow()
-    interactor = renderWindow.GetInteractor()
-    text = vtk.vtkTextActor()
-    text.SetInput('PREOP')
-    textProperty = text.GetTextProperty()
-    textProperty.SetFontSize(10)
-    textProperty.SetColor(1,0,0)
-    textProperty.SetBold(1)
-    text_representation = vtk.vtkTextRepresentation()
-    xsize = 0.15
-    ysize = 0.15
-    ypos = 0.05
-    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
-    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
-    text_widget = vtk.vtkTextWidget()
-    text_widget.SetRepresentation(text_representation)
-    text_widget.SetInteractor(interactor)
-    text_widget.SetTextActor(text)
-    text_widget.SelectableOff()
-    text_widget.On()
 
     # set up widgets
 
@@ -86,6 +64,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # set Compare Screen
     layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+
+
 
     # set Axial Views only
     redWidget = layoutManager.sliceWidget('Red')
@@ -161,7 +141,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBox=qt.QGroupBox()
 
     # set up PixMaps
-    self.modulePath = slicer.modules.registrationmodule.path.replace("RegistrationModule.py","")
     self.dataSelectionIconPixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-dataselection_fit.png')
     self.labelSelectionIconPixmap=qt.QPixmap(self.modulePath + 'Resources/Icons/icon-labelselection_fit.png')
     self.registrationSectionPixmap=qt.QPixmap(self.modulePath + 'Resources/Icons/icon-registration_fit.png')
@@ -222,8 +201,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.patientSelector=ctk.ctkComboBox()
     self.patientSelector.connect('currentIndexChanged(int)',self.updatePatientViewBox)
     selectPatientRowLayout.addWidget(self.patientSelector)
-    self.pushButton = qt.QPushButton("Update Patient List")
-    selectPatientRowLayout.addWidget(self.pushButton)
+
+    # Folder Button
+    refreshPixmap=qt.QPixmap(self.modulePath+ 'Resources/Icons/icon-update.png')
+    refreshIcon=qt.QIcon(refreshPixmap)
+
+
+    self.updatePatientListButton = qt.QPushButton("Update Patient List")
+    self.updatePatientListButton.setIcon(refreshIcon)
+    self.updatePatientListButton.connect('clicked(bool)',self.updatePatientSelector)
+    selectPatientRowLayout.addWidget(self.updatePatientListButton)
 
     self.dataSelectionGroupBoxLayout.addRow("Choose Patient ID: ", selectPatientRowLayout)
 
@@ -231,10 +218,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # fill PatientSelector with Patients that are currently in slicer.dicomDatabase
     db = slicer.dicomDatabase
-    db.connect('databaseChanged()', self.updatePatientSelector)
+    # db.connect('databaseChanged()', self.updatePatientSelector)
 
     # Folder Button
-    folderPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-folder.png')
+    folderPixmap=qt.QPixmap(self.modulePath+ 'Resources/Icons/icon-folder.png')
     folderIcon=qt.QIcon(folderPixmap)
 
 
@@ -298,12 +285,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.simulateDataIncomeButton4.setStyleSheet('background-color: rgb(255,102,0)')
     self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton4)
 
-    # Load Series into Slicer Button
-    self.updateAnnotationButton = qt.QPushButton("Update Annotation")
-    self.updateAnnotationButton.toolTip = "Load and Segment"
-    self.updateAnnotationButton.enabled = True
-    # self.dataSelectionGroupBoxLayout.addWidget(self.updateAnnotationButton)
-    self.updateAnnotationButton.connect('clicked(bool)',self.updateAnnotation)
     #
     # Step 2: Label Selection
     #
@@ -356,7 +337,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     size=qt.QSize(60,60)
 
     # Create Quick Segmentation Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-quickSegmentation.png')
+    pixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-quickSegmentation.png')
     icon=qt.QIcon(pixmap)
     self.startQuickSegmentationButton=qt.QPushButton()
     self.startQuickSegmentationButton.setIcon(icon)
@@ -367,7 +348,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     # Create Label Segmentation Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-labelSegmentation.png')
+    pixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-labelSegmentation.png')
     icon=qt.QIcon(pixmap)
     self.startLabelSegmentationButton=qt.QPushButton()
     self.startLabelSegmentationButton.setIcon(icon)
@@ -378,7 +359,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     # Create Apply Segmentation Button
-    pixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-applySegmentation.png')
+    pixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-applySegmentation.png')
     icon=qt.QIcon(pixmap)
     self.applySegmentationButton=qt.QPushButton()
     self.applySegmentationButton.setIcon(icon)
@@ -401,13 +382,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Create ButtonBox to fill in those Buttons
     buttonBox1=qt.QDialogButtonBox()
-
     buttonBox1.setLayoutDirection(1)
     buttonBox1.centerButtons=False
 
     buttonBox1.addButton(self.forwardButton,buttonBox1.ActionRole)
     buttonBox1.addButton(self.backButton,buttonBox1.ActionRole)
-
     buttonBox1.addButton(self.applySegmentationButton,buttonBox1.ActionRole)
     buttonBox1.addButton(self.startQuickSegmentationButton,buttonBox1.ActionRole)
     buttonBox1.addButton(self.startLabelSegmentationButton,buttonBox1.ActionRole)
@@ -554,7 +533,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
 
-    greenCheckPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-greenCheck.png')
+    greenCheckPixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-greenCheck.png')
     greenCheckIcon=qt.QIcon(greenCheckPixmap)
     self.applyRegistrationButton = qt.QPushButton("Apply Registration")
     self.applyRegistrationButton.setIcon(greenCheckIcon)
@@ -569,13 +548,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     #
     # Load and Set Data (DISABLED)
     #
-
-    self.loadAndSetDataButton = qt.QPushButton("load And Set data")
-    self.loadAndSetDataButton.toolTip = "Run the algorithm."
-    self.loadAndSetDataButton.enabled = True
-    self.loadAndSetDataButton.setStyleSheet('background-color: rgb(255,102,0)')
-    # self.registrationGroupBoxLayout.addRow(self.loadAndSetDataButton)
-    self.loadAndSetDataButton.connect('clicked(bool)',self.loadAndSetdata)
 
     #
     # Step 4: Registration Evaluation
@@ -683,7 +655,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     # Save Data Button
-    littleDiscPixmap=qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-littleDisc.png')
+    littleDiscPixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-littleDisc.png')
     littleDiscIcon=qt.QIcon(littleDiscPixmap)
     self.saveDataButton=qt.QPushButton('Save Data')
     self.saveDataButton.setMaximumWidth(150)
@@ -699,44 +671,73 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.tabBar.setTabEnabled(3,True)
 
     # create Log data and start timers
-    #self.startLog()
+    self.startLog()
 
     # enter Module on Tab 1
-    #self.onTab1clicked()
+    self.onTab1clicked()
 
 
-    print ('start2')
+  def removeSliceAnnotations(self):
+    try:
+      self.red_renderer.RemoveActor(self.text_preop)
+      self.yellow_renderer.RemoveActor(self.text_intraop)
+
+      lm = slicer.app.layoutManager()
+      rw = lm.sliceWidget('Red')
+      rv = rw.sliceView()
+      rv.update()
+
+      lm = slicer.app.layoutManager()
+      rw = lm.sliceWidget('Yellow')
+      rv = rw.sliceView()
+      rv.update()
+    except:
+      pass
+
+  def addSliceAnnotations(self):
+
+    print ('added Slice Annotations')
     lm = slicer.app.layoutManager()
     rw = lm.sliceWidget('Red')
     rv = rw.sliceView()
     width = rv.width
-    #height = rv.height
     renderWindow = rv.renderWindow()
-    renderer = renderWindow.GetRenderers().GetItemAsObject(0)
-    interactor = renderWindow.GetInteractor()
-    text = vtk.vtkTextActor()
-    text.SetInput('PREOP')
-    textProperty = text.GetTextProperty()
-    textProperty.SetFontSize(10)
+    self.red_renderer = renderWindow.GetRenderers().GetItemAsObject(0)
+
+    self.text_preop = vtk.vtkTextActor()
+    self.text_preop.SetInput('PREOP')
+    textProperty = self.text_preop.GetTextProperty()
+    textProperty.SetFontSize(70)
     textProperty.SetColor(1,0,0)
     textProperty.SetBold(1)
-    text.SetTextProperty(textProperty)
-    textActor.SetDisplayPosition(width*0.5,10)
-    text_representation = vtk.vtkTextRepresentation()
-    xsize = 0.15
-    ysize = 0.15
-    ypos = 0.05
-    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
-    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
-    renderer.AddActor(text)
-    '''
-    text_widget = vtk.vtkTextWidget()
-    text_widget.SetRepresentation(text_representation)
-    text_widget.SetInteractor(interactor)
-    text_widget.SetTextActor(text)
-    text_widget.SelectableOff()
-    text_widget.On()
-    '''
+    self.text_preop.SetTextProperty(textProperty)
+
+    #TODO: the 90px shift to the left are hard-coded right now, it would be better to
+    # take the size of the vtk.vtkTextActor and shift by that size * 0.5
+    # could not find how to get vtkViewPort from sliceWidget
+
+    self.text_preop.SetDisplayPosition(int(width*0.5-90),50)
+    self.red_renderer.AddActor(self.text_preop)
+
+    rv.update()
+
+    lm = slicer.app.layoutManager()
+    rw = lm.sliceWidget('Yellow')
+    rv = rw.sliceView()
+    width = rv.width
+    renderWindow = rv.renderWindow()
+    self.yellow_renderer = renderWindow.GetRenderers().GetItemAsObject(0)
+
+    self.text_intraop = vtk.vtkTextActor()
+    self.text_intraop.SetInput('INTRAOP')
+    textProperty = self.text_intraop.GetTextProperty()
+    textProperty.SetFontSize(70)
+    textProperty.SetColor(1,0,0)
+    textProperty.SetBold(1)
+    self.text_intraop.SetTextProperty(textProperty)
+    self.text_intraop.SetDisplayPosition(int(width*0.5-140),50)
+    self.yellow_renderer.AddActor(self.text_intraop)
+    rv.update()
 
   def onForwardButton(self):
 
@@ -763,8 +764,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
       # delete it in deletedMarkups
       self.deletedMarkups.RemoveMarkup(numberOfTargets-1)
-
-
 
   def onBackButton(self):
 
@@ -795,9 +794,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       print ('added Markup with position '+str(pos)+' to the deletedMarkupsList')
       # delete it in activeFiducials
       activeFiducials.RemoveMarkup(numberOfTargets-1)
-
-
-
 
   def revealToggled(self,checked):
     """Turn the RevealCursor on or off
@@ -843,7 +839,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.flickering = checked
     self.flicker()
 
-
   def enter(self):
 
     # TODO: setup enter Function
@@ -860,7 +855,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     name=('RegModule_Log-'+dateTime)
 
-    cmd2=('touch /Users/peterbehringer/Desktop/TestFile/'+name+'.txt')
+    cmd=('mkdir '+self.modulePath +  '/Log')
+    os.system(cmd)
+
+    cmd2=('touch '+self.modulePath +  'Log/'+name+'.txt')
     os.system(cmd2)
 
     f = open('/Users/peterbehringer/Desktop/TestFile/'+name+'.txt', 'w')
@@ -950,9 +948,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopDirButton.text = self.intraopDataDir
     self.settings.setValue('RegistrationModule/IntraopLocation', self.intraopDataDir)
 
-    # DEBUG:
-    # self.deleteEverythingInIntraopFolder()
-
     print('Directory selected:')
     print(self.intraopDataDir)
     print(self.settings.value('RegistrationModule/IntraopLocation'))
@@ -964,7 +959,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def enterLabelSelectionSection(self):
 
     self.tabWidget.setCurrentIndex(1)
-
 
     # Get SliceWidgets
     lm=slicer.app.layoutManager()
@@ -979,23 +973,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # clear current Label
     compositNodeRed.SetLabelVolumeID(None)
-
-    # hide preop Fiducials
-
-
-
-    # TODO:ggg
-    # left side: show imported new Intraop Image as Reference
-
-    # set Reference Volume -> new Intraop Image
-
-    # right side:
-
-    # show preop T2-Image
-
-    # show segmentation label
-
-    # show contours only
 
   def tabWidgetClicked(self):
 
@@ -1031,17 +1008,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # update the patients in patient selector
     self.updatePatientSelector()
 
-    preopLocation = settings.value('RegistrationModule/PreopLocation')
-    intraopLocation = settings.value('RegistrationModule/IntraopLocation')
-    outputLocation = settings.value('RegistrationModule/OutputLocation')
-
-
-    # SCREEN SETUP
-    # =========================================================================
-
-
-
-    # =========================================================================
+    # removeSliceAnnotations
+    self.removeSliceAnnotations()
 
   def onTab2clicked(self):
 
@@ -1061,7 +1029,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.startQuickSegmentationButton.setEnabled(1)
 
 
-    print 'on Tab 2 clicked'
+    # removeSliceAnnotations
+    self.removeSliceAnnotations()
+
 
   def onTab3clicked(self):
 
@@ -1076,20 +1046,25 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     else:
       self.applyRegistrationButton.setEnabled(0)
 
+    # removeSliceAnnotations
+    self.removeSliceAnnotations()
+
   def onTab4clicked(self):
+
+    print (' on TAB 4 ENTERED')
     # stop timers
     self.stopTimers()
     # start timer 1
     self.timer_section_4.start(self.timer_freq)
 
-    print 'on Tab 4 clicked'
+    self.addSliceAnnotations()
+
 
   def updatePatientSelector(self):
 
     if self.updatePatientSelectorFlag:
 
       db = slicer.dicomDatabase
-      indexer = ctk.ctkDICOMIndexer()
 
       # check current patients and patient ID's in the slicer.dicomDatabase
       if db.patients()==None:
@@ -1103,21 +1078,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
                  # indexer.addFile(db,file,None)
                  if db.fileValue(file,'0010,0010') not in self.patientNames:
                    self.patientNames.append(slicer.dicomDatabase.fileValue(file,'0010,0010'))
-
-
                  if slicer.dicomDatabase.fileValue(file,'0010,0020') not in self.patientIDs:
                    self.patientIDs.append(slicer.dicomDatabase.fileValue(file,'0010,0020'))
+                   self.selectablePatientItems.append(db.fileValue(file,'0010,0020')+' '+db.fileValue(file,'0010,0010'))
+
                  break
                except:
                  pass
             break
           break
 
-
-
-
       # add patientNames and patientIDs to patientSelector
-      for patient in self.patientIDs:
+      for patient in self.selectablePatientItems:
        if patient not in self.addedPatients:
         self.patientSelector.addItem(patient)
         self.addedPatients.append(patient)
@@ -1141,6 +1113,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
       # initialize dicomDatabase
       db = slicer.dicomDatabase
+
+      currentBirthDateDicom = None
 
       # looking for currentPatientName and currentBirthDate
       for patient in db.patients():
@@ -1186,64 +1160,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.patientID.setText(self.currentID)
       self.studyDate.setText(str(self.currentStudyDate))
 
-  def updateAnnotation(self):
-    lm = slicer.app.layoutManager()
-
-    # get SliceWidgets
-    rw = lm.sliceWidget('Red')
-    rv = rw.sliceView()
-
-    # get sliceViews
-    yw=lm.sliceWidget('Yellow')
-    yv=yw.sliceView()
-
-    # get renderWindows
-    redRenderWindow = rv.renderWindow()
-    yellowRenderWindow=yv.renderWindow()
-
-    # get Interactors
-    redInteractor = redRenderWindow.GetInteractor()
-    yellowInteractor = yellowRenderWindow.GetInteractor()
-
-    # set Texts Actors
-    textRed = vtk.vtkTextActor()
-    textRed.SetInput('PREOP')
-    textPropertyRed = textRed.GetTextProperty()
-    textPropertyRed.SetFontSize(10)
-    textPropertyRed.SetColor(1,0,0)
-    textPropertyRed.SetBold(1)
-
-    textYellow = vtk.vtkTextActor()
-    textYellow.SetInput('INTRAOP')
-    textPropertyYellow = textYellow.GetTextProperty()
-    textPropertyYellow.SetFontSize(10)
-    textPropertyYellow.SetColor(1,0,0)
-    textPropertyYellow.SetBold(1)
-
-    # set Text Representation
-    text_representation = vtk.vtkTextRepresentation()
-    xsize = 0.15
-    ysize = 0.15
-    ypos = 0.05
-    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
-    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
-
-
-    # set Text Widgets
-    text_widget_red = vtk.vtkTextWidget()
-    text_widget_red.SetRepresentation(text_representation)
-    text_widget_red.SetInteractor(redInteractor)
-    text_widget_red.SetTextActor(textRed)
-    text_widget_red.SelectableOff()
-    text_widget_red.On()
-
-    text_widget_yellow = vtk.vtkTextWidget()
-    text_widget_yellow.SetRepresentation(text_representation)
-    text_widget_yellow.SetInteractor(yellowInteractor)
-    text_widget_yellow.SetTextActor(textYellow)
-    text_widget_yellow.SelectableOff()
-    text_widget_yellow.On()
-
   def onBSplineCheckBoxClicked(self):
 
     self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
@@ -1282,7 +1198,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
     # Set Background: Affine Image
     compositNodeRed.SetBackgroundVolumeID(bsplineVolumeNode.GetID())
-
 
   def onAffineCheckBoxClicked(self):
 
@@ -1463,40 +1378,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def changeOpacity(self,value):
 
-    # current slider value
-    # opacity=float(self.fadeSlider.value)
-
     # set opactiy
     layoutManager=slicer.app.layoutManager()
     redWidget = layoutManager.sliceWidget('Red')
     compositNode = redWidget.mrmlSliceCompositeNode()
     compositNode.SetForegroundOpacity(value)
-
-  def loadAndSetdata(self):
-    """
-    #load data
-    slicer.util.loadLabelVolume('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Case1-t2ax-TG-rater1.nrrd')
-    preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('Case1-t2ax-TG-rater1').GetItemAsObject(0)
-
-    slicer.util.loadVolume('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Case1-t2ax-N4.nrrd')
-    preopImageVolumeNode=slicer.mrmlScene.GetNodesByName('Case1-t2ax-N4').GetItemAsObject(0)
-
-    slicer.util.loadLabelVolume('/Users/peterbehringer/MyImageData/ProstateRegistrationValidation/Segmentations/Rater1/Case1-t2ax-intraop-TG-rater1.nrrd')
-    intraopLabelVolume=slicer.mrmlScene.GetNodesByName('Case1-t2ax-intraop-TG-rater1').GetItemAsObject(0)
-
-    slicer.util.loadVolume('/Users/peterbehringer/MyImageData/ProstateRegistrationValidation/Images/Case1-t2ax-intraop.nrrd')
-    intraopImageVolume=slicer.mrmlScene.GetNodesByName('Case1-t2ax-intraop').GetItemAsObject(0)
-
-    slicer.util.loadMarkupsFiducialList('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Targets.fcsv')
-    preopTargets=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-
-    # set nodes in Selector
-    self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
-    self.preopLabelSelector.setCurrentNode(preoplabelVolumeNode)
-    self.intraopVolumeSelector.setCurrentNode(intraopImageVolume)
-    # self.intraopLabelSelector.setCurrentNode(intraopLabelVolume)
-    self.fiducialSelector.setCurrentNode(preopTargets)
-    """
 
   def loadPreopData(self):
 
@@ -1520,23 +1406,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     print ('fiducials found :')
     print fidList
-
-    # TODO: distinguish between image data volumes and labelmaps
-
-    # load testdata and create Nodes
-    """
-    preoplabelVolume=slicer.util.loadLabelVolume('/Users/peterbehringer/MyImageData/A_PREOP_DIR/t2ax-label.nrrd')
-    preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('t2ax-label').GetItemAsObject(0)
-
-    preopImageVolume=slicer.util.loadVolume('/Users/peterbehringer/MyImageData/A_PREOP_DIR/t2ax-N4.nrrd')
-    preopImageVolumeNode=slicer.mrmlScene.GetNodesByName('t2ax-N4').GetItemAsObject(0)
-
-    preopTargets=slicer.util.loadMarkupsFiducialList('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Targets.fcsv')
-    preopTargetsNode=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-
-    preopTargetsPreserve=slicer.util.loadMarkupsFiducialList('/Users/peterbehringer/MyImageData/A_PREOP_DIR/Targets.fcsv')
-    self.preopTargetsNodePreserve=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-    """
 
     slicer.util.loadLabelVolume(self.settings.value('RegistrationModule/preopLocation')+'/t2-label.nrrd')
     preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('t2-label').GetItemAsObject(0)
@@ -1602,12 +1471,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Set Glyph Size
     markupsDisplayNode.SetGlyphScale(1.0)
-
-  def testFunction(self):
-
-     print 'TestFUNCTION ENTERED'
-
-   # self.createLoadableFileListFromSelection()
 
   def getSelectedSeriesFromSelector(self):
 
@@ -1720,8 +1583,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # enter Label Selection Section
     self.enterLabelSelectionSection()
-
-
 
   def cleanup(self):
     pass
@@ -2188,11 +2049,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
 
-    # enable Evaluation Section
-    self.tabBar.setTabEnabled(3,True)
-
-    # switch to Evaluation Section
-    self.tabWidget.setCurrentIndex(3)
 
     # set BSpline Checkbox
     self.showBSplineButton.setStyleSheet('background-color: rgb(200,255,255)')
@@ -2277,43 +2133,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     redSliceNode.SetFieldOfView(fovRed[0] * 0.52, fovRed[1] * 0.6, fovRed[2])
     redLogic.EndSliceNodeInteraction()
 
+    # enable Evaluation Section
+    self.tabBar.setTabEnabled(3,True)
+
+    # switch to Evaluation Section
+    self.tabWidget.setCurrentIndex(3)
+
     # set the same field of view in yellow slice view
 
-    """
-    fovX=fovYellow[0]/redSliceNode.GetFieldOfView()[0]
-    fovY=fovYellow[1]/redSliceNode.GetFieldOfView()[1]
-    fovZ=fovYellow[2]/redSliceNode.GetFieldOfView()[2]
-
-    yellowLogic.StartSliceNodeInteraction(2)
-    yellowSliceNode.SetFieldOfView(fovYellow[0]*fovX,fovYellow[1]*fovY,fovYellow[2]*fovZ)
-    yellowLogic.EndSliceNodeInteraction()
-    """
-
-
-    # set Slice Annotations
-    lm = slicer.app.layoutManager()
-    rw = lm.sliceWidget('Red')
-    rv = rw.sliceView()
-    renderWindow = rv.renderWindow()
-    interactor = renderWindow.GetInteractor()
-    text = vtk.vtkTextActor()
-    text.SetInput('PREOP')
-    textProperty = text.GetTextProperty()
-    textProperty.SetFontSize(10)
-    textProperty.SetColor(1,0,0)
-    textProperty.SetBold(1)
-    text_representation = vtk.vtkTextRepresentation()
-    xsize = 0.15
-    ysize = 0.15
-    ypos = 0.05
-    text_representation.GetPositionCoordinate().SetValue(0.5-(0.5*xsize), ypos)
-    text_representation.GetPosition2Coordinate().SetValue(xsize, ysize)
-    text_widget = vtk.vtkTextWidget()
-    text_widget.SetRepresentation(text_representation)
-    text_widget.SetInteractor(interactor)
-    text_widget.SetTextActor(text)
-    text_widget.SelectableOff()
-    text_widget.On()
 
     print ('Registration Function is done')
 
