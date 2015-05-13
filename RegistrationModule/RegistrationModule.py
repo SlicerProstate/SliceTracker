@@ -210,6 +210,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.updatePatientListButton = qt.QPushButton("Update Patient List")
     self.updatePatientListButton.setIcon(refreshIcon)
     self.updatePatientListButton.connect('clicked(bool)',self.updatePatientSelector)
+    # self.updatePatientListButton.hide()
     selectPatientRowLayout.addWidget(self.updatePatientListButton)
 
     self.dataSelectionGroupBoxLayout.addRow("Choose Patient ID: ", selectPatientRowLayout)
@@ -639,18 +640,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBoxLayout.addWidget(self.groupBoxTargets)
 
 
-
-
     self.targetTable=qt.QTableWidget()
     self.targetTable.setRowCount(3)
     self.targetTable.setColumnCount(3)
     self.targetTable.setColumnWidth(1,200)
     self.targetTable.setColumnWidth(2,200)
-    self.targetTable.setHorizontalHeaderLabels(['Target','Distance to needle-tip 2D','Distance to needle-tip 3D'])
+    self.targetTable.setHorizontalHeaderLabels(['Target','Distance to needle-tip 2D [mm]','Distance to needle-tip 3D [mm]'])
 
     self.groupBoxLayoutTargets.addRow(self.targetTable)
 
     self.needleTipButton=qt.QPushButton('Set needle-tip')
+    self.needleTipButton.connect('clicked(bool)',self.setNeedleTipPosition)
     self.groupBoxLayoutTargets.addRow(self.needleTipButton)
 
 
@@ -675,6 +675,125 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # enter Module on Tab 1
     self.onTab1clicked()
+
+  def measureDistance(self,target_position,needleTip_position):
+
+    # calculate 2D distance
+    distance_2D_x=abs(target_position[0]-needleTip_position[0])
+    distance_2D_y=abs(target_position[1]-needleTip_position[1])
+    distance_2D_z=abs(target_position[2]-needleTip_position[2])
+
+    # print ('distance_xRAS = '+str(distance_2D_x))
+    # print ('distance_yRAS = '+str(distance_2D_y))
+    # print ('distance_zRAS = '+str(distance_2D_z))
+
+    # calculate 3D distance
+    rulerNode=slicer.vtkMRMLAnnotationRulerNode()
+    rulerNode.SetPosition1(target_position)
+    rulerNode.SetPosition2(needleTip_position)
+    distance_3D=rulerNode.GetDistanceMeasurement()
+
+    print ('distance_zRAS = '+str(distance_3D))
+
+    return [distance_2D_x,distance_2D_y,distance_2D_z,distance_3D]
+
+  def setNeedleTipPosition(self):
+
+    if slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0) == None:
+
+      # if needle tip is placed for the first time:
+
+      # create Markups Node & display node to store needle tip position
+      needleTipMarkupDisplayNode = slicer.vtkMRMLMarkupsDisplayNode()
+      needleTipMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
+      needleTipMarkupNode.SetName('needle-tip')
+      slicer.mrmlScene.AddNode(needleTipMarkupDisplayNode)
+      slicer.mrmlScene.AddNode(needleTipMarkupNode)
+      needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
+
+      # update the target table when markup was set
+      needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateTargetTable)
+
+      # be sure to have the correct display node
+      needleTipMarkupDisplayNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0).GetDisplayNode()
+
+      # Set display nodes attributes
+      needleTipMarkupDisplayNode.SetTextScale(1.6)
+      needleTipMarkupDisplayNode.SetGlyphScale(2.0)
+
+      #TODO: set color is not working here
+      needleTipMarkupDisplayNode.SetColor(1,1,50)
+
+    else:
+      # remove fiducial
+      needleNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
+      needleNode.RemoveAllMarkups()
+
+
+    # set active node ID and start place mode
+    mlogic=slicer.modules.markups.logic()
+    mlogic.SetActiveListID(slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0))
+    slicer.modules.markups.logic().StartPlaceMode(0)
+
+
+  def getNeedleTipAndTargetsPositions(self):
+
+    # Get the fiducial lists
+    fidNode1=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
+    fidNode2=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
+
+    # get the needleTip_position
+    self.needleTip_position=[0.0,0.0,0.0]
+    fidNode2.GetNthFiducialPosition(0,self.needleTip_position)
+
+    # get the target position(s)
+    number_of_targets=fidNode1.GetNumberOfFiducials()
+    self.target_positions=[]
+
+    for target in range(number_of_targets):
+      target_position=[0.0,0.0,0.0]
+      fidNode1.GetNthFiducialPosition(target,target_position)
+      self.target_positions.append(target_position)
+
+    print ('needleTip_position = '+str(self.needleTip_position))
+    print ('target_positions are '+str(self.target_positions))
+
+  def updateTargetTable(self,observer,caller):
+
+    # set the target names to the widget
+
+    # get the positions of needle Tip and Targets
+    self.getNeedleTipAndTargetsPositions()
+
+    fidNode1=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
+    number_of_targets=fidNode1.GetNumberOfFiducials()
+    self.target_items=[]
+
+    # set the left colom with target labels
+    for target in range(number_of_targets):
+      target_text=fidNode1.GetNthFiducialLabel(target)
+      item=qt.QTableWidgetItem(target_text)
+      self.targetTable.setItem(target,0,item)
+      # make sure to keep a reference to the item
+      self.target_items.append(item)
+
+    self.items_2D=[]
+    self.items_3D=[]
+
+    for index in range(number_of_targets):
+      distances=self.measureDistance(self.target_positions[index],self.needleTip_position)
+      text_for_2D_column=('x = '+str(round(distances[0],2))+' y = '+str(round(distances[1],2)))
+      text_for_3D_colomn=str(round(distances[3],2))
+
+      item_2D=qt.QTableWidgetItem(text_for_2D_column)
+      self.targetTable.setItem(index,1,item_2D)
+      self.items_2D.append(item_2D)
+      print str(text_for_2D_column)
+
+      item_3D=qt.QTableWidgetItem(text_for_3D_colomn)
+      self.targetTable.setItem(index,2,item_3D)
+      self.items_3D.append(item_3D)
+      print str(text_for_3D_colomn)
 
 
   def removeSliceAnnotations(self):
@@ -1200,7 +1319,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     compositNodeRed.SetBackgroundVolumeID(bsplineVolumeNode.GetID())
 
   def onAffineCheckBoxClicked(self):
-
 
     self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
