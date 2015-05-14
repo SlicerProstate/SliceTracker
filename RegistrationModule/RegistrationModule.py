@@ -643,7 +643,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
 
       # update the target table when markup was set
-      needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateTargetTable('caller','observer?'))
+      needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateTargetTable)
 
       # be sure to have the correct display node
       needleTipMarkupDisplayNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0).GetDisplayNode()
@@ -2359,49 +2359,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.RemoveNode(slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0))
 
     return outputLabelMap
-
-
-  def runBRAINSFit(self,movingImage,fixedImage,movingImageLabel,fixedImageLabel):
-
-    # rigidly register followup to baseline
-    # TODO: do this in a separate step and allow manual adjustment?
-    # TODO: add progress reporting (BRAINSfit does not report progress though)
-    pNode = self.parameterNode()
-    baselineVolumeID = pNode.GetParameter('baselineVolumeID')
-    followupVolumeID = pNode.GetParameter('followupVolumeID')
-    self.__followupTransform = slicer.vtkMRMLLinearTransformNode()
-    slicer.mrmlScene.AddNode(self.__followupTransform)
-
-    parameters = {}
-    parameters["fixedVolume"] = baselineVolumeID
-    parameters["movingVolume"] = followupVolumeID
-    parameters["initializeTransformMode"] = "useMomentsAlign"
-    parameters["useRigid"] = True
-    parameters["useScaleVersor3D"] = True
-    parameters["useScaleSkewVersor3D"] = True
-    parameters["useAffine"] = True
-    parameters["linearTransform"] = self.__followupTransform.GetID()
-
-    self.__cliNode = None
-    self.__cliNode = slicer.cli.run(slicer.modules.brainsfit, self.__cliNode, parameters)
-
-    self.__cliObserverTag = self.__cliNode.AddObserver('ModifiedEvent', self.processRegistrationCompletion)
-    self.__registrationStatus.setText('Wait ...')
-    self.__registrationButton.setEnabled(0)
-
-    """def processRegistrationCompletion(self, node, event):
-    status = node.GetStatusString()
-    self.__registrationStatus.setText('Registration '+status)
-    if status == 'Completed':
-      self.__registrationButton.setEnabled(1)
-
-      pNode = self.parameterNode()
-      followupNode = slicer.mrmlScene.GetNodeByID(pNode.GetParameter('followupVolumeID'))
-      followupNode.SetAndObserveTransformNodeID(self.__followupTransform.GetID())
-
-      Helper.SetBgFgVolumes(pNode.GetParameter('baselineVolumeID'),pNode.GetParameter('followupVolumeID'))
-
-      pNode.SetParameter('followupTransformID', self.__followupTransform.GetID())"""
 
 class RegistrationModuleTest(ScriptedLoadableModuleTest):
   """
