@@ -19,7 +19,7 @@ class RegistrationModule(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "RegistrationModule"
     self.parent.categories = ["Examples"]
-    self.parent.dependencies = []
+    self.parent.dependencies = ["VolumeClipWithModel"]
     self.parent.contributors = ["Peter Behringer (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ Module for easy registration. """
     self.parent.acknowledgementText = """SPL, Brigham & Womens""" # replace with organization, grant and thanks.
