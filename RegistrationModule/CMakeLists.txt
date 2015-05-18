@@ -7,6 +7,18 @@ set(MODULE_PYTHON_SCRIPTS
   )
 
 set(MODULE_PYTHON_RESOURCES
+  Resources/Icons/icon-applySegmentation.png
+  Resources/Icons/icon-dataselection_fit.png
+  Resources/Icons/icon-evaluation_fit.png
+  Resources/Icons/icon-folder.png
+  Resources/Icons/icon-greenCheck.png
+  Resources/Icons/icon-labelSegmentation.png
+  Resources/Icons/icon-labelselection_fit.png
+  Resources/Icons/icon-littleDisc.png
+  Resources/Icons/icon-newImageData.png
+  Resources/Icons/icon-quickSegmentation.png
+  Resources/Icons/icon-registration_fit.png
+  Resources/Icons/icon-update.png
   Resources/Icons/${MODULE_NAME}.png
   )
 
