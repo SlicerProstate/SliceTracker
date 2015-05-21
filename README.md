@@ -11,9 +11,9 @@ The module guides the user through a workflow that consists of the following ste
 
 * **1. Select incoming DICOM-series**
   
-  The user is supposed to start with choosing the patient ID. The modules expects that the patient is already loaded into       local slicer dicom database. Relevant patient information (ID, Name, Date of Birth, Date of Study) are shown above the        module for easy inspection. Once the patient is selected, the preprocedural directory should be chosen, containing the        diagnstoic pre-procedural scan, the label of the prostate gland and the targets (see section *Data conventions* to learn      about what type of formats are expected). The last step is selecting the intra-procedural direcotry where new DICOM series    are can be detected and selected if they are relevant to the procedure. In case of arriving patient data that does not        correlate to the choosed patient, the software will warn the user. 
+  The user is supposed to start with choosing the patient ID. The modules expects that the patient is already loaded into       local slicer dicom database. Relevant patient information (ID, Name, Date of Birth, Date of Study) are shown above the        module for easy inspection. Once the patient is selected, the preprocedural directory should be chosen, containing the        diagnstoic pre-procedural scan, the label of the prostate gland and the targets (see section [*Data conventions*](https://github.com/PeterBehringer/Registration/blob/master/README.md#data-conventions) to learn      about what type of strucutre & formats are expected). The last step is selecting the intra-procedural direcotry where new DICOM series    are can be detected and selected if they are relevant to the procedure. In case of arriving patient data that does not        correlate to the choosed patient, the software will warn the user. 
 
-* **2. Create label**
+* **2. Create intra-procedural label**
 
   For minimizing the computation time that is required by deformable registration, the user can specify regions of interest of   the structure to be registred. Therefore, two different modes (quick mode, label mode) are provided. Once the label is        created, the user is supposed to proceed by clicking the registration tab. 
   
