@@ -25,7 +25,7 @@ The module guides the user through a workflow that consists of the following ste
 
   Showing the result of all three registration stages enables quick troubleshooting in a very comprehensible way. The user can   switch between the results and compare the registered pre-procedural image with the intra-procedural. There are four          different tools and different visualization modes provided to compare the resulting image volume and target. Furthermore, a   needle tip can be set to measure the distance between each registered target and the needle tip. 
 
-### Data conventions
+### Data conventions and testing
 
 For testing purposes, the module expects the following folder structure:
 ```
