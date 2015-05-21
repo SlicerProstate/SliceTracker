@@ -11,15 +11,15 @@ The module guides the user through a workflow that consists of the following ste
 
 * **1. Select incoming DICOM-series**
   
-  After the user sets the intraop-folder, new DICOM series are detected and selected if they are relevant to the procedure
+  The user is supposed to start with choosing the patient ID. The modules expects that the patient is already loaded into       local slicer dicom database. Relevant patient information (ID, Name, Date of Birth, Date of Study) are shown above the        module for easy inspection. Once the patient is selected, the preprocedural directory should be chosen, containing the        diagnstoic pre-procedural scan, the label of the prostate gland and the targets (see section *Data conventions* to learn      about what type of formats are expected). The last step is selecting the intra-procedural direcotry where new DICOM series    are can be detected and selected if they are relevant to the procedure. In case of arriving patient data that does not        correlate to the choosed patient, the software will warn the user. 
 
 * **2. Create label**
 
-  For minimizing the computation time that is required by deformable registration, the user can specify regions of interest of   the structure to be registred. Therefore, two different modes (quick mode, label mode) are provided. 
+  For minimizing the computation time that is required by deformable registration, the user can specify regions of interest of   the structure to be registred. Therefore, two different modes (quick mode, label mode) are provided. Once the label is        created, the user is supposed to proceed by clicking the registration tab. 
   
 * **3. Perform B-Spline registration**
 
-  By following previous steps of the workflow, the user only needs to check visually if the input parameters are set            correctly. Registration parameters has been optimized in previous studies [1] and are not configuratable by the user.         Registration is performed using rigid, affine and deformable B-Spline stages applied in sequence.
+  By following previous steps of the workflow, the user only needs to check visually if the input parameters are set            correctly. Registration parameters have been optimized in previous studies [1] and are not configuratable by the end-user.    Registration is performed using rigid, affine and deformable B-Spline stages applied in sequence.                             [BRAINSFit](https://github.com/BRAINSia/BRAINSTools/tree/master/BRAINSFit) with ITKv4 is used as underlaying library. 
   
 * **4. Visual evaluation of registration result**
 
