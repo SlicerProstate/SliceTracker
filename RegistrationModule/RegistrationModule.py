@@ -38,6 +38,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Parameters
     self.settings = qt.QSettings()
     self.modulePath = slicer.modules.registrationmodule.path.replace("RegistrationModule.py","")
+    self.colorFile = (self.modulePath + 'Resources/Colors/PCampReviewColors.csv')
     self.temp = None
     self.updatePatientSelectorFlag = True
     self.warningFlag = False
@@ -55,7 +56,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.deletedMarkups.SetName('deletedMarkups')
     self.quickSegmentationFlag=0
     self.labelSegmentationFlag=0
-
+    self.markupsLogic=slicer.modules.markups.logic()
 
     # set global slice widgets
     self.db=slicer.dicomDatabase
@@ -70,6 +71,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.yellowSliceLogic=self.yellowWidget.sliceLogic()
     self.redSliceNode=self.redSliceLogic.GetSliceNode()
     self.yellowSliceNode=self.yellowSliceLogic.GetSliceNode()
+
 
     # _____________________________________________________________________________________________________ #
 
@@ -606,11 +608,40 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # create Log data and start timers
     self.startLog()
 
+    # set up color table
+    self.setupColorTable()
+
     # enter Module on Tab 1
     self.onTab1clicked()
 
 
+
+
      # _____________________________________________________________________________________________________ #
+
+
+  def setupColorTable(self):
+
+    # setup the color table
+    self.PCampReviewColorNode = slicer.vtkMRMLColorTableNode()
+    colorNode = self.PCampReviewColorNode
+    colorNode.SetName('PCampReview')
+    slicer.mrmlScene.AddNode(colorNode)
+    colorNode.SetTypeToUser()
+    with open(self.colorFile) as f:
+      n = sum(1 for line in f)
+    colorNode.SetNumberOfColors(n-1)
+    import csv
+    self.structureNames = []
+    with open(self.colorFile, 'rb') as csvfile:
+      reader = csv.DictReader(csvfile, delimiter=',')
+      for index,row in enumerate(reader):
+        colorNode.SetColor(index,row['Label'],float(row['R'])/255,
+                float(row['G'])/255,float(row['B'])/255,float(row['A']))
+        self.structureNames.append(row['Label'])
+
+
+
 
   def measureDistance(self,target_position,needleTip_position):
 
@@ -1336,6 +1367,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     slicer.util.loadLabelVolume(self.settings.value('RegistrationModule/preopLocation')+'/t2-label.nrrd')
     preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('t2-label').GetItemAsObject(0)
 
+    # set color table
+    displayNode=preoplabelVolumeNode.GetDisplayNode()
+    displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+
     slicer.util.loadVolume(self.settings.value('RegistrationModule/preopLocation')+'/t2-N4.nrrd')
     self.preopImageVolumeNodePreserve=slicer.mrmlScene.GetNodesByName('t2-N4').GetItemAsObject(0)
     self.preopImageVolumeNodePreserve.SetName('volume-PREOP')
@@ -1714,6 +1749,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # run CLI-Module
       outputLabelmap = logic.modelToLabelmap(inputVolume,clippingModel)
 
+      # set color table
+      displayNode=outputLabelmap.GetDisplayNode()
+      displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+
       # set Labelmap for Registration
       self.intraopLabelSelector.setCurrentNode(outputLabelmap)
 
@@ -1758,6 +1797,13 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     selectionNode.SetReferenceActiveVolumeID( referenceVolume.GetID() )
     selectionNode.SetReferenceActiveLabelVolumeID( intraopLabel.GetID() )
     slicer.app.applicationLogic().PropagateVolumeSelection(50)
+
+    # set color table
+    print ('intraopLabelID : '+str(intraopLabel.GetID()))
+
+    # set color table
+    displayNode=intraopLabel.GetDisplayNode()
+    displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
     # selecting paintEffectTool
     editUtil = EditorLib.EditUtil.EditUtil()
@@ -2208,7 +2254,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.AddNode(outputLabelMap)
 
     # define params
-    params = {'sampleDistance': 0.2, 'labelValue': 5, 'InputVolume' : inputVolume.GetID(), 'surface' : clippingModel.GetID(), 'OutputVolume' : outputLabelMap.GetID()}
+    params = {'sampleDistance': 0.1, 'labelValue': 5, 'InputVolume' : inputVolume.GetID(), 'surface' : clippingModel.GetID(), 'OutputVolume' : outputLabelMap.GetID()}
 
     print params
     # run ModelToLabelMap-CLI Module
