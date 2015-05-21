@@ -1,5 +1,9 @@
 /RegistrationModule/RegistrationModule.pyc
 /RegistrationModule/qRegistrationModule.qrc
 /RegistrationModule/Log
+RegistrationModule/Resources/Testing/intraopDir/*
+RegistrationModule/Resources/Testing/preopDir/*
+RegistrationModule/Resources/Testing/testData_1/*
+RegistrationModule/Resources/Testing/testData_2/*
+RegistrationModule/Resources/Testing/testData_3/*
 .gitignore.save
-
