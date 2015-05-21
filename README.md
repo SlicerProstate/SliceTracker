@@ -10,7 +10,7 @@ EasyReg is a 3D Slicer (see http://slicer.org) module that facilitates registrat
 The module guides the user through a workflow that consists of the following steps:
 
 * 1. **Select incoming DICOM-series**
-  After the user sets the intraop-folder, new DICOM series are detected and selected if they are relevant to the procedure
+  > After the user sets the intraop-folder, new DICOM series are detected and selected if they are relevant to the procedure
 * 2. **Create label**
   For minimizing the computation time that is required by deformable registration, the user can specify regions of interest of   the structure to be registred. Therefore, two different modes (quick mode, label mode) are provided. 
 * 3. **Perform B-Spline registration**
