@@ -4,7 +4,7 @@ This is RegBx readme
 
 For testing purposes, the module expects the following folder structure:
 
-'''
+```
 └── Resources
   └── Testing
       ├─── intraopDir
@@ -24,7 +24,7 @@ For testing purposes, the module expects the following folder structure:
            ├── xxx.dcm
            ├── ....
            └── xxx.dcm
-'''
+```
 ```
 └── RESOURCES
     ├── 1
