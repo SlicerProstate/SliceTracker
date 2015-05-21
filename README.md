@@ -9,7 +9,7 @@ EasyReg is a 3D Slicer (see http://slicer.org) module that facilitates registrat
 
 The module guides the user through a workflow that consists of the following steps:
 
-* ** 1. Select incoming DICOM-series**
+* **1. Select incoming DICOM-series**
   
   After the user sets the intraop-folder, new DICOM series are detected and selected if they are relevant to the procedure
 
