@@ -28,9 +28,6 @@ The module guides the user through a workflow that consists of the following ste
 ### Data conventions
 
 For testing purposes, the module expects the following folder structure:
-
-ATTENTION: every file in intraopDir is deleted with every reload! 
-
 ```
 └── Resources
   └── Testing
@@ -52,7 +49,14 @@ ATTENTION: every file in intraopDir is deleted with every reload!
            ├── ....
            └── xxx.dcm
 ```
+Notice that the preop data is expected to be not only in the same data structure but it also needs to be the same name as given above. 
+
+ATTENTION: every file in intraopDir is deleted with every reload! 
+
+### Contact
 
 Please feel free to contact Peter Behringer peterbehringer@gmx.de for further feedback, suggestions, bugs.. 
+
+### Literature
 
 [1] Fedorov A, Tuncali K, Fennessy FM, et al. Image Registration for Targeted MRI-guided Transperineal Prostate Biopsy. Journal of magnetic resonance imaging : JMRI. 2012;36(4):987-992. doi:10.1002/jmri.23688.
