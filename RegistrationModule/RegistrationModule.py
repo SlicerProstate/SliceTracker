@@ -58,6 +58,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.labelSegmentationFlag=0
     self.markupsLogic=slicer.modules.markups.logic()
 
+
     # set global slice widgets
     self.db=slicer.dicomDatabase
     self.layoutManager=slicer.app.layoutManager()
@@ -377,11 +378,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     # Editor Widget
-    self.editUtil = EditorLib.EditUtil.EditUtil()
     editorWidgetParent = slicer.qMRMLWidget()
     editorWidgetParent.setLayout(qt.QVBoxLayout())
     editorWidgetParent.setMRMLScene(slicer.mrmlScene)
 
+    self.editUtil = EditorLib.EditUtil.EditUtil()
     self.editorWidget = EditorWidget(parent=editorWidgetParent,showVolumesFrame=False)
     self.editorWidget.setup()
     self.editorParameterNode = self.editUtil.getParameterNode()
@@ -1763,11 +1764,20 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     elif self.labelSegmentationFlag==1:
 
+      # dilate label
       editUtil = EditorLib.EditUtil.EditUtil()
       logic = EditorLib.DilateEffectLogic(editUtil.getSliceLogic())
       logic.erode(0,'4',1)
 
+      # reset cursor to default
+      self.editorParameterNode.SetParameter('effect','DefaultTool')
+
+
       self.labelSegmentationFlag=0
+
+    else:
+      #TODO: tell user that he needs to do segmentation before hin apply
+      pass
 
 
     self.compositNodeRed.SetReferenceBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
@@ -1805,17 +1815,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     displayNode=intraopLabel.GetDisplayNode()
     displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
-    # selecting paintEffectTool
-    editUtil = EditorLib.EditUtil.EditUtil()
-    paintEffect = EditorLib.DrawEffectOptions()
-    paintEffect.setMRMLDefaults()
-    paintEffect.__del__()
-
-    EditorLib.DrawEffectTool(self.redWidget)
+    editUtil=slicer.modules.RegistrationModuleWidget.editUtil
+    parameterNode=editUtil.getParameterNode()
+    parameterNode.SetParameter('effect','DrawEffect')
 
     # set label properties
     editUtil.setLabel(1)
     editUtil.setLabelOutline(1)
+
 
 
   def applyRegistration(self):
