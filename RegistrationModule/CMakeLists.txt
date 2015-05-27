@@ -7,6 +7,7 @@ set(MODULE_PYTHON_SCRIPTS
   )
 
 set(MODULE_PYTHON_RESOURCES
+  Resources/Colors/PCampReviewColors.csv
   Resources/Icons/icon-applySegmentation.png
   Resources/Icons/icon-dataselection_fit.png
   Resources/Icons/icon-evaluation_fit.png

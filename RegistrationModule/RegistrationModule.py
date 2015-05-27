@@ -38,7 +38,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Parameters
     self.settings = qt.QSettings()
     self.modulePath = slicer.modules.registrationmodule.path.replace("RegistrationModule.py","")
-    self.colorFile = (self.modulePath + 'Resources/Colors/PCampReviewColors.csv')
     self.temp = None
     self.updatePatientSelectorFlag = True
     self.warningFlag = False
@@ -57,6 +56,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.quickSegmentationFlag=0
     self.labelSegmentationFlag=0
     self.markupsLogic=slicer.modules.markups.logic()
+    self.logic=RegistrationModuleLogic()
+    self.acqusitionTimes = {}
 
 
     # set global slice widgets
@@ -171,7 +172,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.tabWidget.addTab(self.labelSelectionGroupBox,self.labelSelectionIcon,'')
     self.tabWidget.addTab(self.registrationGroupBox,self.registrationSectionIcon,'')
     self.tabWidget.addTab(self.evaluationGroupBox,self.evaluationSectionIcon,'')
-    self.tabWidget.connect('currentChanged(int)',self.tabWidgetClicked)
+    self.tabWidget.connect('currentChanged(int)',self.onTabWidgetClicked)
 
     # _____________________________________________________________________________________________________ #
 
@@ -538,7 +539,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.fadeSlider.maximum = 1.0
     self.fadeSlider.value = 0
     self.fadeSlider.singleStep = 0.05
-    self.fadeSlider.connect('valueChanged(double)', self.changeOpacity)
+    self.fadeSlider.connect('valueChanged(double)', self.logic.changeOpacity)
     fadeLayout.addWidget(self.fadeSlider)
 
     # Rock and Flicker
@@ -585,7 +586,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.groupBoxLayoutTargets.addRow(self.targetTable)
 
     self.needleTipButton=qt.QPushButton('Set needle-tip')
-    self.needleTipButton.connect('clicked(bool)',self.setNeedleTipPosition)
+    self.needleTipButton.connect('clicked(bool)',self.logic.setNeedleTipPosition)
     self.groupBoxLayoutTargets.addRow(self.needleTipButton)
 
 
@@ -600,134 +601,36 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
    # _____________________________________________________________________________________________________ #
 
-    # DEBUG: prepare IntraopFolder for tests
-    self.removeEverythingInIntraopTestFolder()
+    self.enter()
+
+   # _____________________________________________________________________________________________________ #
+
+
+  def enter(self):
+
+    # set inital layout
+    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+
+    # set slice views to axial
+    self.redSliceNode.SetOrientationToAxial()
+    self.yellowSliceNode.SetOrientationToAxial()
 
     # initialy, set Evaluation Section disabled TODO: set False again
     self.tabBar.setTabEnabled(3,True)
 
-    # create Log data and start timers
-    self.startLog()
-
-    # set up color table
-    self.setupColorTable()
-
     # enter Module on Tab 1
     self.onTab1clicked()
 
+    # set up color table
+    self.logic.setupColorTable()
 
-
-
-     # _____________________________________________________________________________________________________ #
-
-
-  def setupColorTable(self):
-
-    # setup the color table
-    self.PCampReviewColorNode = slicer.vtkMRMLColorTableNode()
-    colorNode = self.PCampReviewColorNode
-    colorNode.SetName('PCampReview')
-    slicer.mrmlScene.AddNode(colorNode)
-    colorNode.SetTypeToUser()
-    with open(self.colorFile) as f:
-      n = sum(1 for line in f)
-    colorNode.SetNumberOfColors(n-1)
-    import csv
-    self.structureNames = []
-    with open(self.colorFile, 'rb') as csvfile:
-      reader = csv.DictReader(csvfile, delimiter=',')
-      for index,row in enumerate(reader):
-        colorNode.SetColor(index,row['Label'],float(row['R'])/255,
-                float(row['G'])/255,float(row['B'])/255,float(row['A']))
-        self.structureNames.append(row['Label'])
-
-
-
-
-  def measureDistance(self,target_position,needleTip_position):
-
-    # calculate 2D distance
-    distance_2D_x=abs(target_position[0]-needleTip_position[0])
-    distance_2D_y=abs(target_position[1]-needleTip_position[1])
-    distance_2D_z=abs(target_position[2]-needleTip_position[2])
-
-    # print ('distance_xRAS = '+str(distance_2D_x))
-    # print ('distance_yRAS = '+str(distance_2D_y))
-    # print ('distance_zRAS = '+str(distance_2D_z))
-
-    # calculate 3D distance
-    rulerNode=slicer.vtkMRMLAnnotationRulerNode()
-    rulerNode.SetPosition1(target_position)
-    rulerNode.SetPosition2(needleTip_position)
-    distance_3D=rulerNode.GetDistanceMeasurement()
-
-    return [distance_2D_x,distance_2D_y,distance_2D_z,distance_3D]
-
-  def setNeedleTipPosition(self):
-
-    if slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0) == None:
-
-      # if needle tip is placed for the first time:
-
-      # create Markups Node & display node to store needle tip position
-      needleTipMarkupDisplayNode = slicer.vtkMRMLMarkupsDisplayNode()
-      needleTipMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
-      needleTipMarkupNode.SetName('needle-tip')
-      slicer.mrmlScene.AddNode(needleTipMarkupDisplayNode)
-      slicer.mrmlScene.AddNode(needleTipMarkupNode)
-      needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
-
-      # update the target table when markup was set
-      needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateTargetTable)
-
-      # be sure to have the correct display node
-      needleTipMarkupDisplayNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0).GetDisplayNode()
-
-      # Set visual fiducial attributes
-      needleTipMarkupDisplayNode.SetTextScale(1.6)
-      needleTipMarkupDisplayNode.SetGlyphScale(2.0)
-      needleTipMarkupDisplayNode.SetGlyphType(12)
-      #TODO: set color is somehow not working here
-      needleTipMarkupDisplayNode.SetColor(1,1,50)
-
-    else:
-      # remove fiducial
-      needleNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
-      needleNode.RemoveAllMarkups()
-
-
-    # set active node ID and start place mode
-    mlogic=slicer.modules.markups.logic()
-    mlogic.SetActiveListID(slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0))
-    slicer.modules.markups.logic().StartPlaceMode(0)
-
-
-  def getNeedleTipAndTargetsPositions(self):
-
-    # Get the fiducial lists
-    fidNode1=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
-    fidNode2=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
-
-    # get the needleTip_position
-    self.needleTip_position=[0.0,0.0,0.0]
-    fidNode2.GetNthFiducialPosition(0,self.needleTip_position)
-
-    # get the target position(s)
-    number_of_targets=fidNode1.GetNumberOfFiducials()
-    self.target_positions=[]
-
-    for target in range(number_of_targets):
-      target_position=[0.0,0.0,0.0]
-      fidNode1.GetNthFiducialPosition(target,target_position)
-      self.target_positions.append(target_position)
-
-    print ('needleTip_position = '+str(self.needleTip_position))
-    print ('target_positions are '+str(self.target_positions))
+    # DEBUG: prepare IntraopFolder for tests
+    # self.logic.removeEverythingInIntraopTestFolder()
 
   def updateTargetTable(self,observer,caller):
 
     # get the positions of needle Tip and Targets
-    self.getNeedleTipAndTargetsPositions()
+    self.logic.getNeedleTipAndTargetsPositions()
 
     # get the targets
     fidNode1=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
@@ -735,7 +638,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # set number of rows in targetTable
     self.targetTable.setRowCount(number_of_targets)
-
     self.target_items=[]
 
 
@@ -751,7 +653,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.items_3D=[]
 
     for index in range(number_of_targets):
-      distances=self.measureDistance(self.target_positions[index],self.needleTip_position)
+      distances=self.logic.measureDistance(self.target_positions[index],self.needleTip_position)
       text_for_2D_column=('x = '+str(round(distances[0],2))+' y = '+str(round(distances[1],2)))
       text_for_3D_colomn=str(round(distances[3],2))
 
@@ -764,7 +666,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.targetTable.setItem(index,2,item_3D)
       self.items_3D.append(item_3D)
       print str(text_for_3D_colomn)
-
 
   def removeSliceAnnotations(self):
     try:
@@ -912,167 +813,39 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.flickering = checked
     self.flicker()
 
-  def enter(self):
-
-    # set inital layout
-    self.markupsLogic=slicer.modules.markups.logic()
-    self.layoutManager=slicer.app.layoutManager()
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
-
-    # set slice views to axial
-
-
-    sliceNodeRed=self.redSliceLogic.GetSliceNode()
-    sliceNodeYellow=self.yellowSliceLogic.GetSliceNode()
-    sliceNodeRed.SetOrientationToAxial()
-    sliceNodeYellow.SetOrientationToAxial()
-
-
-  def startLog(self):
-
-    # create a logfile called RegModule_Log-2015-04-24T20/08/32.txt
-    dateTime=str(qt.QDateTime.currentDateTime())
-
-    date=dateTime[0:10]
-    time=dateTime[11:19]
-
-    name=('RegModule_Log-'+dateTime)
-
-    cmd=('mkdir '+self.modulePath +  '/Log')
-    os.system(cmd)
-
-    # create logfile
-    cmd2=('touch '+self.modulePath + 'Log/'+name+'.txt')
-    os.system(cmd2)
-
-    # write logfile
-    f = open(self.modulePath + 'Log/'+name+'.txt', 'w')
-    f.write('Registration Module Logfile\n\n')
-    f.write('Date: '+date+'\n')
-    f.write('Time in Data Selection Section:\n')
-    f.write('Time Started: '+time+'\n')
-
-
-    # create QTimers for every section
-    self.timer_section_1=qt.QTimer()
-    self.timer_section_2=qt.QTimer()
-    self.timer_section_3=qt.QTimer()
-    self.timer_section_4=qt.QTimer()
-
-    # connections
-    self.timer_section_1.connect('timeout()',self.timer1callback)
-    self.timer_section_2.connect('timeout()',self.timer2callback)
-    self.timer_section_3.connect('timeout()',self.timer3callback)
-    self.timer_section_4.connect('timeout()',self.timer4callback)
-
-    # time in Sections [in seconds]
-    self.time_in_section_1=0
-    self.time_in_section_2=0
-    self.time_in_section_3=0
-    self.time_in_section_4=0
-
-    # set up timer_freq [in ms]
-    self.timer_freq=1000
-
-    # start Timer for Section 1
-    self.timer_section_1.start(self.timer_freq)
-
-  def timer1callback(self):
-    self.time_in_section_1 += 1
-  def timer2callback(self):
-    self.time_in_section_2 += 1
-  def timer3callback(self):
-    self.time_in_section_3 += 1
-  def timer4callback(self):
-    self.time_in_section_4 += 1
-
-  def printTimers(self):
-    print ('time_in_section_1 :'+str(self.time_in_section_1))
-    print ('time_in_section_2 :'+str(self.time_in_section_2))
-    print ('time_in_section_3 :'+str(self.time_in_section_3))
-    print ('time_in_section_4 :'+str(self.time_in_section_4))
-
-  def stopTimers(self):
-
-    if self.timer_section_1.active:
-      self.timer_section_1.stop()
-
-    if self.timer_section_2.active:
-      self.timer_section_2.stop()
-
-    if self.timer_section_3.active:
-      self.timer_section_3.stop()
-
-    if self.timer_section_4.active:
-      self.timer_section_4.stop()
-
-  def removeEverythingInIntraopTestFolder(self):
-    cmd=('rm -rfv '+self.modulePath +'Resources/Testing/intraopDir/*')
-    print cmd
-    try:
-      os.system(cmd)
-    except:
-      print ('DEBUG: could not delete files in '+self.modulePath+'Resources/Testing/intraopDir')
-
   def onPreopDirSelected(self):
     self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory', self.modulePath + '/Resources/Testing/preopDir')
     self.preopDirButton.text = self.preopDataDir
     self.settings.setValue('RegistrationModule/PreopLocation', self.preopDataDir)
-    print('Directory selected:')
-    print(self.preopDataDir)
-    print(self.settings.value('RegistrationModule/PreopLocation'))
     self.loadPreopData()
 
   def onIntraopDirSelected(self):
     self.intraopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Intraop data directory', self.modulePath + '/Resources/Testing/intraopDir')
     self.intraopDirButton.text = self.intraopDataDir
     self.settings.setValue('RegistrationModule/IntraopLocation', self.intraopDataDir)
-    print self.intraopDataDir
 
-    print('Directory selected:')
-    print(self.intraopDataDir)
-    print(self.settings.value('RegistrationModule/IntraopLocation'))
-
-    print ('Now initialize listener')
+    print ('Listener is initialized')
     if self.intraopDataDir != None:
       self.initializeListener()
 
-  def enterLabelSelectionSection(self):
+  def onTabWidgetClicked(self):
 
-    self.tabWidget.setCurrentIndex(1)
-
-    # set Layout to redSliceViewOnly for segmentation
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
-
-    # Hide Labels
-    self.compositNodeRed.SetLabelOpacity(0)
-
-    # clear current Label
-    self.compositNodeRed.SetLabelVolumeID(None)
-
-  def tabWidgetClicked(self):
+    """
+    this function connects the clicks on
+    tab widget to its corresponding
+    onTabXclicked() functions
+    """
 
     if self.tabWidget.currentIndex==0:
       self.onTab1clicked()
-
-        # set up window mode
-
     if self.tabWidget.currentIndex==1:
       self.onTab2clicked()
-
-        # show reference image
-
     if self.tabWidget.currentIndex==2:
       self.onTab3clicked()
     if self.tabWidget.currentIndex==3:
       self.onTab4clicked()
 
   def onTab1clicked(self):
-
-    # stop timers
-    self.stopTimers()
-    # start timer 1
-    self.timer_section_1.start()
 
     # set the standard Icon
     self.tabBar.setTabIcon(0,self.dataSelectionIcon)
@@ -1088,10 +861,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onTab2clicked(self):
 
-    # stop timers
-    self.stopTimers()
-    # start timer 1
-    self.timer_section_2.start(self.timer_freq)
+    self.tabWidget.setCurrentIndex(1)
 
     # ensure, that reference volume is set before making buttons clickable
     if self.referenceVolumeSelector.currentNode() == None:
@@ -1106,12 +876,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # removeSliceAnnotations
     self.removeSliceAnnotations()
 
-  def onTab3clicked(self):
+    # set Layout for segmentation
+    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
-    # stop timers
-    self.stopTimers()
-    # start timer 1
-    self.timer_section_3.start(self.timer_freq)
+    # Hide Labels
+    self.compositNodeRed.SetLabelOpacity(0)
+
+    # clear current Label
+    self.compositNodeRed.SetLabelVolumeID(None)
+
+  def onTab3clicked(self):
 
     # check, that Input is set
     if self.preopVolumeSelector.currentNode() != None and self.intraopVolumeSelector.currentNode() != None and self.preopLabelSelector.currentNode() != None and self.intraopLabelSelector.currentNode() != None and self.fiducialSelector.currentNode() != None:
@@ -1123,11 +897,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.removeSliceAnnotations()
 
   def onTab4clicked(self):
-
-    # stop timers
-    self.stopTimers()
-    # start timer 1
-    self.timer_section_4.start(self.timer_freq)
 
     self.addSliceAnnotations()
 
@@ -1356,11 +1125,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print cmd
     os.system(cmd)
 
-  def changeOpacity(self,value):
-
-    # set opactiy
-    self.compositNodeRed.SetForegroundOpacity(value)
-
   def loadPreopData(self):
 
     # this function finds all volumes and fiducials in a directory and loads them into slicer
@@ -1519,38 +1283,40 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.seriesModel.item(item).setCheckState(0)
 
     # enter Label Selection Section
-    self.enterLabelSelectionSection()
-
-  def cleanup(self):
-    pass
+    self.onTab2clicked()
 
   def waitingForSeriesToBeCompleted(self):
 
     self.updatePatientSelectorFlag = False
 
     print ('***** New Data in intraop directory detected ***** ')
-    print ('waiting 2 more seconds for Series to be completed')
+    print ('waiting 5 more seconds for Series to be completed')
 
     qt.QTimer.singleShot(5000,self.importDICOMseries)
 
   def importDICOMseries(self):
 
-    newFileList= []
+    self.newFileList= []
     self.seriesList= []
     indexer = ctk.ctkDICOMIndexer()
     db=slicer.dicomDatabase
 
-    # create a List NewFileList that contains only new files in the intraop directory
-    for item in os.listdir(self.intraopDataDir):
-      if item not in self.currentFileList:
-        newFileList.append(item)
+    if self.thereAreFilesInTheFolderFlag == 1:
+      self.newFileList=self.currentFileList
+      self.thereAreFilesInTheFolderFlag = 0
+    else:
+      # create a List NewFileList that contains only new files in the intraop directory
+      for item in os.listdir(self.intraopDataDir):
+        if item not in self.currentFileList:
+          self.newFileList.append(item)
 
-    print ('Step 1: newFileList: ')
-    print newFileList
+    print ('Step 1: self.newFileList: ')
+    print self.newFileList
     print ()
 
+
     # import file in DICOM database
-    for file in newFileList:
+    for file in self.newFileList:
      if not file == ".DS_Store":
        indexer.addFile(db,str(self.intraopDataDir+'/'+file),None)
        print ('file '+str(file)+' was added by Indexer')
@@ -1560,6 +1326,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
          importfile=str(self.intraopDataDir+'/'+file)
          self.seriesList.append(db.fileValue(importfile,'0008,103E'))
          print ('seriesList = '+str(self.seriesList))
+         # add aquisition time
+         acqTime=db.fileValue(importfile,'0008,0032')[0:6]
+         print ('acqTime = '+str(acqTime))
+         self.acqusitionTimes[str(db.fileValue(importfile,'0008,103E'))]= str(acqTime)
+
 
     indexer.addDirectory(db,str(self.intraopDataDir))
     indexer.waitForImportFinished()
@@ -1579,14 +1350,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         self.selectableSeries.append(series)
         print ('selectableSeries = '+str(self.selectableSeries))
 
+    self.selectableSeries=self.sortSeriesByAcquisitionTime(self.selectableSeries)
+
     # write items in intraop series selection widget
     for s in range(len(self.selectableSeries)):
       seriesText = self.selectableSeries[s]
+      print ('Series Text = ' +seriesText)
       self.currentSeries=seriesText
       sItem = qt.QStandardItem(seriesText)
       self.seriesItems.append(sItem)
       self.seriesModel.appendRow(sItem)
       sItem.setCheckable(1)
+
       if "PROSTATE" in seriesText:
         sItem.setCheckState(1)
       if "GUIDANCE" in seriesText:
@@ -1604,7 +1379,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # check, if selectedPatient == incomePatient
     # set warning Flag = False if not
 
-    for file in newFileList:
+    for file in self.newFileList:
       if file != ".DS_Store" and db.fileValue(self.intraopDataDir+'/'+file,'0010,0020') != self.currentID:
         self.warningFlag=True
       else:
@@ -1612,11 +1387,23 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     if self.warningFlag:
-      self.patientNotMatching(self.currentID,db.fileValue(str(self.intraopDataDir+'/'+newFileList[2]),'0010,0020'))
+      self.patientNotMatching(self.currentID,db.fileValue(str(self.intraopDataDir+'/'+self.newFileList[2]),'0010,0020'))
 
     if not self.tabWidget.currentIndex == 0:
       print ('here comes the change function')
       self.tabBar.setTabIcon(0,self.newImageDataIcon)
+
+
+  def sortSeriesByAcquisitionTime(self,inputSeriesList):
+
+    '''
+    this function sorts the self.acqusitionTimes dictionary over its acquisiton times (values).
+    it returnes a sorted series list (keys) whereas the 0th item is the earliest obtained series
+    '''
+
+    sortedList=sorted(self.acqusitionTimes, key=self.acqusitionTimes.get)
+
+    return sortedList
 
   def patientNotMatching(self,selectedPatient,incomePatient):
 
@@ -1646,6 +1433,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.currentFileList=[]
     for item in os.listdir(self.intraopDataDir):
       self.currentFileList.append(item)
+
+    if len(self.currentFileList) > 1:
+      self.thereAreFilesInTheFolderFlag = 1
+      self.importDICOMseries()
+    else:
+      self.thereAreFilesInTheFolderFlag = 0
 
   def initializeListener(self):
 
@@ -1772,6 +1565,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # reset cursor to default
       self.editorParameterNode.SetParameter('effect','DefaultTool')
 
+      # set Labelmap for Registration
+      labelname=(slicer.modules.RegistrationModuleWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
+      labelnode=slicer.mrmlScene.GetNodesByName(labelname).GetItemAsObject(0)
+      self.intraopLabelSelector.setCurrentNode(labelnode)
 
       self.labelSegmentationFlag=0
 
@@ -1787,8 +1584,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.startLabelSegmentationButton.setEnabled(1)
     self.applySegmentationButton.setEnabled(0)
 
-
-
   def onStartLabelSegmentationButton(self):
 
     # disable QuickSegmentationButton
@@ -1798,6 +1593,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.labelSegmentationFlag=1
 
     self.compositNodeRed.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
+    # show label
+    self.compositNodeRed.SetLabelOpacity(1)
+
 
     # create new labelmap and set
     referenceVolume=self.referenceVolumeSelector.currentNode()
@@ -2101,14 +1899,120 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
 class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
-  """This class should implement all the actual
-  computation done by your module.  The interface
-  should be such that other python code can import
-  this class and make use of the functionality without
-  requiring an instance of the Widget.
-  Uses ScriptedLoadableModuleLogic base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
+
+  def changeOpacity(self,value):
+
+    # set opactiy
+    self.compositNodeRed.SetForegroundOpacity(value)
+
+  def removeEverythingInIntraopTestFolder(self):
+    cmd=('rm -rfv '+slicer.modules.RegistrationModuleWidget.modulePath +'Resources/Testing/intraopDir/*')
+    try:
+      os.system(cmd)
+    except:
+      print ('DEBUG: could not delete files in '+self.modulePath+'Resources/Testing/intraopDir')
+
+  def getNeedleTipAndTargetsPositions(self):
+
+    # Get the fiducial lists
+    fidNode1=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
+    fidNode2=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
+
+    # get the needleTip_position
+    self.needleTip_position=[0.0,0.0,0.0]
+    fidNode2.GetNthFiducialPosition(0,self.needleTip_position)
+
+    # get the target position(s)
+    number_of_targets=fidNode1.GetNumberOfFiducials()
+    self.target_positions=[]
+
+    for target in range(number_of_targets):
+      target_position=[0.0,0.0,0.0]
+      fidNode1.GetNthFiducialPosition(target,target_position)
+      self.target_positions.append(target_position)
+
+    print ('needleTip_position = '+str(self.needleTip_position))
+    print ('target_positions are '+str(self.target_positions))
+
+  def setNeedleTipPosition(self):
+
+    if slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0) == None:
+
+      # if needle tip is placed for the first time:
+
+      # create Markups Node & display node to store needle tip position
+      needleTipMarkupDisplayNode = slicer.vtkMRMLMarkupsDisplayNode()
+      needleTipMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
+      needleTipMarkupNode.SetName('needle-tip')
+      slicer.mrmlScene.AddNode(needleTipMarkupDisplayNode)
+      slicer.mrmlScene.AddNode(needleTipMarkupNode)
+      needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
+
+      # update the target table when markup was set
+      needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,slicer.modules.RegistrationModuleWidget.updateTargetTable)
+
+      # be sure to have the correct display node
+      needleTipMarkupDisplayNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0).GetDisplayNode()
+
+      # Set visual fiducial attributes
+      needleTipMarkupDisplayNode.SetTextScale(1.6)
+      needleTipMarkupDisplayNode.SetGlyphScale(2.0)
+      needleTipMarkupDisplayNode.SetGlyphType(12)
+      #TODO: set color is somehow not working here
+      needleTipMarkupDisplayNode.SetColor(1,1,50)
+
+    else:
+      # remove fiducial
+      needleNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
+      needleNode.RemoveAllMarkups()
+
+
+    # set active node ID and start place mode
+    mlogic=slicer.modules.markups.logic()
+    mlogic.SetActiveListID(slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0))
+    slicer.modules.markups.logic().StartPlaceMode(0)
+
+
+  def measureDistance(self,target_position,needleTip_position):
+
+    # calculate 2D distance
+    distance_2D_x=abs(target_position[0]-needleTip_position[0])
+    distance_2D_y=abs(target_position[1]-needleTip_position[1])
+    distance_2D_z=abs(target_position[2]-needleTip_position[2])
+
+    # print ('distance_xRAS = '+str(distance_2D_x))
+    # print ('distance_yRAS = '+str(distance_2D_y))
+    # print ('distance_zRAS = '+str(distance_2D_z))
+
+    # calculate 3D distance
+    rulerNode=slicer.vtkMRMLAnnotationRulerNode()
+    rulerNode.SetPosition1(target_position)
+    rulerNode.SetPosition2(needleTip_position)
+    distance_3D=rulerNode.GetDistanceMeasurement()
+
+    return [distance_2D_x,distance_2D_y,distance_2D_z,distance_3D]
+
+  def setupColorTable(self):
+
+    # setup the PCampReview color table
+    self.colorFile = (slicer.modules.RegistrationModuleWidget.modulePath + 'Resources/Colors/PCampReviewColors.csv')
+    self.PCampReviewColorNode = slicer.vtkMRMLColorTableNode()
+    colorNode = self.PCampReviewColorNode
+    colorNode.SetName('PCampReview')
+    slicer.mrmlScene.AddNode(colorNode)
+    colorNode.SetTypeToUser()
+    with open(self.colorFile) as f:
+      n = sum(1 for line in f)
+    colorNode.SetNumberOfColors(n-1)
+    import csv
+    self.structureNames = []
+    with open(self.colorFile, 'rb') as csvfile:
+      reader = csv.DictReader(csvfile, delimiter=',')
+      for index,row in enumerate(reader):
+        colorNode.SetColor(index,row['Label'],float(row['R'])/255,
+                float(row['G'])/255,float(row['B'])/255,float(row['A']))
+        self.structureNames.append(row['Label'])
+
 
   def hasImageData(self,volumeNode):
     """This is a dummy logic method that
