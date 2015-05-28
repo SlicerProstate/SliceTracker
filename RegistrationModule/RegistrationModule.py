@@ -15,10 +15,9 @@ class RegistrationModule(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "RegistrationModule"
-    self.parent.categories = ["Examples"]
+    self.parent.categories = ["Registration"]
     self.parent.dependencies = []
-    # self.parent.dependencies = ["VolumeClipWithModel"]
-    # there is no error message to warn user that VolumeClipWithModel is needed!
+    self.parent.dependencies = ["VolumeClipWithModel"]
     self.parent.contributors = ["Peter Behringer (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ Module for easy registration. """
     self.parent.acknowledgementText = """SPL, Brigham & Womens""" # replace with organization, grant and thanks.
@@ -38,14 +37,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Parameters
     self.settings = qt.QSettings()
     self.modulePath = slicer.modules.registrationmodule.path.replace("RegistrationModule.py","")
+    self.intraopDataDir = ""
+    self.preopDataDir = ""
     self.temp = None
     self.updatePatientSelectorFlag = True
     self.warningFlag = False
     self.patientNames = []
     self.patientIDs = []
     self.addedPatients = []
-    self.selectableSeries=[]
     self.selectablePatientItems=[]
+    self.seriesItems = []
+    self.selectedSeries=[]
     self.rockCount = 0
     self.rocking = False
     self.rockTimer = None
@@ -57,7 +59,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.labelSegmentationFlag=0
     self.markupsLogic=slicer.modules.markups.logic()
     self.logic=RegistrationModuleLogic()
-    self.acqusitionTimes = {}
 
 
     # set global slice widgets
@@ -400,7 +401,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Step 3: Registration
     #
 
-
     # preop volume selector
     self.preopVolumeSelector = slicer.qMRMLNodeComboBox()
     self.preopVolumeSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
@@ -604,6 +604,32 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.enter()
 
    # _____________________________________________________________________________________________________ #
+
+  def loadSeriesIntoSlicer(self):
+
+    selectedSeriesList=self.getSelectedSeriesFromSelector()
+    directory = self.intraopDataDir
+
+    volume=self.logic.loadSeriesIntoSlicer(selectedSeriesList,directory)
+
+    # set last inputVolume Node as Reference Volume in Label Selection
+    self.referenceVolumeSelector.setCurrentNode(volume)
+
+    # set last inputVolume Node as Intraop Image Volume in Registration
+    self.intraopVolumeSelector.setCurrentNode(volume)
+
+    # Fit Volume To Screen
+    slicer.app.applicationLogic().FitSliceToAll()
+
+    # Allow PatientSelector to be updated
+    self.updatePatientSelectorFlag = True
+
+    # uncheck loaded items in the Intrap series selection
+    for item in range(len(self.logic.seriesList)):
+      self.seriesModel.item(item).setCheckState(0)
+
+    # enter Label Selection Section
+    self.onTab2clicked()
 
 
   def enter(self):
@@ -824,9 +850,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopDirButton.text = self.intraopDataDir
     self.settings.setValue('RegistrationModule/IntraopLocation', self.intraopDataDir)
 
-    print ('Listener is initialized')
-    if self.intraopDataDir != None:
-      self.initializeListener()
+    if self.intraopDataDir is not None:
+      self.logic.initializeListener(self.intraopDataDir)
 
   def onTabWidgetClicked(self):
 
@@ -847,7 +872,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onTab1clicked(self):
 
-    # set the standard Icon
+    # (re)set the standard Icon
     self.tabBar.setTabIcon(0,self.dataSelectionIcon)
 
     # grab the settings from last session
@@ -994,6 +1019,34 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         self.currentPatientName=currentPatientNameDicom
       self.patientID.setText(self.currentID)
       self.studyDate.setText(str(self.currentStudyDate))
+
+  def updateSeriesSelectorTable(self,seriesList):
+
+    # this function updates the series selection table.
+    # IMPORTANT: the function expects the series to be
+    # in the order in which the series have been acquired.
+    # PROSTATE series needs to be BEFORE the GUIDANCE series,
+    # otherwise, the "smart check" option won't work
+
+    self.seriesModel.clear()
+    self.seriesItems = []
+
+    # write items in intraop series selection widget
+    for s in range(len(seriesList)):
+      seriesText = seriesList[s]
+      self.currentSeries=seriesText
+      sItem = qt.QStandardItem(seriesText)
+      self.seriesItems.append(sItem)
+      self.seriesModel.appendRow(sItem)
+      sItem.setCheckable(1)
+
+      if "PROSTATE" in seriesText:
+        sItem.setCheckState(1)
+      if "GUIDANCE" in seriesText:
+        sItem.setCheckState(1)
+        rowsAboveCurrentItem=int(len(seriesList) - 1)
+        for item in range(rowsAboveCurrentItem):
+          self.seriesModel.item(item).setCheckState(0)
 
   def onBSplineCheckBoxClicked(self):
 
@@ -1183,227 +1236,22 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     markupsDisplayNode.SetTextScale(1.9)
     markupsDisplayNode.SetGlyphScale(1.0)
 
-  def getSelectedSeriesFromSelector(self):
+  def hideWindow(self):
+    self.notifyUserWindow.hide()
 
-    # this function returns a List of names of the series
-    # that are selected in Intraop Series Selector
+  def patientCheckAfterImport(self,directory,fileList):
 
-    checkedItems = [x for x in self.seriesItems if x.checkState()]
-    self.selectedSeries=[]
+    # this function checks if the patient DICOM tag in fileList is
+    # equal to the patient, that was selected in patientSelector widget.
+    # it returns function patientNotMatching if not.
 
-    for x in checkedItems:
-      self.selectedSeries.append(x.text())
-
-    return self.selectedSeries
-
-  def createLoadableFileListFromSelection(self):
-
-    # create dcmFileList that lists all .dcm files in directory
-    dcmFileList = []
-    self.selectedFileList=[]
-    db=slicer.dicomDatabase
-
-    for dcm in os.listdir(self.intraopDataDir):
-      print ('current file = ' +str(dcm))
-      if len(dcm)-dcm.rfind('.dcm') == 4 and dcm != ".DS_Store":
-        dcmFileList.append(self.intraopDataDir+'/'+dcm)
-      if dcm != ".DS_Store":
-        print (' files doesnt have DICOM ending')
-        dcmFileList.append(self.intraopDataDir+'/'+dcm)
-
-    print ('dcmFileList is ready')
-    print dcmFileList
-
-    # get the selected Series List
-    self.selectedSeriesList=self.getSelectedSeriesFromSelector()
-
-
-    # write all selected files in selectedFileList
-    for file in dcmFileList:
-     print ('current file in selected file list: '+str(file))
-     if db.fileValue(file,'0008,103E') in self.selectedSeriesList:
-       self.selectedFileList.append(file)
-
-    print self.selectedFileList
-    # create a list with lists of files of each series in them
-    self.loadableList=[]
-
-    # add all found series to loadableList
-    for series in self.selectedSeriesList:
-      fileListOfSeries =[]
-      for file in self.selectedFileList:
-        if db.fileValue(file,'0008,103E') == series:
-          fileListOfSeries.append(file)
-      self.loadableList.append(fileListOfSeries)
-
-    print ('loadableList :')
-    print self.loadableList
-
-  def loadSeriesIntoSlicer(self):
-
-    self.createLoadableFileListFromSelection()
-
-    # create DICOMScalarVolumePlugin and load selectedSeries data from files into slicer
-    scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
-
-    # check if selectedPatient == importPatient
-
-    try:
-      loadables = scalarVolumePlugin.examine(self.loadableList)
-
-    except:
-      print ('There is nothing to load. You have to select series')
-
-    print ('loadable list is : '+str(self.loadableList))
-    print ('loadables are : '+str(loadables))
-
-    # TODO: Just the first series is loaded here, even if several series are selected.
-    # from every list in the list loadables the [0] entry should be loaded
-
-    name = loadables[0].name
-    v=scalarVolumePlugin.load(loadables[0])
-    v.SetName(name)
-    slicer.mrmlScene.AddNode(v)
-
-    # set last inputVolume Node as Reference Volume in Label Selection
-    self.referenceVolumeSelector.setCurrentNode(v)
-
-    # set last inputVolume Node as Intraop Image Volume in Registration
-    self.intraopVolumeSelector.setCurrentNode(v)
-
-    # Fit Volume To Screen
-    slicer.app.applicationLogic().FitSliceToAll()
-
-    # Allow PatientSelector to be updated
-    self.updatePatientSelectorFlag = True
-
-    # uncheck loaded items in the Intrap series selection
-
-    for item in range(len(self.seriesList)):
-      self.seriesModel.item(item).setCheckState(0)
-
-    # enter Label Selection Section
-    self.onTab2clicked()
-
-  def waitingForSeriesToBeCompleted(self):
-
-    self.updatePatientSelectorFlag = False
-
-    print ('***** New Data in intraop directory detected ***** ')
-    print ('waiting 5 more seconds for Series to be completed')
-
-    qt.QTimer.singleShot(5000,self.importDICOMseries)
-
-  def importDICOMseries(self):
-
-    self.newFileList= []
-    self.seriesList= []
-    indexer = ctk.ctkDICOMIndexer()
-    db=slicer.dicomDatabase
-
-    if self.thereAreFilesInTheFolderFlag == 1:
-      self.newFileList=self.currentFileList
-      self.thereAreFilesInTheFolderFlag = 0
-    else:
-      # create a List NewFileList that contains only new files in the intraop directory
-      for item in os.listdir(self.intraopDataDir):
-        if item not in self.currentFileList:
-          self.newFileList.append(item)
-
-    print ('Step 1: self.newFileList: ')
-    print self.newFileList
-    print ()
-
-
-    # import file in DICOM database
-    for file in self.newFileList:
-     if not file == ".DS_Store":
-       indexer.addFile(db,str(self.intraopDataDir+'/'+file),None)
-       print ('file '+str(file)+' was added by Indexer')
-
-       # add Series to seriesList
-       if db.fileValue(str(self.intraopDataDir+'/'+file),'0008,103E') not in self.seriesList:
-         importfile=str(self.intraopDataDir+'/'+file)
-         self.seriesList.append(db.fileValue(importfile,'0008,103E'))
-         print ('seriesList = '+str(self.seriesList))
-         # add aquisition time
-         acqTime=db.fileValue(importfile,'0008,0032')[0:6]
-         print ('acqTime = '+str(acqTime))
-         self.acqusitionTimes[str(db.fileValue(importfile,'0008,103E'))]= str(acqTime)
-
-
-    indexer.addDirectory(db,str(self.intraopDataDir))
-    indexer.waitForImportFinished()
-
-    print ('Step 2: seriesList: ')
-    print self.seriesList
-    print ''
-
-    # create Checkable Item in GUI
-
-    self.seriesModel.clear()
-    self.seriesItems = []
-
-    # pass items from seriesList to selectableSeries to keep them in the right order
-    for series in self.seriesList:
-      if series not in self.selectableSeries:
-        self.selectableSeries.append(series)
-        print ('selectableSeries = '+str(self.selectableSeries))
-
-    self.selectableSeries=self.sortSeriesByAcquisitionTime(self.selectableSeries)
-
-    # write items in intraop series selection widget
-    for s in range(len(self.selectableSeries)):
-      seriesText = self.selectableSeries[s]
-      print ('Series Text = ' +seriesText)
-      self.currentSeries=seriesText
-      sItem = qt.QStandardItem(seriesText)
-      self.seriesItems.append(sItem)
-      self.seriesModel.appendRow(sItem)
-      sItem.setCheckable(1)
-
-      if "PROSTATE" in seriesText:
-        sItem.setCheckState(1)
-      if "GUIDANCE" in seriesText:
-        sItem.setCheckState(1)
-        rowsAboveCurrentItem=int(len(self.seriesList) - 1)
-        for item in range(rowsAboveCurrentItem):
-          self.seriesModel.item(item).setCheckState(0)
-
-    print('')
-    print('DICOM import finished')
-    print('Those series are indexed into slicer.dicomDatabase')
-    print self.seriesList
-
-
-    # check, if selectedPatient == incomePatient
-    # set warning Flag = False if not
-
-    for file in self.newFileList:
-      if file != ".DS_Store" and db.fileValue(self.intraopDataDir+'/'+file,'0010,0020') != self.currentID:
+    for file in fileList:
+      if file != ".DS_Store" and self.db.fileValue(directory+'/'+file,'0010,0020') != self.currentID:
         self.warningFlag=True
       else:
         self.warningFlag=False
-
-
     if self.warningFlag:
-      self.patientNotMatching(self.currentID,db.fileValue(str(self.intraopDataDir+'/'+self.newFileList[2]),'0010,0020'))
-
-    if not self.tabWidget.currentIndex == 0:
-      print ('here comes the change function')
-      self.tabBar.setTabIcon(0,self.newImageDataIcon)
-
-
-  def sortSeriesByAcquisitionTime(self,inputSeriesList):
-
-    '''
-    this function sorts the self.acqusitionTimes dictionary over its acquisiton times (values).
-    it returnes a sorted series list (keys) whereas the 0th item is the earliest obtained series
-    '''
-
-    sortedList=sorted(self.acqusitionTimes, key=self.acqusitionTimes.get)
-
-    return sortedList
+      self.patientNotMatching(self.currentID,self.db.fileValue(str(directory+'/'+fileList[2]),'0010,0020'))
 
   def patientNotMatching(self,selectedPatient,incomePatient):
 
@@ -1425,69 +1273,20 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # show the window
     self.notifyUserWindow.show()
 
-  def hideWindow(self):
-    self.notifyUserWindow.hide()
+  def getSelectedSeriesFromSelector(self):
 
-  def createCurrentFileList(self):
+    # this function returns a List of names of the series
+    # that are selected in Intraop Series Selector
+    # use only if DICOM series were loaded before.
 
-    self.currentFileList=[]
-    for item in os.listdir(self.intraopDataDir):
-      self.currentFileList.append(item)
+    if self.seriesItems:
+      checkedItems = [x for x in self.seriesItems if x.checkState()]
+      self.selectedSeries=[]
 
-    if len(self.currentFileList) > 1:
-      self.thereAreFilesInTheFolderFlag = 1
-      self.importDICOMseries()
-    else:
-      self.thereAreFilesInTheFolderFlag = 0
+      for x in checkedItems:
+        self.selectedSeries.append(x.text())
 
-  def initializeListener(self):
-
-    numberOfFiles = len([item for item in os.listdir(self.intraopDataDir)])
-    self.temp=numberOfFiles
-    self.setlastNumberOfFiles(numberOfFiles)
-    self.createCurrentFileList()
-    self.startTimer()
-
-  def startTimer(self):
-    numberOfFiles = len([item for item in os.listdir(self.intraopDataDir)])
-
-    if self.getlastNumberOfFiles() < numberOfFiles:
-     self.waitingForSeriesToBeCompleted()
-
-     self.setlastNumberOfFiles(numberOfFiles)
-     qt.QTimer.singleShot(500,self.startTimer)
-
-    else:
-     self.setlastNumberOfFiles(numberOfFiles)
-     qt.QTimer.singleShot(500,self.startTimer)
-
-  def setlastNumberOfFiles(self,number):
-    self.temp = number
-
-  def getlastNumberOfFiles(self):
-    return self.temp
-
-  def notifyUser(self,seriesName):
-    # create Pop-Up Window
-    self.notifyUserWindow = qt.QDialog(slicer.util.mainWindow())
-    self.notifyUserWindow.setWindowTitle("New Series")
-    self.notifyUserWindow.setLayout(qt.QVBoxLayout())
-
-    # create Text Label
-    self.textLabel = qt.QLabel()
-    self.notifyUserWindow.layout().addWidget(self.textLabel)
-    self.textLabel.setText("New Series are ready to be imported")
-
-    # create Push Button
-    self.pushButton = qt.QPushButton("Import new series"+"  "+seriesName)
-    self.notifyUserWindow.layout().addWidget(self.pushButton)
-    self.pushButton.connect('clicked(bool)',self.CH)
-
-
-    # create Push Button
-    self.pushButton2 = qt.QPushButton("Not Now")
-    self.notifyUserWindow.layout().addWidget(self.pushButton2)
-    self.notifyUserWindow.show()
+    return self.selectedSeries
 
   def onStartSegmentationButton(self):
 
@@ -1503,7 +1302,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.setQuickSegmentationModeON()
     logic = RegistrationModuleLogic()
     logic.run()
-
 
   def setQuickSegmentationModeON(self):
     self.startLabelSegmentationButton.setEnabled(0)
@@ -1596,7 +1394,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # show label
     self.compositNodeRed.SetLabelOpacity(1)
 
-
     # create new labelmap and set
     referenceVolume=self.referenceVolumeSelector.currentNode()
     volumesLogic = slicer.modules.volumes.logic()
@@ -1620,8 +1417,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set label properties
     editUtil.setLabel(1)
     editUtil.setLabelOutline(1)
-
-
 
   def applyRegistration(self):
 
@@ -1651,6 +1446,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      outputTransformBSpline.SetName('transform-BSpline')
 
      ##### OUTPUT VOLUMES
+
+     # TODO: create storage nodes
 
      # define output volume Rigid
      outputVolumeRigid=slicer.vtkMRMLScalarVolumeNode()
@@ -1775,9 +1572,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
        print ("Perform Target Transform")
 
-       # TODO: Clone Fiducials 3 times more
-       # create fiducials for every transform and harden them?
-
        # get transform
        transformNode=slicer.mrmlScene.GetNodesByName('transform-BSpline').GetItemAsObject(0)
 
@@ -1885,11 +1679,13 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # switch to Evaluation Section
     self.tabWidget.setCurrentIndex(3)
 
-    # TODO : set the same field of view in yellow slice view
-
-
     print ('Registration Function is done')
 
+  def checkTabAfterImport(self):
+
+    # change icon of tabBar if user is not in Data selection tab
+    if not self.tabWidget.currentIndex == 0:
+      self.tabBar.setTabIcon(0,self.newImageDataIcon)
 
 
 #
@@ -1899,6 +1695,197 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
 class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
+
+  def initializeListener(self,directory):
+
+    numberOfFiles = len([item for item in os.listdir(directory)])
+    self.temp=numberOfFiles
+    self.directory=directory
+    self.setlastNumberOfFiles(numberOfFiles)
+    self.createCurrentFileList(directory)
+    self.startTimer()
+
+  def startTimer(self):
+    numberOfFiles = len([item for item in os.listdir(self.directory)])
+
+    if self.getlastNumberOfFiles() < numberOfFiles:
+     self.waitingForSeriesToBeCompleted()
+
+     self.setlastNumberOfFiles(numberOfFiles)
+     qt.QTimer.singleShot(500,self.startTimer)
+
+    else:
+     self.setlastNumberOfFiles(numberOfFiles)
+     qt.QTimer.singleShot(500,self.startTimer)
+
+  def createCurrentFileList(self,directory):
+
+    self.currentFileList=[]
+    for item in os.listdir(directory):
+      self.currentFileList.append(item)
+
+    if len(self.currentFileList) > 1:
+      self.thereAreFilesInTheFolderFlag = 1
+      self.importDICOMseries()
+    else:
+      self.thereAreFilesInTheFolderFlag = 0
+
+  def setlastNumberOfFiles(self,number):
+    self.temp = number
+
+  def getlastNumberOfFiles(self):
+    return self.temp
+
+  def createLoadableFileListFromSelection(self,selectedSeriesList,directory):
+
+    # this function creates a DICOM filelist for all files in intraop directory.
+    # It compares the names of the studies in seriesList to the
+    # DICOM tag of the DICOM filelist and creates a new list of list loadable
+    # list, where it puts together all DICOM files of one series into one list
+
+    db=slicer.dicomDatabase
+
+    # create dcmFileList that lists all .dcm files in directory
+    if directory is not "":
+      dcmFileList = []
+      for dcm in os.listdir(directory):
+        print ('current file = ' +str(dcm))
+        if len(dcm)-dcm.rfind('.dcm') == 4 and dcm != ".DS_Store":
+          dcmFileList.append(directory+'/'+dcm)
+        if dcm != ".DS_Store":
+          print (' files doesnt have DICOM ending')
+          dcmFileList.append(directory+'/'+dcm)
+
+      self.selectedFileList=[]
+      print ('selected Series List : ')
+      print selectedSeriesList
+      # write all selected files in selectedFileList
+      for file in dcmFileList:
+       print ('current file in selected file list: '+str(file))
+       if db.fileValue(file,'0008,103E') in selectedSeriesList:
+         self.selectedFileList.append(file)
+
+      print self.selectedFileList
+      # create a list with lists of files of each series in them
+      self.loadableList=[]
+
+      # add all found series to loadableList
+      for series in selectedSeriesList:
+        fileListOfSeries =[]
+        for file in self.selectedFileList:
+          if db.fileValue(file,'0008,103E') == series:
+            fileListOfSeries.append(file)
+        self.loadableList.append(fileListOfSeries)
+
+      print ('loadableList :')
+      print self.loadableList
+
+  def loadSeriesIntoSlicer(self,selectedSeries,directory):
+
+    self.createLoadableFileListFromSelection(selectedSeries,directory)
+
+    # create DICOMScalarVolumePlugin and load selectedSeries data from files into slicer
+    scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
+
+    # check if selectedPatient == importPatient
+
+    try:
+      loadables = scalarVolumePlugin.examine(self.loadableList)
+
+    except:
+      print ('There is nothing to load. You have to select series')
+
+    print ('loadable list is : '+str(self.loadableList))
+    print ('loadables are : '+str(loadables))
+
+    # TODO: Just the first series is loaded here, even if several series are selected.
+    # from every list in the list loadables the [0] entry should be loaded
+
+    name = loadables[0].name
+    v=scalarVolumePlugin.load(loadables[0])
+    v.SetName(name)
+    slicer.mrmlScene.AddNode(v)
+
+    return v
+
+  def waitingForSeriesToBeCompleted(self):
+
+    self.updatePatientSelectorFlag = False
+
+    print ('***** New Data in intraop directory detected ***** ')
+    print ('waiting 5 more seconds for Series to be completed')
+
+    qt.QTimer.singleShot(5000,self.importDICOMseries)
+
+  def importDICOMseries(self):
+
+    self.newFileList= []
+    self.seriesList= []
+    self.selectableSeries=[]
+    self.acqusitionTimes = {}
+    indexer = ctk.ctkDICOMIndexer()
+    db=slicer.dicomDatabase
+
+    if self.thereAreFilesInTheFolderFlag == 1:
+      self.newFileList=self.currentFileList
+      self.thereAreFilesInTheFolderFlag = 0
+    else:
+      # create a List NewFileList that contains only new files in the intraop directory
+      for item in os.listdir(self.directory):
+        if item not in self.currentFileList:
+          self.newFileList.append(item)
+
+    # import file in DICOM database
+    for file in self.newFileList:
+     if not file == ".DS_Store":
+       indexer.addFile(db,str(self.directory+'/'+file),None)
+       print ('file '+str(file)+' was added by Indexer')
+
+       # add Series to seriesList
+       if db.fileValue(str(self.directory+'/'+file),'0008,103E') not in self.seriesList:
+         importfile=str(self.directory+'/'+file)
+         self.seriesList.append(db.fileValue(importfile,'0008,103E'))
+         # print ('seriesList = '+str(self.seriesList))
+
+         # get acquisition time and save in dictionary
+         acqTime=db.fileValue(importfile,'0008,0032')[0:6]
+         print ('acqTime = '+str(acqTime))
+         self.acqusitionTimes[str(db.fileValue(importfile,'0008,103E'))]= str(acqTime)
+
+
+
+    indexer.addDirectory(db,str(self.directory))
+    indexer.waitForImportFinished()
+
+    # pass items from seriesList to selectableSeries to keep them in the right order
+    for series in self.seriesList:
+      if series not in self.selectableSeries:
+        self.selectableSeries.append(series)
+        print ('selectableSeries = '+str(self.selectableSeries))
+
+    # sort list by acquisition time
+    self.selectableSeries=self.sortSeriesByAcquisitionTime(self.selectableSeries)
+
+    # TODO: update GUI from here is not very nice. Find a way to call logic and get the self.selectableSeries
+    # as a return
+
+    slicer.modules.RegistrationModuleWidget.updateSeriesSelectorTable(self.selectableSeries)
+
+    slicer.modules.RegistrationModuleWidget.patientCheckAfterImport(self.directory,self.newFileList)
+
+    slicer.modules.RegistrationModuleWidget.checkTabAfterImport()
+
+
+  def sortSeriesByAcquisitionTime(self,inputSeriesList):
+
+    '''
+    this function sorts the self.acqusitionTimes dictionary over its acquisiton times (values).
+    it returnes a sorted series list (keys) whereas the 0th item is the earliest obtained series
+    '''
+
+    sortedList=sorted(self.acqusitionTimes, key=self.acqusitionTimes.get)
+
+    return sortedList
 
   def changeOpacity(self,value):
 
@@ -1972,7 +1959,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     mlogic.SetActiveListID(slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0))
     slicer.modules.markups.logic().StartPlaceMode(0)
 
-
   def measureDistance(self,target_position,needleTip_position):
 
     # calculate 2D distance
@@ -2012,7 +1998,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
         colorNode.SetColor(index,row['Label'],float(row['R'])/255,
                 float(row['G'])/255,float(row['B'])/255,float(row['A']))
         self.structureNames.append(row['Label'])
-
 
   def hasImageData(self,volumeNode):
     """This is a dummy logic method that
