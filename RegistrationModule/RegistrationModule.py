@@ -492,7 +492,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applyRegistrationButton.enabled = True
     self.applyRegistrationButton.setFixedHeight(45)
     self.registrationGroupBoxLayout.addRow(self.applyRegistrationButton)
-    self.applyRegistrationButton.connect('clicked(bool)',self.applyRegistration)
+    self.applyRegistrationButton.connect('clicked(bool)',self.onApplyRegistrationClicked)
 
     # _____________________________________________________________________________________________________ #
 
@@ -539,7 +539,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.fadeSlider.maximum = 1.0
     self.fadeSlider.value = 0
     self.fadeSlider.singleStep = 0.05
-    self.fadeSlider.connect('valueChanged(double)', self.logic.changeOpacity)
+    self.fadeSlider.connect('valueChanged(double)', self.changeOpacity)
     fadeLayout.addWidget(self.fadeSlider)
 
     # Rock and Flicker
@@ -578,7 +578,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.targetTable=qt.QTableWidget()
     self.targetTable.setRowCount(3)
     self.targetTable.setColumnCount(3)
-    self.targetTable.setColumnWidth(1,180)
+    self.targetTable.setColumnWidth(0,180)
     self.targetTable.setColumnWidth(1,200)
     self.targetTable.setColumnWidth(2,200)
     self.targetTable.setHorizontalHeaderLabels(['Target','Distance to needle-tip 2D [mm]','Distance to needle-tip 3D [mm]'])
@@ -586,7 +586,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.groupBoxLayoutTargets.addRow(self.targetTable)
 
     self.needleTipButton=qt.QPushButton('Set needle-tip')
-    self.needleTipButton.connect('clicked(bool)',self.logic.setNeedleTipPosition)
+    self.needleTipButton.connect('clicked(bool)',self.onNeedleTipButtonClicked)
     self.groupBoxLayoutTargets.addRow(self.needleTipButton)
 
 
@@ -604,6 +604,23 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.enter()
 
    # _____________________________________________________________________________________________________ #
+
+
+
+  def clearTargetTable(self):
+
+    self.targetTable.clear()
+    self.targetTable.setColumnCount(3)
+    self.targetTable.setColumnWidth(0,180)
+    self.targetTable.setColumnWidth(1,200)
+    self.targetTable.setColumnWidth(2,200)
+    self.targetTable.setHorizontalHeaderLabels(['Target','Distance to needle-tip 2D [mm]','Distance to needle-tip 3D [mm]'])
+
+
+  def onNeedleTipButtonClicked(self):
+
+    self.logic.setNeedleTipPosition()
+
 
   def loadSeriesIntoSlicer(self):
 
@@ -655,11 +672,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def updateTargetTable(self,observer,caller):
 
+    self.needleTip_position=[]
+    self.target_positions=[]
+
     # get the positions of needle Tip and Targets
-    self.logic.getNeedleTipAndTargetsPositions()
+    [self.needleTip_position,self.target_positions]=self.logic.getNeedleTipAndTargetsPositions()
 
     # get the targets
-    fidNode1=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
+    fidNode1=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
     number_of_targets=fidNode1.GetNumberOfFiducials()
 
     # set number of rows in targetTable
@@ -1053,46 +1073,66 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showBSplineButton.setStyleSheet('background-color: rgb(230,230,230)')
+    self.showBSplineButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
 
     # link images
     self.compositNodeRed.SetLinkedControl(1)
     self.compositNodeYellow.SetLinkedControl(1)
 
-    # Get the BSpline Volume Node
-    bsplineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-BSpline').GetItemAsObject(0)
-
     # Get the Intraop Volume Node
     intraopVolumeNode=self.intraopVolumeSelector.currentNode()
 
-
+    self.compositNodeYellow.SetBackgroundVolumeID(intraopVolumeNode.GetID())
     self.compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-    self.compositNodeRed.SetBackgroundVolumeID(bsplineVolumeNode.GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeBSpline.GetID())
+
+    fiducials=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
+    dispNodeTargetsREG = fiducials.GetDisplayNode()
+    dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
+
+    # set markups visible/invisible
+    self.markupsLogic.SetAllMarkupsVisibility(fiducials,1)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[0],0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[1],0)
+
+
+    # jump slice to show Targets in Yellow
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducials.GetID(),1)
 
   def onAffineCheckBoxClicked(self):
 
     self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showAffineButton.setStyleSheet('background-color: rgb(230,230,230)')
+    self.showAffineButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
     self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
 
     # link images
     self.compositNodeRed.SetLinkedControl(1)
     self.compositNodeYellow.SetLinkedControl(1)
 
-    # Get the Affine Volume Node
-    affineVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Affine').GetItemAsObject(0)
-
     # Get the Intraop Volume Node
-    intraopVolumeNode=self.intraopVolumeSelector.currentNode()
+    intraopVolumeNode=self.intraopVolumeSelector.currentNode(
 
+    self.compositNodeYellow.SetBackgroundVolumeID(intraopVolumeNode.GetID())
     self.compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-    self.compositNodeRed.SetBackgroundVolumeID(affineVolumeNode.GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeAffine.GetID())
+
+    fiducials=slicer.mrmlScene.GetNodesByName('targets-AFFINE').GetItemAsObject(0)
+    dispNodeTargetsREG = fiducials.GetDisplayNode()
+    dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
+
+    # set markups visible
+    self.markupsLogic.SetAllMarkupsVisibility(fiducials,1)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[0],0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[2],0)
+
+    # jump slice to show Targets in Yellow
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducials.GetID(),1)
 
   def onRigidCheckBoxClicked(self):
 
     self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showRigidButton.setStyleSheet('background-color: rgb(230,230,230)')
+    self.showRigidButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
     self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
 
@@ -1100,18 +1140,28 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeRed.SetLinkedControl(1)
     self.compositNodeYellow.SetLinkedControl(1)
 
-    # Get the Rigid Volume Node
-    rigidVolumeNode=slicer.mrmlScene.GetNodesByName('reg-Rigid').GetItemAsObject(0)
-
     # Get the Intraop Volume Node
     intraopVolumeNode=self.intraopVolumeSelector.currentNode()
 
+    self.compositNodeYellow.SetBackgroundVolumeID(intraopVolumeNode.GetID())
     self.compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-    self.compositNodeRed.SetBackgroundVolumeID(rigidVolumeNode.GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeRigid.GetID())
+
+    fiducials=slicer.mrmlScene.GetNodesByName('targets-RIGID').GetItemAsObject(0)
+    dispNodeTargetsREG = fiducials.GetDisplayNode()
+    dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
+
+    # set markups visible
+    self.markupsLogic.SetAllMarkupsVisibility(fiducials,1)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[1],0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[2],0)
+
+    # jump slice to show Targets in Yellow
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducials.GetID(),1)
 
   def onPreopCheckBoxClicked(self):
 
-    self.showPreopButton.setStyleSheet('background-color: rgb(230,230,230)')
+    self.showPreopButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
     self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
@@ -1140,7 +1190,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     dispNodeTargetsPreop.SetGlyphScale(1.0)
 
     # jump to first markup slice
-    self.markupsLogic.SetAllMarkupsVisibility(self.preopTargetsNodePreserve,0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.targetsPreop,0)
     self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducialNodeTargetsPREOP.GetID(),1)
 
   def onTargetCheckBox(self):
@@ -1182,10 +1232,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # this function finds all volumes and fiducials in a directory and loads them into slicer
 
+    # set color table
+
     slicer.util.loadLabelVolume(self.settings.value('RegistrationModule/preopLocation')+'/t2-label.nrrd')
     preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('t2-label').GetItemAsObject(0)
-
-    # set color table
     displayNode=preoplabelVolumeNode.GetDisplayNode()
     displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
@@ -1199,11 +1249,23 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Load preop Targets that remain reserved to be shown after registration as preop Targets
     slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
-    self.preopTargetsNodePreserve=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-    self.preopTargetsNodePreserve.SetName('targets-PREOP')
+    self.targetsPreop=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
+    self.targetsPreop.SetName('targets-PREOP')
 
+    # load targets for rigid transformation
     slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
-    preopTargetsNode=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
+    self.targetsRigid=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
+    self.targetsRigid.SetName('targets-RIGID')
+
+    # load targets for affine transformation
+    slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
+    self.targetsAffine=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
+    self.targetsAffine.SetName('targets-AFFINE')
+
+    # load targets for bspline transformation
+    slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
+    self.targetsBSpline=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
+    self.targetsBSpline.SetName('targets-BSPLINE')
 
     # use label contours
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
@@ -1217,11 +1279,13 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.redSliceNode.SetOrientationToAxial()
 
     # set markups visible
-    self.markupsLogic.SetAllMarkupsVisibility(preopTargetsNode,1)
-    self.markupsLogic.SetAllMarkupsVisibility(self.preopTargetsNodePreserve,0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.targetsRigid,0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.targetsAffine,0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.targetsBSpline,0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.targetsPreop,1)
 
     # set markups for registration
-    self.fiducialSelector.setCurrentNode(preopTargetsNode)
+    self.fiducialSelector.setCurrentNode(self.targetsPreop)
 
     # rotate volume to plane
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(preoplabelVolumeNode)
@@ -1229,12 +1293,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(preoplabelVolumeNode)
 
     # jump to first markup slice
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(preopTargetsNode.GetID(),1)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),1)
 
     # Set Fiducial Properties
-    markupsDisplayNode=preopTargetsNode.GetDisplayNode()
+    markupsDisplayNode=self.targetsPreop.GetDisplayNode()
     markupsDisplayNode.SetTextScale(1.9)
     markupsDisplayNode.SetGlyphScale(1.0)
+
+    self.compositNodeRed.SetLabelOpacity(1)
 
   def hideWindow(self):
     self.notifyUserWindow.hide()
@@ -1300,8 +1366,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.quickSegmentationFlag=1
 
     self.setQuickSegmentationModeON()
-    logic = RegistrationModuleLogic()
-    logic.run()
+
+    self.logic.runQuickSegmentationMode()
 
   def setQuickSegmentationModeON(self):
     self.startLabelSegmentationButton.setEnabled(0)
@@ -1322,14 +1388,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     interactionNode.SwitchToViewTransformMode()
     interactionNode.SetPlaceModePersistence(0)
 
+  def changeOpacity(self,value):
+
+    # set opactiy
+    self.compositNodeRed.SetForegroundOpacity(value)
+
   def onApplySegmentationButton(self):
 
     if self.quickSegmentationFlag==1:
 
       # create a labelmap from the model
-
-      # create logic
-      logic = RegistrationModuleLogic()
 
       # set parameter for modelToLabelmap CLI Module
       inputVolume=self.referenceVolumeSelector.currentNode()
@@ -1339,7 +1407,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       clippingModel=clipModelNode.GetItemAsObject(0)
 
       # run CLI-Module
-      outputLabelmap = logic.modelToLabelmap(inputVolume,clippingModel)
+      outputLabelmap = self.logic.modelToLabelmap(inputVolume,clippingModel)
 
       # set color table
       displayNode=outputLabelmap.GetDisplayNode()
@@ -1418,18 +1486,85 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     editUtil.setLabel(1)
     editUtil.setLabelOutline(1)
 
-  def applyRegistration(self):
+  def onApplyRegistrationClicked(self):
 
     fixedVolume= self.intraopVolumeSelector.currentNode()
     movingVolume = self.preopVolumeSelector.currentNode()
     fixedLabel=self.intraopLabelSelector.currentNode()
     movingLabel=self.preopLabelSelector.currentNode()
+    targets=self.fiducialSelector.currentNode()
+
+    registrationOutput=[]
+    registrationOutput=self.logic.applyRegistration(fixedVolume,movingVolume,fixedLabel,movingLabel,targets)
+
+    print ('REGISTRATION OUTPUT = '+str(registrationOutput))
+
+    self.outputVolumeRigid=registrationOutput[0]
+    self.outputVolumeAffine=registrationOutput[1]
+    self.outputVolumeBSpline=registrationOutput[2]
+    self.outputTransformRigid=registrationOutput[3]
+    self.outputTransformAffine=registrationOutput[4]
+    self.outputTransformBSpline=registrationOutput[5]
+    self.outputTargets=registrationOutput[6]
+
+    # set BSpline Checkbox
+    self.showBSplineButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
+
+    # set fiducial place mode back to regular view mode
+    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+    interactionNode.SwitchToViewTransformMode()
+    interactionNode.SetPlaceModePersistence(0)
+
+    # set Side By Side View to compare volumes
+    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+
+    # Hide Labels
+    self.compositNodeRed.SetLabelOpacity(0)
+    self.compositNodeYellow.SetLabelOpacity(0)
+
+    # set both orientations to axial
+    self.redSliceNode.SetOrientationToAxial()
+    self.yellowSliceNode.SetOrientationToAxial()
+
+    # zoom in (in red slice view)
+    fovRed=self.redSliceNode.GetFieldOfView()
+    print ('field of view Red'+str(fovRed))
+
+    fovYellow=self.yellowSliceNode.GetFieldOfView()
+    print ('field of view Yellow'+str(fovYellow))
+
+    self.redSliceLogic.StartSliceNodeInteraction(2)
+    self.redSliceNode.SetFieldOfView(fovRed[0] * 0.52, fovRed[1] * 0.6, fovRed[2])
+    self.redSliceLogic.EndSliceNodeInteraction()
+
+    # enable Evaluation Section
+    self.tabBar.setTabEnabled(3,True)
+
+    # switch to Evaluation Section
+    self.tabWidget.setCurrentIndex(3)
+
+    self.onBSplineCheckBoxClicked()
+
+    print ('Registration Function is done')
+
+  def checkTabAfterImport(self):
+
+    # change icon of tabBar if user is not in Data selection tab
+    if not self.tabWidget.currentIndex == 0:
+      self.tabBar.setTabIcon(0,self.newImageDataIcon)
+
+#
+# RegistrationModuleLogic
+#
+
+
+
+class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
+
+
+  def applyRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
 
     if fixedVolume and movingVolume and fixedLabel and movingLabel:
-
-     # check, if import is correct
-     if fixedVolume == None or movingVolume == None or fixedLabel == None or movingLabel == None:
-       print 'Please see input parameters'
 
      ##### OUTPUT TRANSFORMS
 
@@ -1469,7 +1604,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      slicer.mrmlScene.AddNode(outputTransformAffine)
      slicer.mrmlScene.AddNode(outputTransformBSpline)
 
-
      #   ++++++++++      RIGID REGISTRATION       ++++++++++
 
      paramsRigid = {'fixedVolume': fixedVolume,
@@ -1490,7 +1624,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      # run Rigid Registration
      self.cliNode=None
      self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
-
 
      #   ++++++++++      AFFINE REGISTRATION       ++++++++++
 
@@ -1568,133 +1701,53 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
      #   ++++++++++      TRANSFORM FIDUCIALS        ++++++++++
 
 
-     if self.fiducialSelector.currentNode() != None:
+     if targets:
 
        print ("Perform Target Transform")
 
-       # get transform
-       transformNode=slicer.mrmlScene.GetNodesByName('transform-BSpline').GetItemAsObject(0)
-
-       print ('TRANSFORM NODE: ')
-       print transformNode
-       print ''
-       print ''
+       # get transforms
+       transformNodeRigid=slicer.mrmlScene.GetNodesByName('transform-Rigid').GetItemAsObject(0)
+       transformNodeAffine=slicer.mrmlScene.GetNodesByName('transform-Affine').GetItemAsObject(0)
+       transformNodeBSpline=slicer.mrmlScene.GetNodesByName('transform-BSpline').GetItemAsObject(0)
 
        # get fiducials
-       fiducialNode=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
+       rigidTargets=slicer.mrmlScene.GetNodesByName('targets-RIGID').GetItemAsObject(0)
+       affineTargets=slicer.mrmlScene.GetNodesByName('targets-AFFINE').GetItemAsObject(0)
+       bSplineTargets=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
 
-       #debug_start:
-       if fiducialNode == None:
-         fiducialNode=slicer.mrmlScene.GetNodesByName('Case1-landmarks').GetItemAsObject(0)
-       #debug_end
+       # apply transforms
+       rigidTargets.SetAndObserveTransformNodeID(transformNodeRigid.GetID())
+       affineTargets.SetAndObserveTransformNodeID(transformNodeAffine.GetID())
+       bSplineTargets.SetAndObserveTransformNodeID(transformNodeBSpline.GetID())
 
-       # apply transform
-       fiducialNode.SetAndObserveTransformNodeID(transformNode.GetID())
-       fiducialNode.SetName('targets-REG')
-
-       # harden the transform
+       # harden the transforms
        tfmLogic = slicer.modules.transforms.logic()
-       tfmLogic.hardenTransform(fiducialNode)
+       tfmLogic.hardenTransform(rigidTargets)
+       tfmLogic.hardenTransform(affineTargets)
+       tfmLogic.hardenTransform(bSplineTargets)
 
-       # rename the targets to "[targetname]-REG"
-       numberOfTargets=fiducialNode.GetNumberOfFiducials()
-       print ('number of targets : '+str(numberOfTargets))
+       self.renameFiducials(rigidTargets)
+       self.renameFiducials(affineTargets)
+       self.renameFiducials(bSplineTargets)
 
-       for index in range(numberOfTargets):
-         oldname=fiducialNode.GetNthFiducialLabel(index)
-         fiducialNode.SetNthFiducialLabel(index,str(oldname)+'-REG')
-         print ('changed name from '+oldname+' to '+str(oldname)+'-REG')
+       outputTargets=[]
+       outputTargets.append(rigidTargets)
+       outputTargets.append(affineTargets)
+       outputTargets.append(bSplineTargets)
 
-
-
-
-    # set BSpline Checkbox
-    self.showBSplineButton.setStyleSheet('background-color: rgb(200,255,255)')
+     return [outputVolumeRigid,outputVolumeAffine,outputVolumeBSpline,outputTransformRigid,outputTransformAffine,outputTransformBSpline,outputTargets]
 
 
-    # set fiducial place mode back to regular view mode
-    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
-    interactionNode.SwitchToViewTransformMode()
-    interactionNode.SetPlaceModePersistence(0)
+  def renameFiducials(self,fiducialNode):
+    # rename the targets to "[targetname]-REG"
+    numberOfTargets=fiducialNode.GetNumberOfFiducials()
+    print ('number of targets : '+str(numberOfTargets))
 
-    # Get SliceWidgets
-    layoutManager=slicer.app.layoutManager()
+    for index in range(numberOfTargets):
+      oldname=fiducialNode.GetNthFiducialLabel(index)
+      fiducialNode.SetNthFiducialLabel(index,str(oldname)+'-REG')
+      print ('changed name from '+oldname+' to '+str(oldname)+'-REG')
 
-    # set Side By Side View to compare volumes
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
-
-    # set opacity fader to 0
-    # self.opacitySlider.setValue(0)
-
-    # Hide Labels
-    self.compositNodeRed.SetLabelOpacity(0)
-    self.compositNodeYellow.SetLabelOpacity(0)
-
-    # Set Intraop Image Foreground in Red
-    self.compositNodeRed.SetBackgroundVolumeID(outputVolumeBSpline.GetID())
-
-    # Set REG Image Background in Red
-    self.compositNodeRed.SetForegroundVolumeID(fixedVolume.GetID())
-
-    # set Intraop Image Foreground in Yellow
-    self.compositNodeYellow.SetBackgroundVolumeID(fixedVolume.GetID())
-
-    # set both orientations to axial
-    self.redSliceNode.SetOrientationToAxial()
-    self.yellowSliceNode.SetOrientationToAxial()
-
-    # make REG markups visible in yellow slice view
-    # make original markups visible in red slice view
-
-    redSliceNode=slicer.mrmlScene.GetNodesByName('Red').GetItemAsObject(0)
-    yellowSliceNode=slicer.mrmlScene.GetNodesByName('Yellow').GetItemAsObject(0)
-    fiducialNodeTargetsREG=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
-    dispNodeTargetsREG = fiducialNodeTargetsREG.GetDisplayNode()
-    dispNodeTargetsREG.AddViewNodeID(yellowSliceNode.GetID())
-
-    # set markups visible
-    self.markupsLogic.SetAllMarkupsVisibility(fiducialNodeTargetsREG,1)
-
-    # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducialNodeTargetsREG.GetID(),1)
-
-    # link images
-    self.compositNodeRed.SetLinkedControl(1)
-    self.compositNodeYellow.SetLinkedControl(1)
-
-    # zoom in (in red slice view)
-    fovRed=redSliceNode.GetFieldOfView()
-    print ('field of view Red'+str(fovRed))
-
-    fovYellow=yellowSliceNode.GetFieldOfView()
-    print ('field of view Yellow'+str(fovYellow))
-
-    self.redSliceLogic.StartSliceNodeInteraction(2)
-    self.redSliceNode.SetFieldOfView(fovRed[0] * 0.52, fovRed[1] * 0.6, fovRed[2])
-    self.redSliceLogic.EndSliceNodeInteraction()
-
-    # enable Evaluation Section
-    self.tabBar.setTabEnabled(3,True)
-
-    # switch to Evaluation Section
-    self.tabWidget.setCurrentIndex(3)
-
-    print ('Registration Function is done')
-
-  def checkTabAfterImport(self):
-
-    # change icon of tabBar if user is not in Data selection tab
-    if not self.tabWidget.currentIndex == 0:
-      self.tabBar.setTabIcon(0,self.newImageDataIcon)
-
-
-#
-# RegistrationModuleLogic
-#
-
-
-
-class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
   def initializeListener(self,directory):
 
@@ -1749,23 +1802,19 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     if directory is not "":
       dcmFileList = []
       for dcm in os.listdir(directory):
-        print ('current file = ' +str(dcm))
         if len(dcm)-dcm.rfind('.dcm') == 4 and dcm != ".DS_Store":
           dcmFileList.append(directory+'/'+dcm)
         if dcm != ".DS_Store":
-          print (' files doesnt have DICOM ending')
           dcmFileList.append(directory+'/'+dcm)
 
       self.selectedFileList=[]
-      print ('selected Series List : ')
-      print selectedSeriesList
+
+
       # write all selected files in selectedFileList
       for file in dcmFileList:
-       print ('current file in selected file list: '+str(file))
        if db.fileValue(file,'0008,103E') in selectedSeriesList:
          self.selectedFileList.append(file)
 
-      print self.selectedFileList
       # create a list with lists of files of each series in them
       self.loadableList=[]
 
@@ -1777,43 +1826,39 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
             fileListOfSeries.append(file)
         self.loadableList.append(fileListOfSeries)
 
-      print ('loadableList :')
-      print self.loadableList
 
   def loadSeriesIntoSlicer(self,selectedSeries,directory):
 
     self.createLoadableFileListFromSelection(selectedSeries,directory)
 
-    # create DICOMScalarVolumePlugin and load selectedSeries data from files into slicer
-    scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
+    for series in range(len(selectedSeries)):
 
-    # check if selectedPatient == importPatient
+      # get the filelist for the current series only
+      files = self.loadableList[series]
 
-    try:
-      loadables = scalarVolumePlugin.examine(self.loadableList)
+      # create DICOMScalarVolumePlugin and load selectedSeries data from files into slicer
+      scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
 
-    except:
-      print ('There is nothing to load. You have to select series')
+      try:
+        loadables = scalarVolumePlugin.examine([files])
 
-    print ('loadable list is : '+str(self.loadableList))
-    print ('loadables are : '+str(loadables))
+      except:
+        print ('There is nothing to load. You have to select series')
 
-    # TODO: Just the first series is loaded here, even if several series are selected.
-    # from every list in the list loadables the [0] entry should be loaded
+      name = loadables[0].name
+      v=scalarVolumePlugin.load(loadables[0])
+      v.SetName(name)
+      slicer.mrmlScene.AddNode(v)
 
-    name = loadables[0].name
-    v=scalarVolumePlugin.load(loadables[0])
-    v.SetName(name)
-    slicer.mrmlScene.AddNode(v)
-
+    # return the last series to continue with segmentation
     return v
 
   def waitingForSeriesToBeCompleted(self):
 
     self.updatePatientSelectorFlag = False
 
-    print ('***** New Data in intraop directory detected ***** ')
-    print ('waiting 5 more seconds for Series to be completed')
+    print ('**  new data in intraop directory detected **')
+    print ('waiting 5 more seconds for the series to be completed')
 
     qt.QTimer.singleShot(5000,self.importDICOMseries)
 
@@ -1839,19 +1884,16 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     for file in self.newFileList:
      if not file == ".DS_Store":
        indexer.addFile(db,str(self.directory+'/'+file),None)
-       print ('file '+str(file)+' was added by Indexer')
+       # print ('file '+str(file)+' was added by Indexer')
 
        # add Series to seriesList
        if db.fileValue(str(self.directory+'/'+file),'0008,103E') not in self.seriesList:
          importfile=str(self.directory+'/'+file)
          self.seriesList.append(db.fileValue(importfile,'0008,103E'))
-         # print ('seriesList = '+str(self.seriesList))
 
          # get acquisition time and save in dictionary
          acqTime=db.fileValue(importfile,'0008,0032')[0:6]
-         print ('acqTime = '+str(acqTime))
          self.acqusitionTimes[str(db.fileValue(importfile,'0008,103E'))]= str(acqTime)
-
 
 
     indexer.addDirectory(db,str(self.directory))
@@ -1861,7 +1903,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     for series in self.seriesList:
       if series not in self.selectableSeries:
         self.selectableSeries.append(series)
-        print ('selectableSeries = '+str(self.selectableSeries))
 
     # sort list by acquisition time
     self.selectableSeries=self.sortSeriesByAcquisitionTime(self.selectableSeries)
@@ -1875,22 +1916,17 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     slicer.modules.RegistrationModuleWidget.checkTabAfterImport()
 
-
   def sortSeriesByAcquisitionTime(self,inputSeriesList):
 
-    '''
-    this function sorts the self.acqusitionTimes dictionary over its acquisiton times (values).
-    it returnes a sorted series list (keys) whereas the 0th item is the earliest obtained series
-    '''
+
+    # this function sorts the self.acqusitionTimes
+    # dictionary over its acquisiton times (values).
+    # it returnes a sorted series list (keys) whereas
+    # the 0th item is the earliest obtained series
 
     sortedList=sorted(self.acqusitionTimes, key=self.acqusitionTimes.get)
 
     return sortedList
-
-  def changeOpacity(self,value):
-
-    # set opactiy
-    self.compositNodeRed.SetForegroundOpacity(value)
 
   def removeEverythingInIntraopTestFolder(self):
     cmd=('rm -rfv '+slicer.modules.RegistrationModuleWidget.modulePath +'Resources/Testing/intraopDir/*')
@@ -1902,7 +1938,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
   def getNeedleTipAndTargetsPositions(self):
 
     # Get the fiducial lists
-    fidNode1=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
+    fidNode1=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
     fidNode2=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
 
     # get the needleTip_position
@@ -1921,6 +1957,8 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     print ('needleTip_position = '+str(self.needleTip_position))
     print ('target_positions are '+str(self.target_positions))
 
+    return [self.needleTip_position,self.target_positions]
+
   def setNeedleTipPosition(self):
 
     if slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0) == None:
@@ -1935,7 +1973,13 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       slicer.mrmlScene.AddNode(needleTipMarkupNode)
       needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
 
+      # dont show needle tip in red Slice View
+      needleNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
+      needleDisplayNode=needleNode.GetDisplayNode()
+      needleDisplayNode.AddViewNodeID(slicer.modules.RegistrationModuleWidget.yellowSliceNode.GetID())
+
       # update the target table when markup was set
+      print ('WAS HERE')
       needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,slicer.modules.RegistrationModuleWidget.updateTargetTable)
 
       # be sure to have the correct display node
@@ -1953,6 +1997,8 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       needleNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
       needleNode.RemoveAllMarkups()
 
+      # clear target table
+      slicer.modules.RegistrationModuleWidget.clearTargetTable()
 
     # set active node ID and start place mode
     mlogic=slicer.modules.markups.logic()
@@ -1981,6 +2027,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
   def setupColorTable(self):
 
     # setup the PCampReview color table
+
     self.colorFile = (slicer.modules.RegistrationModuleWidget.modulePath + 'Resources/Colors/PCampReviewColors.csv')
     self.PCampReviewColorNode = slicer.vtkMRMLColorTableNode()
     colorNode = self.PCampReviewColorNode
@@ -2053,9 +2100,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     annotationLogic.CreateSnapShot(name, description, type, self.screenshotScaleFactor, imageData)
 
   def run(self):
-    """
-    Run the actual algorithm
-    """
+
+    return True
+
+  def runQuickSegmentationMode(self):
 
     # set four up view, select persistent fiducial marker as crosshair
     self.setVolumeClipUserMode()
