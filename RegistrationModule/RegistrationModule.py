@@ -1178,7 +1178,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
   def onTab3clicked(self):
-
+    """
     # set Side By Side View
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
 
@@ -1190,7 +1190,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       slicer.app.applicationLogic().FitSliceToAll()
       # jump to first markup slice
       self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),1)
-
+    """
     # check, that Input is set
     if self.preopVolumeSelector.currentNode() != None and self.intraopVolumeSelector.currentNode() != None and self.preopLabelSelector.currentNode() != None and self.intraopLabelSelector.currentNode() != None and self.fiducialSelector.currentNode() != None:
       self.applyRegistrationButton.setEnabled(1)
@@ -1776,9 +1776,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(self.currentIntraopLabel)
 
     # add slice Annotations
-    self.addSliceAnnotations()
-    self.removeSliceAnnotations()
-    self.addSliceAnnotations()
+    # self.addSliceAnnotations()
+    # self.removeSliceAnnotations()
+    # self.addSliceAnnotations()
 
     # set Tab enabled
     self.tabBar.setTabEnabled(2,True)
