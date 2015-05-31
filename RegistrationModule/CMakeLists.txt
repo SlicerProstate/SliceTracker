@@ -20,6 +20,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-quickSegmentation.png
   Resources/Icons/icon-registration_fit.png
   Resources/Icons/icon-update.png
+  Resources/Icons/icon-infoBox.png
   Resources/Icons/${MODULE_NAME}.png
   )
 
