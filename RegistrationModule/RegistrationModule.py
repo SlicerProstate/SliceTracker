@@ -196,7 +196,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Create PatientSelector
     self.patientSelector=ctk.ctkComboBox()
-    self.patientSelector.setFixedWidth(250)
+    self.patientSelector.setFixedWidth(200)
     self.patientSelector.connect('currentIndexChanged(int)',self.updatePatientViewBox)
     rowLayout.addWidget(self.patientSelector)
 
@@ -204,6 +204,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     refreshPixmap=qt.QPixmap(self.modulePath+ 'Resources/Icons/icon-update.png')
     refreshIcon=qt.QIcon(refreshPixmap)
     self.updatePatientListButton = qt.QPushButton("Refresh Patient List")
+    self.updatePatientListButton.setFixedHeight(25)
     self.updatePatientListButton.setIcon(refreshIcon)
     self.updatePatientListButton.connect('clicked(bool)',self.updatePatientSelector)
     rowLayout.addWidget(self.updatePatientListButton)
@@ -224,18 +225,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     folderIcon=qt.QIcon(folderPixmap)
 
     # Preop Directory Button
-    self.preopDirButton = qt.QPushButton(str(self.settings.value('RegistrationModule/PreopLocation')))
+    self.preopDirButton = qt.QPushButton(self.shortenDirText(str(self.settings.value('RegistrationModule/PreopLocation'))))
     self.preopDirButton.connect('clicked()', self.onPreopDirSelected)
     self.preopDirButton.setIcon(folderIcon)
     self.dataSelectionGroupBoxLayout.addRow("Select preop directory:", self.preopDirButton)
 
-
     # Series Selector
-    self.step3frame = ctk.ctkCollapsibleGroupBox()
-    self.step3frame.setTitle("Preop Segmentations")
-    self.step3frame.collapsed= True
-    self.dataSelectionGroupBoxLayout.addRow(self.step3frame)
-    step3Layout = qt.QFormLayout(self.step3frame)
+    self.preopSegmentationSelector = ctk.ctkCollapsibleGroupBox()
+    self.preopSegmentationSelector.setTitle("Preop Segmentations")
+    self.preopSegmentationSelector.collapsed= True
+    self.preopSegmentationSelector.collapsedHeight=60
+    self.dataSelectionGroupBoxLayout.addRow(self.preopSegmentationSelector)
+    preopSegmentationSelectorLayout = qt.QFormLayout(self.preopSegmentationSelector)
 
     # create ListView for intraop series selection
     self.seriesViewPreop = qt.QListView()
@@ -246,24 +247,45 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.seriesViewPreop.setModel(self.seriesModelPreop)
     self.seriesViewPreop.setSelectionMode(qt.QAbstractItemView.ExtendedSelection)
     self.seriesViewPreop.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
-    step3Layout.addWidget(self.seriesViewPreop)
+    preopSegmentationSelectorLayout.addWidget(self.seriesViewPreop)
+
+    row = qt.QWidget()
+    rowLayout=qt.QHBoxLayout()
+    alignment=qt.Qt.AlignRight
+    rowLayout.setAlignment(alignment)
+    row.setLayout(rowLayout)
+    rowLayout.setDirection(0)
+
+    # Intraop Directory Button
+    self.selectSegmentationsButton = qt.QPushButton('Load Segmentation(s)')
+    self.selectSegmentationsButton.connect('clicked()', self.onselectSegmentationsButtonClicked)
+    rowLayout.addWidget(self.selectSegmentationsButton)
+
+    # Intraop Directory Button
+    self.createFiducialsButton = qt.QPushButton('Create Fiducials')
+    self.createFiducialsButton.connect('clicked()', self.onIntraopDirSelected)
+    self.createFiducialsButton.setEnabled(False)
+    rowLayout.addWidget(self.createFiducialsButton)
+
+    self.dataSelectionGroupBoxLayout.addRow(row)
 
 
     # Intraop Directory Button
-    self.intraopDirButton = qt.QPushButton(str(self.settings.value('RegistrationModule/PreopLocation')))
+    self.intraopDirButton = qt.QPushButton(self.shortenDirText(str(self.settings.value('RegistrationModule/PreopLocation'))))
     self.intraopDirButton.connect('clicked()', self.onIntraopDirSelected)
     self.intraopDirButton.setIcon(folderIcon)
+    self.intraopDirButton.setEnabled(0)
     self.dataSelectionGroupBoxLayout.addRow("Select intraop directory:", self.intraopDirButton)
 
     # add buffer line
     self.layout.addStretch(1)
 
     # Series Selector
-    self.step3frame = ctk.ctkCollapsibleGroupBox()
-    self.step3frame.setTitle("Intraop series")
-    self.step3frame.collapsed= True
-    self.dataSelectionGroupBoxLayout.addRow(self.step3frame)
-    step3Layout = qt.QFormLayout(self.step3frame)
+    self.intraopSeriesSelector = ctk.ctkCollapsibleGroupBox()
+    self.intraopSeriesSelector.setTitle("Intraop series")
+    self.intraopSeriesSelector.collapsed= True
+    self.dataSelectionGroupBoxLayout.addRow(self.intraopSeriesSelector)
+    intraopSeriesSelectorLayout = qt.QFormLayout(self.intraopSeriesSelector)
 
     # create ListView for intraop series selection
     self.seriesView = qt.QListView()
@@ -274,13 +296,20 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.seriesView.setModel(self.seriesModel)
     self.seriesView.setSelectionMode(qt.QAbstractItemView.ExtendedSelection)
     self.seriesView.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
-    step3Layout.addWidget(self.seriesView)
+    intraopSeriesSelectorLayout.addWidget(self.seriesView)
+
+    row = qt.QWidget()
+    rowLayout=qt.QHBoxLayout()
+    alignment=qt.Qt.AlignRight
+    rowLayout.setAlignment(alignment)
+    row.setLayout(rowLayout)
+    rowLayout.setDirection(0)
 
     # Load Series into Slicer Button
     self.loadIntraopDataButton = qt.QPushButton("Load and Segment")
     self.loadIntraopDataButton.toolTip = "Load and Segment"
-    self.loadIntraopDataButton.enabled = True
-    self.dataSelectionGroupBoxLayout.addWidget(self.loadIntraopDataButton)
+    self.loadIntraopDataButton.enabled = False
+    rowLayout.addWidget(self.loadIntraopDataButton)
 
     # Simulate DICOM Income 2
     self.simulateDataIncomeButton2 = qt.QPushButton("Simulate AMIGO Data Income 1")
@@ -309,6 +338,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.simulateDataIncomeButton3.hide()
     self.simulateDataIncomeButton4.hide()
 
+
+    # load Data using PCampReview folder structure
+    self.reRegButton = qt.QPushButton("Re-Registration")
+    self.reRegButton.toolTip = ("Re-Registration")
+    self.reRegButton.enabled = False
+    self.reRegButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.reRegButton.connect('clicked(bool)',self.onReRegistrationClicked)
+    rowLayout.addWidget(self.reRegButton)
+    self.dataSelectionGroupBoxLayout.addWidget(row)
+
+
     # load Data using PCampReview folder structure
     self.loadDataPCAMPButton = qt.QPushButton("loadDataPCAMPButton")
     self.loadDataPCAMPButton.toolTip = ("loadDataPCAMPButton")
@@ -316,14 +356,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.loadDataPCAMPButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.loadDataPCAMPButton.connect('clicked(bool)',self.loadDataPCAMPStyle)
     self.dataSelectionGroupBoxLayout.addWidget(self.loadDataPCAMPButton)
-
-    # load Data using PCampReview folder structure
-    self.reRegButton = qt.QPushButton("Re-Registration")
-    self.reRegButton.toolTip = ("Registration")
-    self.reRegButton.enabled = True
-    self.reRegButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.reRegButton.connect('clicked(bool)',self.onReRegistrationClicked)
-    self.dataSelectionGroupBoxLayout.addWidget(self.reRegButton)
 
 
     # _____________________________________________________________________________________________________ #
@@ -402,7 +434,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.startQuickSegmentationButton.setIcon(icon)
     self.startQuickSegmentationButton.setIconSize(size)
     self.startQuickSegmentationButton.setFixedHeight(50)
-    self.startQuickSegmentationButton.setFixedWidth(120)
+    # self.startQuickSegmentationButton.setFixedWidth(120)
     self.startQuickSegmentationButton.setStyleSheet("background-color: rgb(255,255,255)")
 
 
@@ -413,7 +445,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.startLabelSegmentationButton.setIcon(icon)
     self.startLabelSegmentationButton.setIconSize(size)
     self.startLabelSegmentationButton.setFixedHeight(50)
-    self.startLabelSegmentationButton.setFixedWidth(120)
+    # self.startLabelSegmentationButton.setFixedWidth(120)
     self.startLabelSegmentationButton.setStyleSheet("background-color: rgb(255,255,255)")
 
 
@@ -424,7 +456,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.applySegmentationButton.setIcon(icon)
     self.applySegmentationButton.setIconSize(size)
     self.applySegmentationButton.setFixedHeight(50)
-    self.applySegmentationButton.setFixedWidth(70)
+    # self.applySegmentationButton.setFixedWidth(70)
     self.applySegmentationButton.setStyleSheet("background-color: rgb(255,255,255)")
     self.applySegmentationButton.setEnabled(0)
 
@@ -475,7 +507,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     # connections
-    self.loadIntraopDataButton.connect('clicked(bool)',self.loadSeriesIntoSlicer)
+    self.loadIntraopDataButton.connect('clicked(bool)',self.onloadIntraopDataButtonClicked)
 
 
     # _____________________________________________________________________________________________________ #
@@ -659,7 +691,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBoxLayout.addWidget(self.groupBoxTargets)
 
     self.targetTable=qt.QTableWidget()
-    self.targetTable.setRowCount(3)
+    self.targetTable.setRowCount(0)
     self.targetTable.setColumnCount(3)
     self.targetTable.setColumnWidth(0,160)
     self.targetTable.setColumnWidth(1,180)
@@ -678,7 +710,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBoxLayout.addWidget(self.groupBoxOutputData)
 
     # Output Directory Button
-    self.outputDirButton = qt.QPushButton(str(self.settings.value('RegistrationModule/OutputLocation')))
+    self.outputDirButton = qt.QPushButton(self.shortenDirText(str(self.settings.value('RegistrationModule/OutputLocation'))))
     self.outputDirButton.connect('clicked()', self.onOutputDirSelected)
     self.outputDirButton.setIcon(folderIcon)
     self.groupBoxOutputDataLayout.addRow("Select costum output directory:", self.outputDirButton)
@@ -697,6 +729,40 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
    # _____________________________________________________________________________________________________ #
 
+
+  def onloadIntraopDataButtonClicked(self):
+
+    selectedSeriesList=self.getSelectedSeriesFromSelector()
+    directory = self.intraopDataDir
+
+    if self.intraopDataDir:
+      self.currentIntraopVolume=self.logic.loadSeriesIntoSlicer(selectedSeriesList,directory)
+
+      # set last inputVolume Node as Reference Volume in Label Selection
+      self.referenceVolumeSelector.setCurrentNode(self.currentIntraopVolume)
+
+      # set last inputVolume Node as Intraop Image Volume in Registration
+      self.intraopVolumeSelector.setCurrentNode(self.currentIntraopVolume)
+
+      # Fit Volume To Screen
+      slicer.app.applicationLogic().FitSliceToAll()
+
+      # Allow PatientSelector to be updated
+      self.updatePatientSelectorFlag = True
+
+      # uncheck loaded items in the Intrap series selection
+      for item in range(len(self.logic.seriesList)):
+        self.seriesModel.item(item).setCheckState(0)
+
+      # enter Label Selection Section
+      self.onTab2clicked()
+
+
+
+
+  def onselectSegmentationsButtonClicked(self):
+
+    return True
 
   def onReRegistrationClicked(self):
     print ('performing reregistration')
@@ -803,35 +869,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def onNeedleTipButtonClicked(self):
 
     self.logic.setNeedleTipPosition()
-
-
-  def loadSeriesIntoSlicer(self):
-
-    selectedSeriesList=self.getSelectedSeriesFromSelector()
-    directory = self.intraopDataDir
-
-    if self.intraopDataDir:
-      self.currentIntraopVolume=self.logic.loadSeriesIntoSlicer(selectedSeriesList,directory)
-
-      # set last inputVolume Node as Reference Volume in Label Selection
-      self.referenceVolumeSelector.setCurrentNode(self.currentIntraopVolume)
-
-      # set last inputVolume Node as Intraop Image Volume in Registration
-      self.intraopVolumeSelector.setCurrentNode(self.currentIntraopVolume)
-
-      # Fit Volume To Screen
-      slicer.app.applicationLogic().FitSliceToAll()
-
-      # Allow PatientSelector to be updated
-      self.updatePatientSelectorFlag = True
-
-      # uncheck loaded items in the Intrap series selection
-      for item in range(len(self.logic.seriesList)):
-        self.seriesModel.item(item).setCheckState(0)
-
-      # enter Label Selection Section
-      self.onTab2clicked()
-
 
   def enter(self):
 
@@ -1045,13 +1082,21 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onPreopDirSelected(self):
     self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory', self.modulePath + '/Resources/Testing/preopDir')
-    self.preopDirButton.text = self.preopDataDir
     self.settings.setValue('RegistrationModule/PreopLocation', self.preopDataDir)
+    self.preopDirButton.text = self.shortenDirText(self.preopDataDir)
     self.loadPreopData()
+
+  def shortenDirText(self,dir):
+    try:
+      split=dir.split('/')
+      splittedDir=('.../'+str(split[-2])+'/'+str(split[-1]))
+      return splittedDir
+    except:
+      pass
 
   def onIntraopDirSelected(self):
     self.intraopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Intraop data directory', self.modulePath + '/Resources/Testing/intraopDir')
-    self.intraopDirButton.text = self.intraopDataDir
+    self.intraopDirButton.text = self.shortenDirText(self.intraopDataDir)
     self.settings.setValue('RegistrationModule/IntraopLocation', self.intraopDataDir)
 
     if self.intraopDataDir is not None:
@@ -1059,7 +1104,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onOutputDirSelected(self):
     self.outputDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory', self.modulePath + '/Resources/Testing/preopDir')
-    self.outputDirButton.text = self.outputDir
+    self.outputDirButton.text = self.shortenDirText(self.outputDir)
     self.settings.setValue('RegistrationModule/OutputLocation', self.outputDir)
     self.saveRegistrationOutput()
 
@@ -1117,10 +1162,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
     # Hide Labels
-    self.compositNodeRed.SetLabelOpacity(0)
-
-    # clear current Label
-    self.compositNodeRed.SetLabelVolumeID(None)
+    # self.compositNodeRed.SetLabelOpacity(0)
 
   def onTab3clicked(self):
 
@@ -1189,6 +1231,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         self.addedPatients.append(patient)
        else:
          pass
+
+    # make intraop dir enabled
+    self.intraopDirButton.setEnabled(1)
+    self.loadIntraopDataButton.enabled = True
 
   def updatePatientViewBox(self):
 
@@ -1278,6 +1324,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         for item in range(rowsAboveCurrentItem):
           self.seriesModel.item(item).setCheckState(0)
 
+    # show intraopSeriesTable
+    self.intraopSeriesSelector.collapsed=False
+
   def updatePreopSegmentationTable(self,seriesList):
 
     # this function updates the segmentation
@@ -1294,6 +1343,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.segmentationItems.append(sItem)
       self.seriesModelPreop.appendRow(sItem)
       sItem.setCheckable(1)
+
+    # show preop Segmentation Table
+    self.preopSegmentationSelector.collapsed = False
 
   def onBSplineCheckBoxClicked(self):
 
@@ -1493,9 +1545,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").SetUseLabelOutline(True)
 
-    # set Layout to redSliceViewOnly
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
-
     # set orientation to axial
     self.redSliceNode.SetOrientationToAxial()
 
@@ -1522,6 +1571,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     markupsDisplayNode.SetGlyphScale(1.0)
 
     self.compositNodeRed.SetLabelOpacity(1)
+
+    # set Layout to redSliceViewOnly
+    print (' SET LAYOUT TO ONEUP')
+    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+    print (' SET LAYOUT TO ONEUP DONE')
 
   def hideWindow(self):
     self.notifyUserWindow.hide()
@@ -1581,8 +1635,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeRed.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
     self.redSliceLogic.FitSliceToAll()
 
+    # clear current Label
+    self.compositNodeRed.SetLabelVolumeID(None)
+
     # hide existing labels
-    self.compositNodeRed.SetLabelOpacity(0)
+    # self.compositNodeRed.SetLabelOpacity(0)
 
     self.quickSegmentationFlag=1
 
@@ -1624,20 +1681,31 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       inputVolume=self.referenceVolumeSelector.currentNode()
 
       # get InputModel
-      clipModelNode=slicer.mrmlScene.GetNodesByName('clipModelNode')
-      clippingModel=clipModelNode.GetItemAsObject(0)
+      clippingModel=slicer.mrmlScene.GetNodesByName('clipModelNode').GetItemAsObject(0)
 
       # run CLI-Module
-      outputLabelmap = self.logic.modelToLabelmap(inputVolume,clippingModel)
 
-      # set color table
-      displayNode=outputLabelmap.GetDisplayNode()
-      displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+      # check, if there are enough targets set to create the model and call the CLI
+      if slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0).GetNumberOfFiducials() > 2:
 
-      # set Labelmap for Registration
-      self.intraopLabelSelector.setCurrentNode(outputLabelmap)
+        print (' if case succeeded')
+
+        outputLabelmap = self.logic.modelToLabelmap(inputVolume,clippingModel)
+
+        # set color table
+        displayNode=outputLabelmap.GetDisplayNode()
+        displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+
+        # set Labelmap for Registration
+        self.intraopLabelSelector.setCurrentNode(outputLabelmap)
 
       # re-set Buttons
+      else:
+        slicer.mrmlScene.RemoveNode(slicer.mrmlScene.GetNodesByName('clipModelNode').GetItemAsObject(0))
+        print ('deleted ModelNode')
+        slicer.mrmlScene.RemoveNode(slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0))
+        print ('deleted inputMarkupNode')
+
       self.setQuickSegmentationModeOFF()
       self.quickSegmentationFlag=0
 
@@ -1673,6 +1741,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onStartLabelSegmentationButton(self):
 
+    # clear current Label
+    self.compositNodeRed.SetLabelVolumeID(None)
+
     # disable QuickSegmentationButton
     self.startQuickSegmentationButton.setEnabled(0)
     self.startLabelSegmentationButton.setEnabled(0)
@@ -1680,8 +1751,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.labelSegmentationFlag=1
 
     self.compositNodeRed.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
-    # show label
-    self.compositNodeRed.SetLabelOpacity(1)
 
     # create new labelmap and set
     referenceVolume=self.referenceVolumeSelector.currentNode()
@@ -1691,6 +1760,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     selectionNode.SetReferenceActiveVolumeID( referenceVolume.GetID() )
     selectionNode.SetReferenceActiveLabelVolumeID( intraopLabel.GetID() )
     slicer.app.applicationLogic().PropagateVolumeSelection(50)
+
+    # show label
+    self.compositNodeRed.SetLabelOpacity(1)
 
     # set color table
     print ('intraopLabelID : '+str(intraopLabel.GetID()))
@@ -2200,7 +2272,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       needleDisplayNode.AddViewNodeID(slicer.modules.RegistrationModuleWidget.yellowSliceNode.GetID())
 
       # update the target table when markup was set
-      print ('WAS HERE')
       needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,slicer.modules.RegistrationModuleWidget.updateTargetTable)
 
       # be sure to have the correct display node
