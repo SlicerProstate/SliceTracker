@@ -59,10 +59,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.revealCursor = None
     self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
     self.deletedMarkups.SetName('deletedMarkups')
-    self.quickSegmentationFlag=0
-    self.labelSegmentationFlag=0
+    self.quickSegmentationFlag = 0
+    self.labelSegmentationFlag = 0
     self.markupsLogic=slicer.modules.markups.logic()
     self.logic=RegistrationModuleLogic()
+    self.comingFromPreopTag = False
 
 
     # set global slice widgets
@@ -78,7 +79,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.yellowSliceLogic=self.yellowWidget.sliceLogic()
     self.redSliceNode=self.redSliceLogic.GetSliceNode()
     self.yellowSliceNode=self.yellowSliceLogic.GetSliceNode()
-
+    self.currentFOVRed = []
+    self.currentFOVYellow = []
 
     # _____________________________________________________________________________________________________ #
 
@@ -897,8 +899,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set up color table
     self.logic.setupColorTable()
 
+    self.removeSliceAnnotations()
+
     # DEBUG: prepare IntraopFolder for tests
     # self.logic.removeEverythingInIntraopTestFolder()
+
 
   def updateTargetTable(self,observer,caller):
 
@@ -1108,6 +1113,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Intraop data directory', self.modulePath + '/Resources/Testing/intraopDir')
     self.intraopDirButton.text = self.shortenDirText(self.intraopDataDir)
     self.settings.setValue('RegistrationModule/IntraopLocation', self.intraopDataDir)
+    self.loadIntraopDataButton.enabled = True
 
     if self.intraopDataDir is not None:
       self.logic.initializeListener(self.intraopDataDir)
@@ -1176,40 +1182,26 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Fit Volume To Screen
     slicer.app.applicationLogic().FitSliceToAll()
 
-
   def onTab3clicked(self):
-    """
-    # set Side By Side View
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
 
-    if self.currentIntraopVolume and self.preopVolume:
-      self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
-      self.compositNodeRed.SetBackgroundVolumeID(self.preopVolume.GetID())
-
-      # Fit Volume To Screen
-      slicer.app.applicationLogic().FitSliceToAll()
-      # jump to first markup slice
-      self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),1)
-    """
     # check, that Input is set
     if self.preopVolumeSelector.currentNode() != None and self.intraopVolumeSelector.currentNode() != None and self.preopLabelSelector.currentNode() != None and self.intraopLabelSelector.currentNode() != None and self.fiducialSelector.currentNode() != None:
       self.applyRegistrationButton.setEnabled(1)
     else:
       self.applyRegistrationButton.setEnabled(0)
 
-    # removeSliceAnnotations
-    self.removeSliceAnnotations()
-
   def onTab4clicked(self):
 
     self.addSliceAnnotations()
+
+    self.tabBar.setTabEnabled(1,False)
+    self.tabBar.setTabEnabled(2,False)
 
   def onUpdatePatientListClicked(self):
 
     self.updatePatientSelectorFlag = True
     self.updatePatientSelector()
     self.updatePatientSelectorFlag = False
-
 
   def updatePatientSelector(self):
 
@@ -1248,7 +1240,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # make intraop dir enabled
     self.intraopDirButton.setEnabled(1)
-    self.loadIntraopDataButton.enabled = True
 
   def updatePatientViewBox(self):
 
@@ -1363,6 +1354,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onBSplineCheckBoxClicked(self):
 
+    if self.comingFromPreopTag:
+      self.resetSliceViews()
+
     self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
@@ -1379,6 +1373,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
     self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeBSpline.GetID())
 
+    if self.comingFromPreopTag:
+      self.resetSliceViews()
+
     fiducials=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
     dispNodeTargetsREG = fiducials.GetDisplayNode()
     dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
@@ -1387,7 +1384,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.markupsLogic.SetAllMarkupsVisibility(fiducials,1)
     self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[0],0)
     self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[1],0)
-
 
     # jump slice to show Targets in Yellow
     self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducials.GetID(),1)
@@ -1410,6 +1406,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
     self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeAffine.GetID())
 
+    if self.comingFromPreopTag:
+      self.resetSliceViews()
+
+
     fiducials=slicer.mrmlScene.GetNodesByName('targets-AFFINE').GetItemAsObject(0)
     dispNodeTargetsREG = fiducials.GetDisplayNode()
     dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
@@ -1421,6 +1421,33 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # jump slice to show Targets in Yellow
     self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducials.GetID(),1)
+
+  def resetSliceViews(self):
+
+    # get FOV and offset
+    restoredSliceOptions=self.getCurrentSliceViewPositions()
+    redOffset=restoredSliceOptions[0]
+    yellowOffset=restoredSliceOptions[1]
+    redFOV=restoredSliceOptions[2]
+    yellowFOV=restoredSliceOptions[3]
+
+    # fit slice view
+    self.redSliceLogic.FitSliceToAll()
+    self.yellowSliceLogic.FitSliceToAll()
+
+    # reset the slice views
+    self.yellowSliceLogic.StartSliceNodeInteraction(2)
+    self.yellowSliceNode.SetFieldOfView(yellowFOV[0], yellowFOV[1], yellowFOV[2])
+    self.yellowSliceNode.SetSliceOffset(yellowOffset)
+    self.yellowSliceLogic.EndSliceNodeInteraction()
+
+    self.redSliceLogic.StartSliceNodeInteraction(2)
+    self.redSliceNode.SetFieldOfView(redFOV[0], redFOV[1], redFOV[2])
+    self.redSliceNode.SetSliceOffset(redOffset)
+    self.redSliceLogic.EndSliceNodeInteraction()
+
+    # reset the tag
+    self.comingFromPreopTag=False
 
   def onRigidCheckBoxClicked(self):
 
@@ -1440,6 +1467,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
     self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeRigid.GetID())
 
+    if self.comingFromPreopTag:
+      self.resetSliceViews()
+
     fiducials=slicer.mrmlScene.GetNodesByName('targets-RIGID').GetItemAsObject(0)
     dispNodeTargetsREG = fiducials.GetDisplayNode()
     dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
@@ -1452,7 +1482,21 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # jump slice to show Targets in Yellow
     self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducials.GetID(),1)
 
+  def saveCurrentSliceViewPositions(self):
+
+    # save the current slice view positions
+    self.currentSliceOffsetRed = self.redSliceNode.GetSliceOffset()
+    self.currentSliceOffsetYellow = self.yellowSliceNode.GetSliceOffset()
+
+    self.currentFOVRed = self.redSliceNode.GetFieldOfView()
+    self.currentFOVYellow = self.yellowSliceNode.GetFieldOfView()
+
+  def getCurrentSliceViewPositions(self):
+    return [self.currentSliceOffsetRed,self.currentSliceOffsetYellow,self.currentFOVRed,self.currentFOVYellow]
+
   def onPreopCheckBoxClicked(self):
+
+    self.saveCurrentSliceViewPositions()
 
     self.showPreopButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
     self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
@@ -1464,23 +1508,34 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeYellow.SetLinkedControl(0)
 
     # Get the Volume Node
-    preopVolumeNode=slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0)
-
-    self.compositNodeRed.SetBackgroundVolumeID(preopVolumeNode.GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.preopVolume.GetID())
 
      # show preop Targets
-    fiducialNodeTargetsPREOP=slicer.mrmlScene.GetNodesByName('targets-PREOP').GetItemAsObject(0)
-    self.markupsLogic.SetAllMarkupsVisibility(fiducialNodeTargetsPREOP,True)
+    self.markupsLogic.SetAllMarkupsVisibility(self.targetsPreop,True)
 
-    # Set Textscale
-    dispNodeTargetsPreop.SetTextScale(1.9)
+    # fit slice view
+    self.redSliceLogic.FitSliceToAll()
 
-    # Set Glyph Size
-    dispNodeTargetsPreop.SetGlyphScale(1.0)
+    # zoom in
+    fovRed=self.redSliceNode.GetFieldOfView()
+    self.redSliceLogic.StartSliceNodeInteraction(2)
+    self.redSliceNode.SetFieldOfView(fovRed[0] * 0.5, fovRed[1] * 0.5, fovRed[2])
+    self.redSliceLogic.EndSliceNodeInteraction()
 
     # jump to first markup slice
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),1)
 
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducialNodeTargetsPREOP.GetID(),1)
+    # reset the yellow slice view
+    restoredSliceOptions=self.getCurrentSliceViewPositions()
+    yellowOffset=restoredSliceOptions[1]
+    yellowFOV=restoredSliceOptions[3]
+
+    self.yellowSliceLogic.StartSliceNodeInteraction(2)
+    self.yellowSliceNode.SetFieldOfView(yellowFOV[0], yellowFOV[1], yellowFOV[2])
+    self.yellowSliceNode.SetSliceOffset(yellowOffset)
+    self.yellowSliceLogic.EndSliceNodeInteraction()
+
+    self.comingFromPreopTag = True
 
   def onTargetCheckBox(self):
 
@@ -1589,6 +1644,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # set Layout to redSliceViewOnly
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+
+    # zoom in
+     # zoom in (in red slice view)
+    fovRed=self.redSliceNode.GetFieldOfView()
+
+    self.redSliceLogic.StartSliceNodeInteraction(2)
+    self.redSliceNode.SetFieldOfView(fovRed[0] * 0.5, fovRed[1] * 0.5, fovRed[2])
+    self.redSliceLogic.EndSliceNodeInteraction()
 
   def hideWindow(self):
     self.notifyUserWindow.hide()
@@ -1763,25 +1826,38 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set up preop image and label
     self.compositNodeRed.SetReferenceBackgroundVolumeID(self.preopVolume.GetID())
     self.compositNodeRed.SetLabelVolumeID(self.preopLabel.GetID())
-    self.redSliceLogic.FitSliceToAll()
 
     # set up intraop image and label
     self.compositNodeYellow.SetReferenceBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
     self.compositNodeYellow.SetLabelVolumeID(self.currentIntraopLabel.GetID())
-    self.yellowSliceLogic.FitSliceToAll()
-    self.yellowSliceLogic.FitSliceToAll()
 
     # rotate volume to plane
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(self.preopVolume)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(self.currentIntraopLabel)
 
-    # add slice Annotations
-    # self.addSliceAnnotations()
-    # self.removeSliceAnnotations()
-    # self.addSliceAnnotations()
+    # first - fit slice view
+    self.redSliceLogic.FitSliceToAll()
+    self.yellowSliceLogic.FitSliceToAll()
+
+    # zoom in propertly
+    self.yellowSliceNode.SetFieldOfView(86, 136, 3.5)
+    self.redSliceNode.SetFieldOfView(86, 136, 3.5)
 
     # set Tab enabled
     self.tabBar.setTabEnabled(2,True)
+
+    # get the slice Offset to reset yellow after JumpSlicesTo
+    offset=self.yellowSliceNode.GetSliceOffset()
+
+    # jump slice to show Targets
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),1)
+
+    self.yellowSliceNode.SetSliceOffset(offset)
+
+    # change to Registration Tab
+    self.tabBar.currentIndex=2
+
+
 
   def onStartLabelSegmentationButton(self):
 
@@ -1863,16 +1939,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.redSliceNode.SetOrientationToAxial()
     self.yellowSliceNode.SetOrientationToAxial()
 
-    # zoom in (in red slice view)
+    # zoom in
     fovRed=self.redSliceNode.GetFieldOfView()
-    print ('field of view Red'+str(fovRed))
-
     fovYellow=self.yellowSliceNode.GetFieldOfView()
-    print ('field of view Yellow'+str(fovYellow))
 
     self.redSliceLogic.StartSliceNodeInteraction(2)
-    self.redSliceNode.SetFieldOfView(fovRed[0] * 0.52, fovRed[1] * 0.6, fovRed[2])
+    self.redSliceNode.SetFieldOfView(fovRed[0] * 0.48, fovRed[1] * 0.5, fovRed[2])
     self.redSliceLogic.EndSliceNodeInteraction()
+
+    self.yellowSliceLogic.StartSliceNodeInteraction(2)
+    self.yellowSliceNode.SetFieldOfView(fovYellow[0] * 0.48, fovYellow[1] * 0.5, fovYellow[2])
+    self.yellowSliceLogic.EndSliceNodeInteraction()
 
     # enable Evaluation Section
     self.tabBar.setTabEnabled(3,True)
