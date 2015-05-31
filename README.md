@@ -52,6 +52,7 @@ For testing purposes, the module expects the following folder structure:
 
 If you want to test the module, please follow these steps:
 
+* 0. make sure to install [https://www.slicer.org/slicerWiki/index.php/Documentation/Nightly/Extensions/VolumeClip VolumeClip] from the slicer extension manager. (view -> extension manager)
 * 1. create a folder structure as above, located in RegistrationModule/Resources/
 * 2. copy your pre-op data into the preopDir directory, containing (t2-label.nrrd, t2-N4.nrrd and Targets.fcsv). Note              that the preop data is expected not only to be in the same data structure but also to have the exact same names. 
 * 3. copy your .dcm test data into the three folders (testData_1, testData_2, testData_3). Three orange simulations-buttons        can then be used to copy the files of the corresponding folders into the intraop folder to simulate DICOM data income. 
