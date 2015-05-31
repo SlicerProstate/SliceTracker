@@ -214,7 +214,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Info Box Data selection
     self.helperLabel=qt.QLabel()
-    helperPixmap = qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-infoBox.png')
+    helperPixmap = qt.QPixmap(self.modulePath+ 'Resources/Icons/icon-infoBox.png')
     self.helperLabel.setPixmap(helperPixmap)
     self.helperLabel.setToolTip('Start by selecting the patient. Then choose your preop directory, containing the T2-image volume and a segmentation. Finally select your intraop directory where the DICOM-files are incoming. Click load and segment once a series showd up that needs to get segmented.')
 
