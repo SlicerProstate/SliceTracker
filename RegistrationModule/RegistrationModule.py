@@ -40,6 +40,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.intraopDataDir = ""
     self.preopDataDir = ""
     self.currentIntraopVolume = None
+    self.currentIntraopLabel = None
+    self.preopVolume = None
+    self.preopLabel = None
     self.temp = None
     self.updatePatientSelectorFlag = True
     self.warningFlag = False
@@ -225,7 +228,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     folderIcon=qt.QIcon(folderPixmap)
 
     # Preop Directory Button
-    self.preopDirButton = qt.QPushButton(self.shortenDirText(str(self.settings.value('RegistrationModule/PreopLocation'))))
+    self.preopDirButton = qt.QPushButton('choose directory')
     self.preopDirButton.connect('clicked()', self.onPreopDirSelected)
     self.preopDirButton.setIcon(folderIcon)
     self.dataSelectionGroupBoxLayout.addRow("Select preop directory:", self.preopDirButton)
@@ -259,6 +262,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Intraop Directory Button
     self.selectSegmentationsButton = qt.QPushButton('Load Segmentation(s)')
     self.selectSegmentationsButton.connect('clicked()', self.onselectSegmentationsButtonClicked)
+    self.selectSegmentationsButton.setEnabled(False)
     rowLayout.addWidget(self.selectSegmentationsButton)
 
     # Intraop Directory Button
@@ -271,7 +275,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 
     # Intraop Directory Button
-    self.intraopDirButton = qt.QPushButton(self.shortenDirText(str(self.settings.value('RegistrationModule/PreopLocation'))))
+    self.intraopDirButton = qt.QPushButton('choose directory')
     self.intraopDirButton.connect('clicked()', self.onIntraopDirSelected)
     self.intraopDirButton.setIcon(folderIcon)
     self.intraopDirButton.setEnabled(0)
@@ -754,6 +758,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       for item in range(len(self.logic.seriesList)):
         self.seriesModel.item(item).setCheckState(0)
 
+      # set Tab enabled
+      self.tabBar.setTabEnabled(1,True)
+
       # enter Label Selection Section
       self.onTab2clicked()
 
@@ -880,7 +887,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.yellowSliceNode.SetOrientationToAxial()
 
     # initialy, set Evaluation Section disabled TODO: set False again
-    self.tabBar.setTabEnabled(3,True)
+    self.tabBar.setTabEnabled(1,False)
+    self.tabBar.setTabEnabled(2,False)
+    self.tabBar.setTabEnabled(3,False)
 
     # enter Module on Tab 1
     self.onTab1clicked()
@@ -1084,6 +1093,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory', self.modulePath + '/Resources/Testing/preopDir')
     self.settings.setValue('RegistrationModule/PreopLocation', self.preopDataDir)
     self.preopDirButton.text = self.shortenDirText(self.preopDataDir)
+    self.selectSegmentationsButton.setEnabled(True)
     self.loadPreopData()
 
   def shortenDirText(self,dir):
@@ -1154,15 +1164,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.startLabelSegmentationButton.setEnabled(1)
       self.startQuickSegmentationButton.setEnabled(1)
 
-
     # removeSliceAnnotations
     self.removeSliceAnnotations()
 
     # set Layout for segmentation
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
-    # Hide Labels
-    # self.compositNodeRed.SetLabelOpacity(0)
+    # set current reference Volume
+    self.compositNodeRed.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
+
+    # Fit Volume To Screen
+    slicer.app.applicationLogic().FitSliceToAll()
+
 
   def onTab3clicked(self):
 
@@ -1172,6 +1185,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     if self.currentIntraopVolume and self.preopVolume:
       self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
       self.compositNodeRed.SetBackgroundVolumeID(self.preopVolume.GetID())
+
       # Fit Volume To Screen
       slicer.app.applicationLogic().FitSliceToAll()
       # jump to first markup slice
@@ -1509,6 +1523,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     slicer.util.loadLabelVolume(self.settings.value('RegistrationModule/preopLocation')+'/t2-label.nrrd')
     preoplabelVolumeNode=slicer.mrmlScene.GetNodesByName('t2-label').GetItemAsObject(0)
+    self.preopLabel=preoplabelVolumeNode
     displayNode=preoplabelVolumeNode.GetDisplayNode()
     displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
@@ -1573,9 +1588,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeRed.SetLabelOpacity(1)
 
     # set Layout to redSliceViewOnly
-    print (' SET LAYOUT TO ONEUP')
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
-    print (' SET LAYOUT TO ONEUP DONE')
 
   def hideWindow(self):
     self.notifyUserWindow.hide()
@@ -1688,16 +1701,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # check, if there are enough targets set to create the model and call the CLI
       if slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0).GetNumberOfFiducials() > 2:
 
-        print (' if case succeeded')
-
-        outputLabelmap = self.logic.modelToLabelmap(inputVolume,clippingModel)
+        labelname=(slicer.modules.RegistrationModuleWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
+        self.currentIntraopLabel = self.logic.modelToLabelmap(inputVolume,clippingModel)
+        self.currentIntraopLabel.SetName(labelname)
 
         # set color table
-        displayNode=outputLabelmap.GetDisplayNode()
+        displayNode=self.currentIntraopLabel.GetDisplayNode()
         displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
         # set Labelmap for Registration
-        self.intraopLabelSelector.setCurrentNode(outputLabelmap)
+        self.intraopLabelSelector.setCurrentNode(self.currentIntraopLabel)
 
       # re-set Buttons
       else:
@@ -1709,6 +1722,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.setQuickSegmentationModeOFF()
       self.quickSegmentationFlag=0
 
+      # set up screen
+      self.setupScreenAfterSegmentation()
 
     elif self.labelSegmentationFlag==1:
 
@@ -1722,22 +1737,51 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
       # set Labelmap for Registration
       labelname=(slicer.modules.RegistrationModuleWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
-      labelnode=slicer.mrmlScene.GetNodesByName(labelname).GetItemAsObject(0)
-      self.intraopLabelSelector.setCurrentNode(labelnode)
+      self.currentIntraopLabel=slicer.mrmlScene.GetNodesByName(labelname).GetItemAsObject(0)
+      self.intraopLabelSelector.setCurrentNode(self.currentIntraopLabel)
 
       self.labelSegmentationFlag=0
+
+      # set up screen
+      self.setupScreenAfterSegmentation()
 
     else:
       #TODO: tell user that he needs to do segmentation before hin apply
       pass
 
-
-    self.compositNodeRed.SetReferenceBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
-    self.redSliceLogic.FitSliceToAll()
     # reset options
     self.startQuickSegmentationButton.setEnabled(1)
     self.startLabelSegmentationButton.setEnabled(1)
     self.applySegmentationButton.setEnabled(0)
+
+
+  def setupScreenAfterSegmentation(self):
+
+    # set up layout
+    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+
+    # set up preop image and label
+    self.compositNodeRed.SetReferenceBackgroundVolumeID(self.preopVolume.GetID())
+    self.compositNodeRed.SetLabelVolumeID(self.preopLabel.GetID())
+    self.redSliceLogic.FitSliceToAll()
+
+    # set up intraop image and label
+    self.compositNodeYellow.SetReferenceBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
+    self.compositNodeYellow.SetLabelVolumeID(self.currentIntraopLabel.GetID())
+    self.yellowSliceLogic.FitSliceToAll()
+    self.yellowSliceLogic.FitSliceToAll()
+
+    # rotate volume to plane
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(self.preopVolume)
+    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(self.currentIntraopLabel)
+
+    # add slice Annotations
+    self.addSliceAnnotations()
+    self.removeSliceAnnotations()
+    self.addSliceAnnotations()
+
+    # set Tab enabled
+    self.tabBar.setTabEnabled(2,True)
 
   def onStartLabelSegmentationButton(self):
 
@@ -2499,12 +2543,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     # use label contours
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").SetUseLabelOutline(True)
 
     # rotate volume to plane
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(outputLabelMap)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(outputLabelMap)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(outputLabelMap)
 
     # set Layout to redSliceViewOnly
     lm=slicer.app.layoutManager()
