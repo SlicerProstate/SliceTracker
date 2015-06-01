@@ -37,6 +37,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Parameters
     self.settings = qt.QSettings()
     self.modulePath = slicer.modules.registrationmodule.path.replace("RegistrationModule.py","")
+    self.registrationResults = []
     self.intraopDataDir = ""
     self.preopDataDir = ""
     self.currentIntraopVolume = None
@@ -50,6 +51,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.patientIDs = []
     self.addedPatients = []
     self.selectablePatientItems=[]
+    self.selectableRegistrationResults=[]
     self.seriesItems = []
     self.selectedSeries=[]
     self.rockCount = 0
@@ -607,13 +609,13 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Apply Registration Button
     greenCheckPixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-greenCheck.png')
     greenCheckIcon=qt.QIcon(greenCheckPixmap)
-    self.applyRegistrationButton = qt.QPushButton("Apply Registration")
-    self.applyRegistrationButton.setIcon(greenCheckIcon)
-    self.applyRegistrationButton.toolTip = "Run the algorithm."
-    self.applyRegistrationButton.enabled = True
-    self.applyRegistrationButton.setFixedHeight(45)
-    self.registrationGroupBoxLayout.addRow(self.applyRegistrationButton)
-    self.applyRegistrationButton.connect('clicked(bool)',self.onApplyRegistrationClicked)
+    self.applyBSplineRegistrationButton = qt.QPushButton("Apply Registration")
+    self.applyBSplineRegistrationButton.setIcon(greenCheckIcon)
+    self.applyBSplineRegistrationButton.toolTip = "Run the algorithm."
+    self.applyBSplineRegistrationButton.enabled = True
+    self.applyBSplineRegistrationButton.setFixedHeight(45)
+    self.registrationGroupBoxLayout.addRow(self.applyBSplineRegistrationButton)
+    self.applyBSplineRegistrationButton.connect('clicked(bool)',self.onApplyRegistrationClicked)
 
     # _____________________________________________________________________________________________________ #
 
@@ -623,6 +625,23 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Buttons which registration step should be shown
     selectPatientRowLayout = qt.QHBoxLayout()
+
+    firstRow = qt.QWidget()
+    rowLayout=qt.QHBoxLayout()
+    alignment=qt.Qt.AlignLeft
+    rowLayout.setAlignment(alignment)
+    firstRow.setLayout(rowLayout)
+    rowLayout.setDirection(0)
+
+    self.text=qt.QLabel('Registration Result')
+    rowLayout.addWidget(self.text)
+
+    # Create PatientSelector
+    self.resultSelector=ctk.ctkComboBox()
+    self.resultSelector.setFixedWidth(250)
+    self.resultSelector.connect('currentIndexChanged(int)',self.updateRegistrationResult)
+    rowLayout.addWidget(self.resultSelector)
+
 
     self.showPreopButton=qt.QPushButton('Show Preop')
     self.showPreopButton.connect('clicked(bool)',self.onPreopCheckBoxClicked)
@@ -636,10 +655,25 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.showBSplineButton=qt.QPushButton('Show BSpline Result')
     self.showBSplineButton.connect('clicked(bool)',self.onBSplineCheckBoxClicked)
 
-    selectPatientRowLayout.addWidget(self.showPreopButton)
-    selectPatientRowLayout.addWidget(self.showRigidButton)
-    selectPatientRowLayout.addWidget(self.showAffineButton)
-    selectPatientRowLayout.addWidget(self.showBSplineButton)
+    biggerWidget=qt.QWidget()
+    twoRowLayout=qt.QVBoxLayout()
+    biggerWidget.setLayout(twoRowLayout)
+
+    twoRowLayout.addWidget(firstRow)
+
+    secondRow=qt.QWidget()
+    rowLayout=qt.QHBoxLayout()
+    secondRow.setLayout(rowLayout)
+
+    rowLayout.addWidget(self.showPreopButton)
+    rowLayout.addWidget(self.showRigidButton)
+    rowLayout.addWidget(self.showAffineButton)
+    rowLayout.addWidget(self.showBSplineButton)
+
+    twoRowLayout.addWidget(secondRow)
+
+    selectPatientRowLayout.addWidget(biggerWidget)
+
 
     self.groupBoxDisplay = qt.QGroupBox("Display")
     self.groupBoxDisplayLayout = qt.QFormLayout(self.groupBoxDisplay)
@@ -767,6 +801,82 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.onTab2clicked()
 
 
+  def updateRegistrationResult(self):
+
+    # distinguish between rigid and BSpline result
+    currentItem = self.resultSelector.currentText
+
+    # check, if currentItem is rigid or BSpline
+    for index in range(len(self.registrationResults)):
+      if self.registrationResults[index]['name'] == currentItem:
+        if len(self.registrationResults[index]) == 10:
+          currentResult = 'rigid'
+        else:
+          currentResult = 'bspline'
+        break
+
+    if currentResult == 'rigid':
+
+      print ('current result is rigid')
+
+      # set buttons
+      self.showPreopButton.setText('Show Moving')
+      self.showAffineButton.setEnabled(0)
+      self.showBSplineButton.setEnabled(0)
+
+      # set variables needed by on xx clicked
+      self.currentIntraopVolume=self.registrationResults[index]['fixedVolume']
+      self.outputVolumeRigid=self.registrationResults[index]['outputVolumeRigid']
+      self.outputTargetsRigid=self.registrationResults[index]['outputTargetsRigid']
+      self.preopVolume = self.registrationResults[index-1]['fixedVolume']
+
+      # get the last targets:
+      if self.registrationResults[index-1]['outputTargetsBSpline'] is not None:
+        self.targetsPreop=self.registrationResults[index-1]['outputTargetsBSpline']
+      else:
+        self.targetsPreop=self.registrationResults[index-1]['outputTargetsRigid']
+
+      # update GUI
+      self.onRigidCheckBoxClicked()
+
+    elif currentResult == 'bspline':
+
+      print ('current result is bspline')
+
+      # set buttons
+      self.showPreopButton.setText('Show Preop')
+      self.showAffineButton.setEnabled(1)
+      self.showBSplineButton.setEnabled(1)
+
+      # set variables needed by on xx clicked
+      self.currentIntraopVolume=self.registrationResults[index]['fixedVolume']
+      self.outputVolumeRigid=self.registrationResults[index]['outputVolumeRigid']
+      self.outputTargetsRigid=self.registrationResults[index]['outputTargetsRigid']
+      self.preopVolume=slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0)
+      # self.preopVolume = self.registrationResults[index]['movingVolume']
+
+      # update GUI
+      self.onRigidCheckBoxClicked()
+
+    else:
+      print ('something went wrong in updateRegistrationResult()')
+
+
+  def updateRegistrationResultSelector(self):
+
+    itemlist=[]
+
+    # get the items
+    for result in range(len(self.registrationResults)):
+      itemlist.append(self.registrationResults[result]['name'])
+
+    # update the selector
+    for item in itemlist:
+      if item not in self.selectableRegistrationResults:
+        self.selectableRegistrationResults.append(item)
+        self.resultSelector.addItem(item)
+        index = self.resultSelector.findText(item)
+        self.resultSelector.currentIndex = index
 
 
   def onselectSegmentationsButtonClicked(self):
@@ -775,7 +885,53 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onReRegistrationClicked(self):
     print ('performing reregistration')
-    return True
+
+    # get the data
+
+    # fixed volume: current intraop volume
+    selectedSeriesList=self.getSelectedSeriesFromSelector()
+    directory = self.intraopDataDir
+    self.currentIntraopVolume=self.logic.loadSeriesIntoSlicer(selectedSeriesList,directory)
+    fixedVolume = self.currentIntraopVolume
+
+    # fixed label: use last fixed label
+    index=int(len(self.registrationResults)-1)
+    fixedLabel = self.registrationResults[index]['fixedLabel']
+
+    # moving volume: last fixed volume
+    movingVolume = self.registrationResults[index]['fixedVolume']
+
+    # moving label: last fixed label
+    movingLabel = self.registrationResults[index]['fixedLabel']
+
+    # get the last registered targets
+    if self.registrationResults[index]['outputTargetsBSpline'] is not None:
+      targets = self.registrationResults[index]['outputTargetsBSpline']
+    else:
+      targets = self.registrationResults[index]['outputTargetsRigid']
+
+    rigidOutput = self.logic.applyReRegistration(fixedVolume,movingVolume,fixedLabel,movingLabel,targets)
+
+    # create registration output dictionary
+
+    params=[]
+    params.append(movingVolume)
+    params.append(fixedVolume)
+    params.append(movingLabel)
+    params.append(fixedLabel)
+    params.append(targets)
+
+    # registration output
+    # [outputVolumeRigid,outputTransformRigid,outputTarget]
+
+    name = str(self.currentIntraopVolume.GetName())
+    self.createRegistrationResult(name,params,rigidOutput)
+
+    # set up screens
+    self.setupScreenAfterRegistration()
+
+    # update the combo box
+    self.updateRegistrationResultSelector()
 
   def loadDataPCAMPStyle(self):
 
@@ -848,7 +1004,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.updatePreopSegmentationTable(self.preopSegmentations)
 
-
   def getSeriesInfoFromXML(self, f):
     import xml.dom.minidom
     dom = xml.dom.minidom.parse(f)
@@ -875,7 +1030,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.targetTable.setColumnWidth(1,200)
     self.targetTable.setColumnWidth(2,200)
     self.targetTable.setHorizontalHeaderLabels(['Target','Distance to needle-tip 2D [mm]','Distance to needle-tip 3D [mm]'])
-
 
   def onNeedleTipButtonClicked(self):
 
@@ -906,7 +1060,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # DEBUG: prepare IntraopFolder for tests
     # self.logic.removeEverythingInIntraopTestFolder()
-
 
   def updateTargetTable(self,observer,caller):
 
@@ -953,7 +1106,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # reset needleTipButton
     self.needleTipButton.enabled=True
-
 
   def removeSliceAnnotations(self):
     try:
@@ -1193,9 +1345,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # check, that Input is set
     if self.preopVolumeSelector.currentNode() != None and self.intraopVolumeSelector.currentNode() != None and self.preopLabelSelector.currentNode() != None and self.intraopLabelSelector.currentNode() != None and self.fiducialSelector.currentNode() != None:
-      self.applyRegistrationButton.setEnabled(1)
+      self.applyBSplineRegistrationButton.setEnabled(1)
     else:
-      self.applyRegistrationButton.setEnabled(0)
+      self.applyBSplineRegistrationButton.setEnabled(0)
 
   def onTab4clicked(self):
 
@@ -1203,6 +1355,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.tabBar.setTabEnabled(1,False)
     self.tabBar.setTabEnabled(2,False)
+
+    # enable re-registration function
+    self.reRegButton.setEnabled(1)
 
   def onUpdatePatientListClicked(self):
 
@@ -1359,145 +1514,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # show preop Segmentation Table
     self.preopSegmentationSelector.collapsed = False
 
-  def onBSplineCheckBoxClicked(self):
-
-    self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showBSplineButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
-
-    # link images
-    self.compositNodeRed.SetLinkedControl(1)
-    self.compositNodeYellow.SetLinkedControl(1)
-
-    # Get the Intraop Volume Node
-    intraopVolumeNode=self.intraopVolumeSelector.currentNode()
-
-    self.compositNodeYellow.SetBackgroundVolumeID(intraopVolumeNode.GetID())
-    self.compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeBSpline.GetID())
-
-    if self.comingFromPreopTag:
-      self.resetSliceViews()
-
-    fiducials=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
-    dispNodeTargetsREG = fiducials.GetDisplayNode()
-    dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
-
-    # set markups visible/invisible
-    self.markupsLogic.SetAllMarkupsVisibility(fiducials,1)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[0],0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[1],0)
-
-    # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducials.GetID(),1)
-
-  def onAffineCheckBoxClicked(self):
-
-    self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showAffineButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
-    self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
-
-    # link images
-    self.compositNodeRed.SetLinkedControl(1)
-    self.compositNodeYellow.SetLinkedControl(1)
-
-    # Get the Intraop Volume Node
-    intraopVolumeNode=self.intraopVolumeSelector.currentNode()
-
-    self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
-    self.compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeAffine.GetID())
-
-    if self.comingFromPreopTag:
-      self.resetSliceViews()
-
-
-    fiducials=slicer.mrmlScene.GetNodesByName('targets-AFFINE').GetItemAsObject(0)
-    dispNodeTargetsREG = fiducials.GetDisplayNode()
-    dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
-
-    # set markups visible
-    self.markupsLogic.SetAllMarkupsVisibility(fiducials,1)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[0],0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[2],0)
-
-    # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducials.GetID(),1)
-
-  def resetSliceViews(self):
-
-    # get FOV and offset
-    restoredSliceOptions=self.getCurrentSliceViewPositions()
-    redOffset=restoredSliceOptions[0]
-    yellowOffset=restoredSliceOptions[1]
-    redFOV=restoredSliceOptions[2]
-    yellowFOV=restoredSliceOptions[3]
-
-    # fit slice view
-    self.redSliceLogic.FitSliceToAll()
-    self.yellowSliceLogic.FitSliceToAll()
-
-    # reset the slice views
-    self.yellowSliceLogic.StartSliceNodeInteraction(2)
-    self.yellowSliceNode.SetFieldOfView(yellowFOV[0], yellowFOV[1], yellowFOV[2])
-    self.yellowSliceNode.SetSliceOffset(yellowOffset)
-    self.yellowSliceLogic.EndSliceNodeInteraction()
-
-    self.redSliceLogic.StartSliceNodeInteraction(2)
-    self.redSliceNode.SetFieldOfView(redFOV[0], redFOV[1], redFOV[2])
-    self.redSliceNode.SetSliceOffset(redOffset)
-    self.redSliceLogic.EndSliceNodeInteraction()
-
-    # reset the tag
-    self.comingFromPreopTag=False
-
-  def onRigidCheckBoxClicked(self):
-
-    self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showRigidButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
-    self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
-    self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
-
-    # link images
-    self.compositNodeRed.SetLinkedControl(1)
-    self.compositNodeYellow.SetLinkedControl(1)
-
-    # Get the Intraop Volume Node
-    intraopVolumeNode=self.intraopVolumeSelector.currentNode()
-
-    self.compositNodeYellow.SetBackgroundVolumeID(intraopVolumeNode.GetID())
-    self.compositNodeRed.SetForegroundVolumeID(intraopVolumeNode.GetID())
-    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeRigid.GetID())
-
-    if self.comingFromPreopTag:
-      self.resetSliceViews()
-
-    fiducials=slicer.mrmlScene.GetNodesByName('targets-RIGID').GetItemAsObject(0)
-    dispNodeTargetsREG = fiducials.GetDisplayNode()
-    dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
-
-    # set markups visible
-    self.markupsLogic.SetAllMarkupsVisibility(fiducials,1)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[1],0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets[2],0)
-
-    # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducials.GetID(),1)
-
-  def saveCurrentSliceViewPositions(self):
-
-    # save the current slice view positions
-    self.currentSliceOffsetRed = self.redSliceNode.GetSliceOffset()
-    self.currentSliceOffsetYellow = self.yellowSliceNode.GetSliceOffset()
-
-    self.currentFOVRed = self.redSliceNode.GetFieldOfView()
-    self.currentFOVYellow = self.yellowSliceNode.GetFieldOfView()
-
-  def getCurrentSliceViewPositions(self):
-    return [self.currentSliceOffsetRed,self.currentSliceOffsetYellow,self.currentFOVRed,self.currentFOVYellow]
-
   def onPreopCheckBoxClicked(self):
 
     self.saveCurrentSliceViewPositions()
@@ -1540,6 +1556,135 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.yellowSliceLogic.EndSliceNodeInteraction()
 
     self.comingFromPreopTag = True
+
+  def onRigidCheckBoxClicked(self):
+
+    self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showRigidButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
+    self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
+
+    # link images
+    self.compositNodeRed.SetLinkedControl(1)
+    self.compositNodeYellow.SetLinkedControl(1)
+
+    # set the slice views
+    self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
+    self.compositNodeRed.SetForegroundVolumeID(self.currentIntraopVolume.GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeRigid.GetID())
+
+    if self.comingFromPreopTag:
+      self.resetSliceViews()
+
+    dispNodeTargetsREG = self.outputTargetsRigid.GetDisplayNode()
+    dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
+
+    # set markups visible
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsRigid,1)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsAffine,0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsBSpline,0)
+
+    # jump slice to show Targets in Yellow
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsRigid.GetID(),1)
+
+  def onAffineCheckBoxClicked(self):
+
+    self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showAffineButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
+    self.showBSplineButton.setStyleSheet('background-color: rgb(255,255,255)')
+
+    # link images
+    self.compositNodeRed.SetLinkedControl(1)
+    self.compositNodeYellow.SetLinkedControl(1)
+
+    # set the slice views
+    self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
+    self.compositNodeRed.SetForegroundVolumeID(self.currentIntraopVolume.GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeAffine.GetID())
+
+    if self.comingFromPreopTag:
+      self.resetSliceViews()
+
+    dispNodeTargetsREG = self.outputTargetsAffine.GetDisplayNode()
+    dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
+
+    # set markups visible
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsRigid,0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsAffine,1)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsBSpline,0)
+
+    # jump slice to show Targets in Yellow
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsAffine.GetID(),1)
+
+  def onBSplineCheckBoxClicked(self):
+
+    self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showAffineButton.setStyleSheet('background-color: rgb(255,255,255)')
+    self.showBSplineButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
+
+    # link images
+    self.compositNodeRed.SetLinkedControl(1)
+    self.compositNodeYellow.SetLinkedControl(1)
+
+    # set the slice views
+    self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
+    self.compositNodeRed.SetForegroundVolumeID(self.currentIntraopVolume.GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeBSpline.GetID())
+
+    if self.comingFromPreopTag:
+      self.resetSliceViews()
+
+    dispNodeTargetsREG = self.outputTargetsBSpline.GetDisplayNode()
+    dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
+
+    # set markups visible
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsRigid,0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsAffine,0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsBSpline,1)
+
+    # jump slice to show Targets in Yellow
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsBSpline.GetID(),1)
+
+  def resetSliceViews(self):
+
+    # get FOV and offset
+    restoredSliceOptions=self.getCurrentSliceViewPositions()
+    redOffset=restoredSliceOptions[0]
+    yellowOffset=restoredSliceOptions[1]
+    redFOV=restoredSliceOptions[2]
+    yellowFOV=restoredSliceOptions[3]
+
+    # fit slice view
+    self.redSliceLogic.FitSliceToAll()
+    self.yellowSliceLogic.FitSliceToAll()
+
+    # reset the slice views
+    self.yellowSliceLogic.StartSliceNodeInteraction(2)
+    self.yellowSliceNode.SetFieldOfView(yellowFOV[0], yellowFOV[1], yellowFOV[2])
+    self.yellowSliceNode.SetSliceOffset(yellowOffset)
+    self.yellowSliceLogic.EndSliceNodeInteraction()
+
+    self.redSliceLogic.StartSliceNodeInteraction(2)
+    self.redSliceNode.SetFieldOfView(redFOV[0], redFOV[1], redFOV[2])
+    self.redSliceNode.SetSliceOffset(redOffset)
+    self.redSliceLogic.EndSliceNodeInteraction()
+
+    # reset the tag
+    self.comingFromPreopTag=False
+
+  def saveCurrentSliceViewPositions(self):
+
+    # save the current slice view positions
+    self.currentSliceOffsetRed = self.redSliceNode.GetSliceOffset()
+    self.currentSliceOffsetYellow = self.yellowSliceNode.GetSliceOffset()
+
+    self.currentFOVRed = self.redSliceNode.GetFieldOfView()
+    self.currentFOVYellow = self.yellowSliceNode.GetFieldOfView()
+
+  def getCurrentSliceViewPositions(self):
+    return [self.currentSliceOffsetRed,self.currentSliceOffsetYellow,self.currentFOVRed,self.currentFOVYellow]
 
   def onTargetCheckBox(self):
 
@@ -1821,7 +1966,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.startLabelSegmentationButton.setEnabled(1)
     self.applySegmentationButton.setEnabled(0)
 
-
   def setupScreenAfterSegmentation(self):
 
     # set up layout
@@ -1860,8 +2004,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # change to Registration Tab
     self.tabBar.currentIndex=2
-
-
 
   def onStartLabelSegmentationButton(self):
 
@@ -1903,6 +2045,60 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     editUtil.setLabel(1)
     editUtil.setLabelOutline(1)
 
+  def createRegistrationResult(self,name,params,output):
+
+    # this function stores information and nodes of a single
+    # registration run to be able to switch between results.
+
+    if len(output) == 3:
+
+      # this is a summary for rigid registration output
+
+      summary = {'index': str(len(self.registrationResults) + 1),
+                 'name' : name,
+                 'movingVolume' : params[0],
+                 'fixedVolume' : params[1],
+                 'movingLabel' : params[2],
+                 'fixedLabel' : params[3],
+                 'targets' : params[4],
+                 'outputVolumeRigid' : output[0],
+                 'outputTransformRigid' :output[1],
+                 'outputTargetsRigid' :output[2],
+                 }
+
+    else:
+
+      # this is a summary for bspline registration output
+
+      summary = {'index': str(len(self.registrationResults) + 1),
+                 'name' : name,
+                 'movingVolume' : params[0],
+                 'fixedVolume' : params[1],
+                 'movingLabel' : params[2],
+                 'fixedLabel' : params[3],
+                 'targets' : params[4],
+                 'outputVolumeRigid' : output[0],
+                 'outputVolumeAffine' : output[1],
+                 'outputVolumeBSpline' :output[2],
+                 'outputTransformRigid' :output[3],
+                 'outputTransformAffine' :output[4],
+                 'outputTransformBSpline' :output[5],
+                 'outputTargetsRigid' :output[6][0],
+                 'outputTargetsAffine' :output[6][1],
+                 'outputTargetsBSpline' :output[6][2],
+                 }
+
+
+
+    # add to results
+    self.registrationResults.append(summary)
+
+    print ('# ___________________________  registration output  ________________________________')
+    print summary
+    print ('# __________________________________________________________________________________')
+
+    return True
+
   def onApplyRegistrationClicked(self):
 
     fixedVolume= self.intraopVolumeSelector.currentNode()
@@ -1911,10 +2107,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     movingLabel=self.preopLabelSelector.currentNode()
     targets=self.fiducialSelector.currentNode()
 
-    registrationOutput=[]
-    registrationOutput=self.logic.applyRegistration(fixedVolume,movingVolume,fixedLabel,movingLabel,targets)
+    params=[]
+    params.append(movingVolume)
+    params.append(fixedVolume)
+    params.append(movingLabel)
+    params.append(fixedLabel)
+    params.append(targets)
 
-    print ('REGISTRATION OUTPUT = '+str(registrationOutput))
+    registrationOutput=[]
+    registrationOutput=self.logic.applyBSplineRegistration(fixedVolume,movingVolume,fixedLabel,movingLabel,targets)
 
     self.outputVolumeRigid=registrationOutput[0]
     self.outputVolumeAffine=registrationOutput[1]
@@ -1922,10 +2123,26 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.outputTransformRigid=registrationOutput[3]
     self.outputTransformAffine=registrationOutput[4]
     self.outputTransformBSpline=registrationOutput[5]
-    self.outputTargets=registrationOutput[6]
+    self.outputTargetsRigid=registrationOutput[6][0]
+    self.outputTargetsAffine=registrationOutput[6][1]
+    self.outputTargetsBSpline=registrationOutput[6][2]
 
-    # set BSpline Checkbox
-    self.showBSplineButton.setStyleSheet('background-color: rgb(130,130,130); color: rgb(255,255,255)')
+    # create a summary
+    name=str(self.currentIntraopVolume.GetName())
+    summary = self.createRegistrationResult(name,params,registrationOutput)
+
+    # update the combo box
+    self.updateRegistrationResultSelector()
+
+    # set up screens
+    self.setupScreenAfterRegistration()
+
+    # select BSpline view
+    self.onBSplineCheckBoxClicked()
+
+    print ('Registration Function is done')
+
+  def setupScreenAfterRegistration(self):
 
     # set fiducial place mode back to regular view mode
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
@@ -1961,9 +2178,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # switch to Evaluation Section
     self.tabWidget.setCurrentIndex(3)
 
-    self.onBSplineCheckBoxClicked()
-
-    print ('Registration Function is done')
 
   def checkTabAfterImport(self):
 
@@ -1976,11 +2190,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 #
 
 
-
 class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
 
-  def applyRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
+  def applyBSplineRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
 
     if fixedVolume and movingVolume and fixedLabel and movingLabel:
 
@@ -2154,6 +2367,76 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
        outputTargets.append(bSplineTargets)
 
      return [outputVolumeRigid,outputVolumeAffine,outputVolumeBSpline,outputTransformRigid,outputTransformAffine,outputTransformBSpline,outputTargets]
+
+
+  def applyReRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
+
+    if fixedVolume and movingVolume and fixedLabel and movingLabel:
+
+     ##### OUTPUT TRANSFORMS
+
+     # define output linear Rigid transform
+     outputTransformRigid=slicer.vtkMRMLLinearTransformNode()
+     outputTransformRigid.SetName('transform-Rigid')
+
+     ##### OUTPUT VOLUMES
+
+     # TODO: create storage nodes
+
+     # define output volume Rigid
+     outputVolumeRigid=slicer.vtkMRMLScalarVolumeNode()
+     outputVolumeRigid.SetName('reg-Rigid')
+
+     # add output nodes
+     slicer.mrmlScene.AddNode(outputVolumeRigid)
+     slicer.mrmlScene.AddNode(outputTransformRigid)
+
+     #   ++++++++++      RIGID REGISTRATION       ++++++++++
+
+     paramsRigid = {'fixedVolume': fixedVolume,
+                    'movingVolume': movingVolume,
+                    'fixedBinaryVolume' : fixedLabel,
+                    'movingBinaryVolume' : movingLabel,
+                    'outputTransform' : outputTransformRigid.GetID(),
+                    'outputVolume' : outputVolumeRigid.GetID(),
+                    'maskProcessingMode' : "ROI",
+                    'initializeTransformMode' : "useCenterOfROIAlign",
+                    'useRigid' : True,
+                    'useAffine' : False,
+                    'useScaleVersor3D' : False,
+                    'useScaleSkewVersor3D' : False,
+                    'useROIBSpline' : False,
+                    'useBSpline' : False,}
+
+     # run Rigid Registration
+     self.cliNode=None
+     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
+
+     #   ++++++++++      TRANSFORM FIDUCIALS        ++++++++++
+
+     if targets:
+
+       print ("Perform Target Transform")
+
+       # get transforms
+       transformNodeRigid=slicer.mrmlScene.GetNodesByName('transform-Rigid').GetItemAsObject(0)
+
+       # get fiducials
+
+       # TODO: copy initial targets here, do not take targets-RIGID as given
+       rigidTargets=slicer.mrmlScene.GetNodesByName('targets-RIGID').GetItemAsObject(0)
+
+       # apply transforms
+       rigidTargets.SetAndObserveTransformNodeID(transformNodeRigid.GetID())
+
+       # harden the transforms
+       tfmLogic = slicer.modules.transforms.logic()
+       tfmLogic.hardenTransform(rigidTargets)
+
+       self.renameFiducials(rigidTargets)
+
+
+    return [outputVolumeRigid,outputTransformRigid,rigidTargets]
 
 
   def renameFiducials(self,fiducialNode):
