@@ -867,6 +867,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def clearTargetTable(self):
 
+    self.needleTipButton.enabled=False
+
     self.targetTable.clear()
     self.targetTable.setColumnCount(3)
     self.targetTable.setColumnWidth(0,180)
@@ -877,6 +879,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onNeedleTipButtonClicked(self):
 
+    self.needleTipButton.enabled=False
     self.logic.setNeedleTipPosition()
 
   def enter(self):
@@ -948,6 +951,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.items_3D.append(item_3D)
       print str(text_for_3D_colomn)
 
+    # reset needleTipButton
+    self.needleTipButton.enabled=True
+
+
   def removeSliceAnnotations(self):
     try:
       self.red_renderer.RemoveActor(self.text_preop)
@@ -973,7 +980,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     #TODO: the 90px shift to the left are hard-coded right now, it would be better to
     # take the size of the vtk.vtkTextActor and shift by that size * 0.5
-    # could not find how to get vtkViewPort from sliceWidget
+    # BUT -> could not find how to get vtkViewPort from sliceWidget
 
     self.text_preop.SetDisplayPosition(int(width*0.5-90),50)
     self.red_renderer.AddActor(self.text_preop)
@@ -1353,9 +1360,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopSegmentationSelector.collapsed = False
 
   def onBSplineCheckBoxClicked(self):
-
-    if self.comingFromPreopTag:
-      self.resetSliceViews()
 
     self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
     self.showRigidButton.setStyleSheet('background-color: rgb(255,255,255)')
