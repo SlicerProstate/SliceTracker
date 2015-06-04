@@ -16,7 +16,6 @@ class RegistrationModule(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "RegistrationModule"
     self.parent.categories = ["Registration"]
-    self.parent.dependencies = []
     self.parent.dependencies = ["VolumeClipWithModel"]
     self.parent.contributors = ["Peter Behringer (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ Module for easy registration. """
@@ -37,6 +36,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Parameters
     self.settings = qt.QSettings()
     self.modulePath = slicer.modules.registrationmodule.path.replace("RegistrationModule.py","")
+    self.slicerPath = slicer.app.slicerHome
     self.registrationResults = []
     self.intraopDataDir = ""
     self.preopDataDir = ""
@@ -769,6 +769,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
    # _____________________________________________________________________________________________________ #
 
+  def startStorescp(self):
+
+    # command : $ sudo storescp -v -p 104
+    pathToExe=(self.slicerPath+'/bin/storescp')
+    port=104
+    cmd=('sudo '+pathToExe+ ' -v -p '+port)
+    os.system(cmd)
+
 
   def onloadIntraopDataButtonClicked(self):
 
@@ -799,7 +807,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
       # enter Label Selection Section
       self.onTab2clicked()
-
 
   def updateRegistrationResult(self):
 
@@ -861,7 +868,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     else:
       print ('something went wrong in updateRegistrationResult()')
 
-
   def updateRegistrationResultSelector(self):
 
     itemlist=[]
@@ -877,7 +883,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
         self.resultSelector.addItem(item)
         index = self.resultSelector.findText(item)
         self.resultSelector.currentIndex = index
-
 
   def onselectSegmentationsButtonClicked(self):
 
@@ -2177,7 +2182,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # switch to Evaluation Section
     self.tabWidget.setCurrentIndex(3)
-
 
   def checkTabAfterImport(self):
 
