@@ -813,60 +813,21 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # distinguish between rigid and BSpline result
     currentItem = self.resultSelector.currentText
 
-    # check, if currentItem is rigid or BSpline
+    # get index
     for index in range(len(self.registrationResults)):
       if self.registrationResults[index]['name'] == currentItem:
-        if len(self.registrationResults[index]) == 10:
-          currentResult = 'rigid'
-        else:
-          currentResult = 'bspline'
         break
 
-    if currentResult == 'rigid':
+    # set variables needed by on xx clicked
+    self.currentIntraopVolume=self.registrationResults[index]['fixedVolume']
+    self.outputVolumeRigid=self.registrationResults[index]['outputVolumeRigid']
+    self.outputTargetsRigid=self.registrationResults[index]['outputTargetsRigid']
+    self.outputTargetsAffine=self.registrationResults[index]['outputTargetsAffine']
+    self.outputTargetsBSpline=self.registrationResults[index]['outputTargetsBSpline']
+    self.preopVolume=self.registrationResults[index]['movingVolume']
 
-      print ('current result is rigid')
-
-      # set buttons
-      self.showPreopButton.setText('Show Moving')
-      self.showAffineButton.setEnabled(0)
-      self.showBSplineButton.setEnabled(0)
-
-      # set variables needed by on xx clicked
-      self.currentIntraopVolume=self.registrationResults[index]['fixedVolume']
-      self.outputVolumeRigid=self.registrationResults[index]['outputVolumeRigid']
-      self.outputTargetsRigid=self.registrationResults[index]['outputTargetsRigid']
-      self.preopVolume = self.registrationResults[index-1]['fixedVolume']
-
-      # get the last targets:
-      if self.registrationResults[index-1]['outputTargetsBSpline'] is not None:
-        self.targetsPreop=self.registrationResults[index-1]['outputTargetsBSpline']
-      else:
-        self.targetsPreop=self.registrationResults[index-1]['outputTargetsRigid']
-
-      # update GUI
-      self.onRigidCheckBoxClicked()
-
-    elif currentResult == 'bspline':
-
-      print ('current result is bspline')
-
-      # set buttons
-      self.showPreopButton.setText('Show Preop')
-      self.showAffineButton.setEnabled(1)
-      self.showBSplineButton.setEnabled(1)
-
-      # set variables needed by on xx clicked
-      self.currentIntraopVolume=self.registrationResults[index]['fixedVolume']
-      self.outputVolumeRigid=self.registrationResults[index]['outputVolumeRigid']
-      self.outputTargetsRigid=self.registrationResults[index]['outputTargetsRigid']
-      self.preopVolume=slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0)
-      # self.preopVolume = self.registrationResults[index]['movingVolume']
-
-      # update GUI
-      self.onRigidCheckBoxClicked()
-
-    else:
-      print ('something went wrong in updateRegistrationResult()')
+    # update GUI
+    self.onRigidCheckBoxClicked()
 
   def updateRegistrationResultSelector(self):
 
@@ -891,7 +852,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def onReRegistrationClicked(self):
     print ('performing reregistration')
 
-    # get the data
+    index=int(len(self.registrationResults)-1)
 
     # fixed volume: current intraop volume
     selectedSeriesList=self.getSelectedSeriesFromSelector()
@@ -899,15 +860,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.currentIntraopVolume=self.logic.loadSeriesIntoSlicer(selectedSeriesList,directory)
     fixedVolume = self.currentIntraopVolume
 
-    # fixed label: use last fixed label
-    index=int(len(self.registrationResults)-1)
-    fixedLabel = self.registrationResults[index]['fixedLabel']
-
     # moving volume: last fixed volume
     movingVolume = self.registrationResults[index]['fixedVolume']
-
-    # moving label: last fixed label
-    movingLabel = self.registrationResults[index]['fixedLabel']
+    movingLabel=None
 
     # get the last registered targets
     if self.registrationResults[index]['outputTargetsBSpline'] is not None:
@@ -915,10 +870,29 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     else:
       targets = self.registrationResults[index]['outputTargetsRigid']
 
-    rigidOutput = self.logic.applyReRegistration(fixedVolume,movingVolume,fixedLabel,movingLabel,targets)
+    # take the 'intraop label map', which is always fixed label in the very first preop-intraop registration
+    originalFixedLabel=self.registrationResults[0]['fixedLabel']
+
+    # create fixed label
+    volumesLogic = slicer.modules.volumes.logic()
+    fixedLabel = volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,self.currentIntraopVolume, self.currentIntraopVolume.GetName()+'-label')
+
+    if index==0:
+      print 'will resample label with same mask'
+      # last registration was preop-intraop, take the same mask
+      # this is an identity transform:
+      lastRigidTfm=vtk.vtkGeneralTransform()
+      lastRigidTfm.Identity()
+      self.logic.BRAINSResample(inputVolume=originalFixedLabel,referenceVolume=fixedVolume,outputVolume=fixedLabel,warpTransform=lastRigidTfm)
+
+    else:
+      lastRigidTfm = self.registrationResults[index]['outputTransformRigid']
+      self.logic.BRAINSResample(inputVolume=originalFixedLabel,referenceVolume=fixedVolume,outputVolume=fixedLabel,warpTransform=lastRigidTfm)
+
+
+    reRegOutput = self.logic.applyReRegistration(fixedVolume=fixedVolume,movingVolume=movingVolume,fixedLabel=fixedLabel,targets=targets,lastRigidTfm=lastRigidTfm)
 
     # create registration output dictionary
-
     params=[]
     params.append(movingVolume)
     params.append(fixedVolume)
@@ -926,17 +900,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     params.append(fixedLabel)
     params.append(targets)
 
-    # registration output
-    # [outputVolumeRigid,outputTransformRigid,outputTarget]
-
     name = str(self.currentIntraopVolume.GetName())
-    self.createRegistrationResult(name,params,rigidOutput)
+    self.createRegistrationResult(name,params,reRegOutput)
 
     # set up screens
     self.setupScreenAfterRegistration()
 
     # update the combo box
     self.updateRegistrationResultSelector()
+
+
 
   def loadDataPCAMPStyle(self):
 
@@ -1592,6 +1565,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # jump slice to show Targets in Yellow
     self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsRigid.GetID(),1)
 
+
+
   def onAffineCheckBoxClicked(self):
 
     self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
@@ -2055,45 +2030,24 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # this function stores information and nodes of a single
     # registration run to be able to switch between results.
 
-    if len(output) == 3:
-
-      # this is a summary for rigid registration output
-
-      summary = {'index': str(len(self.registrationResults) + 1),
-                 'name' : name,
-                 'movingVolume' : params[0],
-                 'fixedVolume' : params[1],
-                 'movingLabel' : params[2],
-                 'fixedLabel' : params[3],
-                 'targets' : params[4],
-                 'outputVolumeRigid' : output[0],
-                 'outputTransformRigid' :output[1],
-                 'outputTargetsRigid' :output[2],
-                 }
-
-    else:
-
       # this is a summary for bspline registration output
 
-      summary = {'index': str(len(self.registrationResults) + 1),
-                 'name' : name,
-                 'movingVolume' : params[0],
-                 'fixedVolume' : params[1],
-                 'movingLabel' : params[2],
-                 'fixedLabel' : params[3],
-                 'targets' : params[4],
-                 'outputVolumeRigid' : output[0],
-                 'outputVolumeAffine' : output[1],
-                 'outputVolumeBSpline' :output[2],
-                 'outputTransformRigid' :output[3],
-                 'outputTransformAffine' :output[4],
-                 'outputTransformBSpline' :output[5],
-                 'outputTargetsRigid' :output[6][0],
-                 'outputTargetsAffine' :output[6][1],
-                 'outputTargetsBSpline' :output[6][2],
-                 }
-
-
+    summary = {'index': str(len(self.registrationResults) + 1),
+               'name' : name,
+               'movingVolume' : params[0],
+               'fixedVolume' : params[1],
+               'movingLabel' : params[2],
+               'fixedLabel' : params[3],
+               'targets' : params[4],
+               'outputVolumeRigid' : output[0],
+               'outputVolumeAffine' : output[1],
+               'outputVolumeBSpline' :output[2],
+               'outputTransformRigid' :output[3],
+               'outputTransformAffine' :output[4],
+               'outputTransformBSpline' :output[5],
+               'outputTargetsRigid' :output[6][0],
+               'outputTargetsAffine' :output[6][1],
+               'outputTargetsBSpline' :output[6][2]}
 
     # add to results
     self.registrationResults.append(summary)
@@ -2148,6 +2102,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print ('Registration Function is done')
 
   def setupScreenAfterRegistration(self):
+
+    index=len(self.registrationResults)
+    self.compositNodeRed.SetForegroundVolumeID(self.currentIntraopVolume.GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.registrationResults[index]['outputVolumeBSpline'])
+    self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
+
+    self.redSliceLogic.FitSliceToAll()
+    self.yellowSliceLogic.FitSliceToAll()
 
     # set fiducial place mode back to regular view mode
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
@@ -2270,7 +2232,8 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                'outputVolume' : outputVolumeAffine.GetID(),
                'maskProcessingMode' : "ROI",
                'initializeTransformMode' : "useCenterOfROIAlign",
-               'useAffine' : True}
+               'useAffine' : True,
+               'initialTransform' : outputTransformRigid}
 
      # run Affine Registration
      self.cliNode=None
@@ -2284,7 +2247,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                       'bsplineTransform' : outputTransformBSpline.GetID(),
                       'movingBinaryVolume' : movingLabel,
                       'fixedBinaryVolume' : fixedLabel,
-                      # 'linearTransform' : outputTransformLinear.GetID(),
                       'initializeTransformMode' : "useCenterOfROIAlign",
                       'samplingPercentage' : "0.002",
                       'useRigid' : True,
@@ -2306,7 +2268,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                       'skewScale' : "1",
                       'numberOfHistogramBins' : "50",
                       'numberOfMatchPoints': "10",
-                      'numberOfSamples' : "100000",
                       'fixedVolumeTimeIndex' : "0",
                       'movingVolumeTimeIndex' : "0",
                       'medianFilterSize' : "0,0,0",
@@ -2325,7 +2286,9 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                       'costMetric' : "MMI",
                       'removeIntensityOutliers' : "0",
                       'ROIAutoClosingSize' : "9",
-                      'maskProcessingMode' : "ROI"}
+                      'maskProcessingMode' : "ROI",
+                      #'initialTransform' : outputTransformAffine
+                      }
 
 
      # run BSpline Registration
@@ -2373,15 +2336,31 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
      return [outputVolumeRigid,outputVolumeAffine,outputVolumeBSpline,outputTransformRigid,outputTransformAffine,outputTransformBSpline,outputTargets]
 
 
-  def applyReRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
+  def applyReRegistration(self,fixedVolume,movingVolume,fixedLabel,targets,lastRigidTfm):
 
-    if fixedVolume and movingVolume and fixedLabel and movingLabel:
+    """
+    # rigid
+    BFRegister(fixed=fixedImage,moving=movingImage,fixedMask=fixedMask,rigidTfm=rigidTfm,log=log,initialTfm=latestRigidTfm)
+    # affine
+    BFRegister(fixed=fixedImage,moving=movingImage,fixedMask=fixedMask,affineTfm=affineTfm,initTfm=rigidTfm,log=log)
+    # bspline
+    BFRegister(fixed=fixedImage,moving=movingImage,fixedMask=fixedMask,bsplineTfm=bsplineTfm,log=log,initialTfm=affineTfm)
+    """
 
+    if fixedVolume and movingVolume and fixedLabel and lastRigidTfm:
      ##### OUTPUT TRANSFORMS
 
      # define output linear Rigid transform
      outputTransformRigid=slicer.vtkMRMLLinearTransformNode()
      outputTransformRigid.SetName('transform-Rigid')
+
+     # define output linear Affine transform
+     outputTransformAffine=slicer.vtkMRMLLinearTransformNode()
+     outputTransformAffine.SetName('transform-Affine')
+
+     # define output BSpline transform
+     outputTransformBSpline=slicer.vtkMRMLBSplineTransformNode()
+     outputTransformBSpline.SetName('transform-BSpline-rereg')
 
      ##### OUTPUT VOLUMES
 
@@ -2389,34 +2368,122 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
      # define output volume Rigid
      outputVolumeRigid=slicer.vtkMRMLScalarVolumeNode()
-     outputVolumeRigid.SetName('reg-Rigid')
+     outputVolumeRigid.SetName('Rereg-Rigid')
+
+     # define output volume Affine
+     outputVolumeAffine=slicer.vtkMRMLScalarVolumeNode()
+     outputVolumeAffine.SetName('Rereg-Affine')
+
+     # define output volume BSpline
+     outputVolumeBSpline=slicer.vtkMRMLScalarVolumeNode()
+     outputVolumeBSpline.SetName('Rereg-BSpline')
 
      # add output nodes
      slicer.mrmlScene.AddNode(outputVolumeRigid)
+     slicer.mrmlScene.AddNode(outputVolumeBSpline)
+     slicer.mrmlScene.AddNode(outputVolumeAffine)
      slicer.mrmlScene.AddNode(outputTransformRigid)
+     slicer.mrmlScene.AddNode(outputTransformAffine)
+     slicer.mrmlScene.AddNode(outputTransformBSpline)
 
      #   ++++++++++      RIGID REGISTRATION       ++++++++++
 
      paramsRigid = {'fixedVolume': fixedVolume,
                     'movingVolume': movingVolume,
                     'fixedBinaryVolume' : fixedLabel,
-                    'movingBinaryVolume' : movingLabel,
+                    # 'movingBinaryVolume' : movingLabel,
                     'outputTransform' : outputTransformRigid.GetID(),
                     'outputVolume' : outputVolumeRigid.GetID(),
                     'maskProcessingMode' : "ROI",
-                    'initializeTransformMode' : "useCenterOfROIAlign",
+                    # 'initializeTransformMode' : "useCenterOfROIAlign",
                     'useRigid' : True,
                     'useAffine' : False,
                     'useScaleVersor3D' : False,
                     'useScaleSkewVersor3D' : False,
                     'useROIBSpline' : False,
-                    'useBSpline' : False,}
+                    'useBSpline' : False,
+                    'initialTransform':lastRigidTfm}
 
      # run Rigid Registration
      self.cliNode=None
      self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
 
+     #   ++++++++++      AFFINE REGISTRATION       ++++++++++
+
+     paramsAffine = {'fixedVolume': fixedVolume,
+                     'movingVolume': movingVolume,
+                     'fixedBinaryVolume' : fixedLabel,
+                     # 'movingBinaryVolume' : movingLabel,
+                     'outputTransform' : outputTransformAffine.GetID(),
+                     'outputVolume' : outputVolumeAffine.GetID(),
+                     'maskProcessingMode' : "ROI",
+                     #'initializeTransformMode' : "useCenterOfROIAlign",
+                     'useAffine' : True,
+                     'initialTransform' : outputTransformRigid}
+
+     # run Affine Registration
+     self.cliNode=None
+     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsAffine, wait_for_completion = True)
+
+     #   ++++++++++      BSPLINE REGISTRATION       ++++++++++
+
+     paramsBSpline = {'fixedVolume': fixedVolume,
+                      'movingVolume': movingVolume,
+                      'outputVolume' : outputVolumeBSpline.GetID(),
+                      'bsplineTransform' : outputTransformBSpline.GetID(),
+                      # 'movingBinaryVolume' : movingLabel,
+                      'fixedBinaryVolume' : fixedLabel,
+                      # 'initializeTransformMode' : "useCenterOfROIAlign",
+                      # 'samplingPercentage' : "0.002",
+                      'useRigid' : True,
+                      'useAffine' : True,
+                      'useROIBSpline' : True,
+                      'useBSpline' : True,
+                      'useScaleVersor3D' : True,
+                      'useScaleSkewVersor3D' : True,
+                      'splineGridSize' : "3,3,3",
+                      'numberOfIterations' : "1500",
+                      'maskProcessing' : "ROI",
+                      'outputVolumePixelType' : "float",
+                      'backgroundFillValue' : "0",
+                      # 'maskInferiorCutOffFromCenter' : "1000",
+                      'interpolationMode' : "Linear",
+                      'minimumStepLength' : "0.005",
+                      'translationScale' : "1000",
+                      'reproportionScale' : "1",
+                      'skewScale' : "1",
+                      # 'numberOfHistogramBins' : "50",
+                      # 'numberOfMatchPoints': "10",
+                      'fixedVolumeTimeIndex' : "0",
+                      'movingVolumeTimeIndex' : "0",
+                      'medianFilterSize' : "0,0,0",
+                      'ROIAutoDilateSize' : "0",
+                      'relaxationFactor' : "0.5",
+                      'maximumStepLength' : "0.2",
+                      'failureExitCode' : "-1",
+                      'numberOfThreads': "-1",
+                      'debugLevel': "0",
+                      'costFunctionConvergenceFactor' : "1.00E+09",
+                      'projectedGradientTolerance' : "1.00E-05",
+                      'maxBSplineDisplacement' : "0",
+                      'maximumNumberOfEvaluations' : "900",
+                      'maximumNumberOfCorrections': "25",
+                      # 'metricSamplingStrategy' : "Random",
+                      # 'costMetric' : "MMI",
+                      'removeIntensityOutliers' : "0",
+                      'ROIAutoClosingSize' : "9",
+                      'maskProcessingMode' : "ROI",
+                      #'initialTransform' : outputTransformAffine
+                      }
+
+
+     # run BSpline Registration
+     self.cliNode=None
+     self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsBSpline, wait_for_completion = True)
+
+
      #   ++++++++++      TRANSFORM FIDUCIALS        ++++++++++
+
 
      if targets:
 
@@ -2424,23 +2491,36 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
        # get transforms
        transformNodeRigid=slicer.mrmlScene.GetNodesByName('transform-Rigid').GetItemAsObject(0)
+       transformNodeAffine=slicer.mrmlScene.GetNodesByName('transform-Affine').GetItemAsObject(0)
+       transformNodeBSpline=slicer.mrmlScene.GetNodesByName('transform-BSpline').GetItemAsObject(0)
 
        # get fiducials
-
-       # TODO: copy initial targets here, do not take targets-RIGID as given
        rigidTargets=slicer.mrmlScene.GetNodesByName('targets-RIGID').GetItemAsObject(0)
+       affineTargets=slicer.mrmlScene.GetNodesByName('targets-AFFINE').GetItemAsObject(0)
+       bSplineTargets=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
 
        # apply transforms
        rigidTargets.SetAndObserveTransformNodeID(transformNodeRigid.GetID())
+       affineTargets.SetAndObserveTransformNodeID(transformNodeAffine.GetID())
+       bSplineTargets.SetAndObserveTransformNodeID(transformNodeBSpline.GetID())
 
        # harden the transforms
        tfmLogic = slicer.modules.transforms.logic()
        tfmLogic.hardenTransform(rigidTargets)
+       tfmLogic.hardenTransform(affineTargets)
+       tfmLogic.hardenTransform(bSplineTargets)
 
        self.renameFiducials(rigidTargets)
+       self.renameFiducials(affineTargets)
+       self.renameFiducials(bSplineTargets)
 
+       outputTargets=[]
+       outputTargets.append(rigidTargets)
+       outputTargets.append(affineTargets)
+       outputTargets.append(bSplineTargets)
 
-    return [outputVolumeRigid,outputTransformRigid,rigidTargets]
+     return [outputVolumeRigid,outputVolumeAffine,outputVolumeBSpline,outputTransformRigid,outputTransformAffine,outputTransformBSpline,outputTargets]
+
 
 
   def renameFiducials(self,fiducialNode):
@@ -2893,7 +2973,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     Parameter (1/2): OutputVolume
     """
 
-
     # initialize Label Map
     outputLabelMap=slicer.vtkMRMLScalarVolumeNode()
     outputLabelMap.SetLabelMap(1)
@@ -2931,7 +3010,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     # compositNodeRed.SetLabelVolumeID(outputLabelMap.GetID())
     compositNodeRed.SetLabelOpacity(1)
 
-
     # remove markup fiducial node
     slicer.mrmlScene.RemoveNode(slicer.mrmlScene.GetNodesByName('clipModelNode').GetItemAsObject(0))
 
@@ -2941,6 +3019,30 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     print ('model to labelmap through')
 
     return outputLabelMap
+
+  def BRAINSResample(self,inputVolume,referenceVolume,outputVolume,warpTransform):
+    '''
+    Parameter (0/0): inputVolume
+    Parameter (0/1): referenceVolume
+    Parameter (1/0): outputVolume
+    Parameter (1/1): pixelType
+    Parameter (2/0): deformationVolume
+    Parameter (2/1): warpTransform
+    Parameter (2/2): interpolationMode
+    Parameter (2/3): inverseTransform
+    Parameter (2/4): defaultValue
+    Parameter (3/0): gridSpacing
+    Parameter (4/0): numberOfThreads
+    '''
+
+    # define params
+    params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume' : outputVolume, 'warpTransform' : warpTransform,'interpolationMode' : 'NearestNeighbor'}
+
+    print ('about to run BRAINSResample CLI with those params: ')
+    print params
+    # run ModelToLabelMap-CLI Module
+    cliNode=slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
+    print ('resample labelmap through')
 
 class RegistrationModuleTest(ScriptedLoadableModuleTest):
   """
