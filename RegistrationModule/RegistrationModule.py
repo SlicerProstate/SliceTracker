@@ -472,13 +472,13 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.forwardButton=qt.QPushButton('Step forward')
     self.forwardButton.setFixedHeight(50)
-    self.forwardButton.setEnabled(0)
     self.forwardButton.connect('clicked(bool)',self.onForwardButton)
 
     self.backButton=qt.QPushButton('Step back')
-    self.backButton.setEnabled(0)
     self.backButton.setFixedHeight(50)
     self.backButton.connect('clicked(bool)',self.onBackButton)
+
+    self.deactivateUndoRedoButtons()
 
     # Create ButtonBox to fill in those Buttons
     buttonBox1=qt.QDialogButtonBox()
@@ -768,6 +768,27 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.enter()
 
    # _____________________________________________________________________________________________________ #
+
+  def deactivateUndoRedoButtons(self):
+    self.forwardButton.setEnabled(0)
+    self.backButton.setEnabled(0)
+
+  def updateUndoRedoButtons(self, observer=None, caller=None):
+    self.updateBackButton()
+    self.updateFowardButton()
+
+  def updateBackButton(self):
+    activeFiducials=slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0)
+    if activeFiducials.GetNumberOfFiducials() > 0:
+      self.backButton.setEnabled(1)
+    else:
+      self.backButton.setEnabled(0)
+
+  def updateFowardButton(self):
+    if self.deletedMarkups.GetNumberOfFiducials() > 0:
+      self.forwardButton.setEnabled(1)
+    else:
+      self.forwardButton.setEnabled(0)
 
   def startStorescp(self):
 
@@ -1133,59 +1154,55 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onForwardButton(self):
 
-    # grab the last fiducial of deletedMarkups
-    activeFiducials=slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0)
-    print ('activeFiducials found')
-    numberOfTargets=self.deletedMarkups.GetNumberOfFiducials()
-    print ('numberOfTargets in deletedMarkups is'+str(numberOfTargets))
+    #print ('activeFiducials found')
+    numberOfDeletedTargets=self.deletedMarkups.GetNumberOfFiducials()
+    print ('numberOfTargets in deletedMarkups is'+str(numberOfDeletedTargets))
     pos=[0.0,0.0,0.0]
 
-    if numberOfTargets==0:
-      pass
-    else:
-      self.deletedMarkups.GetNthFiducialPosition(numberOfTargets-1,pos)
+    if numberOfDeletedTargets > 0:
+      self.deletedMarkups.GetNthFiducialPosition(numberOfDeletedTargets-1,pos)
 
     print ('deletedMarkups.position = '+str(pos))
 
     if pos == [0.0,0.0,0.0]:
       print ('pos was 0,0,0 -> go on')
-      pass
     else:
-      # add it to activeFiducials
+      activeFiducials=slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0)
       activeFiducials.AddFiducialFromArray(pos)
 
       # delete it in deletedMarkups
-      self.deletedMarkups.RemoveMarkup(numberOfTargets-1)
+      self.deletedMarkups.RemoveMarkup(numberOfDeletedTargets-1)
+
+    self.updateUndoRedoButtons()
 
   def onBackButton(self):
 
     # grab the last fiducial of inputMarkupsNode
     activeFiducials=slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0)
-    print ('activeFiducials found')
+    #print ('activeFiducials found')
     numberOfTargets=activeFiducials.GetNumberOfFiducials()
     print ('numberOfTargets is'+str(numberOfTargets))
     pos=[0.0,0.0,0.0]
     activeFiducials.GetNthFiducialPosition(numberOfTargets-1,pos)
     print ('activeFiducials.position = '+str(pos))
 
-    if numberOfTargets==0:
-      pass
-    else:
+    if numberOfTargets > 0:
       self.deletedMarkups.GetNthFiducialPosition(numberOfTargets-1,pos)
 
     activeFiducials.GetNthFiducialPosition(numberOfTargets-1,pos)
     print ('POS BEFORE ENTRY = '+str(pos))
     if pos == [0.0,0.0,0.0]:
       print ('pos was 0,0,0 -> go on')
-      pass
     else:
       # add it to deletedMarkups
       activeFiducials.GetNthFiducialPosition(numberOfTargets-1,pos)
-      print ('pos = '+str(pos))
+      #print ('pos = '+str(pos))
       self.deletedMarkups.AddFiducialFromArray(pos)
       print ('added Markup with position '+str(pos)+' to the deletedMarkupsList')
       # delete it in activeFiducials
       activeFiducials.RemoveMarkup(numberOfTargets-1)
+
+    self.updateUndoRedoButtons()
 
   def revealToggled(self,checked):
     """Turn the RevealCursor on or off
@@ -1565,8 +1582,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # jump slice to show Targets in Yellow
     self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsRigid.GetID(),1)
 
-
-
   def onAffineCheckBoxClicked(self):
 
     self.showPreopButton.setStyleSheet('background-color: rgb(255,255,255)')
@@ -1851,20 +1866,20 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.setQuickSegmentationModeON()
 
     self.logic.runQuickSegmentationMode()
+    self.logic.inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateUndoRedoButtons)
 
   def setQuickSegmentationModeON(self):
     self.startLabelSegmentationButton.setEnabled(0)
     self.startQuickSegmentationButton.setEnabled(0)
     self.applySegmentationButton.setEnabled(1)
-    self.backButton.setEnabled(1)
-    self.forwardButton.setEnabled(1)
+    self.deactivateUndoRedoButtons()
+    self.deletedMarkups.Reset()
 
   def setQuickSegmentationModeOFF(self):
     self.startLabelSegmentationButton.setEnabled(1)
     self.startQuickSegmentationButton.setEnabled(1)
     self.applySegmentationButton.setEnabled(0)
-    self.backButton.setEnabled(0)
-    self.forwardButton.setEnabled(0)
+    self.deactivateUndoRedoButtons()
 
     # reset persistent fiducial tol
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
@@ -2158,6 +2173,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
 class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
+  def __init__(self, parent=None):
+    ScriptedLoadableModuleLogic.__init__(self, parent)
+    self.inputMarkup = None
 
   def applyBSplineRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
 
@@ -2942,10 +2960,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.AddNode(displayNode)
 
     # create markup fiducial node
-    inputMarkup = slicer.vtkMRMLMarkupsFiducialNode()
-    inputMarkup.SetName('inputMarkupNode')
-    slicer.mrmlScene.AddNode(inputMarkup)
-    inputMarkup.SetAndObserveDisplayNodeID(displayNode.GetID())
+    self.inputMarkup = slicer.vtkMRMLMarkupsFiducialNode()
+    self.inputMarkup.SetName('inputMarkupNode')
+    slicer.mrmlScene.AddNode(self.inputMarkup)
+    self.inputMarkup.SetAndObserveDisplayNodeID(displayNode.GetID())
 
     # set Text Scale to 0
     inputMarkupDisplayNode=slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0).GetDisplayNode()
@@ -2960,7 +2978,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     inputMarkupDisplayNode.SetColor(0,0,0)
 
     # add Observer
-    inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateModel)
+    self.inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateModel)
 
   def modelToLabelmap(self,inputVolume,clippingModel):
 
