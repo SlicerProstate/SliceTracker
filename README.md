@@ -1,9 +1,9 @@
-# Registration
+# SliceTracker
 
 
 ### Intro
 
-EasyReg is a 3D Slicer (see http://slicer.org) module that facilitates registration of pre- and intraprocedural MR prostate volumes. 
+SliceTracker is a 3D Slicer (see http://slicer.org) module that facilitates registration of pre- and intraprocedural MR prostate volumes. 
 
 ### Functionality
 
