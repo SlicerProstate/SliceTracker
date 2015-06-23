@@ -789,8 +789,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.removeSliceAnnotations()
 
-
-
     self.enter()
 
    # _____________________________________________________________________________________________________ #
@@ -862,18 +860,22 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # get index
     for index in range(len(self.registrationResults)):
+      self.markupsLogic.SetAllMarkupsVisibility(self.registrationResults[index]['outputTargetsRigid'],False)
+      self.markupsLogic.SetAllMarkupsVisibility(self.registrationResults[index]['outputTargetsAffine'],False)
+      self.markupsLogic.SetAllMarkupsVisibility(self.registrationResults[index]['outputTargetsBSpline'],False)
+
       if self.registrationResults[index]['name'] == currentItem:
         self.currentRegistrationResult=index
-        break
+
 
     # set variables needed by on xx clicked
     self.currentIntraopVolume=self.registrationResults[index]['fixedVolume']
     self.outputVolumeRigid=self.registrationResults[index]['outputVolumeRigid']
+    self.outputVolumeRigid=self.registrationResults[index]['outputVolumeAffine']
+    self.outputVolumeRigid=self.registrationResults[index]['outputVolumeBSpline']
     self.outputTargetsRigid=self.registrationResults[index]['outputTargetsRigid']
     self.outputTargetsAffine=self.registrationResults[index]['outputTargetsAffine']
     self.outputTargetsBSpline=self.registrationResults[index]['outputTargetsBSpline']
-
-    #TODO : this is wrong. moving volume will be transformed, deep copy is needed
     self.preopVolume=self.registrationResults[index]['movingVolume']
 
     # update GUI
@@ -910,15 +912,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.currentIntraopVolume=self.logic.loadSeriesIntoSlicer(selectedSeriesList,directory)
     fixedVolume = self.currentIntraopVolume
 
-    # moving volume: last fixed volume
-    movingVolume = self.registrationResults[index]['fixedVolume']
+    # moving volume: copy last fixed volume
+    sourceVolumeNode = self.registrationResults[0]['fixedVolume']
+    volumesLogic = slicer.modules.volumes.logic()
+    movingVolume = volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolumeNode, 'movingVolumeReReg')
     movingLabel=None
 
-    # get the last registered targets
-    if self.registrationResults[index]['outputTargetsBSpline'] is not None:
-      targets = self.registrationResults[index]['outputTargetsBSpline']
-    else:
-      targets = self.registrationResults[index]['outputTargetsRigid']
+    # get the intraop targets
+    targets=self.registrationResults[0]['outputTargetsBSpline']
 
     # take the 'intraop label map', which is always fixed label in the very first preop-intraop registration
     originalFixedLabel=self.registrationResults[0]['fixedLabel']
@@ -939,12 +940,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       lastRigidTfm = self.registrationResults[index]['outputTransformRigid']
       self.logic.BRAINSResample(inputVolume=originalFixedLabel,referenceVolume=fixedVolume,outputVolume=fixedLabel,warpTransform=lastRigidTfm)
 
-
     reRegOutput = self.logic.applyReRegistration(fixedVolume=fixedVolume,movingVolume=movingVolume,fixedLabel=fixedLabel,targets=targets,lastRigidTfm=lastRigidTfm)
 
     # create registration output dictionary
     params=[]
-    params.append(movingVolume)
+    params.append(sourceVolumeNode)
     params.append(fixedVolume)
     params.append(movingLabel)
     params.append(fixedLabel)
@@ -953,12 +953,31 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     name = str(self.currentIntraopVolume.GetName())
     self.createRegistrationResult(name,params,reRegOutput)
 
+    self.outputVolumeRigid=reRegOutput[0]
+    self.outputVolumeAffine=reRegOutput[1]
+    self.outputVolumeBSpline=reRegOutput[2]
+    self.outputTransformRigid=reRegOutput[3]
+    self.outputTransformAffine=reRegOutput[4]
+    self.outputTransformBSpline=reRegOutput[5]
+    self.outputTargetsRigid=reRegOutput[6][0]
+    self.outputTargetsAffine=reRegOutput[6][1]
+    self.outputTargetsBSpline=reRegOutput[6][2]
+
+
+    slicer.mrmlScene.AddNode(self.outputTargetsRigid)
+    slicer.mrmlScene.AddNode(self.outputTargetsAffine)
+    slicer.mrmlScene.AddNode(self.outputTargetsBSpline)
+
     # set up screens
     self.setupScreenAfterRegistration()
 
     # update the combo box
     self.updateRegistrationResultSelector()
 
+    # select BSpline view
+    self.onBSplineCheckBoxClicked()
+
+    print ('Re-Registration Function is done')
 
 
   def loadDataPCAMPStyle(self):
@@ -1530,11 +1549,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeRed.SetLinkedControl(0)
     self.compositNodeYellow.SetLinkedControl(0)
 
+    volumeNode=self.registrationResults[self.currentRegistrationResult]['movingVolume']
     # Get the Volume Node
-    self.compositNodeRed.SetBackgroundVolumeID(slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0).GetID())
+    #self.compositNodeRed.SetBackgroundVolumeID(slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0).GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(volumeNode.GetID())
+
+    fiducialNode=self.registrationResults[self.currentRegistrationResult]['targets']
 
      # show preop Targets
-    self.markupsLogic.SetAllMarkupsVisibility(self.targetsPreop,True)
+    self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,True)
 
     # fit slice view
     self.redSliceLogic.FitSliceToAll()
@@ -1546,7 +1569,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.redSliceLogic.EndSliceNodeInteraction()
 
     # jump to first markup slice
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),1)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducialNode.GetID(),1)
 
     # reset the yellow slice view
     restoredSliceOptions=self.getCurrentSliceViewPositions()
@@ -1572,9 +1595,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeYellow.SetLinkedControl(1)
 
     # set the slice views
-    self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
-    self.compositNodeRed.SetForegroundVolumeID(self.currentIntraopVolume.GetID())
-    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeRigid.GetID())
+    self.compositNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
+    self.compositNodeRed.SetForegroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['outputVolumeRigid'].GetID())
 
     if self.comingFromPreopTag:
       self.resetSliceViews()
@@ -1602,9 +1625,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeYellow.SetLinkedControl(1)
 
     # set the slice views
-    self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
-    self.compositNodeRed.SetForegroundVolumeID(self.currentIntraopVolume.GetID())
-    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeAffine.GetID())
+    self.compositNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
+    self.compositNodeRed.SetForegroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['outputVolumeAffine'].GetID())
+
 
     if self.comingFromPreopTag:
       self.resetSliceViews()
@@ -1632,9 +1656,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositNodeYellow.SetLinkedControl(1)
 
     # set the slice views
-    self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
-    self.compositNodeRed.SetForegroundVolumeID(self.currentIntraopVolume.GetID())
-    self.compositNodeRed.SetBackgroundVolumeID(self.outputVolumeBSpline.GetID())
+    self.compositNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
+    self.compositNodeRed.SetForegroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
+    self.compositNodeRed.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['outputVolumeBSpline'].GetID())
 
     if self.comingFromPreopTag:
       self.resetSliceViews()
@@ -1756,6 +1780,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
     self.targetsPreop=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
     self.targetsPreop.SetName('targets-PREOP')
+
+    print ('TARGETS PREOP')
+    print slicer.modules.RegistrationModuleWidget.targetsPreop
 
     """
     # load targets for rigid transformation
@@ -2104,10 +2131,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     sourceVolumeNode = self.preopVolumeSelector.currentNode()
     volumesLogic = slicer.modules.volumes.logic()
-    movingVolume = volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolumeNode, 'movingVolume')
+    movingVolume = volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolumeNode, 'movingVolume-PREOP-INTRAOP')
 
     params=[]
-    params.append(movingVolume)
+    params.append(sourceVolumeNode)
     params.append(fixedVolume)
     params.append(movingLabel)
     params.append(fixedLabel)
@@ -2299,7 +2326,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                'outputTransform' : outputTransformAffine.GetID(),
                'outputVolume' : outputVolumeAffine.GetID(),
                'maskProcessingMode' : "ROI",
-               'initializeTransformMode' : "useCenterOfROIAlign",
+               #'initializeTransformMode' : "useCenterOfROIAlign",
                'useAffine' : True,
                'initialTransform' : outputTransformRigid}
 
@@ -2315,7 +2342,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                       'bsplineTransform' : outputTransformBSpline.GetID(),
                       'movingBinaryVolume' : movingLabel,
                       'fixedBinaryVolume' : fixedLabel,
-                      'initializeTransformMode' : "useCenterOfROIAlign",
+                      #'initializeTransformMode' : "useCenterOfROIAlign",
                       'samplingPercentage' : "0.002",
                       'useRigid' : True,
                       'useAffine' : True,
@@ -2355,7 +2382,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                       'removeIntensityOutliers' : "0",
                       'ROIAutoClosingSize' : "9",
                       'maskProcessingMode' : "ROI",
-                      #'initialTransform' : outputTransformAffine
+                      'initialTransform' : outputTransformAffine
                       }
 
 
@@ -2372,12 +2399,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
        # clone targets
        originalTargets=slicer.mrmlScene.GetNodesByName('targets-PREOP').GetItemAsObject(0)
 
-       """
-       rigidTargets=slicer.vtkMRMLMarkupsFiducialNode()
-       affineTargets=slicer.vtkMRMLMarkupsFiducialNode()
-       bSplineTargets=slicer.vtkMRMLMarkupsFiducialNode()
-       """
-
        mlogic=slicer.modules.markups.logic()
        mlogic.AddNewFiducialNode('targets-RIGID',slicer.mrmlScene)
        mlogic.AddNewFiducialNode('targets-AFFINE',slicer.mrmlScene)
@@ -2390,13 +2411,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
        self.cloneFiducials(originalTargets,rigidTargets)
        self.cloneFiducials(originalTargets,affineTargets)
        self.cloneFiducials(originalTargets,bSplineTargets)
-
-
-       """
-       slicer.mrmlScene.AddNode(rigidTargets)
-       slicer.mrmlScene.AddNode(affineTargets)
-       slicer.mrmlScene.AddNode(bSplineTargets)
-       """
 
        print ("Perform Target Transform")
 
@@ -2439,8 +2453,8 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       pos=[0.0,0.0,0.0]
       originalFidList.GetNthFiducialPosition(i,pos)
       name=originalFidList.GetNthFiducialLabel(i)
-      print 'name'+name
-      print 'parsing position : '+str(pos)
+      #print 'name'+name
+      #print 'parsing position : '+str(pos)
       newFidList.AddFiducial(pos[0],pos[1],pos[2])
       newFidList.SetNthFiducialLabel(i,name)
 
@@ -2461,15 +2475,15 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
      # define output linear Rigid transform
      outputTransformRigid=slicer.vtkMRMLLinearTransformNode()
-     outputTransformRigid.SetName('transform-Rigid')
+     outputTransformRigid.SetName('transform-REREG-Rigid')
 
      # define output linear Affine transform
      outputTransformAffine=slicer.vtkMRMLLinearTransformNode()
-     outputTransformAffine.SetName('transform-Affine')
+     outputTransformAffine.SetName('transform-REREG-Affine')
 
      # define output BSpline transform
      outputTransformBSpline=slicer.vtkMRMLBSplineTransformNode()
-     outputTransformBSpline.SetName('transform-BSpline-rereg')
+     outputTransformBSpline.SetName('transform-REREG-BSpline')
 
      ##### OUTPUT VOLUMES
 
@@ -2526,7 +2540,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                      'outputTransform' : outputTransformAffine.GetID(),
                      'outputVolume' : outputVolumeAffine.GetID(),
                      'maskProcessingMode' : "ROI",
-                     'initializeTransformMode' : False,
+                     # 'initializeTransformMode' : True,
                      'useAffine' : True,
                      'initialTransform' : outputTransformRigid}
 
@@ -2596,17 +2610,33 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
      if targets:
 
+       # clone targets
+       originalTargets=targets
+
+       mlogic=slicer.modules.markups.logic()
+       mlogic.AddNewFiducialNode('targets-REREG-RIGID',slicer.mrmlScene)
+       mlogic.AddNewFiducialNode('targets-REREG-AFFINE',slicer.mrmlScene)
+       mlogic.AddNewFiducialNode('targets-REREG-BSPLINE',slicer.mrmlScene)
+
+       rigidTargets=slicer.mrmlScene.GetNodesByName('targets-REREG-RIGID').GetItemAsObject(0)
+       affineTargets=slicer.mrmlScene.GetNodesByName('targets-REREG-AFFINE').GetItemAsObject(0)
+       bSplineTargets=slicer.mrmlScene.GetNodesByName('targets-REREG-BSPLINE').GetItemAsObject(0)
+
+       self.cloneFiducials(originalTargets,rigidTargets)
+       self.cloneFiducials(originalTargets,affineTargets)
+       self.cloneFiducials(originalTargets,bSplineTargets)
+
        print ("Perform Target Transform")
 
        # get transforms
-       transformNodeRigid=slicer.mrmlScene.GetNodesByName('transform-Rigid').GetItemAsObject(0)
-       transformNodeAffine=slicer.mrmlScene.GetNodesByName('transform-Affine').GetItemAsObject(0)
-       transformNodeBSpline=slicer.mrmlScene.GetNodesByName('transform-BSpline').GetItemAsObject(0)
+       transformNodeRigid=slicer.mrmlScene.GetNodesByName('transform-REREG-Rigid').GetItemAsObject(0)
+       transformNodeAffine=slicer.mrmlScene.GetNodesByName('transform-REREG-Affine').GetItemAsObject(0)
+       transformNodeBSpline=slicer.mrmlScene.GetNodesByName('transform-REREG-BSpline').GetItemAsObject(0)
 
        # get fiducials
-       rigidTargets=slicer.mrmlScene.GetNodesByName('targets-RIGID').GetItemAsObject(0)
-       affineTargets=slicer.mrmlScene.GetNodesByName('targets-AFFINE').GetItemAsObject(0)
-       bSplineTargets=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
+       #rigidTargets=slicer.mrmlScene.GetNodesByName('targets-RIGID').GetItemAsObject(0)
+       #affineTargets=slicer.mrmlScene.GetNodesByName('targets-AFFINE').GetItemAsObject(0)
+       #bSplineTargets=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
 
        # apply transforms
        rigidTargets.SetAndObserveTransformNodeID(transformNodeRigid.GetID())
@@ -3089,6 +3119,9 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     outputLabelMap.SetName(name)
     slicer.mrmlScene.AddNode(outputLabelMap)
 
+    if outputLabelMap:
+      'outoutLabelMap is here!'
+
     # define params
     params = {'sampleDistance': 0.1, 'labelValue': 5, 'InputVolume' : inputVolume.GetID(), 'surface' : clippingModel.GetID(), 'OutputVolume' : outputLabelMap.GetID()}
 
@@ -3152,6 +3185,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     # run ModelToLabelMap-CLI Module
     cliNode=slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
     print ('resample labelmap through')
+    slicer.mrmlScene.AddNode(outputVolume)
 
 class RegistrationModuleTest(ScriptedLoadableModuleTest):
   """
