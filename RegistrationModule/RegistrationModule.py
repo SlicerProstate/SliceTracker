@@ -871,8 +871,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set variables needed by on xx clicked
     self.currentIntraopVolume=self.registrationResults[index]['fixedVolume']
     self.outputVolumeRigid=self.registrationResults[index]['outputVolumeRigid']
-    self.outputVolumeRigid=self.registrationResults[index]['outputVolumeAffine']
-    self.outputVolumeRigid=self.registrationResults[index]['outputVolumeBSpline']
+    self.outputVolumeAffine=self.registrationResults[index]['outputVolumeAffine']
+    self.outputVolumeBSpline=self.registrationResults[index]['outputVolumeBSpline']
     self.outputTargetsRigid=self.registrationResults[index]['outputTargetsRigid']
     self.outputTargetsAffine=self.registrationResults[index]['outputTargetsAffine']
     self.outputTargetsBSpline=self.registrationResults[index]['outputTargetsBSpline']
