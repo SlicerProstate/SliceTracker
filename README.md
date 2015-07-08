@@ -1,4 +1,4 @@
-# SliceTracker
+![Alt text](https://github.com/PeterBehringer/SliceTracker/blob/master/RegistrationModule/Resources/Icons/logo.png "Optional title")
 
 
 ### Intro
