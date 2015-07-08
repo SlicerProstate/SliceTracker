@@ -14,23 +14,30 @@ class DICOMDirectoryObserver(object):
     self.directory = directory
     self.host = host
     self.port = port
-    self.numberOfFiles = len(os.listdir(self.directory))
+    self.files = set()
 
   def watch(self, secondsToWait=1):
     while True:
-      numberOfFiles = len([item for item in os.listdir(self.directory)])
-
-      if self.numberOfFiles < numberOfFiles:
+      currentFiles = os.listdir(self.directory)
+      if len(self.files) < len(currentFiles):
         print "Number of files changed"
-        self.startStoreSCU()
-
-      self.numberOfFiles = numberOfFiles
+        for newFile in self.getNewFiles(currentFiles):
+          self.storeSCU(newFile)
       time.sleep(secondsToWait)
 
-  def startStoreSCU(self):
-    cmd=('sudo storescu ' + self.host + ' ' + self.port + ' ' + self.directory + ' --scan-directories')
+  def getNewFiles(self, files):
+    newFiles = []
+    for currentFile in files:
+      filePath = os.path.join(self.directory, currentFile)
+      if filePath not in self.files:
+        newFiles.append(filePath)
+    return newFiles
+
+  def storeSCU(self, fileName):
+    cmd = ('storescu ' + self.host + ' ' + self.port + ' ' + fileName)
     print cmd
     os.system(cmd)
+    self.files.add(fileName)
 
 def main(argv):
    watchDirectory = ''
