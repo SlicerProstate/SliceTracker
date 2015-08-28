@@ -1214,7 +1214,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     if os.path.exists(self.intraopDataDir):
       self.intraopDirButton.text = self.shortenDirText(self.intraopDataDir)
       self.settings.setValue('RegistrationModule/IntraopLocation', self.intraopDataDir)
-      self.loadIntraopDataButton.enabled = True
       self.logic.initializeListener(self.intraopDataDir)
 
   def onOutputDirSelected(self):
@@ -1408,6 +1407,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # show intraopSeriesTable
     self.intraopSeriesSelector.collapsed=False
+    self.loadIntraopDataButton.setEnabled(len(seriesList)>0)
 
   def updatePreopSegmentationTable(self,seriesList):
 
