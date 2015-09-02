@@ -6,6 +6,15 @@ import EditorLib
 import logging
 
 
+class DICOMTAGS:
+
+  PATIENT_NAME          = '0010,0010'
+  PATIENT_ID            = '0010,0020'
+  PATIENT_BIRTH_DATE    = '0010,0030'
+  SERIES_DESCRIPTION    = '0008,103E'
+  ACQUISITION_TIME      = '0008,0032'
+
+
 class RegistrationModule(ScriptedLoadableModule):
 
   def __init__(self, parent):
@@ -23,12 +32,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  PATIENT_NAME          = '0010,0010'
-  PATIENT_ID            = '0010,0020'
-  PATIENT_BIRTH_DATE    = '0010,0030'
-  SERIES_DESCRIPTION    = '0008,103E'
-  ACQUISITION_TIME      = '0008,0032'
-  
   STYLE_GRAY_BACKGROUND_WHITE_FONT  = 'background-color: rgb(130,130,130); ' \
                                       'color: rgb(255,255,255)'
   STYLE_WHITE_BACKGROUND            = 'background-color: rgb(255,255,255)'
@@ -38,6 +41,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def __init__(self, parent = None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
     self.dicomDatabase = slicer.dicomDatabase
+
+  def getSetting(self, settingName):
+    settings = qt.QSettings()
+    return settings.value(self.moduleName + '/' + settingName)
+
+  def setSetting(self, settingName, value):
+    settings = qt.QSettings()
+    settings.setValue(self.moduleName + '/' + settingName, value)
 
   def createPatientWatchBox(self):
     self.patientViewBox = qt.QGroupBox()
@@ -67,8 +78,27 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.studyDate = qt.QLabel('None')
     self.patientViewBoxLayout.addWidget(self.studyDate, 4, 2)
 
+  def createIcon(self, filename):
+    path = os.path.join(self.iconPath, filename)
+    pixmap = qt.QPixmap(path)
+    return qt.QIcon(pixmap)
+
+  def setupIcons(self):
+    self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
+    self.labelSegmentationIcon = self.createIcon('icon-labelSegmentation.png')
+    self.applySegmentationIcon = self.createIcon('icon-applySegmentation.png')
+    self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
+    self.quickSegmentationIcon = self.createIcon('icon-quickSegmentation.png')
+    self.folderIcon = self.createIcon('icon-folder.png')
+    self.refreshIcon = self.createIcon('icon-update.png')
+    self.dataSelectionIcon = self.createIcon('icon-dataselection_fit.png')
+    self.labelSelectionIcon = self.createIcon('icon-labelselection_fit.png')
+    self.registrationSectionIcon = self.createIcon('icon-registration_fit.png')
+    self.evaluationSectionIcon = self.createIcon('icon-evaluation_fit.png')
+    self.newImageDataIcon = self.createIcon('icon-newImageData.png')
+    self.littleDiscIcon = self.createIcon('icon-littleDisc.png')
+
   def createTabWidget(self):
-    # create TabWidget
     self.tabWidget = qt.QTabWidget()
     self.layout.addWidget(self.tabWidget)
     # get the TabBar
@@ -78,18 +108,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.labelSelectionGroupBox = qt.QGroupBox()
     self.registrationGroupBox = qt.QGroupBox()
     self.evaluationGroupBox = qt.QGroupBox()
-    # set up PixMaps
-    self.dataSelectionIconPixmap = qt.QPixmap(self.modulePath + 'Resources/Icons/icon-dataselection_fit.png')
-    self.labelSelectionIconPixmap = qt.QPixmap(self.modulePath + 'Resources/Icons/icon-labelselection_fit.png')
-    self.registrationSectionPixmap = qt.QPixmap(self.modulePath + 'Resources/Icons/icon-registration_fit.png')
-    self.evaluationSectionPixmap = qt.QPixmap(self.modulePath + 'Resources/Icons/icon-evaluation_fit.png')
-    self.newImageDataPixmap = qt.QPixmap(self.modulePath + 'Resources/Icons/icon-newImageData.png')
-    # set up Icons
-    self.dataSelectionIcon = qt.QIcon(self.dataSelectionIconPixmap)
-    self.labelSelectionIcon = qt.QIcon(self.labelSelectionIconPixmap)
-    self.registrationSectionIcon = qt.QIcon(self.registrationSectionPixmap)
-    self.evaluationSectionIcon = qt.QIcon(self.evaluationSectionPixmap)
-    self.newImageDataIcon = qt.QIcon(self.newImageDataPixmap)
     self.tabWidget.setIconSize(qt.QSize(110, 50))
     # create Layout for each groupBox
     self.dataSelectionGroupBoxLayout = qt.QFormLayout()
@@ -138,9 +156,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
 
-    # Parameters
-    self.settings = qt.QSettings()
-    self.modulePath = slicer.modules.registrationmodule.path.replace("RegistrationModule.py","")
+    self.modulePath = slicer.modules.registrationmodule.path.replace(self.moduleName+".py","")
     self.registrationResults = []
     self.intraopDataDir = ""
     self.preopDataDir = ""
@@ -148,7 +164,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.currentIntraopLabel = None
     self.preopVolume = None
     self.preopLabel = None
-    self.temp = None
     self.updatePatientSelectorFlag = True
     self.warningFlag = False
     self.patientNames = []
@@ -187,6 +202,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.currentFOVYellow = []
 
     self.createPatientWatchBox()
+    self.setupIcons()
     self.createTabWidget()
 
     #
@@ -211,11 +227,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     rowLayout.addWidget(self.patientSelector)
 
     # Update PatientSelector Button
-    refreshPixmap=qt.QPixmap(self.modulePath+ 'Resources/Icons/icon-update.png')
-    refreshIcon=qt.QIcon(refreshPixmap)
     self.updatePatientListButton = qt.QPushButton("Refresh Patient List")
     self.updatePatientListButton.setFixedHeight(25)
-    self.updatePatientListButton.setIcon(refreshIcon)
+    self.updatePatientListButton.setIcon(self.refreshIcon)
     rowLayout.addWidget(self.updatePatientListButton)
 
     # Info Box Data selection
@@ -230,13 +244,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     rowLayout.addWidget(self.helperLabel)
     self.dataSelectionGroupBoxLayout.addRow(firstRow)
 
-    # Folder Button
-    folderPixmap=qt.QPixmap(self.modulePath+ 'Resources/Icons/icon-folder.png')
-    folderIcon=qt.QIcon(folderPixmap)
-
     # Preop Directory Button
     self.preopDirButton = qt.QPushButton('choose directory')
-    self.preopDirButton.setIcon(folderIcon)
+    self.preopDirButton.setIcon(self.folderIcon)
     self.dataSelectionGroupBoxLayout.addRow("Select preop directory:", self.preopDirButton)
 
     # Series Selector
@@ -282,7 +292,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Intraop Directory Button
     self.intraopDirButton = qt.QPushButton('choose directory')
-    self.intraopDirButton.setIcon(folderIcon)
+    self.intraopDirButton.setIcon(self.folderIcon)
     self.intraopDirButton.setEnabled(0)
     self.dataSelectionGroupBoxLayout.addRow("Select intraop directory:", self.intraopDirButton)
 
@@ -372,10 +382,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set info box
 
     self.helperLabel=qt.QLabel()
-    helperPixmap = qt.QPixmap('/Users/peterbehringer/MyDevelopment/Icons/icon-infoBox.png')
+    helperPixmap = qt.QPixmap(self.modulePath + 'Resources/Icons/icon-infoBox.png')
     qSize=qt.QSize(20,20)
-    helperPixmap=helperPixmap.scaled(qSize)
-    self.helperLabel.setPixmap(helperPixmap)
+    self.helperPixmap = helperPixmap.scaled(qSize)
+    self.helperLabel.setPixmap(self.helperPixmap)
     self.helperLabel.setToolTip('This is the information you needed, right?')
 
     rowLayout.addWidget(self.helperLabel)
@@ -386,30 +396,24 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     size=qt.QSize(40,40)
 
     # Create Quick Segmentation Button
-    pixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-quickSegmentation.png')
-    icon=qt.QIcon(pixmap)
     self.startQuickSegmentationButton=qt.QPushButton('Quick Mode')
-    self.startQuickSegmentationButton.setIcon(icon)
+    self.startQuickSegmentationButton.setIcon(self.quickSegmentationIcon)
     self.startQuickSegmentationButton.setIconSize(size)
     self.startQuickSegmentationButton.setFixedHeight(50)
     # self.startQuickSegmentationButton.setFixedWidth(120)
     self.startQuickSegmentationButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
 
     # Create Label Segmentation Button
-    pixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-labelSegmentation.png')
-    icon=qt.QIcon(pixmap)
     self.startLabelSegmentationButton=qt.QPushButton('Label Mode')
-    self.startLabelSegmentationButton.setIcon(icon)
+    self.startLabelSegmentationButton.setIcon(self.labelSegmentationIcon)
     self.startLabelSegmentationButton.setIconSize(size)
     self.startLabelSegmentationButton.setFixedHeight(50)
     # self.startLabelSegmentationButton.setFixedWidth(120)
     self.startLabelSegmentationButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
 
     # Create Apply Segmentation Button
-    pixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-applySegmentation.png')
-    icon=qt.QIcon(pixmap)
     self.applySegmentationButton=qt.QPushButton()
-    self.applySegmentationButton.setIcon(icon)
+    self.applySegmentationButton.setIcon(self.applySegmentationIcon)
     self.applySegmentationButton.setIconSize(size)
     self.applySegmentationButton.setFixedHeight(50)
     # self.applySegmentationButton.setFixedWidth(70)
@@ -522,10 +526,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.registrationGroupBoxLayout.addRow("Targets: ", self.fiducialSelector)
 
     # Apply Registration Button
-    greenCheckPixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-greenCheck.png')
-    greenCheckIcon=qt.QIcon(greenCheckPixmap)
     self.applyBSplineRegistrationButton = qt.QPushButton("Apply Registration")
-    self.applyBSplineRegistrationButton.setIcon(greenCheckIcon)
+    self.applyBSplineRegistrationButton.setIcon(self.greenCheckIcon)
     self.applyBSplineRegistrationButton.toolTip = "Run the algorithm."
     self.applyBSplineRegistrationButton.enabled = True
     self.applyBSplineRegistrationButton.setFixedHeight(45)
@@ -640,16 +642,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.evaluationGroupBoxLayout.addWidget(self.groupBoxOutputData)
 
     # Output Directory Button
-    self.outputDirButton = qt.QPushButton(self.shortenDirText(str(self.settings.value('RegistrationModule/OutputLocation'))))
-    self.outputDirButton.setIcon(folderIcon)
+    self.outputDirButton = qt.QPushButton(self.shortenDirText(str(self.getSetting('OutputLocation'))))
+    self.outputDirButton.setIcon(self.folderIcon)
     self.groupBoxOutputDataLayout.addRow("Select costum output directory:", self.outputDirButton)
 
     # Save Data Button
-    littleDiscPixmap=qt.QPixmap(self.modulePath +  'Resources/Icons/icon-littleDisc.png')
-    littleDiscIcon=qt.QIcon(littleDiscPixmap)
     self.saveDataButton=qt.QPushButton('Save Data')
     self.saveDataButton.setMaximumWidth(150)
-    self.saveDataButton.setIcon(littleDiscIcon)
+    self.saveDataButton.setIcon(self.littleDiscIcon)
     self.groupBoxOutputDataLayout.addWidget(self.saveDataButton)
 
     self.setupConnections()
@@ -739,7 +739,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.forwardButton.setEnabled(0)
 
   def startStoreSCP(self):
-
     # command : $ sudo storescp -v -p 104
     pathToExe=(slicer.app.slicerHome+'/bin/storescp')
     port=104
@@ -1195,7 +1194,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory',
                                                             self.modulePath + '/Resources/Testing/preopDir')
     if os.path.exists(self.preopDataDir):
-      self.settings.setValue('RegistrationModule/PreopLocation', self.preopDataDir)
+      self.setSetting('PreopLocation', self.preopDataDir)
       self.preopDirButton.text = self.shortenDirText(self.preopDataDir)
       self.selectSegmentationsButton.setEnabled(True)
       self.loadPreopData()
@@ -1213,7 +1212,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
                                                               self.modulePath + '/Resources/Testing/intraopDir')
     if os.path.exists(self.intraopDataDir):
       self.intraopDirButton.text = self.shortenDirText(self.intraopDataDir)
-      self.settings.setValue('RegistrationModule/IntraopLocation', self.intraopDataDir)
+      self.setSetting('IntraopLocation', self.intraopDataDir)
       self.logic.initializeListener(self.intraopDataDir)
 
   def onOutputDirSelected(self):
@@ -1221,7 +1220,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
                                                          self.modulePath + '/Resources/Testing/preopDir')
     if os.path.exists(self.outputDir):
       self.outputDirButton.text = self.shortenDirText(self.outputDir)
-      self.settings.setValue('RegistrationModule/OutputLocation', self.outputDir)
+      self.setSetting('OutputLocation', self.outputDir)
       self.saveRegistrationOutput()
 
   def saveRegistrationOutput(self):
@@ -1298,12 +1297,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
           for series in db.seriesForStudy(study):
             for currentFile in db.filesForSeries(series):
                try:
-                 if db.fileValue(currentFile,self.PATIENT_NAME) not in self.patientNames:
-                   self.patientNames.append(db.fileValue(currentFile,self.PATIENT_NAME))
-                 if db.fileValue(currentFile,self.PATIENT_ID) not in self.patientIDs:
-                   self.patientIDs.append(db.fileValue(currentFile,self.PATIENT_ID))
-                   self.selectablePatientItems.append(db.fileValue(currentFile,self.PATIENT_ID)+' '+
-                                                      db.fileValue(currentFile,self.PATIENT_NAME))
+                 if db.fileValue(currentFile,DICOMTAGS.PATIENT_NAME) not in self.patientNames:
+                   self.patientNames.append(db.fileValue(currentFile,DICOMTAGS.PATIENT_NAME))
+                 if db.fileValue(currentFile,DICOMTAGS.PATIENT_ID) not in self.patientIDs:
+                   self.patientIDs.append(db.fileValue(currentFile,DICOMTAGS.PATIENT_ID))
+                   self.selectablePatientItems.append(db.fileValue(currentFile,DICOMTAGS.PATIENT_ID)+' '+
+                                                      db.fileValue(currentFile,DICOMTAGS.PATIENT_NAME))
                  break
                except:
                  pass
@@ -1339,10 +1338,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
           for series in db.seriesForStudy(study):
             for currentFile in db.filesForSeries(series):
                try:
-                 if db.fileValue(currentFile,self.PATIENT_ID) == self.currentID:
-                   currentPatientNameDICOM= db.fileValue(currentFile,self.PATIENT_NAME)
+                 if db.fileValue(currentFile,DICOMTAGS.PATIENT_ID) == self.currentID:
+                   currentPatientNameDICOM= db.fileValue(currentFile,DICOMTAGS.PATIENT_NAME)
                    try:
-                     currentBirthDateDICOM = db.fileValue(currentFile,self.PATIENT_BIRTH_DATE)
+                     currentBirthDateDICOM = db.fileValue(currentFile,DICOMTAGS.PATIENT_BIRTH_DATE)
                    except:
                      currentBirthDateDICOM = None
                except:
@@ -1659,7 +1658,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def loadT2Label(self):
     preopLabelVolumeNode = None
-    if slicer.util.loadLabelVolume(self.settings.value('RegistrationModule/preopLocation') + '/t2-label.nrrd'):
+    if slicer.util.loadLabelVolume(self.getSetting('preopLocation') + '/t2-label.nrrd'):
       preopLabelVolumeNode = slicer.mrmlScene.GetNodesByName('t2-label').GetItemAsObject(0)
       self.preopLabel = preopLabelVolumeNode
       displayNode = preopLabelVolumeNode.GetDisplayNode()
@@ -1671,18 +1670,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     return preopLabelVolumeNode
 
   def loadPreopVolume(self):
-    if slicer.util.loadVolume(self.settings.value('RegistrationModule/preopLocation') + '/t2-N4.nrrd'):
+    if slicer.util.loadVolume(self.setSetting('preopLocation') + '/t2-N4.nrrd'):
       self.preopVolume = slicer.mrmlScene.GetNodesByName('t2-N4').GetItemAsObject(0)
       self.preopVolume.SetName('volume-PREOP')
 
   def loadPreopImageVolume(self):
-    if slicer.util.loadVolume(self.settings.value('RegistrationModule/preopLocation') + '/t2-N4.nrrd'):
+    if slicer.util.loadVolume(self.setSetting('preopLocation') + '/t2-N4.nrrd'):
       preopImageVolumeNode = slicer.mrmlScene.GetNodesByName('t2-N4_1').GetItemAsObject(0)
       self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
 
   def loadPreopTargets(self):
     # Load preop Targets that remain reserved to be shown after registration as preop Targets
-    if slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation') + '/Targets.fcsv'):
+    if slicer.util.loadMarkupsFiducialList(self.setSetting('preopLocation') + '/Targets.fcsv'):
       self.targetsPreop = slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
       self.targetsPreop.SetName('targets-PREOP')
 
@@ -1699,17 +1698,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     """
     # load targets for rigid transformation
-    slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
+    slicer.util.loadMarkupsFiducialList(self.setSetting('preopLocation')+'/Targets.fcsv')
     self.targetsRigid=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
     self.targetsRigid.SetName('targets-RIGID')
 
     # load targets for affine transformation
-    slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
+    slicer.util.loadMarkupsFiducialList(self.setSetting('preopLocation')+'/Targets.fcsv')
     self.targetsAffine=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
     self.targetsAffine.SetName('targets-AFFINE')
 
     # load targets for bspline transformation
-    slicer.util.loadMarkupsFiducialList(self.settings.value('RegistrationModule/preopLocation')+'/Targets.fcsv')
+    slicer.util.loadMarkupsFiducialList(self.setSetting('preopLocation')+'/Targets.fcsv')
     self.targetsBSpline=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
     self.targetsBSpline.SetName('targets-BSPLINE')
     """
@@ -1747,8 +1746,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def patientCheckAfterImport(self,directory,fileList):
     for currentFile in fileList:
-      if currentFile != ".DS_Store" and self.dicomDatabase.fileValue(directory+'/'+currentFile,self.PATIENT_ID) != self.currentID:
-        incomePatient = self.dicomDatabase.fileValue(str(directory+'/'+fileList[2]),self.PATIENT_ID)
+      if currentFile != ".DS_Store" and self.dicomDatabase.fileValue(directory+'/'+currentFile,DICOMTAGS.PATIENT_ID) != self.currentID:
+        incomePatient = self.dicomDatabase.fileValue(str(directory+'/'+fileList[2]),DICOMTAGS.PATIENT_ID)
         return self.confirmDialog(message='WARNING: You selected Patient ID ' + self.currentID +
                                  ', but Patient ID '+incomePatient+' just arrived in the income folder.',
                                   title="Patients Not Matching")
@@ -2536,26 +2535,17 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       print ('changed name from '+oldname+' to '+str(oldname)+'-REG')
 
   def initializeListener(self,directory):
-
-    numberOfFiles = len([item for item in os.listdir(directory)])
-    self.temp=numberOfFiles
+    self.lastFileCount=0
     self.directory=directory
-    self.setlastNumberOfFiles(numberOfFiles)
     self.createCurrentFileList(directory)
     self.startTimer()
 
   def startTimer(self):
-    numberOfFiles = len([item for item in os.listdir(self.directory)])
-
-    if self.getlastNumberOfFiles() < numberOfFiles:
+    currentFileCount = len([item for item in os.listdir(self.directory)])
+    if self.lastFileCount < currentFileCount:
      self.waitingForSeriesToBeCompleted()
-
-     self.setlastNumberOfFiles(numberOfFiles)
-     qt.QTimer.singleShot(500,self.startTimer)
-
-    else:
-     self.setlastNumberOfFiles(numberOfFiles)
-     qt.QTimer.singleShot(500,self.startTimer)
+    self.lastFileCount = currentFileCount
+    qt.QTimer.singleShot(500, self.startTimer)
 
   def createCurrentFileList(self,directory):
 
@@ -2568,12 +2558,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       self.importDICOMSeries()
     else:
       self.thereAreFilesInTheFolderFlag = 0
-
-  def setlastNumberOfFiles(self,number):
-    self.temp = number
-
-  def getlastNumberOfFiles(self):
-    return self.temp
 
   def createLoadableFileListFromSelection(self,selectedSeriesList,directory):
 
@@ -2597,7 +2581,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
       # write all selected files in selectedFileList
       for currentFile in dcmFileList:
-       if db.fileValue(currentFile,self.SERIES_DESCRIPTION) in selectedSeriesList:
+       if db.fileValue(currentFile,DICOMTAGS.SERIES_DESCRIPTION) in selectedSeriesList:
          self.selectedFileList.append(currentFile)
 
       # create a list with lists of files of each series in them
@@ -2607,7 +2591,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       for series in selectedSeriesList:
         fileListOfSeries =[]
         for currentFile in self.selectedFileList:
-          if db.fileValue(currentFile,self.SERIES_DESCRIPTION) == series:
+          if db.fileValue(currentFile,DICOMTAGS.SERIES_DESCRIPTION) == series:
             fileListOfSeries.append(currentFile)
         self.loadableList.append(fileListOfSeries)
 
@@ -2671,13 +2655,13 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
        # print ('file '+str(file)+' was added by Indexer')
 
        # add Series to seriesList
-       if db.fileValue(str(self.directory+'/'+currentFile),self.SERIES_DESCRIPTION) not in self.seriesList:
+       if db.fileValue(str(self.directory+'/'+currentFile),DICOMTAGS.SERIES_DESCRIPTION) not in self.seriesList:
          importfile=str(self.directory+'/'+currentFile)
-         self.seriesList.append(db.fileValue(importfile,self.SERIES_DESCRIPTION))
+         self.seriesList.append(db.fileValue(importfile,DICOMTAGS.SERIES_DESCRIPTION))
 
          # get acquisition time and save in dictionary
-         acqTime=db.fileValue(importfile,self.ACQUISITION_TIME)[0:6]
-         self.acqusitionTimes[str(db.fileValue(importfile,self.SERIES_DESCRIPTION))]= str(acqTime)
+         acqTime=db.fileValue(importfile,DICOMTAGS.ACQUISITION_TIME)[0:6]
+         self.acqusitionTimes[str(db.fileValue(importfile,DICOMTAGS.SERIES_DESCRIPTION))]= str(acqTime)
 
 
     indexer.addDirectory(db,str(self.directory))
