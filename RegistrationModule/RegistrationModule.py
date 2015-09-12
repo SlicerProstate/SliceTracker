@@ -1670,18 +1670,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     return preopLabelVolumeNode
 
   def loadPreopVolume(self):
-    if slicer.util.loadVolume(self.setSetting('preopLocation') + '/t2-N4.nrrd'):
+    if slicer.util.loadVolume(self.getSetting('preopLocation') + '/t2-N4.nrrd'):
       self.preopVolume = slicer.mrmlScene.GetNodesByName('t2-N4').GetItemAsObject(0)
       self.preopVolume.SetName('volume-PREOP')
 
   def loadPreopImageVolume(self):
-    if slicer.util.loadVolume(self.setSetting('preopLocation') + '/t2-N4.nrrd'):
+    if slicer.util.loadVolume(self.getSetting('preopLocation') + '/t2-N4.nrrd'):
       preopImageVolumeNode = slicer.mrmlScene.GetNodesByName('t2-N4_1').GetItemAsObject(0)
       self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
 
   def loadPreopTargets(self):
     # Load preop Targets that remain reserved to be shown after registration as preop Targets
-    if slicer.util.loadMarkupsFiducialList(self.setSetting('preopLocation') + '/Targets.fcsv'):
+    if slicer.util.loadMarkupsFiducialList(self.getSetting('preopLocation') + '/Targets.fcsv'):
       self.targetsPreop = slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
       self.targetsPreop.SetName('targets-PREOP')
 
@@ -2954,7 +2954,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     # initialize Label Map
     outputLabelMap=slicer.vtkMRMLScalarVolumeNode()
-    outputLabelMap.SetLabelMap(1)
     name=(slicer.modules.RegistrationModuleWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
     outputLabelMap.SetName(name)
     slicer.mrmlScene.AddNode(outputLabelMap)
