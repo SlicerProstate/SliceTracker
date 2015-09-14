@@ -1,4 +1,5 @@
 import os
+import math
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from Editor import EditorWidget
@@ -38,13 +39,19 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   STYLE_LIGHT_GRAY_BACKGROUND       = 'background-color: rgb(230,230,230)'
   STYLE_ORANGE_BACKGROUND           = 'background-color: rgb(255,102,0)'
 
+  @staticmethod
+  def confirmDialog(message, title='PCampReview'):
+    result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
+                                     qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
+    return result == qt.QMessageBox.Ok
+
   def __init__(self, parent = None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
     self.dicomDatabase = slicer.dicomDatabase
 
   def getSetting(self, settingName):
     settings = qt.QSettings()
-    return settings.value(self.moduleName + '/' + settingName)
+    return str(settings.value(self.moduleName + '/' + settingName))
 
   def setSetting(self, settingName, value):
     settings = qt.QSettings()
@@ -84,7 +91,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     return qt.QIcon(pixmap)
 
   def setupIcons(self):
-    self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
     self.labelSegmentationIcon = self.createIcon('icon-labelSegmentation.png')
     self.applySegmentationIcon = self.createIcon('icon-applySegmentation.png')
     self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
@@ -149,14 +155,15 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.simulateDataIncomeButton3.hide()
     self.simulateDataIncomeButton4.hide()
 
-    self.simulateDataIncomeButton2.connect('clicked(bool)',self.onsimulateDataIncomeButton2)
-    self.simulateDataIncomeButton3.connect('clicked(bool)',self.onsimulateDataIncomeButton3)
-    self.simulateDataIncomeButton4.connect('clicked(bool)',self.onsimulateDataIncomeButton4)
+    self.simulateDataIncomeButton2.connect('clicked(bool)',self.onSimulateDataIncomeButton2)
+    self.simulateDataIncomeButton3.connect('clicked(bool)',self.onSimulateDataIncomeButton3)
+    self.simulateDataIncomeButton4.connect('clicked(bool)',self.onSimulateDataIncomeButton4)
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
 
     self.modulePath = slicer.modules.registrationmodule.path.replace(self.moduleName+".py","")
+    self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
     self.registrationResults = []
     self.intraopDataDir = ""
     self.preopDataDir = ""
@@ -174,8 +181,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.seriesItems = []
     self.selectedSeries=[]
     self.rockCount = 0
-    self.rocking = False
-    self.rockTimer = None
+    self.rockTimer = qt.QTimer()
     self.flickerTimer = None
     self.revealCursor = None
     self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
@@ -191,7 +197,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.redWidget = self.layoutManager.sliceWidget('Red')
     self.yellowWidget = self.layoutManager.sliceWidget('Yellow')
     self.compositeNodeRed = self.redWidget.mrmlSliceCompositeNode()
-    self.compositNodeYellow = self.yellowWidget.mrmlSliceCompositeNode()
+    self.compositeNodeYellow = self.yellowWidget.mrmlSliceCompositeNode()
     self.redSliceView=self.redWidget.sliceView()
     self.yellowSliceView=self.yellowWidget.sliceView()
     self.redSliceLogic=self.redWidget.sliceLogic()
@@ -234,7 +240,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Info Box Data selection
     self.helperLabel=qt.QLabel()
-    helperPixmap = qt.QPixmap(self.modulePath+ 'Resources/Icons/icon-infoBox.png')
+    helperPixmap = qt.QPixmap(os.path.join(self.iconPath, 'icon-infoBox.png'))
     self.helperLabel.setPixmap(helperPixmap)
     self.helperLabel.setToolTip('Start by selecting the patient. Then choose your preop directory, containing the '
                                 'T2-image volume and a segmentation. Finally select your intraop directory where '
@@ -382,10 +388,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set info box
 
     self.helperLabel=qt.QLabel()
-    helperPixmap = qt.QPixmap(self.modulePath + 'Resources/Icons/icon-infoBox.png')
-    qSize=qt.QSize(20,20)
-    self.helperPixmap = helperPixmap.scaled(qSize)
-    self.helperLabel.setPixmap(self.helperPixmap)
+    helperPixmap = qt.QPixmap(os.path.join(self.iconPath, 'icon-infoBox.png'))
+    helperPixmap = helperPixmap.scaled(qt.QSize(20,20))
+    self.helperLabel.setPixmap(helperPixmap)
     self.helperLabel.setToolTip('This is the information you needed, right?')
 
     rowLayout.addWidget(self.helperLabel)
@@ -644,7 +649,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # Output Directory Button
     self.outputDirButton = qt.QPushButton(self.shortenDirText(str(self.getSetting('OutputLocation'))))
     self.outputDirButton.setIcon(self.folderIcon)
-    self.groupBoxOutputDataLayout.addRow("Select costum output directory:", self.outputDirButton)
+    self.groupBoxOutputDataLayout.addRow("Select custom output directory:", self.outputDirButton)
 
     # Save Data Button
     self.saveDataButton=qt.QPushButton('Save Data')
@@ -712,6 +717,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopLabelSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
     self.fiducialSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
     self.dicomDatabase.patientAdded.connect(self.updatePatientSelector)
+    self.rockTimer.connect('timeout()', self.onRockToggled)
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -748,10 +754,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def onloadIntraopDataButtonClicked(self):
 
     selectedSeriesList=self.getSelectedSeriesFromSelector()
-    directory = self.intraopDataDir
 
-    if self.intraopDataDir:
-      self.currentIntraopVolume=self.logic.loadSeriesIntoSlicer(selectedSeriesList,directory)
+    if os.path.exists(self.intraopDataDir):
+      self.currentIntraopVolume=self.logic.loadSeriesIntoSlicer(selectedSeriesList, self.intraopDataDir)
 
       # set last inputVolume Node as Reference Volume in Label Selection
       self.referenceVolumeSelector.setCurrentNode(self.currentIntraopVolume)
@@ -780,7 +785,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # distinguish between rigid and BSpline result
     currentItem = self.resultSelector.currentText
 
-    # get index
     for index in range(len(self.registrationResults)):
       self.markupsLogic.SetAllMarkupsVisibility(self.registrationResults[index]['outputTargetsRigid'],False)
       self.markupsLogic.SetAllMarkupsVisibility(self.registrationResults[index]['outputTargetsAffine'],False)
@@ -857,7 +861,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       lastRigidTfm.Identity()
       self.logic.BRAINSResample(inputVolume=originalFixedLabel,referenceVolume=self.currentIntraopVolume,
                                 outputVolume=fixedLabel,warpTransform=lastRigidTfm)
-
     else:
       lastRigidTfm = self.registrationResults[index]['outputTransformRigid']
       self.logic.BRAINSResample(inputVolume=originalFixedLabel,referenceVolume=self.currentIntraopVolume,
@@ -904,10 +907,9 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def loadDataPCAMPStyle(self):
     logging.info("loadDataPCAMPStyle")
-    testpath = '/Users/peterbehringer/MyImageData/preprocessed_data/'
+    inputDir = '/Users/peterbehringer/MyImageData/preprocessed_data/'
     self.selectedStudyName = 'QIN-PROSTATE-01-0025_19711123_1504'
 
-    inputDir = testpath
     self.resourcesDir = os.path.join(inputDir,self.selectedStudyName,'RESOURCES')
 
     # expect one directory for each processed series, with the name
@@ -1033,17 +1035,17 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     for index in range(number_of_targets):
       distances=self.logic.measureDistance(self.target_positions[index],self.needleTip_position)
       text_for_2D_column=('x = '+str(round(distances[0],2))+' y = '+str(round(distances[1],2)))
-      text_for_3D_colomn=str(round(distances[3],2))
+      text_for_3D_column=str(round(distances[3],2))
 
       item_2D=qt.QTableWidgetItem(text_for_2D_column)
       self.targetTable.setItem(index,1,item_2D)
       self.items_2D.append(item_2D)
       print str(text_for_2D_column)
 
-      item_3D=qt.QTableWidgetItem(text_for_3D_colomn)
+      item_3D=qt.QTableWidgetItem(text_for_3D_column)
       self.targetTable.setItem(index,2,item_3D)
       self.items_3D.append(item_3D)
-      print str(text_for_3D_colomn)
+      print str(text_for_3D_column)
 
     # reset needleTipButton
     self.needleTipButton.enabled=True
@@ -1078,7 +1080,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.text_preop.SetDisplayPosition(int(width*0.5-90),50)
     self.red_renderer.AddActor(self.text_preop)
     self.redSliceView.update()
-
 
     renderWindow = self.yellowSliceView.renderWindow()
     self.yellow_renderer = renderWindow.GetRenderers().GetItemAsObject(0)
@@ -1155,22 +1156,14 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       import CompareVolumes
       self.revealCursor = CompareVolumes.LayerReveal()
 
-  def rock(self):
-    if not self.rocking:
-      self.rockTimer = None
-      self.fadeSlider.value = 0.0
-    if self.rocking:
-      if not self.rockTimer:
-        self.rockTimer = qt.QTimer()
-        self.rockTimer.start(50)
-        self.rockTimer.connect('timeout()', self.rock)
-      import math
+  def onRockToggled(self):
+    if self.rockCheckBox.checked:
+      self.rockTimer.start(50)
       self.fadeSlider.value = 0.5 + math.sin(self.rockCount / 10. ) / 2.
       self.rockCount += 1
-
-  def onRockToggled(self,checked):
-    self.rocking = checked
-    self.rock()
+    else:
+      self.rockTimer.stop()
+      self.fadeSlider.value = 0.0
 
   def flicker(self):
     if not self.flickering:
@@ -1192,7 +1185,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onPreopDirSelected(self):
     self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory',
-                                                            self.modulePath + '/Resources/Testing/preopDir')
+                                                            self.getSetting('PreopLocation'))
     if os.path.exists(self.preopDataDir):
       self.setSetting('PreopLocation', self.preopDataDir)
       self.preopDirButton.text = self.shortenDirText(self.preopDataDir)
@@ -1208,16 +1201,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       pass
 
   def onIntraopDirSelected(self):
-    self.intraopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Intraop data directory',
-                                                              self.modulePath + '/Resources/Testing/intraopDir')
+    self.intraopDataDir = qt.QFileDialog.getExistingDirectory(self.parent, 'Intraop data directory',
+                                                              self.getSetting('IntraopLocation'))
     if os.path.exists(self.intraopDataDir):
       self.intraopDirButton.text = self.shortenDirText(self.intraopDataDir)
       self.setSetting('IntraopLocation', self.intraopDataDir)
       self.logic.initializeListener(self.intraopDataDir)
 
   def onOutputDirSelected(self):
-    self.outputDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory',
-                                                         self.modulePath + '/Resources/Testing/preopDir')
+    self.outputDir = qt.QFileDialog.getExistingDirectory(self.parent, 'Preop data directory',
+                                                         self.getSetting('OutputLocation'))
     if os.path.exists(self.outputDir):
       self.outputDirButton.text = self.shortenDirText(self.outputDir)
       self.setSetting('OutputLocation', self.outputDir)
@@ -1438,11 +1431,11 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # un-link images
     self.compositeNodeRed.SetLinkedControl(0)
-    self.compositNodeYellow.SetLinkedControl(0)
+    self.compositeNodeYellow.SetLinkedControl(0)
 
     volumeNode=self.registrationResults[self.currentRegistrationResult]['movingVolume']
     # Get the Volume Node
-    #self.compositNodeRed.SetBackgroundVolumeID(slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0).GetID())
+    #self.compositeNodeRed.SetBackgroundVolumeID(slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0).GetID())
     self.compositeNodeRed.SetBackgroundVolumeID(volumeNode.GetID())
 
     fiducialNode=self.registrationResults[self.currentRegistrationResult]['targets']
@@ -1483,10 +1476,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # link images
     self.compositeNodeRed.SetLinkedControl(1)
-    self.compositNodeYellow.SetLinkedControl(1)
+    self.compositeNodeYellow.SetLinkedControl(1)
 
     # set the slice views
-    self.compositNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
+    self.compositeNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
     self.compositeNodeRed.SetForegroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
     self.compositeNodeRed.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['outputVolumeRigid'].GetID())
 
@@ -1513,13 +1506,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # link images
     self.compositeNodeRed.SetLinkedControl(1)
-    self.compositNodeYellow.SetLinkedControl(1)
+    self.compositeNodeYellow.SetLinkedControl(1)
 
     # set the slice views
-    self.compositNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
+    self.compositeNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
     self.compositeNodeRed.SetForegroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
     self.compositeNodeRed.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['outputVolumeAffine'].GetID())
-
 
     if self.comingFromPreopTag:
       self.resetSliceViews()
@@ -1544,10 +1536,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # link images
     self.compositeNodeRed.SetLinkedControl(1)
-    self.compositNodeYellow.SetLinkedControl(1)
+    self.compositeNodeYellow.SetLinkedControl(1)
 
     # set the slice views
-    self.compositNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
+    self.compositeNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
     self.compositeNodeRed.SetForegroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
     self.compositeNodeRed.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['outputVolumeBSpline'].GetID())
 
@@ -1604,15 +1596,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def getCurrentSliceViewPositions(self):
     return [self.currentSliceOffsetRed,self.currentSliceOffsetYellow,self.currentFOVRed,self.currentFOVYellow]
 
-  def onTargetCheckBox(self):
-
-    fiducialNode=slicer.mrmlScene.GetNodesByName('targets-REG').GetItemAsObject(0)
-    if self.targetCheckBox.isChecked():
-      self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,1)
-    if not self.targetCheckBox.isChecked():
-      self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,0)
-
-  def onsimulateDataIncomeButton2(self):
+  def onSimulateDataIncomeButton2(self):
+    # TODO: when module ready, remove this method
 
     # copy DICOM Files into intraop folder
     imagePath= (self.modulePath +'Resources/Testing/testData_1/')
@@ -1621,7 +1606,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print cmd
     os.system(cmd)
 
-  def onsimulateDataIncomeButton3(self):
+  def onSimulateDataIncomeButton3(self):
+    # TODO: when module ready, remove this method
 
     # copy DICOM Files into intraop folder
     imagePath= (self.modulePath +'Resources/Testing/testData_2/')
@@ -1630,16 +1616,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print cmd
     os.system(cmd)
 
-  def onsimulateDataIncomeButton4(self):
-
-    # copy DICOM Files into intraop folder
-    imagePath= (self.modulePath +'Resources/Testing/testData_3/')
-    intraopPath=self.intraopDataDir
-    cmd = ('cp -a '+imagePath+'. '+intraopPath)
-    print cmd
-    os.system(cmd)
-
-  def onsimulateDataIncomeButton5(self):
+  def onSimulateDataIncomeButton4(self):
+    # TODO: when module ready, remove this method
 
     # copy DICOM Files into intraop folder
     imagePath= (self.modulePath +'Resources/Testing/testData_4/')
@@ -1658,7 +1636,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def loadT2Label(self):
     preopLabelVolumeNode = None
-    if slicer.util.loadLabelVolume(self.getSetting('preopLocation') + '/t2-label.nrrd'):
+    if slicer.util.loadLabelVolume(os.path.join(self.getSetting('preopLocation'), 't2-label.nrrd')):
       preopLabelVolumeNode = slicer.mrmlScene.GetNodesByName('t2-label').GetItemAsObject(0)
       self.preopLabel = preopLabelVolumeNode
       displayNode = preopLabelVolumeNode.GetDisplayNode()
@@ -1670,7 +1648,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     return preopLabelVolumeNode
 
   def loadPreopVolume(self):
-    if slicer.util.loadVolume(self.getSetting('preopLocation') + '/t2-N4.nrrd'):
+    if slicer.util.loadVolume(os.path.join(self.getSetting('preopLocation'), 't2-N4.nrrd')):
       self.preopVolume = slicer.mrmlScene.GetNodesByName('t2-N4').GetItemAsObject(0)
       self.preopVolume.SetName('volume-PREOP')
 
@@ -1752,12 +1730,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
                                  ', but Patient ID '+incomePatient+' just arrived in the income folder.',
                                   title="Patients Not Matching")
 
-  @staticmethod
-  def confirmDialog(message, title='PCampReview'):
-    result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
-                                     qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
-    return result == qt.QMessageBox.Ok
-
   def getSelectedSeriesFromSelector(self):
     if self.seriesItems:
       checkedItems = [x for x in self.seriesItems if x.checkState()]
@@ -1778,7 +1750,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositeNodeRed.SetLabelVolumeID(None)
 
     # hide existing labels
-    # self.compositNodeRed.SetLabelOpacity(0)
+    # self.compositeNodeRed.SetLabelOpacity(0)
 
     self.quickSegmentationFlag=1
 
@@ -1888,8 +1860,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.compositeNodeRed.SetLabelVolumeID(self.preopLabel.GetID())
 
     # set up intraop image and label
-    self.compositNodeYellow.SetReferenceBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
-    self.compositNodeYellow.SetLabelVolumeID(self.currentIntraopLabel.GetID())
+    self.compositeNodeYellow.SetReferenceBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
+    self.compositeNodeYellow.SetLabelVolumeID(self.currentIntraopLabel.GetID())
 
     # rotate volume to plane
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(self.preopVolume)
@@ -2022,7 +1994,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.outputTargetsAffine=registrationOutput[6][1]
     self.outputTargetsBSpline=registrationOutput[6][2]
 
-
     slicer.mrmlScene.AddNode(self.outputTargetsRigid)
     slicer.mrmlScene.AddNode(self.outputTargetsAffine)
     slicer.mrmlScene.AddNode(self.outputTargetsBSpline)
@@ -2049,11 +2020,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     print 'index = '+str(index)
     self.compositeNodeRed.SetForegroundVolumeID(self.currentIntraopVolume.GetID())
     self.compositeNodeRed.SetBackgroundVolumeID(self.registrationResults[index]['outputVolumeBSpline'].GetID())
-    self.compositNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
+    self.compositeNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
 
     self.redSliceLogic.FitSliceToAll()
     self.yellowSliceLogic.FitSliceToAll()
-
 
     # remove view node ID's from Red Slice view
     dispNodeRigid=self.outputTargetsRigid.GetDisplayNode()
@@ -2071,7 +2041,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     dispNodeAffine.AddViewNodeID(self.yellowSliceNode.GetID())
     dispNodeBSpline.AddViewNodeID(self.yellowSliceNode.GetID())
 
-
     # set fiducial place mode back to regular view mode
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
     interactionNode.SwitchToViewTransformMode()
@@ -2082,7 +2051,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # Hide Labels
     self.compositeNodeRed.SetLabelOpacity(0)
-    self.compositNodeYellow.SetLabelOpacity(0)
+    self.compositeNodeYellow.SetLabelOpacity(0)
 
     # set both orientations to axial
     self.redSliceNode.SetOrientationToAxial()
@@ -2535,13 +2504,14 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       print ('changed name from '+oldname+' to '+str(oldname)+'-REG')
 
   def initializeListener(self,directory):
-    self.lastFileCount=0
+    numberOfFiles = len([item for item in os.listdir(directory)])
+    self.lastFileCount=numberOfFiles
     self.directory=directory
     self.createCurrentFileList(directory)
     self.startTimer()
 
   def startTimer(self):
-    currentFileCount = len([item for item in os.listdir(self.directory)])
+    currentFileCount = len(os.listdir(self.directory))
     if self.lastFileCount < currentFileCount:
      self.waitingForSeriesToBeCompleted()
     self.lastFileCount = currentFileCount
@@ -2569,13 +2539,11 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     db=slicer.dicomDatabase
 
     # create dcmFileList that lists all .dcm files in directory
-    if directory is not "":
+    if os.path.exists(directory):
       dcmFileList = []
       for dcm in os.listdir(directory):
-        if len(dcm)-dcm.rfind('.dcm') == 4 and dcm != ".DS_Store":
-          dcmFileList.append(directory+'/'+dcm)
         if dcm != ".DS_Store":
-          dcmFileList.append(directory+'/'+dcm)
+          dcmFileList.append(os.path.join(directory, dcm))
 
       self.selectedFileList=[]
 
@@ -2609,7 +2577,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
       try:
         loadables = scalarVolumePlugin.examine([files])
-
       except:
         print ('There is nothing to load. You have to select series')
 
@@ -2662,7 +2629,6 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
          # get acquisition time and save in dictionary
          acqTime=db.fileValue(importfile,DICOMTAGS.ACQUISITION_TIME)[0:6]
          self.acqusitionTimes[str(db.fileValue(importfile,DICOMTAGS.SERIES_DESCRIPTION))]= str(acqTime)
-
 
     indexer.addDirectory(db,str(self.directory))
     indexer.waitForImportFinished()
@@ -2988,9 +2954,9 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     # set Label Opacity Back
     redWidget = lm.sliceWidget('Red')
-    compositNodeRed = redWidget.mrmlSliceCompositeNode()
-    # compositNodeRed.SetLabelVolumeID(outputLabelMap.GetID())
-    compositNodeRed.SetLabelOpacity(1)
+    compositeNodeRed = redWidget.mrmlSliceCompositeNode()
+    # compositeNodeRed.SetLabelVolumeID(outputLabelMap.GetID())
+    compositeNodeRed.SetLabelOpacity(1)
 
     # remove markup fiducial node
     slicer.mrmlScene.RemoveNode(slicer.mrmlScene.GetNodesByName('clipModelNode').GetItemAsObject(0))
@@ -3050,7 +3016,7 @@ class RegistrationModuleTest(ScriptedLoadableModuleTest):
 
   def test_RegistrationModule1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
-    tests sould exercise the functionality of the logic with different inputs
+    tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
     way the user would interact with your code and confirm that it still works
     the way you intended.
