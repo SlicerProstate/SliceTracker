@@ -182,7 +182,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.selectedSeries=[]
     self.rockCount = 0
     self.rockTimer = qt.QTimer()
-    self.flickerTimer = None
+    self.flickerTimer = qt.QTimer()
     self.revealCursor = None
     self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
     self.deletedMarkups.SetName('deletedMarkups')
@@ -717,6 +717,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.fiducialSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
     self.dicomDatabase.patientAdded.connect(self.updatePatientSelector)
     self.rockTimer.connect('timeout()', self.onRockToggled)
+    self.flickerTimer.connect('timeout()', self.onFlickerToggled)
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -1157,30 +1158,24 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
   def onRockToggled(self):
     if self.rockCheckBox.checked:
+      self.flickerCheckBox.setEnabled(False)
       self.rockTimer.start(50)
       self.fadeSlider.value = 0.5 + math.sin(self.rockCount / 10. ) / 2.
       self.rockCount += 1
     else:
+      self.flickerCheckBox.setEnabled(True)
       self.rockTimer.stop()
       self.fadeSlider.value = 0.0
 
-  def flicker(self):
-    if not self.flickering:
-      self.flickerTimer = None
+  def onFlickerToggled(self):
+    if self.flickerCheckBox.checked:
+      self.rockCheckBox.setEnabled(False)
+      self.flickerTimer.start(300)
+      self.fadeSlider.value = 1.0 if self.fadeSlider.value == 0.0 else 0.0
+    else:
+      self.rockCheckBox.setEnabled(True)
+      self.flickerTimer.stop()
       self.fadeSlider.value = 0.0
-    if self.flickering:
-      if not self.flickerTimer:
-        if self.fadeSlider.value == 0.5:
-          self.fadeSlider.value = 0.25
-        self.flickerTimer = qt.QTimer()
-        self.flickerTimer.start(300)
-        self.flickerTimer.connect('timeout()', self.flicker)
-      import math
-      self.fadeSlider.value = 1.0 - self.fadeSlider.value
-
-  def onFlickerToggled(self,checked):
-    self.flickering = checked
-    self.flicker()
 
   def onPreopDirSelected(self):
     self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory',
