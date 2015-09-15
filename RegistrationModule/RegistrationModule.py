@@ -505,8 +505,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # intraop label selector
     self.intraopLabelSelector = slicer.qMRMLNodeComboBox()
-    self.intraopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.intraopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 1 )
+    self.intraopLabelSelector.nodeTypes = ( ("vtkMRMLLabelMapVolumeNode"), "" )
     self.intraopLabelSelector.selectNodeUponCreation = True
     self.intraopLabelSelector.addEnabled = False
     self.intraopLabelSelector.removeEnabled = False
@@ -2919,7 +2918,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     """
 
     # initialize Label Map
-    outputLabelMap=slicer.vtkMRMLScalarVolumeNode()
+    outputLabelMap=slicer.vtkMRMLLabelMapVolumeNode()
     name=(slicer.modules.RegistrationModuleWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
     outputLabelMap.SetName(name)
     slicer.mrmlScene.AddNode(outputLabelMap)
