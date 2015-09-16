@@ -1,5 +1,5 @@
 import os
-import math
+import math, re
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from Editor import EditorWidget
@@ -40,10 +40,16 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   STYLE_ORANGE_BACKGROUND           = 'background-color: rgb(255,102,0)'
 
   @staticmethod
-  def confirmDialog(message, title='PCampReview'):
+  def confirmDialog(message, title='SliceTracker'):
     result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
                                      qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
     return result == qt.QMessageBox.Ok
+
+  @staticmethod
+  def yesNoDialog(message, title='SliceTracker'):
+    result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
+                                     qt.QMessageBox.Yes | qt.QMessageBox.No)
+    return result == qt.QMessageBox.Yes
 
   def __init__(self, parent = None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -255,26 +261,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.preopDirButton.setIcon(self.folderIcon)
     self.dataSelectionGroupBoxLayout.addRow("Select preop directory:", self.preopDirButton)
 
-    # Series Selector
-    self.preopSegmentationSelector = ctk.ctkCollapsibleGroupBox()
-    self.preopSegmentationSelector.setTitle("Preop Segmentations")
-    self.preopSegmentationSelector.collapsed= True
-    self.preopSegmentationSelector.collapsedHeight=60
-    self.preopSegmentationSelector.hide()
-    self.dataSelectionGroupBoxLayout.addRow(self.preopSegmentationSelector)
-    preopSegmentationSelectorLayout = qt.QFormLayout(self.preopSegmentationSelector)
-
-    # create ListView for intraop series selection
-    self.seriesViewPreop = qt.QListView()
-    self.seriesViewPreop.setObjectName('SeriesTable')
-    self.seriesViewPreop.setSpacing(3)
-    self.seriesModelPreop = qt.QStandardItemModel()
-    self.seriesModelPreop.setHorizontalHeaderLabels(['Series ID'])
-    self.seriesViewPreop.setModel(self.seriesModelPreop)
-    self.seriesViewPreop.setSelectionMode(qt.QAbstractItemView.ExtendedSelection)
-    self.seriesViewPreop.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
-    preopSegmentationSelectorLayout.addWidget(self.seriesViewPreop)
-
     row = qt.QWidget()
     rowLayout=qt.QHBoxLayout()
     alignment=qt.Qt.AlignRight
@@ -338,23 +324,12 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     self.createIncomeSimulationButtons()
 
-    # load Data using PCampReview folder structure
     self.reRegButton = qt.QPushButton("Re-Registration")
     self.reRegButton.toolTip = "Re-Registration"
     self.reRegButton.enabled = False
     self.reRegButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
     rowLayout.addWidget(self.reRegButton)
     self.dataSelectionGroupBoxLayout.addWidget(row)
-
-    # load Data using PCampReview folder structure
-    self.loadDataPCAMPButton = qt.QPushButton("loadDataPCAMPButton")
-    self.loadDataPCAMPButton.toolTip = "loadDataPCAMPButton"
-    self.loadDataPCAMPButton.enabled = True
-    self.loadDataPCAMPButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.loadDataPCAMPButton.hide()
-    self.dataSelectionGroupBoxLayout.addWidget(self.loadDataPCAMPButton)
-
-    # _____________________________________________________________________________________________________ #
 
     #
     # Step 2: Label Selection
@@ -690,7 +665,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.createFiducialsButton.connect('clicked()', self.onIntraopDirSelected)
     self.intraopDirButton.connect('clicked()', self.onIntraopDirSelected)
     self.reRegButton.connect('clicked(bool)',self.onReRegistrationClicked)
-    self.loadDataPCAMPButton.connect('clicked(bool)',self.loadDataPCAMPStyle)
     self.referenceVolumeSelector.connect('currentNodeChanged(bool)',self.onTab2clicked)
     self.forwardButton.connect('clicked(bool)',self.onForwardButton)
     self.backButton.connect('clicked(bool)',self.onBackButton)
@@ -904,74 +878,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.onBSplineCheckBoxClicked()
 
     print ('Re-Registration Function is done')
-
-  def loadDataPCAMPStyle(self):
-    logging.info("loadDataPCAMPStyle")
-    inputDir = '/Users/peterbehringer/MyImageData/preprocessed_data/'
-    self.selectedStudyName = 'QIN-PROSTATE-01-0025_19711123_1504'
-
-    self.resourcesDir = os.path.join(inputDir,self.selectedStudyName,'RESOURCES')
-
-    # expect one directory for each processed series, with the name
-    # corresponding to the series number
-    self.seriesMap = {}
-
-    for root,subdirs,files in os.walk(self.resourcesDir):
-      print('Root: '+root+', files: '+str(files))
-      resourceType = os.path.split(root)[1]
-
-      print('Resource: '+resourceType)
-
-      if resourceType == 'Reconstructions':
-        for f in files:
-          print('File: '+f)
-          if f.endswith('.xml'):
-            metaFile = os.path.join(root,f)
-            print('Ends with xml: '+metaFile)
-            try:
-              (seriesNumber,seriesName) = self.getSeriesInfoFromXML(metaFile)
-              print(str(seriesNumber)+' '+seriesName)
-            except:
-              print('Failed to get from XML')
-              continue
-
-            volumePath = os.path.join(root,seriesNumber+'.nrrd')
-            self.seriesMap[seriesNumber] = {'MetaInfo':None, 'NRRDLocation':volumePath,'LongName':seriesName}
-            self.seriesMap[seriesNumber]['ShortName'] = str(seriesNumber)+":"+seriesName
-
-    print('All series found: '+str(self.seriesMap.keys()))
-    print('All series found: '+str(self.seriesMap.values()))
-
-    print ('******************************************************************************')
-
-    self.preopImagePath=''
-    self.preopSegmentationPath=''
-    self.preopSegmentations=[]
-
-    for series in self.seriesMap:
-      seriesName=str(self.seriesMap[series]['LongName'])
-      print ('series Number '+series + ' ' + seriesName)
-      if "AX" in str(seriesName) and "T2" in str(seriesName):
-        print (' FOUND THE SERIES OF INTEREST, ITS '+seriesName)
-        print (' LOCATION OF VOLUME : ' +str(self.seriesMap[series]['NRRDLocation']))
-
-        path = os.path.join(self.seriesMap[series]['NRRDLocation'])
-        print (' LOCATION OF IMAGE path : '+str(path))
-
-        segmentationPath= os.path.dirname(os.path.dirname(path))
-        segmentationPath = (str(segmentationPath) + '/Segmentations')
-        print (' LOCATION OF SEGMENTATION path : '+str(segmentationPath))
-
-        self.preopImagePath=self.seriesMap[series]['NRRDLocation']
-        self.preopSegmentationPath=segmentationPath
-
-        self.preopSegmentations=os.listdir(segmentationPath)
-
-        print str(self.preopSegmentations)
-
-        break
-
-    self.updatePreopSegmentationTable(self.preopSegmentations)
 
   def getSeriesInfoFromXML(self, f):
     import xml.dom.minidom
@@ -1243,6 +1149,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
     # set current reference Volume
+    self.compositeNodeRed.Reset()
+    self.markupsLogic.SetAllMarkupsVisibility(self.targetsPreop, False)
     self.compositeNodeRed.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
 
     # Fit Volume To Screen
@@ -1394,26 +1302,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # show intraopSeriesTable
     self.intraopSeriesSelector.collapsed=False
     self.loadIntraopDataButton.setEnabled(len(seriesList)>0)
-
-  def updatePreopSegmentationTable(self,seriesList):
-
-    # this function updates the segmentation
-    # in the preop segmentation table
-
-    self.seriesModelPreop.clear()
-    self.segmentationItems = []
-
-    # write items in intraop series selection widget
-    for s in range(len(seriesList)):
-      seriesText = seriesList[s]
-      self.currentPreopSegmentations=seriesText
-      sItem = qt.QStandardItem(seriesText)
-      self.segmentationItems.append(sItem)
-      self.seriesModelPreop.appendRow(sItem)
-      sItem.setCheckable(1)
-
-    # show preop Segmentation Table
-    self.preopSegmentationSelector.collapsed = False
 
   def onPreopCheckBoxClicked(self):
 
@@ -1628,37 +1516,131 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     # set orientation to axial
     self.redSliceNode.SetOrientationToAxial()
 
+  def getMostRecentNRRD(self):
+    return self.getMostRecentFile(self.preopSegmentationPath, "nrrd")
+
+  def getMostRecentTargets(self):
+    return self.getMostRecentFile(self.preopTargetsPath, "fcsv")
+
+  def getMostRecentFile(self, path, fileType):
+    assert type(fileType) is str
+    files = [f for f in os.listdir(path) if f.endswith(fileType)]
+    if len(files) == 0:
+      return None
+    mostRecent = None
+    storedTimeStamp = 0
+    for filename in files:
+      actualFileName = filename.split(".")[0]
+      timeStamp = int(actualFileName.split("-")[-1])
+      if timeStamp > storedTimeStamp:
+        mostRecent = filename
+        storedTimeStamp = timeStamp
+    return mostRecent
+
   def loadT2Label(self):
-    preopLabelVolumeNode = None
-    if slicer.util.loadLabelVolume(os.path.join(self.getSetting('preopLocation'), 't2-label.nrrd')):
-      preopLabelVolumeNode = slicer.mrmlScene.GetNodesByName('t2-label').GetItemAsObject(0)
-      self.preopLabel = preopLabelVolumeNode
-      displayNode = preopLabelVolumeNode.GetDisplayNode()
-      displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
-      # rotate volume to plane
-      slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(preopLabelVolumeNode)
-      slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(preopLabelVolumeNode)
-      slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(preopLabelVolumeNode)
-    return preopLabelVolumeNode
+    mostRecentFilename = self.getMostRecentNRRD()
+    if mostRecentFilename:
+      filename = os.path.join(self.preopSegmentationPath, mostRecentFilename)
+      (success, self.preopLabel) = slicer.util.loadLabelVolume(filename, returnNode=True)
+      if success:
+        self.preopLabel.SetName('t2-label')
+        displayNode = self.preopLabel.GetDisplayNode()
+        displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+        # rotate volume to plane
+        slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(self.preopLabel)
+        slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(self.preopLabel)
+        slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(self.preopLabel)
 
   def loadPreopVolume(self):
-    if slicer.util.loadVolume(os.path.join(self.getSetting('preopLocation'), 't2-N4.nrrd')):
-      self.preopVolume = slicer.mrmlScene.GetNodesByName('t2-N4').GetItemAsObject(0)
+    (success, self.preopVolume) = slicer.util.loadVolume(self.preopImagePath, returnNode=True)
+    if success:
       self.preopVolume.SetName('volume-PREOP')
 
   def loadPreopImageVolume(self):
-    if slicer.util.loadVolume(self.getSetting('preopLocation') + '/t2-N4.nrrd'):
-      preopImageVolumeNode = slicer.mrmlScene.GetNodesByName('t2-N4_1').GetItemAsObject(0)
+    (success, preopImageVolumeNode) = slicer.util.loadVolume(self.preopImagePath, returnNode=True)
+    if success:
       self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
 
   def loadPreopTargets(self):
-    # Load preop Targets that remain reserved to be shown after registration as preop Targets
-    if slicer.util.loadMarkupsFiducialList(self.getSetting('preopLocation') + '/Targets.fcsv'):
-      self.targetsPreop = slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-      self.targetsPreop.SetName('targets-PREOP')
+    mostRecentTargets = self.getMostRecentTargets()
+    if mostRecentTargets:
+      filename = os.path.join(self.preopTargetsPath, mostRecentTargets)
+      (success, self.targetsPreop) = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
+      if success:
+        self.targetsPreop.SetName('targets-PREOP')
+
+  def loadDataPCAMPStyle(self):
+    self.selectedStudyName = os.path.basename(self.preopDataDir)
+
+    self.resourcesDir = os.path.join(self.preopDataDir, 'RESOURCES')
+    self.preopTargetsPath = os.path.join(self.preopDataDir, 'Targets')
+
+    if not os.path.exists(self.resourcesDir):
+      self.confirmDialog("The selected directory does not fit the PCampReview directory structure. Make sure that you "
+                         "select the study root directory which includes directories RESOURCES")
+      return False
+
+    self.seriesMap = {}
+
+    for root, subdirs, files in os.walk(self.resourcesDir):
+      print('Root: '+root+', files: '+str(files))
+      resourceType = os.path.split(root)[1]
+
+      print('Resource: '+resourceType)
+
+      if resourceType == 'Reconstructions':
+        for f in files:
+          print('File: '+f)
+          if f.endswith('.xml'):
+            metaFile = os.path.join(root,f)
+            print('Ends with xml: '+metaFile)
+            try:
+              (seriesNumber,seriesName) = self.getSeriesInfoFromXML(metaFile)
+              print(str(seriesNumber)+' '+seriesName)
+            except:
+              print('Failed to get from XML')
+              continue
+
+            volumePath = os.path.join(root,seriesNumber+'.nrrd')
+            self.seriesMap[seriesNumber] = {'MetaInfo':None, 'NRRDLocation':volumePath,'LongName':seriesName}
+            self.seriesMap[seriesNumber]['ShortName'] = str(seriesNumber)+":"+seriesName
+
+    print('All series found: '+str(self.seriesMap.keys()))
+    print('All series found: '+str(self.seriesMap.values()))
+
+    print ('******************************************************************************')
+
+    self.preopImagePath=''
+    self.preopSegmentationPath=''
+    self.preopSegmentations=[]
+
+    for series in self.seriesMap:
+      seriesName=str(self.seriesMap[series]['LongName'])
+      print ('series Number '+series + ' ' + seriesName)
+      if re.search("ax", str(seriesName), re.IGNORECASE) and re.search("t2", str(seriesName), re.IGNORECASE):
+        print (' FOUND THE SERIES OF INTEREST, ITS '+seriesName)
+        print (' LOCATION OF VOLUME : ' +str(self.seriesMap[series]['NRRDLocation']))
+
+        path = os.path.join(self.seriesMap[series]['NRRDLocation'])
+        print (' LOCATION OF IMAGE path : '+str(path))
+
+        segmentationPath= os.path.dirname(os.path.dirname(path))
+        segmentationPath = (str(segmentationPath) + '/Segmentations')
+        print (' LOCATION OF SEGMENTATION path : '+str(segmentationPath))
+
+        self.preopImagePath=self.seriesMap[series]['NRRDLocation']
+        self.preopSegmentationPath=segmentationPath
+
+        self.preopSegmentations=os.listdir(segmentationPath)
+
+        print str(self.preopSegmentations)
+
+        break
+
+    return True
 
   def loadPreopData(self):
-
+    self.loadDataPCAMPStyle()
     self.configureSliceNodesForPreopData()
     self.loadT2Label()
     self.loadPreopVolume()
@@ -1975,7 +1957,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     params.append(fixedLabel)
     params.append(targets)
 
-    registrationOutput=[]
     registrationOutput=self.logic.applyBSplineRegistration(fixedVolume,movingVolume,fixedLabel,movingLabel,targets)
 
     self.outputVolumeRigid=registrationOutput[0]
