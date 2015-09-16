@@ -213,6 +213,8 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.currentFOVRed = []
     self.currentFOVYellow = []
 
+    self.endorectalCoilInPreop = False
+
     self.createPatientWatchBox()
     self.setupIcons()
     self.createTabWidget()
@@ -1555,11 +1557,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     (success, self.preopVolume) = slicer.util.loadVolume(self.preopImagePath, returnNode=True)
     if success:
       self.preopVolume.SetName('volume-PREOP')
-
-  def loadPreopImageVolume(self):
-    (success, preopImageVolumeNode) = slicer.util.loadVolume(self.preopImagePath, returnNode=True)
-    if success:
-      self.preopVolumeSelector.setCurrentNode(preopImageVolumeNode)
+      self.preopVolumeSelector.setCurrentNode(self.preopVolume)
 
   def loadPreopTargets(self):
     mostRecentTargets = self.getMostRecentTargets()
@@ -1644,7 +1642,10 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.configureSliceNodesForPreopData()
     self.loadT2Label()
     self.loadPreopVolume()
-    self.loadPreopImageVolume()
+    if self.yesNoDialog("Was an endorectal coil used for preop image acquisition?"):
+      #TODO: delete old node which is not needed anymore after bias correction
+      self.preopVolume = self.logic.applyBiasCorrection(self.preopVolume, self.preopLabel)
+      self.preopVolumeSelector.setCurrentNode(self.preopVolume)
     self.loadPreopTargets()
 
     logging.debug('TARGETS PREOP')
@@ -1940,7 +1941,6 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     return True
 
   def onApplyRegistrationClicked(self):
-
     fixedVolume= self.intraopVolumeSelector.currentNode()
     fixedLabel=self.intraopLabelSelector.currentNode()
     movingLabel=self.preopLabelSelector.currentNode()
@@ -2062,6 +2062,20 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
   def __init__(self, parent=None):
     ScriptedLoadableModuleLogic.__init__(self, parent)
     self.inputMarkup = None
+
+  def applyBiasCorrection(self, volume, label):
+    outputVolume = slicer.vtkMRMLScalarVolumeNode()
+    outputVolume.SetName('volume-PREOP-N4')
+    slicer.mrmlScene.AddNode(outputVolume)
+    params = {'inputImageName': volume.GetID(),
+              'maskImageName': label.GetID(),
+              'outputImageName': outputVolume.GetID(),
+              'numberOfIterations': '500,400,300'}
+
+    self.cliNode = None
+    self.cliNode = slicer.cli.run(slicer.modules.n4itkbiasfieldcorrection, self.cliNode, params, wait_for_completion = True)
+
+    return outputVolume
 
   def applyBSplineRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
 
