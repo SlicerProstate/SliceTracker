@@ -6,7 +6,6 @@ from Editor import EditorWidget
 import EditorLib
 import logging
 
-
 class DICOMTAGS:
 
   PATIENT_NAME          = '0010,0010'
@@ -38,6 +37,18 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   STYLE_WHITE_BACKGROUND            = 'background-color: rgb(255,255,255)'
   STYLE_LIGHT_GRAY_BACKGROUND       = 'background-color: rgb(230,230,230)'
   STYLE_ORANGE_BACKGROUND           = 'background-color: rgb(255,102,0)'
+
+  @staticmethod
+  def makeProgressIndicator(maxVal, initialValue=0):
+    progressIndicator = qt.QProgressDialog()
+    progressIndicator.minimumDuration = 0
+    progressIndicator.modal = True
+    progressIndicator.setMaximum(maxVal)
+    progressIndicator.setValue(initialValue)
+    progressIndicator.setWindowTitle("Processing...")
+    progressIndicator.show()
+    progressIndicator.autoClose = False
+    return progressIndicator
 
   @staticmethod
   def confirmDialog(message, title='SliceTracker'):
@@ -2063,6 +2074,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     self.inputMarkup = None
 
   def applyBiasCorrection(self, volume, label):
+
+    progress = RegistrationModuleWidget.makeProgressIndicator(2, 1)
+    progress.labelText = '\nBias Correction'
+
     outputVolume = slicer.vtkMRMLScalarVolumeNode()
     outputVolume.SetName('volume-PREOP-N4')
     slicer.mrmlScene.AddNode(outputVolume)
@@ -2074,13 +2089,23 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     self.cliNode = None
     self.cliNode = slicer.cli.run(slicer.modules.n4itkbiasfieldcorrection, self.cliNode, params, wait_for_completion = True)
 
+    progress.setValue(2)
+    progress.close()
     return outputVolume
+
+  def printStatus(caller, event):
+    print("Got a %s from a %s" % (event, caller.GetClassName()))
+    if caller.IsA('vtkMRMLCommandLineModuleNode'):
+      print("Status is %s" % caller.GetStatusString())
 
   def applyBSplineRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
 
     if fixedVolume and movingVolume and fixedLabel and movingLabel:
 
+     progress = RegistrationModuleWidget.makeProgressIndicator(4, 1)
+
      ##### OUTPUT TRANSFORMS
+
 
      # define output linear Rigid transform
      outputTransformRigid=slicer.vtkMRMLLinearTransformNode()
@@ -2135,6 +2160,8 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                     'useROIBSpline' : False,
                     'useBSpline' : False,}
 
+     progress.labelText = '\nRigid registration'
+
      # run Rigid Registration
      self.cliNode=None
      self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
@@ -2151,6 +2178,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                #'initializeTransformMode' : "useCenterOfROIAlign",
                'useAffine' : True,
                'initialTransform' : outputTransformRigid}
+
+
+     progress.labelText = '\nAffine registration'
+     progress.setValue(2)
 
      # run Affine Registration
      self.cliNode=None
@@ -2207,6 +2238,8 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                       'initialTransform' : outputTransformAffine
                       }
 
+     progress.labelText = '\nBSpline registration'
+     progress.setValue(3)
 
      # run BSpline Registration
      self.cliNode=None
@@ -2266,6 +2299,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
        outputTargets.append(affineTargets)
        outputTargets.append(bSplineTargets)
 
+     progress.labelText = '\nCompleted Registration'
+     progress.setValue(4)
+     progress.close()
+
      return [outputVolumeRigid, outputVolumeAffine, outputVolumeBSpline,
              outputTransformRigid, outputTransformAffine, outputTransformBSpline, outputTargets]
 
@@ -2291,6 +2328,9 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     """
 
     if fixedVolume and movingVolume and fixedLabel and lastRigidTfm:
+
+     progress = RegistrationModuleWidget.makeProgressIndicator(4, 1)
+
      ##### OUTPUT TRANSFORMS
 
      # define output linear Rigid transform
@@ -2347,6 +2387,9 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                     'useBSpline' : False,
                     'initialTransform':lastRigidTfm}
 
+     progress.labelText = '\nRigid registration'
+
+
      # run Rigid Registration
      self.cliNode=None
      self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
@@ -2363,6 +2406,9 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                      # 'initializeTransformMode' : True,
                      'useAffine' : True,
                      'initialTransform' : outputTransformRigid}
+
+     progress.labelText = '\nAffine registration'
+     progress.setValue(2)
 
      # run Affine Registration
      self.cliNode=None
@@ -2419,6 +2465,8 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
                       #'initialTransform' : outputTransformAffine
                       }
 
+     progress.labelText = '\nBSpline registration'
+     progress.setValue(3)
 
      # run BSpline Registration
      self.cliNode=None
@@ -2477,6 +2525,10 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
        outputTargets.append(rigidTargets)
        outputTargets.append(affineTargets)
        outputTargets.append(bSplineTargets)
+
+     progress.labelText = '\nCompleted Registration'
+     progress.setValue(4)
+     progress.close()
 
      return [outputVolumeRigid, outputVolumeAffine, outputVolumeBSpline,
              outputTransformRigid, outputTransformAffine, outputTransformBSpline, outputTargets]
