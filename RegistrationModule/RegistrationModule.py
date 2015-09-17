@@ -454,8 +454,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
 
     # preop label selector
     self.preopLabelSelector = slicer.qMRMLNodeComboBox()
-    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.preopLabelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 1 )
+    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLLabelMapVolumeNode"), "" )
     self.preopLabelSelector.selectNodeUponCreation = False
     self.preopLabelSelector.addEnabled = False
     self.preopLabelSelector.removeEnabled = False
