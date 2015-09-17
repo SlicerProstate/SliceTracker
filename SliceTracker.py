@@ -15,11 +15,11 @@ class DICOMTAGS:
   ACQUISITION_TIME      = '0008,0032'
 
 
-class RegistrationModule(ScriptedLoadableModule):
+class SliceTracker(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "RegistrationModule"
+    self.parent.title = "SliceTracker"
     self.parent.categories = ["Registration"]
     self.parent.dependencies = ["VolumeClipWithModel"]
     self.parent.contributors = ["Peter Behringer (SPL), Andriy Fedorov (SPL)"]
@@ -27,7 +27,7 @@ class RegistrationModule(ScriptedLoadableModule):
     self.parent.acknowledgementText = """SPL, Brigham & Womens""" # replace with organization, grant and thanks.
 
 
-class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
+class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -179,7 +179,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
 
-    self.modulePath = slicer.modules.registrationmodule.path.replace(self.moduleName+".py","")
+    self.modulePath = slicer.modules.slicetracker.path.replace(self.moduleName+".py","")
     self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
     self.registrationResults = []
     self.intraopDataDir = ""
@@ -206,7 +206,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.quickSegmentationFlag = 0
     self.labelSegmentationFlag = 0
     self.markupsLogic=slicer.modules.markups.logic()
-    self.logic=RegistrationModuleLogic()
+    self.logic=SliceTrackerLogic()
     self.comingFromPreopTag = False
 
     # set global slice widgets
@@ -1192,7 +1192,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.updatePatientSelectorFlag = False
 
   def updatePatientSelector(self):
-    logging.info("RegistrationModuleWidget:updatePatientSelector")
+    logging.info("SliceTrackerWidget:updatePatientSelector")
 
     if self.updatePatientSelectorFlag:
       db = self.dicomDatabase
@@ -1659,7 +1659,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     self.loadPreopTargets()
 
     logging.debug('TARGETS PREOP')
-    logging.debug(slicer.modules.RegistrationModuleWidget.targetsPreop)
+    logging.debug(slicer.modules.SliceTrackerWidget.targetsPreop)
 
     """
     # load targets for rigid transformation
@@ -1784,7 +1784,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       # check, if there are enough targets set to create the model and call the CLI
       if slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0).GetNumberOfFiducials() > 2:
 
-        labelname=(slicer.modules.RegistrationModuleWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
+        labelname=(slicer.modules.SliceTrackerWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
         self.currentIntraopLabel = self.logic.modelToLabelmap(inputVolume,clippingModel)
         self.currentIntraopLabel.SetName(labelname)
 
@@ -1819,7 +1819,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.editorParameterNode.SetParameter('effect','DefaultTool')
 
       # set Labelmap for Registration
-      labelname=(slicer.modules.RegistrationModuleWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
+      labelname=(slicer.modules.SliceTrackerWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
       self.currentIntraopLabel=slicer.mrmlScene.GetNodesByName(labelname).GetItemAsObject(0)
       self.intraopLabelSelector.setCurrentNode(self.currentIntraopLabel)
 
@@ -1909,7 +1909,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
     displayNode=intraopLabel.GetDisplayNode()
     displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
-    editUtil=slicer.modules.RegistrationModuleWidget.editUtil
+    editUtil=slicer.modules.SliceTrackerWidget.editUtil
     parameterNode=editUtil.getParameterNode()
     parameterNode.SetParameter('effect','DrawEffect')
 
@@ -2067,7 +2067,7 @@ class RegistrationModuleWidget(ScriptedLoadableModuleWidget):
       self.tabBar.setTabIcon(0,self.newImageDataIcon)
 
 
-class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
+class SliceTrackerLogic(ScriptedLoadableModuleLogic):
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleLogic.__init__(self, parent)
@@ -2075,7 +2075,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
   def applyBiasCorrection(self, volume, label):
 
-    progress = RegistrationModuleWidget.makeProgressIndicator(2, 1)
+    progress = SliceTrackerWidget.makeProgressIndicator(2, 1)
     progress.labelText = '\nBias Correction'
 
     outputVolume = slicer.vtkMRMLScalarVolumeNode()
@@ -2102,7 +2102,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     if fixedVolume and movingVolume and fixedLabel and movingLabel:
 
-     progress = RegistrationModuleWidget.makeProgressIndicator(4, 1)
+     progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
 
      ##### OUTPUT TRANSFORMS
 
@@ -2329,7 +2329,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     if fixedVolume and movingVolume and fixedLabel and lastRigidTfm:
 
-     progress = RegistrationModuleWidget.makeProgressIndicator(4, 1)
+     progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
 
      ##### OUTPUT TRANSFORMS
 
@@ -2684,9 +2684,9 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     # TODO: update GUI from here is not very nice. Find a way to call logic and get the self.selectableSeries
     # as a return
 
-    slicer.modules.RegistrationModuleWidget.updateSeriesSelectorTable(self.selectableSeries)
-    slicer.modules.RegistrationModuleWidget.patientCheckAfterImport(self.directory,self.newFileList)
-    slicer.modules.RegistrationModuleWidget.checkTabAfterImport()
+    slicer.modules.SliceTrackerWidget.updateSeriesSelectorTable(self.selectableSeries)
+    slicer.modules.SliceTrackerWidget.patientCheckAfterImport(self.directory,self.newFileList)
+    slicer.modules.SliceTrackerWidget.checkTabAfterImport()
 
   def sortSeriesByAcquisitionTime(self,inputSeriesList):
     # this function sorts the self.acqusitionTimes
@@ -2698,7 +2698,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     return sortedList
 
   def removeEverythingInIntraopTestFolder(self):
-    cmd=('rm -rfv '+slicer.modules.RegistrationModuleWidget.modulePath +'Resources/Testing/intraopDir/*')
+    cmd=('rm -rfv '+slicer.modules.SliceTrackerWidget.modulePath +'Resources/Testing/intraopDir/*')
     try:
       os.system(cmd)
     except:
@@ -2745,11 +2745,11 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       # dont show needle tip in red Slice View
       needleNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
       needleDisplayNode=needleNode.GetDisplayNode()
-      needleDisplayNode.AddViewNodeID(slicer.modules.RegistrationModuleWidget.yellowSliceNode.GetID())
+      needleDisplayNode.AddViewNodeID(slicer.modules.SliceTrackerWidget.yellowSliceNode.GetID())
 
       # update the target table when markup was set
       needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,
-                                      slicer.modules.RegistrationModuleWidget.updateTargetTable)
+                                      slicer.modules.SliceTrackerWidget.updateTargetTable)
 
       # be sure to have the correct display node
       needleTipMarkupDisplayNode=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0).GetDisplayNode()
@@ -2767,7 +2767,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
       needleNode.RemoveAllMarkups()
 
       # clear target table
-      slicer.modules.RegistrationModuleWidget.clearTargetTable()
+      slicer.modules.SliceTrackerWidget.clearTargetTable()
 
     # set active node ID and start place mode
     mlogic=slicer.modules.markups.logic()
@@ -2797,7 +2797,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     # setup the PCampReview color table
 
-    self.colorFile = (slicer.modules.RegistrationModuleWidget.modulePath + 'Resources/Colors/PCampReviewColors.csv')
+    self.colorFile = (slicer.modules.SliceTrackerWidget.modulePath + 'Resources/Colors/PCampReviewColors.csv')
     self.PCampReviewColorNode = slicer.vtkMRMLColorTableNode()
     colorNode = self.PCampReviewColorNode
     colorNode.SetName('PCampReview')
@@ -2960,7 +2960,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
 
     # initialize Label Map
     outputLabelMap=slicer.vtkMRMLLabelMapVolumeNode()
-    name=(slicer.modules.RegistrationModuleWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
+    name=(slicer.modules.SliceTrackerWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
     outputLabelMap.SetName(name)
     slicer.mrmlScene.AddNode(outputLabelMap)
 
@@ -3035,7 +3035,7 @@ class RegistrationModuleLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.AddNode(outputVolume)
 
 
-class RegistrationModuleTest(ScriptedLoadableModuleTest):
+class SliceTrackerTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -3052,9 +3052,9 @@ class RegistrationModuleTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_RegistrationModule1()
+    self.test_SliceTracker1()
 
-  def test_RegistrationModule1(self):
+  def test_SliceTracker1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
