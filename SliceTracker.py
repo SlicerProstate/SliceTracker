@@ -21,7 +21,7 @@ class SliceTracker(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker"
     self.parent.categories = ["Registration"]
-    self.parent.dependencies = ["VolumeClipWithModel"]
+    self.parent.dependencies = []
     self.parent.contributors = ["Peter Behringer (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ Module for easy registration. """
     self.parent.acknowledgementText = """SPL, Brigham & Womens""" # replace with organization, grant and thanks.
@@ -61,6 +61,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
                                      qt.QMessageBox.Yes | qt.QMessageBox.No)
     return result == qt.QMessageBox.Yes
+
+  @staticmethod
+  def warningDialog(message, title='SliceTracker'):
+    return qt.QMessageBox.warning(slicer.util.mainWindow(), title, message)
 
   def __init__(self, parent = None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -178,6 +182,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
+
+    try:
+      import VolumeClipWithModel
+    except ImportError:
+      return self.warningDialog("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and install "
+                          "VolumeClip.", "Missing Extension")
 
     self.modulePath = slicer.modules.slicetracker.path.replace(self.moduleName+".py","")
     self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
