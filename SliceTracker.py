@@ -2404,6 +2404,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
      self.cliNode=None
      self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
 
+
+     '''
      #   ++++++++++      AFFINE REGISTRATION       ++++++++++
 
      paramsAffine = {'fixedVolume': fixedVolume,
@@ -2420,9 +2422,19 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
      progress.labelText = '\nAffine registration'
      progress.setValue(2)
 
+     # TODO: Set output of
+
      # run Affine Registration
      self.cliNode=None
      self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsAffine, wait_for_completion = True)
+
+     '''
+     # TODO: Set output of useScaleVersor3D and useScaleSkewVersor3D here instead of affine result
+
+     # dilate mask
+
+     dilatedMask = self.dilateMask(fixedLabel)
+
 
      #   ++++++++++      BSPLINE REGISTRATION       ++++++++++
 
@@ -2431,7 +2443,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                       'outputVolume' : outputVolumeBSpline.GetID(),
                       'bsplineTransform' : outputTransformBSpline.GetID(),
                       # 'movingBinaryVolume' : movingLabel,
-                      'fixedBinaryVolume' : fixedLabel,
+                      'fixedBinaryVolume' : dilatedMask,
                       # 'initializeTransformMode' : "useCenterOfROIAlign",
                       # 'samplingPercentage' : "0.002",
                       'useRigid' : True,
@@ -2542,6 +2554,23 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
 
      return [outputVolumeRigid, outputVolumeAffine, outputVolumeBSpline,
              outputTransformRigid, outputTransformAffine, outputTransformBSpline, outputTargets]
+
+  def dilateMask(self,mask):
+
+      import SimpleITK as sitk
+      import sitkUtils
+
+      inputLabel = sitkUtils.PullFromSlicer(mask.GetName())
+
+      grayscale_dilate_filter = sitk.GrayscaleDilateImageFilter()
+      grayscale_dilate_filter.SetKernelRadius([12,12,0])
+      grayscale_dilate_filter.SetKernelType(sitk.sitkBall)
+
+      output = grayscale_dilate_filter.Execute(inputLabel)
+
+      output.sitkUtils.PushToSlicer(output)
+
+      return output
 
   def renameFiducials(self,fiducialNode):
     # rename the targets to "[targetname]-REG"
