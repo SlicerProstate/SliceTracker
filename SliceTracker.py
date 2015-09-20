@@ -20,11 +20,14 @@ class SliceTracker(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker"
-    self.parent.categories = ["Registration"]
+    self.parent.categories = ["Radiology"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Peter Behringer (SPL), Andriy Fedorov (SPL)"]
-    self.parent.helpText = """ Module for easy registration. """
-    self.parent.acknowledgementText = """SPL, Brigham & Womens""" # replace with organization, grant and thanks.
+    self.parent.contributors = ["Peter Behringer (SPL), Christian Herz (SPL), Andriy Fedorov (SPL)"]
+    self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy. """
+    self.parent.acknowledgementText = """Surgical Planning Laboratoy, Brigham and Women's Hospital, Harvard
+                                          Medical School, Boston, USA This work was supported in part by the National
+                                          Institutes of Health through grants U24 CA180918,
+                                          R01 CA111288 and P41 EB015898."""
 
 
 class SliceTrackerWidget(ScriptedLoadableModuleWidget):
@@ -2219,7 +2222,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                       'bsplineTransform' : outputTransformBSpline.GetID(),
                       'movingBinaryVolume' : movingLabel,
                       'fixedBinaryVolume' : fixedLabel,
-                      #'initializeTransformMode' : "useCenterOfROIAlign",
                       'samplingPercentage' : "0.002",
                       'useRigid' : True,
                       'useAffine' : True,
