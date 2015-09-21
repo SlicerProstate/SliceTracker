@@ -125,6 +125,20 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
         logging.error("QPushButton does not have attribute %s" % key)
     return button
 
+  def createComboBox(self, **kwargs):
+    combobox = slicer.qMRMLNodeComboBox()
+    combobox.addEnabled = False
+    combobox.removeEnabled = False
+    combobox.noneEnabled = True
+    combobox.showHidden = False
+    for key, value in kwargs.iteritems():
+      if hasattr(combobox, key):
+        setattr(combobox, key, value)
+      else:
+        logging.error("qMRMLNodeComboBox does not have attribute %s" % key)
+    combobox.setMRMLScene(slicer.mrmlScene)
+    return combobox
+
   def setupIcons(self):
     self.labelSegmentationIcon = self.createIcon('icon-labelSegmentation.png')
     self.applySegmentationIcon = self.createIcon('icon-applySegmentation.png')
@@ -346,16 +360,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     rowLayout.addWidget(self.text)
 
     # reference volume selector
-    self.referenceVolumeSelector = slicer.qMRMLNodeComboBox()
-    self.referenceVolumeSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.referenceVolumeSelector.selectNodeUponCreation = True
-    self.referenceVolumeSelector.addEnabled = False
-    self.referenceVolumeSelector.removeEnabled = False
-    self.referenceVolumeSelector.noneEnabled = True
-    self.referenceVolumeSelector.showHidden = False
-    self.referenceVolumeSelector.showChildNodeTypes = False
-    self.referenceVolumeSelector.setMRMLScene( slicer.mrmlScene )
-    self.referenceVolumeSelector.setToolTip( "Pick the input to the algorithm." )
+    self.referenceVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled = True,
+                                                       selectNodeUponCreation=True, showChildNodeTypes = False,
+                                                       toolTip="Pick the input to the algorithm.")
     rowLayout.addWidget(self.referenceVolumeSelector)
     # set info box
 
@@ -420,69 +427,27 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     # Step 3: Registration
     #
 
-    # preop volume selector
-    self.preopVolumeSelector = slicer.qMRMLNodeComboBox()
-    self.preopVolumeSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.preopVolumeSelector.selectNodeUponCreation = True
-    self.preopVolumeSelector.addEnabled = False
-    self.preopVolumeSelector.removeEnabled = False
-    self.preopVolumeSelector.noneEnabled = False
-    self.preopVolumeSelector.showHidden = False
-    self.preopVolumeSelector.showChildNodeTypes = False
-    self.preopVolumeSelector.setMRMLScene( slicer.mrmlScene )
-    self.preopVolumeSelector.setToolTip( "Pick the input to the algorithm." )
+    self.preopVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], showChildNodeTypes=False,
+                                                   selectNodeUponCreation=True, toolTip="Pick algorithm input." )
+
     self.registrationGroupBoxLayout.addRow("Preop Image Volume: ", self.preopVolumeSelector)
 
-    # preop label selector
-    self.preopLabelSelector = slicer.qMRMLNodeComboBox()
-    self.preopLabelSelector.nodeTypes = ( ("vtkMRMLLabelMapVolumeNode"), "" )
-    self.preopLabelSelector.selectNodeUponCreation = False
-    self.preopLabelSelector.addEnabled = False
-    self.preopLabelSelector.removeEnabled = False
-    self.preopLabelSelector.noneEnabled = False
-    self.preopLabelSelector.showHidden = False
-    self.preopLabelSelector.showChildNodeTypes = False
-    self.preopLabelSelector.setMRMLScene( slicer.mrmlScene )
-    self.preopLabelSelector.setToolTip( "Pick the input to the algorithm." )
+    self.preopLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""], showChildNodeTypes=False,
+                                                  selectNodeUponCreation=False, toolTip="Pick algorithm input." )
     self.registrationGroupBoxLayout.addRow("Preop Label Volume: ", self.preopLabelSelector)
 
-    # intraop volume selector
-    self.intraopVolumeSelector = slicer.qMRMLNodeComboBox()
-    self.intraopVolumeSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.intraopVolumeSelector.selectNodeUponCreation = True
-    self.intraopVolumeSelector.addEnabled = False
-    self.intraopVolumeSelector.removeEnabled = False
-    self.intraopVolumeSelector.noneEnabled = True
-    self.intraopVolumeSelector.showHidden = False
-    self.intraopVolumeSelector.showChildNodeTypes = False
-    self.intraopVolumeSelector.setMRMLScene( slicer.mrmlScene )
-    self.intraopVolumeSelector.setToolTip( "Pick the input to the algorithm." )
+    self.intraopVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled=True,
+                                                     showChildNodeTypes=False, selectNodeUponCreation=True,
+                                                     toolTip="Pick algorithm input." )
     self.registrationGroupBoxLayout.addRow("Intraop Image Volume: ", self.intraopVolumeSelector)
 
-    # intraop label selector
-    self.intraopLabelSelector = slicer.qMRMLNodeComboBox()
-    self.intraopLabelSelector.nodeTypes = ( ("vtkMRMLLabelMapVolumeNode"), "" )
-    self.intraopLabelSelector.selectNodeUponCreation = True
-    self.intraopLabelSelector.addEnabled = False
-    self.intraopLabelSelector.removeEnabled = False
-    self.intraopLabelSelector.noneEnabled = False
-    self.intraopLabelSelector.showHidden = False
-    self.intraopLabelSelector.showChildNodeTypes = False
-    self.intraopLabelSelector.setMRMLScene( slicer.mrmlScene )
-    self.intraopLabelSelector.setToolTip( "Pick the input to the algorithm." )
+    self.intraopLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""], showChildNodeTypes=False,
+                                                    selectNodeUponCreation=True, toolTip="Pick algorithm input." )
     self.registrationGroupBoxLayout.addRow("Intraop Label Volume: ", self.intraopLabelSelector)
 
-    # target selector
-    self.fiducialSelector = slicer.qMRMLNodeComboBox()
-    self.fiducialSelector.nodeTypes = ( ("vtkMRMLMarkupsFiducialNode"), "" )
-    self.fiducialSelector.selectNodeUponCreation = False
-    self.fiducialSelector.addEnabled = False
-    self.fiducialSelector.removeEnabled = False
-    self.fiducialSelector.noneEnabled = True
-    self.fiducialSelector.showHidden = False
-    self.fiducialSelector.showChildNodeTypes = False
-    self.fiducialSelector.setMRMLScene( slicer.mrmlScene )
-    self.fiducialSelector.setToolTip( "Select the Targets" )
+    self.fiducialSelector = self.createComboBox(nodeTypes=["vtkMRMLMarkupsFiducialNode", ""], noneEnabled=True,
+                                                showChildNodeTypes=False, selectNodeUponCreation=False,
+                                                toolTip="Select the Targets" )
     self.registrationGroupBoxLayout.addRow("Targets: ", self.fiducialSelector)
 
     self.applyBSplineRegistrationButton = self.createButton("Apply Registration", icon=self.greenCheckIcon,
