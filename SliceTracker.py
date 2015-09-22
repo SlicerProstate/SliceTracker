@@ -20,11 +20,14 @@ class SliceTracker(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker"
-    self.parent.categories = ["Registration"]
+    self.parent.categories = ["Radiology"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Peter Behringer (SPL), Andriy Fedorov (SPL)"]
-    self.parent.helpText = """ Module for easy registration. """
-    self.parent.acknowledgementText = """SPL, Brigham & Womens""" # replace with organization, grant and thanks.
+    self.parent.contributors = ["Peter Behringer (SPL), Christian Herz (SPL), Andriy Fedorov (SPL)"]
+    self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy. """
+    self.parent.acknowledgementText = """Surgical Planning Laboratoy, Brigham and Women's Hospital, Harvard
+                                          Medical School, Boston, USA This work was supported in part by the National
+                                          Institutes of Health through grants U24 CA180918,
+                                          R01 CA111288 and P41 EB015898."""
 
 
 class SliceTrackerWidget(ScriptedLoadableModuleWidget):
@@ -1357,7 +1360,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.redSliceLogic.EndSliceNodeInteraction()
 
     # jump to first markup slice
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducialNode.GetID(),1)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducialNode.GetID(),0)
 
     # reset the yellow slice view
     restoredSliceOptions=self.getCurrentSliceViewPositions()
@@ -1399,7 +1402,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsBSpline,0)
 
     # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsRigid.GetID(),1)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsRigid.GetID(),0)
 
   def onAffineCheckBoxClicked(self):
 
@@ -1429,7 +1432,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsBSpline,0)
 
     # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsAffine.GetID(),1)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsAffine.GetID(),0)
 
   def onBSplineCheckBoxClicked(self):
 
@@ -1459,7 +1462,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsBSpline,1)
 
     # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsBSpline.GetID(),1)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsBSpline.GetID(),0)
 
   def resetSliceViews(self):
 
@@ -1529,6 +1532,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     cmd = ('cp -a '+imagePath+'. '+intraopPath)
     print cmd
     os.system(cmd)
+
+  def onSimulateDataIncomeButton5(self):
+    # TODO: when module ready, remove this method
+
+    # copy DICOM Files into intraop folder
+    imagePath= (self.modulePath +'Resources/Testing/testData_5/')
+    intraopPath=self.intraopDataDir
+    cmd = ('cp -a '+imagePath+'. '+intraopPath)
+    print cmd
+    os.system(cmd)
+
+
 
   def configureSliceNodesForPreopData(self):
     # use label contours
@@ -1662,12 +1677,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.configureSliceNodesForPreopData()
     self.loadT2Label()
     self.loadPreopVolume()
-    if self.yesNoDialog("Was an endorectal coil used for preop image acquisition?"):
+
+    if self.yesNoDialog("Was an endorectal coil used for diagnostic image acquisition?"):
       #TODO: delete old node which is not needed anymore after bias correction
       self.preopVolume = self.logic.applyBiasCorrection(self.preopVolume, self.preopLabel)
       self.preopVolumeSelector.setCurrentNode(self.preopVolume)
-    self.loadPreopTargets()
 
+
+    self.loadPreopTargets()
     logging.debug('TARGETS PREOP')
     logging.debug(slicer.modules.SliceTrackerWidget.targetsPreop)
 
@@ -1700,7 +1717,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.fiducialSelector.setCurrentNode(self.targetsPreop)
 
     # jump to first markup slice
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),1)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),0)
 
     # Set Fiducial Properties
     markupsDisplayNode=self.targetsPreop.GetDisplayNode()
@@ -1879,7 +1896,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     offset=self.yellowSliceNode.GetSliceOffset()
 
     # jump slice to show Targets
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),1)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.targetsPreop.GetID(),0)
 
     self.yellowSliceNode.SetSliceOffset(offset)
 
@@ -2205,7 +2222,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                       'bsplineTransform' : outputTransformBSpline.GetID(),
                       'movingBinaryVolume' : movingLabel,
                       'fixedBinaryVolume' : fixedLabel,
-                      #'initializeTransformMode' : "useCenterOfROIAlign",
                       'samplingPercentage' : "0.002",
                       'useRigid' : True,
                       'useAffine' : True,
@@ -2404,6 +2420,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
      self.cliNode=None
      self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
 
+
+     '''
      #   ++++++++++      AFFINE REGISTRATION       ++++++++++
 
      paramsAffine = {'fixedVolume': fixedVolume,
@@ -2420,9 +2438,19 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
      progress.labelText = '\nAffine registration'
      progress.setValue(2)
 
+     # TODO: Set output of
+
      # run Affine Registration
      self.cliNode=None
      self.cliNode=slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsAffine, wait_for_completion = True)
+
+     '''
+     # TODO: Set output of useScaleVersor3D and useScaleSkewVersor3D here instead of affine result
+
+     # dilate mask
+
+     self.dilateMask(fixedLabel)
+
 
      #   ++++++++++      BSPLINE REGISTRATION       ++++++++++
 
@@ -2542,6 +2570,24 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
 
      return [outputVolumeRigid, outputVolumeAffine, outputVolumeBSpline,
              outputTransformRigid, outputTransformAffine, outputTransformBSpline, outputTargets]
+
+  def dilateMask(self,mask):
+
+      import SimpleITK as sitk
+      import sitkUtils
+
+      print 'mask '+str(mask.GetName()+' is dilated')
+
+      labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mask.GetName()))
+
+      grayscale_dilate_filter = sitk.GrayscaleDilateImageFilter()
+      grayscale_dilate_filter.SetKernelRadius([12,12,0])
+      grayscale_dilate_filter.SetKernelType(sitk.sitkBall)
+      labelImage=grayscale_dilate_filter.Execute(labelImage)
+
+      sitk.WriteImage(labelImage, sitkUtils.GetSlicerITKReadWriteAddress(mask.GetName()))
+      print 'dilate mask through'
+
 
   def renameFiducials(self,fiducialNode):
     # rename the targets to "[targetname]-REG"
