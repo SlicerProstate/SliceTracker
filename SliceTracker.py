@@ -75,6 +75,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     assert slicer.dicomDatabase
     self.dicomDatabase = slicer.dicomDatabase
 
+  def onReload(self):
+    ScriptedLoadableModuleWidget.onReload(self)
+    slicer.mrmlScene.Clear(0)
+
   def getSetting(self, settingName):
     settings = qt.QSettings()
     return str(settings.value(self.moduleName + '/' + settingName))
