@@ -339,7 +339,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.createIncomeSimulationButtons()
 
     self.reRegButton = self.createButton("Re-Registration", toolTip="Re-Registration", enabled=False,
-                                   styleSheet=self.STYLE_WHITE_BACKGROUND)
+                                         styleSheet=self.STYLE_WHITE_BACKGROUND)
     rowLayout.addWidget(self.reRegButton)
     self.dataSelectionGroupBoxLayout.addWidget(row)
 
@@ -1555,8 +1555,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
         segmentationPath = os.path.dirname(os.path.dirname(path))
         segmentationPath = os.path.join(segmentationPath, 'Segmentations')
-        logging.debug(' LOCATION OF SEGMENTATION path : '+str(segmentationPath))
+        logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
 
+        if not os.path.exists(segmentationPath):
+          self.confirmDialog("No segmentations found.\nMake sure that you used PCampReview for segmenting the prostate "
+                             "first and using its output as the preop data input here.")
+          return False
         self.preopImagePath = self.seriesMap[series]['NRRDLocation']
         self.preopSegmentationPath = segmentationPath
 
@@ -1569,15 +1573,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     return True
 
   def loadPreopData(self):
-    errors = False
-    self.loadDataPCAMPStyle()
+    if not self.loadDataPCAMPStyle():
+      return
     self.configureSliceNodesForPreopData()
-    if not self.loadT2Label():
-      self.warningDialog("Loading preop segmentation failed. Make sure that the correct directory structure "
-                         "like PCampReview explains is used.")
-      errors = True
-    self.loadPreopVolume()
-    if errors:
+    if not self.loadT2Label() or not self.loadPreopVolume() or not self.loadPreopTargets():
+      self.warningDialog("Loading preop data failed.\nMake sure that the correct directory structure like PCampReview "
+                         "explains is used. SliceTracker expects a volume, label and target")
       self.intraopDirButton.setEnabled(False)
       return
     else:
