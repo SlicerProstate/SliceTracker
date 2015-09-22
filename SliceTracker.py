@@ -1588,7 +1588,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.preopVolume = self.logic.applyBiasCorrection(self.preopVolume, self.preopLabel)
       self.preopVolumeSelector.setCurrentNode(self.preopVolume)
     logging.debug('TARGETS PREOP')
-    logging.debug(slicer.modules.SliceTrackerWidget.targetsPreop)
+    logging.debug(self.targetsPreop)
 
     """
     # load targets for rigid transformation
@@ -1713,7 +1713,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       # check, if there are enough targets set to create the model and call the CLI
       if slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0).GetNumberOfFiducials() > 2:
 
-        labelname = (slicer.modules.SliceTrackerWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
+        labelname = self.referenceVolumeSelector.currentNode().GetName()+ '-label'
         self.currentIntraopLabel = self.logic.modelToLabelmap(inputVolume,clippingModel)
         self.currentIntraopLabel.SetName(labelname)
 
@@ -1748,7 +1748,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.editorParameterNode.SetParameter('effect','DefaultTool')
 
       # set Labelmap for Registration
-      labelname = (slicer.modules.SliceTrackerWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
+      labelname = self.referenceVolumeSelector.currentNode().GetName()+ '-label'
       self.currentIntraopLabel = slicer.mrmlScene.GetNodesByName(labelname).GetItemAsObject(0)
       self.intraopLabelSelector.setCurrentNode(self.currentIntraopLabel)
 
@@ -1837,13 +1837,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     displayNode = intraopLabel.GetDisplayNode()
     displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
-    editUtil = slicer.modules.SliceTrackerWidget.editUtil
-    parameterNode = editUtil.getParameterNode()
+    parameterNode = self.editUtil.getParameterNode()
     parameterNode.SetParameter('effect','DrawEffect')
 
     # set label properties
-    editUtil.setLabel(1)
-    editUtil.setLabelOutline(1)
+    self.editUtil.setLabel(1)
+    self.editUtil.setLabelOutline(1)
 
   def createRegistrationResult(self,name,params,output):
 
