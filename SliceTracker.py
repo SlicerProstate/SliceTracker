@@ -262,10 +262,34 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.setupIcons()
     self.createTabWidget()
 
-    #
-    # Step 1: Data Selection
-    #
+    self.setupDataSelectionStep()
+    self.setupProstateSegmentationStep()
+    self.setupRegistrationStep()
+    self.setupRegistrationEvaluationStep()
 
+    self.setupConnections()
+
+    # set initial layout
+    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+
+    # set slice views to axial
+    self.redSliceNode.SetOrientationToAxial()
+    self.yellowSliceNode.SetOrientationToAxial()
+
+    # initially, set Evaluation Section disabled
+    # TODO: set False again
+    # self.setTabsEnabled([1, 2, 3], False)
+
+    # enter Module on Tab 1
+    self.onTab1clicked()
+
+    # set up color table
+    self.logic.setupColorTable()
+
+    self.removeSliceAnnotations()
+    self.updatePatientSelector()
+
+  def setupDataSelectionStep(self):
     firstRow = qt.QWidget()
     rowLayout = self.createAlignedRowLayout(firstRow, alignment=qt.Qt.AlignLeft)
 
@@ -316,7 +340,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.intraopSeriesSelector = ctk.ctkCollapsibleGroupBox()
     self.intraopSeriesSelector.setTitle("Intraop series")
-    self.intraopSeriesSelector.collapsed= True
+    self.intraopSeriesSelector.collapsed = True
     self.dataSelectionGroupBoxLayout.addRow(self.intraopSeriesSelector)
     intraopSeriesSelectorLayout = qt.QFormLayout(self.intraopSeriesSelector)
 
@@ -343,9 +367,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     rowLayout.addWidget(self.reRegButton)
     self.dataSelectionGroupBoxLayout.addWidget(row)
 
-    #
-    # Step 2: Label Selection
-    #
+  def setupProstateSegmentationStep(self):
     self.labelSelectionCollapsibleButton = ctk.ctkCollapsibleButton()
     self.labelSelectionCollapsibleButton.text = "Step 2: Label Selection"
     self.labelSelectionCollapsibleButton.collapsed = 0
@@ -360,15 +382,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     rowLayout.addWidget(self.text)
 
     # reference volume selector
-    self.referenceVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled = True,
-                                                       selectNodeUponCreation=True, showChildNodeTypes = False,
+    self.referenceVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled=True,
+                                                       selectNodeUponCreation=True, showChildNodeTypes=False,
                                                        toolTip="Pick the input to the algorithm.")
     rowLayout.addWidget(self.referenceVolumeSelector)
     # set info box
 
     self.helperLabel = qt.QLabel()
     helperPixmap = qt.QPixmap(os.path.join(self.iconPath, 'icon-infoBox.png'))
-    helperPixmap = helperPixmap.scaled(qt.QSize(20,20))
+    helperPixmap = helperPixmap.scaled(qt.QSize(20, 20))
     self.helperLabel.setPixmap(helperPixmap)
     self.helperLabel.setToolTip('This is the information you needed, right?')
 
@@ -377,8 +399,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.labelSelectionGroupBoxLayout.addRow(firstRow)
 
     # Set Icon Size for the 4 Icon Items
-    size = qt.QSize(40,40)
-
+    size = qt.QSize(40, 40)
     self.startQuickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=size,
                                                           styleSheet=self.STYLE_WHITE_BACKGROUND)
     self.startQuickSegmentationButton.setFixedHeight(50)
@@ -403,13 +424,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     buttonBox1 = qt.QDialogButtonBox()
     buttonBox1.setLayoutDirection(1)
     buttonBox1.centerButtons = False
-
-    buttonBox1.addButton(self.forwardButton,buttonBox1.ActionRole)
-    buttonBox1.addButton(self.backButton,buttonBox1.ActionRole)
-    buttonBox1.addButton(self.applySegmentationButton,buttonBox1.ActionRole)
-    buttonBox1.addButton(self.startQuickSegmentationButton,buttonBox1.ActionRole)
-    buttonBox1.addButton(self.startLabelSegmentationButton,buttonBox1.ActionRole)
-
+    buttonBox1.addButton(self.forwardButton, buttonBox1.ActionRole)
+    buttonBox1.addButton(self.backButton, buttonBox1.ActionRole)
+    buttonBox1.addButton(self.applySegmentationButton, buttonBox1.ActionRole)
+    buttonBox1.addButton(self.startQuickSegmentationButton, buttonBox1.ActionRole)
+    buttonBox1.addButton(self.startLabelSegmentationButton, buttonBox1.ActionRole)
     self.labelSelectionGroupBoxLayout.addWidget(buttonBox1)
 
     # Editor Widget
@@ -418,36 +437,32 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     editorWidgetParent.setMRMLScene(slicer.mrmlScene)
 
     self.editUtil = EditorLib.EditUtil.EditUtil()
-    self.editorWidget = EditorWidget(parent=editorWidgetParent,showVolumesFrame=False)
+    self.editorWidget = EditorWidget(parent=editorWidgetParent, showVolumesFrame=False)
     self.editorWidget.setup()
     self.editorParameterNode = self.editUtil.getParameterNode()
     self.labelSelectionGroupBoxLayout.addRow(editorWidgetParent)
 
-    #
-    # Step 3: Registration
-    #
-
+  def setupRegistrationStep(self):
     self.preopVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], showChildNodeTypes=False,
-                                                   selectNodeUponCreation=True, toolTip="Pick algorithm input." )
-
+                                                   selectNodeUponCreation=True, toolTip="Pick algorithm input.")
     self.registrationGroupBoxLayout.addRow("Preop Image Volume: ", self.preopVolumeSelector)
 
     self.preopLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""], showChildNodeTypes=False,
-                                                  selectNodeUponCreation=False, toolTip="Pick algorithm input." )
+                                                  selectNodeUponCreation=False, toolTip="Pick algorithm input.")
     self.registrationGroupBoxLayout.addRow("Preop Label Volume: ", self.preopLabelSelector)
 
     self.intraopVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled=True,
                                                      showChildNodeTypes=False, selectNodeUponCreation=True,
-                                                     toolTip="Pick algorithm input." )
+                                                     toolTip="Pick algorithm input.")
     self.registrationGroupBoxLayout.addRow("Intraop Image Volume: ", self.intraopVolumeSelector)
-
-    self.intraopLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""], showChildNodeTypes=False,
-                                                    selectNodeUponCreation=True, toolTip="Pick algorithm input." )
+    self.intraopLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""],
+                                                    showChildNodeTypes=False,
+                                                    selectNodeUponCreation=True, toolTip="Pick algorithm input.")
     self.registrationGroupBoxLayout.addRow("Intraop Label Volume: ", self.intraopLabelSelector)
 
     self.fiducialSelector = self.createComboBox(nodeTypes=["vtkMRMLMarkupsFiducialNode", ""], noneEnabled=True,
                                                 showChildNodeTypes=False, selectNodeUponCreation=False,
-                                                toolTip="Select the Targets" )
+                                                toolTip="Select the Targets")
     self.registrationGroupBoxLayout.addRow("Targets: ", self.fiducialSelector)
 
     self.applyBSplineRegistrationButton = self.createButton("Apply Registration", icon=self.greenCheckIcon,
@@ -455,10 +470,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.applyBSplineRegistrationButton.setFixedHeight(45)
     self.registrationGroupBoxLayout.addRow(self.applyBSplineRegistrationButton)
 
-    #
-    # Step 4: Registration Evaluation
-    #
-
+  def setupRegistrationEvaluationStep(self):
     # Buttons which registration step should be shown
     selectPatientRowLayout = qt.QHBoxLayout()
 
@@ -531,7 +543,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.revealCursorCheckBox = qt.QCheckBox("Use RevealCursor")
     self.revealCursorCheckBox.checked = False
-    self.groupBoxLayout.addRow("",self.revealCursorCheckBox)
+    self.groupBoxLayout.addRow("", self.revealCursorCheckBox)
 
     self.groupBoxTargets = qt.QGroupBox("Targets")
     self.groupBoxLayoutTargets = qt.QFormLayout(self.groupBoxTargets)
@@ -540,11 +552,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.targetTable = qt.QTableWidget()
     self.targetTable.setRowCount(0)
     self.targetTable.setColumnCount(3)
-    self.targetTable.setColumnWidth(0,160)
-    self.targetTable.setColumnWidth(1,180)
-    self.targetTable.setColumnWidth(2,180)
-    self.targetTable.setHorizontalHeaderLabels(['Target','Distance to needle-tip 2D [mm]','Distance to needle-tip 3D [mm]'])
-
+    self.targetTable.setColumnWidth(0, 160)
+    self.targetTable.setColumnWidth(1, 180)
+    self.targetTable.setColumnWidth(2, 180)
+    self.targetTable.setHorizontalHeaderLabels(['Target', 'Distance to needle-tip 2D [mm]',
+                                                'Distance to needle-tip 3D [mm]'])
     self.groupBoxLayoutTargets.addRow(self.targetTable)
 
     self.needleTipButton = qt.QPushButton('Set needle-tip')
@@ -553,36 +565,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.groupBoxOutputData = qt.QGroupBox("Data output")
     self.groupBoxOutputDataLayout = qt.QFormLayout(self.groupBoxOutputData)
     self.evaluationGroupBoxLayout.addWidget(self.groupBoxOutputData)
-
-    self.outputDirButton = self.createButton(self.shortenDirText(self.getSetting('OutputLocation')), icon=self.folderIcon)
+    self.outputDirButton = self.createButton(self.shortenDirText(self.getSetting('OutputLocation')),
+                                             icon=self.folderIcon)
     self.groupBoxOutputDataLayout.addRow("Select custom output directory:", self.outputDirButton)
 
     self.saveDataButton = self.createButton('Save Data', icon=self.littleDiscIcon, maximumWidth=150)
     self.groupBoxOutputDataLayout.addWidget(self.saveDataButton)
-
-   # _____________________________________________________________________________________________________ #
-
-    self.setupConnections()
-
-    # set initial layout
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
-
-    # set slice views to axial
-    self.redSliceNode.SetOrientationToAxial()
-    self.yellowSliceNode.SetOrientationToAxial()
-
-    # initially, set Evaluation Section disabled
-    # TODO: set False again
-    self.setTabsEnabled([1, 2, 3], False)
-
-    # enter Module on Tab 1
-    self.onTab1clicked()
-
-    # set up color table
-    self.logic.setupColorTable()
-
-    self.removeSliceAnnotations()
-    self.updatePatientSelector()
 
   def setTabsEnabled(self, indexes, enabled):
     for index in indexes:
@@ -1060,7 +1048,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def onTab1clicked(self):
     # (re)set the standard Icon
     self.tabBar.setTabIcon(0,self.dataSelectionIcon)
-    # removeSliceAnnotations
     self.removeSliceAnnotations()
 
   def onTab2clicked(self):
@@ -1420,7 +1407,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def simulateDataIncome(self, imagePath):
     # TODO: when module ready, remove this method
     # copy DICOM Files into intraop folder
-    cmd = ('cp -a '+imagePath+'. '+self.intraopDataDir)
+    cmd = ('cp -a '+imagePath+'. ' + self.intraopDataDir)
     logging.debug(cmd)
     os.system(cmd)
 
@@ -1433,8 +1420,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     cmd = ('cp -a '+imagePath+'. '+intraopPath)
     print cmd
     os.system(cmd)
-
-
 
   def configureSliceNodesForPreopData(self):
     # use label contours
@@ -1479,6 +1464,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
         slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(self.preopLabel)
         slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(self.preopLabel)
         slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(self.preopLabel)
+        self.preopLabelSelector.setCurrentNode(self.preopLabel)
     return success
 
   def loadPreopVolume(self):
@@ -2116,12 +2102,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                       'movingBinaryVolume' : movingLabel,
                       'fixedBinaryVolume' : fixedLabel,
                       'samplingPercentage' : "0.002",
-                      'useRigid' : True,
-                      'useAffine' : True,
+                      'useRigid' : False,
+                      'useAffine' : False,
                       'useROIBSpline' : True,
                       'useBSpline' : True,
-                      'useScaleVersor3D' : True,
-                      'useScaleSkewVersor3D' : True,
+                      'useScaleVersor3D' : False,
+                      'useScaleSkewVersor3D' : True, # False - ? maybe
                       'splineGridSize' : "3,3,3",
                       'numberOfIterations' : "1500",
                       'maskProcessing' : "ROI",
@@ -2354,12 +2340,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                       'fixedBinaryVolume' : fixedLabel,
                       # 'initializeTransformMode' : "useCenterOfROIAlign",
                       # 'samplingPercentage' : "0.002",
-                      'useRigid' : True,
-                      'useAffine' : True,
+                      'useRigid' : False,
+                      'useAffine' : True, # ? maybe
                       'useROIBSpline' : True,
                       'useBSpline' : True,
-                      'useScaleVersor3D' : True,
-                      'useScaleSkewVersor3D' : True,
+                      'useScaleVersor3D' : True, # ? maybe
+                      'useScaleSkewVersor3D' : True, # ? maybe
                       'splineGridSize' : "3,3,3",
                       'numberOfIterations' : "1500",
                       'maskProcessing' : "ROI",
@@ -2392,7 +2378,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                       'removeIntensityOutliers' : "0",
                       'ROIAutoClosingSize' : "9",
                       'maskProcessingMode' : "ROI",
-                      #'initialTransform' : outputTransformAffine
+                      'initialTransform' : outputTransformRigid
                       }
 
      progress.labelText = '\nBSpline registration'
