@@ -55,10 +55,23 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     return progressIndicator
 
   @staticmethod
+  def createDirectory(directory, message=None):
+    if message:
+      logging.debug(message)
+    try:
+      os.makedirs(directory)
+    except OSError:
+      logging.debug('Failed to create the following directory: ' + directory)
+
+  @staticmethod
   def confirmDialog(message, title='SliceTracker'):
     result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
                                      qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
     return result == qt.QMessageBox.Ok
+
+  @staticmethod
+  def notificationDialog(message, title='SliceTracker'):
+    return qt.QMessageBox.information(slicer.util.mainWindow(), title, message)
 
   @staticmethod
   def yesNoDialog(message, title='SliceTracker'):
@@ -251,8 +264,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.layoutManager = slicer.app.layoutManager()
     self.redWidget = self.layoutManager.sliceWidget('Red')
     self.yellowWidget = self.layoutManager.sliceWidget('Yellow')
+    self.greenWidget = self.layoutManager.sliceWidget('Green')
+    self.greenSliceLogic = self.greenWidget.sliceLogic()
+    self.greenSliceNode = self.greenSliceLogic.GetSliceNode()
     self.compositeNodeRed = self.redWidget.mrmlSliceCompositeNode()
     self.compositeNodeYellow = self.yellowWidget.mrmlSliceCompositeNode()
+    self.compositeNodeGreen = self.greenWidget.mrmlSliceCompositeNode()
     self.redSliceView = self.redWidget.sliceView()
     self.yellowSliceView = self.yellowWidget.sliceView()
     self.redSliceLogic = self.redWidget.sliceLogic()
@@ -273,13 +290,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.setupConnections()
 
-    # set initial layout
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
-
-    # set slice views to axial
-    self.redSliceNode.SetOrientationToAxial()
-    self.yellowSliceNode.SetOrientationToAxial()
-
+    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+    self.setAxialOrientation()
     # initially, set Evaluation Section disabled
     # TODO: set False again
     # self.setTabsEnabled([1, 2, 3], False)
@@ -292,6 +304,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.removeSliceAnnotations()
     self.updatePatientSelector()
+
+  def setStandardOrientation(self):
+    self.redSliceNode.SetOrientationToAxial()
+    self.yellowSliceNode.SetOrientationToSagittal()
+    self.greenSliceNode.SetOrientationToCoronal()
+
+  def setAxialOrientation(self):
+    self.redSliceNode.SetOrientationToAxial()
+    self.yellowSliceNode.SetOrientationToAxial()
+    self.greenSliceNode.SetOrientationToAxial()
 
   def setupDataSelectionStep(self):
     firstRow = qt.QWidget()
@@ -322,6 +344,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.preopDirButton = self.createButton('choose directory', icon=self.folderIcon)
     self.dataSelectionGroupBoxLayout.addRow("Select preop directory:", self.preopDirButton)
+
+    self.outputDirButton = self.createButton(self.shortenDirText(self.getSetting('OutputLocation')),
+                                             icon=self.folderIcon)
+    self.dataSelectionGroupBoxLayout.addRow("Select output directory:", self.outputDirButton)
+
 
     row = qt.QWidget()
     rowLayout = self.createAlignedRowLayout(row, alignment=qt.Qt.AlignRight)
@@ -404,13 +431,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     # Set Icon Size for the 4 Icon Items
     size = qt.QSize(40, 40)
-    self.startQuickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=size,
+    self.quickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=size,
                                                           styleSheet=self.STYLE_WHITE_BACKGROUND)
-    self.startQuickSegmentationButton.setFixedHeight(50)
+    self.quickSegmentationButton.setFixedHeight(50)
 
-    self.startLabelSegmentationButton = self.createButton('Label Mode', icon=self.labelSegmentationIcon, iconSize=size,
+    self.labelSegmentationButton = self.createButton('Label Mode', icon=self.labelSegmentationIcon, iconSize=size,
                                                           styleSheet=self.STYLE_WHITE_BACKGROUND)
-    self.startLabelSegmentationButton.setFixedHeight(50)
+    self.labelSegmentationButton.setFixedHeight(50)
 
     self.applySegmentationButton = self.createButton("", icon=self.applySegmentationIcon, iconSize=size,
                                                      styleSheet=self.STYLE_WHITE_BACKGROUND, enabled=False)
@@ -431,8 +458,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     buttonBox1.addButton(self.forwardButton, buttonBox1.ActionRole)
     buttonBox1.addButton(self.backButton, buttonBox1.ActionRole)
     buttonBox1.addButton(self.applySegmentationButton, buttonBox1.ActionRole)
-    buttonBox1.addButton(self.startQuickSegmentationButton, buttonBox1.ActionRole)
-    buttonBox1.addButton(self.startLabelSegmentationButton, buttonBox1.ActionRole)
+    buttonBox1.addButton(self.quickSegmentationButton, buttonBox1.ActionRole)
+    buttonBox1.addButton(self.labelSegmentationButton, buttonBox1.ActionRole)
     self.labelSelectionGroupBoxLayout.addWidget(buttonBox1)
 
     # Editor Widget
@@ -569,11 +596,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.groupBoxOutputData = qt.QGroupBox("Data output")
     self.groupBoxOutputDataLayout = qt.QFormLayout(self.groupBoxOutputData)
     self.evaluationGroupBoxLayout.addWidget(self.groupBoxOutputData)
-    self.outputDirButton = self.createButton(self.shortenDirText(self.getSetting('OutputLocation')),
-                                             icon=self.folderIcon)
-    self.groupBoxOutputDataLayout.addRow("Select custom output directory:", self.outputDirButton)
-
-    self.saveDataButton = self.createButton('Save Data', icon=self.littleDiscIcon, maximumWidth=150)
+    self.saveDataButton = self.createButton('Save Data', icon=self.littleDiscIcon, maximumWidth=150, enabled=False)
     self.groupBoxOutputDataLayout.addWidget(self.saveDataButton)
 
   def setTabsEnabled(self, indexes, enabled):
@@ -611,9 +634,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.revealCursorCheckBox.connect('toggled(bool)', self.revealToggled)
     self.needleTipButton.connect('clicked(bool)',self.onNeedleTipButtonClicked)
     self.outputDirButton.connect('clicked()', self.onOutputDirSelected)
-    self.startQuickSegmentationButton.connect('clicked(bool)',self.onStartSegmentationButton)
-    self.startLabelSegmentationButton.connect('clicked(bool)',self.onStartLabelSegmentationButton)
-    self.applySegmentationButton.connect('clicked(bool)',self.onApplySegmentationButton)
+    self.quickSegmentationButton.connect('clicked(bool)',self.onQuickSegmentationButtonClicked)
+    self.labelSegmentationButton.connect('clicked(bool)',self.onLabelSegmentationButtonClicked)
+    self.applySegmentationButton.connect('clicked(bool)',self.onApplySegmentationButtonClicked)
     self.loadAndSegmentButton.connect('clicked(bool)',self.onLoadAndSegmentButtonClicked)
     self.preopVolumeSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
     self.intraopVolumeSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
@@ -622,6 +645,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.fiducialSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
     self.rockTimer.connect('timeout()', self.onRockToggled)
     self.flickerTimer.connect('timeout()', self.onFlickerToggled)
+    self.saveDataButton.connect('clicked(bool)',self.onSaveData)
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -1033,11 +1057,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     if os.path.exists(self.outputDir):
       self.outputDirButton.text = self.shortenDirText(self.outputDir)
       self.setSetting('OutputLocation', self.outputDir)
-      self.saveRegistrationOutput()
+      self.saveDataButton.setEnabled(True)
+    else:
+      self.saveDataButton.setEnabled(False)
 
-  def saveRegistrationOutput(self):
+  def onSaveData(self):
     logging.debug('save data .. ')
-    return True
+
+    return self.notificationDialog("Data has been saved.")
 
   def onTabWidgetClicked(self):
     if self.tabWidget.currentIndex==0:
@@ -1058,8 +1085,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.tabWidget.setCurrentIndex(1)
 
     enableButton = 0 if self.referenceVolumeSelector.currentNode() is None else 1
-    self.startLabelSegmentationButton.setEnabled(enableButton)
-    self.startQuickSegmentationButton.setEnabled(enableButton)
+    self.labelSegmentationButton.setEnabled(enableButton)
+    self.quickSegmentationButton.setEnabled(enableButton)
 
     self.removeSliceAnnotations()
 
@@ -1071,7 +1098,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.markupsLogic.SetAllMarkupsVisibility(self.targetsPreop, False)
     self.compositeNodeRed.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
 
-    # Fit Volume To Screen
+    self.setStandardOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
 
   def onTab3clicked(self):
@@ -1079,8 +1106,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
   def inputsAreSet(self):
     return not (self.preopVolumeSelector.currentNode() is None and self.intraopVolumeSelector.currentNode() is None and
-            self.preopLabelSelector.currentNode() is None and self.intraopLabelSelector.currentNode() is None and
-            self.fiducialSelector.currentNode() is None)
+                self.preopLabelSelector.currentNode() is None and self.intraopLabelSelector.currentNode() is None and
+                self.fiducialSelector.currentNode() is None)
 
   def onTab4clicked(self):
     self.addSliceAnnotations()
@@ -1091,7 +1118,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.reRegButton.setEnabled(1)
 
   def onUpdatePatientListClicked(self):
-
     self.updatePatientSelectorFlag = True
     self.updatePatientSelector()
     self.updatePatientSelectorFlag = False
@@ -1366,7 +1392,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     redFOV = restoredSliceOptions[2]
     yellowFOV = restoredSliceOptions[3]
 
-    # fit slice view
     self.redSliceLogic.FitSliceToAll()
     self.yellowSliceLogic.FitSliceToAll()
 
@@ -1646,17 +1671,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     return self.selectedSeries
 
-  def onStartSegmentationButton(self):
+  def onQuickSegmentationButtonClicked(self):
 
-    # set current referenceVolume as background volume
-    self.compositeNodeRed.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
-    self.redSliceLogic.FitSliceToAll()
-
-    # clear current Label
-    self.compositeNodeRed.SetLabelVolumeID(None)
-
-    # hide existing labels
-    # self.compositeNodeRed.SetLabelOpacity(0)
+    self.clearCurrentLabels()
+    self.setBackgroundToCurrentReferenceVolume()
 
     self.quickSegmentationFlag = 1
 
@@ -1665,20 +1683,30 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.logic.runQuickSegmentationMode()
     self.logic.inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateUndoRedoButtons)
 
+  def setBackgroundToCurrentReferenceVolume(self):
+    self.compositeNodeRed.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
+    self.compositeNodeYellow.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
+    self.compositeNodeGreen.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
+
+  def clearCurrentLabels(self):
+    self.compositeNodeRed.SetLabelVolumeID(None)
+    self.compositeNodeYellow.SetLabelVolumeID(None)
+    self.compositeNodeGreen.SetLabelVolumeID(None)
+
   def setQuickSegmentationModeON(self):
-    self.startLabelSegmentationButton.setEnabled(0)
-    self.startQuickSegmentationButton.setEnabled(0)
+    self.labelSegmentationButton.setEnabled(0)
+    self.quickSegmentationButton.setEnabled(0)
     self.applySegmentationButton.setEnabled(1)
     self.deactivateUndoRedoButtons()
     self.deletedMarkups.Reset()
 
   def setQuickSegmentationModeOFF(self):
-    self.startLabelSegmentationButton.setEnabled(1)
-    self.startQuickSegmentationButton.setEnabled(1)
+    self.labelSegmentationButton.setEnabled(1)
+    self.quickSegmentationButton.setEnabled(1)
     self.applySegmentationButton.setEnabled(0)
     self.deactivateUndoRedoButtons()
 
-    # reset persistent fiducial tol
+    # reset persistent fiducial tool
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
     interactionNode.SwitchToViewTransformMode()
     interactionNode.SetPlaceModePersistence(0)
@@ -1686,25 +1714,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def changeOpacity(self,value):
     self.compositeNodeRed.SetForegroundOpacity(value)
 
-  def onApplySegmentationButton(self):
-
+  def onApplySegmentationButtonClicked(self):
+    self.setAxialOrientation()
     if self.quickSegmentationFlag==1:
-
-      # create a labelmap from the model
 
       # set parameter for modelToLabelmap CLI Module
       inputVolume = self.referenceVolumeSelector.currentNode()
-
-      # get InputModel
-      clippingModel = slicer.mrmlScene.GetNodesByName('clipModelNode').GetItemAsObject(0)
-
-      # run CLI-Module
 
       # check, if there are enough targets set to create the model and call the CLI
       if slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0).GetNumberOfFiducials() > 2:
 
         labelname = self.referenceVolumeSelector.currentNode().GetName()+ '-label'
-        self.currentIntraopLabel = self.logic.modelToLabelmap(inputVolume,clippingModel)
+        self.currentIntraopLabel = self.logic.labelMapFromClippingModel(inputVolume)
         self.currentIntraopLabel.SetName(labelname)
 
         # set color table
@@ -1752,13 +1773,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       pass
 
     # reset options
-    self.startQuickSegmentationButton.setEnabled(1)
-    self.startLabelSegmentationButton.setEnabled(1)
+    self.quickSegmentationButton.setEnabled(1)
+    self.labelSegmentationButton.setEnabled(1)
     self.applySegmentationButton.setEnabled(0)
 
   def setupScreenAfterSegmentation(self):
 
-    # set up layout
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
 
     # set up preop image and label
@@ -1773,11 +1793,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(self.preopVolume)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(self.currentIntraopLabel)
 
-    # first - fit slice view
     self.redSliceLogic.FitSliceToAll()
     self.yellowSliceLogic.FitSliceToAll()
 
-    # zoom in propertly
+    # zoom in properly
     self.yellowSliceNode.SetFieldOfView(86, 136, 3.5)
     self.redSliceNode.SetFieldOfView(86, 136, 3.5)
 
@@ -1794,14 +1813,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     # change to Registration Tab
     self.tabBar.currentIndex = 2
 
-  def onStartLabelSegmentationButton(self):
+  def onLabelSegmentationButtonClicked(self):
 
-    # clear current Label
-    self.compositeNodeRed.SetLabelVolumeID(None)
+    self.clearCurrentLabels()
 
     # disable QuickSegmentationButton
-    self.startQuickSegmentationButton.setEnabled(0)
-    self.startLabelSegmentationButton.setEnabled(0)
+    self.quickSegmentationButton.setEnabled(0)
+    self.labelSegmentationButton.setEnabled(0)
     self.applySegmentationButton.setEnabled(1)
     self.labelSegmentationFlag = 1
 
@@ -2810,82 +2828,59 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     return True
 
   def runQuickSegmentationMode(self):
-
-    # set four up view, select persistent fiducial marker as crosshair
     self.setVolumeClipUserMode()
-
-    # let user place Fiducials
     self.placeFiducials()
 
   def setVolumeClipUserMode(self):
-
-    # set Layout to redSliceViewOnly
     lm = slicer.app.layoutManager()
-    lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+    lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
 
-    # fit Slice View to FOV
-    red = lm.sliceWidget('Red')
-    redLogic = red.sliceLogic()
-    redLogic.FitSliceToAll()
+    for widgetName in ['Red', 'Green', 'Yellow']:
+      slice = lm.sliceWidget(widgetName)
+      sliceLogic = slice.sliceLogic()
+      sliceLogic.FitSliceToAll()
 
     # set the mouse mode into Markups fiducial placement
     placeModePersistence = 1
     slicer.modules.markups.logic().StartPlaceMode(placeModePersistence)
 
   def updateModel(self,observer,caller):
-
-    clipModelNode = slicer.mrmlScene.GetNodesByName('clipModelNode')
-    self.clippingModel = clipModelNode.GetItemAsObject(0)
-
-    inputMarkupNode = slicer.mrmlScene.GetNodesByName('inputMarkupNode')
-    inputMarkup = inputMarkupNode.GetItemAsObject(0)
-
     import VolumeClipWithModel
     clipLogic = VolumeClipWithModel.VolumeClipWithModelLogic()
-    clipLogic.updateModelFromMarkup(inputMarkup, self.clippingModel)
+    clipLogic.updateModelFromMarkup(self.inputMarkup, self.clippingModel)
 
   def placeFiducials(self):
 
-    # Create empty model node
     self.clippingModel = slicer.vtkMRMLModelNode()
     self.clippingModel.SetName('clipModelNode')
     slicer.mrmlScene.AddNode(self.clippingModel)
 
-    # Create Display Node for Model
-    clippingModelDisplayNode=  slicer.vtkMRMLModelDisplayNode()
-    clippingModelDisplayNode.SetSliceIntersectionThickness(3)
-    clippingModelDisplayNode.SetColor((20,180,250))
-    slicer.mrmlScene.AddNode(clippingModelDisplayNode)
+    self.createClippingModelDisplayNode()
+    self.createMarkupAndDisplayNodeForFiducials()
+    self.inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateModel)
 
-    self.clippingModel.SetAndObserveDisplayNodeID(clippingModelDisplayNode.GetID())
-
-    # Create markup display fiducials
+  def createMarkupAndDisplayNodeForFiducials(self):
     displayNode = slicer.vtkMRMLMarkupsDisplayNode()
     slicer.mrmlScene.AddNode(displayNode)
-
-    # create markup fiducial node
     self.inputMarkup = slicer.vtkMRMLMarkupsFiducialNode()
     self.inputMarkup.SetName('inputMarkupNode')
     slicer.mrmlScene.AddNode(self.inputMarkup)
     self.inputMarkup.SetAndObserveDisplayNodeID(displayNode.GetID())
+    self.styleDisplayNode(displayNode)
 
-    # set Text Scale to 0
-    inputMarkupDisplayNode = slicer.mrmlScene.GetNodesByName('inputMarkupNode').GetItemAsObject(0).GetDisplayNode()
+  def styleDisplayNode(self, displayNode):
+    displayNode.SetTextScale(0)
+    displayNode.SetGlyphScale(2.0)
+    displayNode.SetColor(0, 0, 0)
 
-    # Set Textscale
-    inputMarkupDisplayNode.SetTextScale(0)
+  def createClippingModelDisplayNode(self):
+    clippingModelDisplayNode = slicer.vtkMRMLModelDisplayNode()
+    clippingModelDisplayNode.SetSliceIntersectionThickness(3)
+    clippingModelDisplayNode.SetColor((20, 180, 250))
+    slicer.mrmlScene.AddNode(clippingModelDisplayNode)
+    self.clippingModel.SetAndObserveDisplayNodeID(clippingModelDisplayNode.GetID())
 
-    # Set Glyph Size
-    inputMarkupDisplayNode.SetGlyphScale(2.0)
-
-    # Set Color
-    inputMarkupDisplayNode.SetColor(0,0,0)
-
-    # add Observer
-    self.inputMarkup.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateModel)
-
-  def modelToLabelmap(self,inputVolume,clippingModel):
-
+  def labelMapFromClippingModel(self,inputVolume):
     """
     PARAMETER FOR MODELTOLABELMAP CLI MODULE:
     Parameter (0/0): sampleDistance
@@ -2894,7 +2889,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     Parameter (1/1): surface
     Parameter (1/2): OutputVolume
     """
-
     # initialize Label Map
     outputLabelMap = slicer.vtkMRMLLabelMapVolumeNode()
     name = (slicer.modules.SliceTrackerWidget.referenceVolumeSelector.currentNode().GetName()+ '-label')
@@ -2906,7 +2900,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
 
     # define params
     params = {'sampleDistance': 0.1, 'labelValue': 5, 'InputVolume' : inputVolume.GetID(),
-              'surface' : clippingModel.GetID(), 'OutputVolume' : outputLabelMap.GetID()}
+              'surface' : self.clippingModel.GetID(), 'OutputVolume' : outputLabelMap.GetID()}
 
     logging.debug(params)
     # run ModelToLabelMap-CLI Module
