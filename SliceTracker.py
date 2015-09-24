@@ -246,12 +246,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.currentIntraopLabel = None
     self.preopVolume = None
     self.preopLabel = None
-    self.updatePatientSelectorFlag = True
     self.warningFlag = False
-    self.patientNames = []
-    self.patientIDs = []
     self.addedPatients = []
-    self.selectablePatientItems = []
     self.selectableRegistrationResults = []
     self.seriesItems = []
     self.selectedSeries = []
@@ -702,9 +698,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       # Fit Volume To Screen
       slicer.app.applicationLogic().FitSliceToAll()
 
-      # Allow PatientSelector to be updated
-      self.updatePatientSelectorFlag = True
-
       # uncheck loaded items in the Intraop series selection
       for item in range(len(self.logic.seriesList)):
         self.seriesModel.item(item).setCheckState(0)
@@ -1125,44 +1118,39 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.reRegButton.setEnabled(1)
 
   def onUpdatePatientListClicked(self):
-    self.updatePatientSelectorFlag = True
     self.updatePatientSelector()
-    self.updatePatientSelectorFlag = False
 
   def updatePatientSelector(self):
     logging.debug("SliceTrackerWidget:updatePatientSelector")
+    self.patientSelector.clear()
 
-    if self.updatePatientSelectorFlag:
-      db = self.dicomDatabase
-      if db.patients() is None:
-        self.patientSelector.addItem('None patient found')
+    if self.dicomDatabase.patients() is None:
+      self.patientSelector.addItem('None patient found')
 
-      for patient in db.patients():
-        for study in db.studiesForPatient(patient):
-          for series in db.seriesForStudy(study):
-            for currentFile in db.filesForSeries(series):
-               try:
-                 if db.fileValue(currentFile,DICOMTAGS.PATIENT_NAME) not in self.patientNames:
-                   self.patientNames.append(db.fileValue(currentFile,DICOMTAGS.PATIENT_NAME))
-                 if db.fileValue(currentFile,DICOMTAGS.PATIENT_ID) not in self.patientIDs:
-                   self.patientIDs.append(db.fileValue(currentFile,DICOMTAGS.PATIENT_ID))
-                   self.selectablePatientItems.append(db.fileValue(currentFile,DICOMTAGS.PATIENT_ID)+' '+
-                                                      db.fileValue(currentFile,DICOMTAGS.PATIENT_NAME))
-                 break
-               except:
-                 pass
+    patients = self.getSelectablePatients()
+
+    for patient in patients:
+      self.patientSelector.addItem(patient)
+
+  def getSelectablePatients(self):
+    patients = []
+    patientNames = []
+    patientIDs = []
+    db = self.dicomDatabase
+    for patient in db.patients():
+      studies = db.studiesForPatient(patient)
+      if len(studies) > 0:
+        series = db.seriesForStudy(studies[0])[0]
+        if len(series) > 0:
+          for currentFile in db.filesForSeries(series):
+            patientName = self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)
+            patientID = self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
+            if patientName not in patientNames and patientID not in patientIDs:
+              patientNames.append(patientName)
+              patientIDs.append(patientID)
+              patients.append(patientID + ';' + patientName)
             break
-          break
-
-      # add patientNames and patientIDs to patientSelector
-      for patient in self.selectablePatientItems:
-       if patient not in self.addedPatients:
-        self.patientSelector.addItem(patient)
-        self.addedPatients.append(patient)
-       else:
-         pass
-
-    self.intraopDirButton.setEnabled(1)
+    return patients
 
   def getDICOMValue(self, currentFile, tag, fallback=None):
     try:
@@ -1172,10 +1160,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     return value
 
   def updatePatientViewBox(self):
-    if self.patientSelector.currentIndex is None:
+    if self.patientSelector.currentIndex is None or self.patientSelector.currentText == "":
       return
 
-    self.currentID = self.patientIDs[self.patientSelector.currentIndex]
+    self.currentID = self.patientSelector.currentText.split(";")[0]
     self.patientID.setText(self.currentID)
 
     currentFile = self.getDICOMFileForCurrentPatient(self.currentID)
@@ -1186,7 +1174,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.updatePatientName(currentFile)
 
   def updatePreopStudyDate(self, currentFile):
-    self.currentStudyTIMEDICOM = self.getDICOMValue(currentFile, DICOMTAGS.STUDY_TIME)
+    self.currentStudyTimeDICOM = self.getDICOMValue(currentFile, DICOMTAGS.STUDY_TIME)
     self.preopStudyDateDICOM = self.getDICOMValue(currentFile, DICOMTAGS.STUDY_DATE)
     formattedDate = self.preopStudyDateDICOM[0:4] + "-" + self.preopStudyDateDICOM[4:6] + "-" + \
                     self.preopStudyDateDICOM[6:8]
