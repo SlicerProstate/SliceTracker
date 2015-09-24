@@ -13,6 +13,8 @@ class DICOMTAGS:
   PATIENT_ID            = '0010,0020'
   PATIENT_BIRTH_DATE    = '0010,0030'
   SERIES_DESCRIPTION    = '0008,103E'
+  STUDY_DATE            = '0008,0020'
+  STUDY_TIME            = '0008,0030'
   ACQUISITION_TIME      = '0008,0032'
 
 
@@ -91,6 +93,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def onReload(self):
     ScriptedLoadableModuleWidget.onReload(self)
     slicer.mrmlScene.Clear(0)
+    self.biasCorrectionDone = False
 
   def getSetting(self, settingName):
     settings = qt.QSettings()
@@ -103,7 +106,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def createPatientWatchBox(self):
     self.patientViewBox = qt.QGroupBox()
     self.patientViewBox.setStyleSheet(self.STYLE_LIGHT_GRAY_BACKGROUND)
-    self.patientViewBox.setFixedHeight(80)
+    self.patientViewBox.setFixedHeight(90)
     self.patientViewBoxLayout = qt.QGridLayout()
     self.patientViewBox.setLayout(self.patientViewBoxLayout)
     self.patientViewBoxLayout.setColumnMinimumWidth(1, 50)
@@ -117,16 +120,20 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.patientViewBoxLayout.addWidget(self.categoryPatientName, 2, 1)
     self.categoryPatientBirthDate = qt.QLabel('Date of Birth: ')
     self.patientViewBoxLayout.addWidget(self.categoryPatientBirthDate, 3, 1)
-    self.categoryStudyDate = qt.QLabel('Date of Study:')
-    self.patientViewBoxLayout.addWidget(self.categoryStudyDate, 4, 1)
+    self.categoryPreopStudyDate = qt.QLabel('Preop Study Date:')
+    self.patientViewBoxLayout.addWidget(self.categoryPreopStudyDate, 4, 1)
+    self.categoryCurrentStudyDate = qt.QLabel('Current Study Date:')
+    self.patientViewBoxLayout.addWidget(self.categoryCurrentStudyDate, 5, 1)
     self.patientID = qt.QLabel('None')
     self.patientViewBoxLayout.addWidget(self.patientID, 1, 2)
     self.patientName = qt.QLabel('None')
     self.patientViewBoxLayout.addWidget(self.patientName, 2, 2)
     self.patientBirthDate = qt.QLabel('None')
     self.patientViewBoxLayout.addWidget(self.patientBirthDate, 3, 2)
-    self.studyDate = qt.QLabel('None')
-    self.patientViewBoxLayout.addWidget(self.studyDate, 4, 2)
+    self.preopStudyDate = qt.QLabel('None')
+    self.patientViewBoxLayout.addWidget(self.preopStudyDate, 4, 2)
+    self.currentStudyDate = qt.QLabel('None')
+    self.patientViewBoxLayout.addWidget(self.currentStudyDate, 5, 2)
 
   def createIcon(self, filename):
     path = os.path.join(self.iconPath, filename)
@@ -1157,63 +1164,74 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.intraopDirButton.setEnabled(1)
 
-  def updatePatientViewBox(self):
+  def getDICOMValue(self, currentFile, tag, fallback=None):
+    try:
+      value = self.dicomDatabase.fileValue(currentFile, tag)
+    except:
+      value = fallback
+    return value
 
+  def updatePatientViewBox(self):
     if self.patientSelector.currentIndex is None:
       return
 
-    self.currentPatientName = None
-    # get the current index from patientSelector comboBox
-    currentIndex = self.patientSelector.currentIndex
+    self.currentID = self.patientIDs[self.patientSelector.currentIndex]
+    self.patientID.setText(self.currentID)
 
-    self.currentID = self.patientIDs[currentIndex]
+    currentFile = self.getDICOMFileForCurrentPatient(self.currentID)
+    assert currentFile, "No DICOM file for the current patient found"
+    self.updatePatientBirthdate(currentFile)
+    self.updateCurrentStudyDate()
+    self.updatePreopStudyDate(currentFile)
+    self.updatePatientName(currentFile)
 
-    db = self.dicomDatabase
-    currentBirthDateDICOM = None
+  def updatePreopStudyDate(self, currentFile):
+    self.currentStudyTIMEDICOM = self.getDICOMValue(currentFile, DICOMTAGS.STUDY_TIME)
+    self.preopStudyDateDICOM = self.getDICOMValue(currentFile, DICOMTAGS.STUDY_DATE)
+    formattedDate = self.preopStudyDateDICOM[0:4] + "-" + self.preopStudyDateDICOM[4:6] + "-" + \
+                    self.preopStudyDateDICOM[6:8]
+    self.preopStudyDate.setText(formattedDate)
 
-    # looking for currentPatientName and currentBirthDate
-    for patient in db.patients():
-      for study in db.studiesForPatient(patient):
-        for series in db.seriesForStudy(study):
-          for currentFile in db.filesForSeries(series):
-             try:
-               if db.fileValue(currentFile,DICOMTAGS.PATIENT_ID) == self.currentID:
-                 currentPatientNameDICOM = db.fileValue(currentFile,DICOMTAGS.PATIENT_NAME)
-                 try:
-                   currentBirthDateDICOM = db.fileValue(currentFile,DICOMTAGS.PATIENT_BIRTH_DATE)
-                 except:
-                   currentBirthDateDICOM = None
-             except:
-               pass
+  def updateCurrentStudyDate(self):
+    currentStudyDate = qt.QDate().currentDate()
+    self.currentStudyDate.setText(str(currentStudyDate))
 
+  def updatePatientBirthdate(self, currentFile):
+    currentBirthDateDICOM = self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_BIRTH_DATE)
     if currentBirthDateDICOM is None:
       self.patientBirthDate.setText('No Date found')
     else:
       # convert date of birth from 19550112 (yyyymmdd) to 1955-01-12
       currentBirthDateDICOM = str(currentBirthDateDICOM)
-      self.currentBirthDate = currentBirthDateDICOM[0:4]+"-"+currentBirthDateDICOM[4:6]+"-"+currentBirthDateDICOM[6:8]
-
-    # convert patient name from XXXX^XXXX to XXXXX, XXXXX
-    if "^" in currentPatientNameDICOM:
-      length = len(currentPatientNameDICOM)
-      index = currentPatientNameDICOM.index('^')
-      self.currentPatientName = currentPatientNameDICOM[0:index]+", "+currentPatientNameDICOM[index+1:length]
-
-    # get today date
-    self.currentStudyDate = qt.QDate().currentDate()
-
-    # update patientViewBox
-    try:
+      self.currentBirthDate = currentBirthDateDICOM[0:4] + "-" + currentBirthDateDICOM[
+                                                                 4:6] + "-" + currentBirthDateDICOM[6:8]
       self.patientBirthDate.setText(self.currentBirthDate)
-    except:
-      pass
-    if self.currentPatientName is not None:
-      self.patientName.setText(self.currentPatientName)
-    else:
-      self.patientName.setText(currentPatientNameDICOM)
-      self.currentPatientName = currentPatientNameDICOM
-    self.patientID.setText(self.currentID)
-    self.studyDate.setText(str(self.currentStudyDate))
+
+  def updatePatientName(self, currentFile):
+    self.currentPatientName = None
+    currentPatientNameDICOM = self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)
+    # convert patient name from XXXX^XXXX to XXXXX, XXXXX
+    if currentPatientNameDICOM:
+      splitted = currentPatientNameDICOM.split('^')
+      try:
+        self.currentPatientName = splitted[1] + ", " + splitted[0]
+      except IndexError:
+        self.currentPatientName = splitted[0]
+    self.patientName.setText(self.currentPatientName)
+
+  def getDICOMFileForCurrentPatient(self, patientID):
+    db = self.dicomDatabase
+    for patient in db.patients():
+      for study in db.studiesForPatient(patient):
+        for series in db.seriesForStudy(study):
+          for currentFile in db.filesForSeries(series):
+            try:
+              if db.fileValue(currentFile, DICOMTAGS.PATIENT_ID) == patientID:
+                return currentFile
+            except Exception as e:
+              print e.message
+              continue
+    return None
 
   def updateSeriesSelectorTable(self,seriesList):
 
@@ -1599,7 +1617,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     else:
       self.intraopDirButton.setEnabled(True)
     if self.yesNoDialog("Was an endorectal coil used for preop image acquisition?"):
-      #TODO: delete old node which is not needed anymore after bias correction
       self.preopVolume = self.logic.applyBiasCorrection(self.preopVolume, self.preopLabel)
       self.preopVolumeSelector.setCurrentNode(self.preopVolume)
     logging.debug('TARGETS PREOP')
