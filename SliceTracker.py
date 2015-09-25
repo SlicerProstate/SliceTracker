@@ -1986,8 +1986,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     progress.close()
     return outputVolume
 
-  def createTransformAndVolumeNode(self, transformName, volumeName):
-    outputTransform = slicer.vtkMRMLLinearTransformNode()
+  def createTransformAndVolumeNode(self, transformName, volumeName, transFormNodeType='Linear'):
+    outputTransform = self.createTransformNode(transFormNodeType)
     outputTransform.SetName(transformName)
 
     outputVolume = slicer.vtkMRMLScalarVolumeNode()
@@ -1996,6 +1996,14 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.AddNode(outputTransform)
     slicer.mrmlScene.AddNode(outputVolume)
     return outputTransform, outputVolume
+
+  def createTransformNode(self, transformNodeType):
+    node = slicer.vtkMRMLBSplineTransformNode()
+    if transformNodeType == 'Linear':
+      node = slicer.vtkMRMLLinearTransformNode()
+    elif transformNodeType == 'BSpline':
+      node = slicer.vtkMRMLBSplineTransformNode()
+    return node
 
   def applyBSplineRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
 
@@ -2010,7 +2018,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                                                                                    volumeName='reg-Affine')
 
      outputTransformBSpline, outputVolumeBSpline = self.createTransformAndVolumeNode(transformName='transform-BSpline',
-                                                                                     volumeName='reg-BSpline')
+                                                                                     volumeName='reg-BSpline',
+                                                                                     transFormNodeType='BSpline')
 
      #   ++++++++++      RIGID REGISTRATION       ++++++++++
 
@@ -2164,7 +2173,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                                                                                    volumeName='Rereg-Affine')
 
      outputTransformBSpline, outputVolumeBSpline = self.createTransformAndVolumeNode(transformName='transform-REREG-BSpline',
-                                                                                   volumeName='Rereg-BSpline')
+                                                                                     volumeName='Rereg-BSpline',
+                                                                                     transFormNodeType='BSpline')
 
      #   ++++++++++      RIGID REGISTRATION       ++++++++++
 
