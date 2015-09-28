@@ -277,7 +277,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
     self.setAxialOrientation()
 
-    self.setTabsEnabled([1, 2, 3], False)
+    self.setTabsEnabled([1, 2, 3], True)
 
     self.onTab1clicked()
     self.logic.setupColorTable()
@@ -1067,6 +1067,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def onTab1clicked(self):
     # (re)set the standard Icon
     self.tabBar.setTabIcon(0,self.dataSelectionIcon)
+    self.flickerCheckBox.checked = False
+    self.rockCheckBox.checked = False
     self.removeSliceAnnotations()
 
   def onTab2clicked(self):
