@@ -27,7 +27,7 @@ class SliceTracker(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Peter Behringer (SPL), Christian Herz (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy. """
-    self.parent.acknowledgementText = """Surgical Planning Laboratoy, Brigham and Women's Hospital, Harvard
+    self.parent.acknowledgementText = """Surgical Planning Laboratory, Brigham and Women's Hospital, Harvard
                                           Medical School, Boston, USA This work was supported in part by the National
                                           Institutes of Health through grants U24 CA180918,
                                           R01 CA111288 and P41 EB015898."""
@@ -89,11 +89,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     ScriptedLoadableModuleWidget.__init__(self, parent)
     assert slicer.dicomDatabase
     self.dicomDatabase = slicer.dicomDatabase
+    self.logic = SliceTrackerLogic()
+    self.layoutManager = slicer.app.layoutManager()
+    self.markupsLogic = slicer.modules.markups.logic()
+    self.volumesLogic = slicer.modules.volumes.logic()
+    self.modulePath = slicer.modules.slicetracker.path.replace(self.moduleName+".py","")
+    self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
 
   def onReload(self):
     ScriptedLoadableModuleWidget.onReload(self)
     slicer.mrmlScene.Clear(0)
     self.biasCorrectionDone = False
+    self.logic = SliceTrackerLogic()
 
   def getSetting(self, settingName):
     settings = qt.QSettings()
@@ -204,28 +211,25 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.tabWidget.addTab(self.evaluationGroupBox, self.evaluationSectionIcon, '')
 
   def createIncomeSimulationButtons(self):
-    self.simulateDataIncomeButton2 = qt.QPushButton("Simulate AMIGO Data Income 1")
-    self.simulateDataIncomeButton2.toolTip = "Simulate Data Income 1: Localizer, COVER TEMPLATE, NEEDLE GUIDANCE 3"
-    self.simulateDataIncomeButton2.setStyleSheet(self.STYLE_ORANGE_BACKGROUND)
-    self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton2)
-    # Simulate DICOM Income 3
-    self.simulateDataIncomeButton3 = qt.QPushButton("Simulate AMIGO Data Income 2")
-    self.simulateDataIncomeButton3.toolTip = "Simulate Data Income 2"
-    self.simulateDataIncomeButton3.setStyleSheet(self.STYLE_ORANGE_BACKGROUND)
-    self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton3)
-    # Simulate DICOM Income 4
-    self.simulateDataIncomeButton4 = qt.QPushButton("Simulate AMIGO Data Income 3")
-    self.simulateDataIncomeButton4.toolTip = "Simulate Data Income 3"
-    self.simulateDataIncomeButton4.setStyleSheet(self.STYLE_ORANGE_BACKGROUND)
-    self.dataSelectionGroupBoxLayout.addWidget(self.simulateDataIncomeButton4)
-    # HIDE ***
-    self.simulateDataIncomeButton2.hide()
-    self.simulateDataIncomeButton3.hide()
-    self.simulateDataIncomeButton4.hide()
+    self.simDataIncomeButton2 = self.createButton("Simulate Data Income 1", styleSheet=self.STYLE_ORANGE_BACKGROUND,
+                                                  toolTip="Localizer, COVER TEMPLATE, NEEDLE GUIDANCE 3")
+    self.dataSelectionGroupBoxLayout.addWidget(self.simDataIncomeButton2)
 
-    self.simulateDataIncomeButton2.connect('clicked(bool)',self.onSimulateDataIncomeButton2)
-    self.simulateDataIncomeButton3.connect('clicked(bool)',self.onSimulateDataIncomeButton3)
-    self.simulateDataIncomeButton4.connect('clicked(bool)',self.onSimulateDataIncomeButton4)
+    self.simDataIncomeButton3 = self.createButton("Simulate Data Income 2", styleSheet=self.STYLE_ORANGE_BACKGROUND)
+    self.dataSelectionGroupBoxLayout.addWidget(self.simDataIncomeButton3)
+
+    self.simDataIncomeButton4 = self.createButton("Simulate Data Income 3", styleSheet=self.STYLE_ORANGE_BACKGROUND)
+    self.dataSelectionGroupBoxLayout.addWidget(self.simDataIncomeButton4)
+
+    self.showSimulationButtons(showButtons=False)
+
+  def showSimulationButtons(self, showButtons=True):
+    for button in [self.simDataIncomeButton2, self.simDataIncomeButton3, self.simDataIncomeButton4]:
+      button.show() if showButtons else button.hide()
+    if showButtons:
+      self.simDataIncomeButton2.connect('clicked(bool)',self.onSimulateDataIncomeButton2)
+      self.simDataIncomeButton3.connect('clicked(bool)',self.onSimulateDataIncomeButton3)
+      self.simDataIncomeButton4.connect('clicked(bool)',self.onSimulateDataIncomeButton4)
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -236,56 +240,33 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       return self.warningDialog("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and install "
                                 "VolumeClip.", "Missing Extension")
 
-    self.modulePath = slicer.modules.slicetracker.path.replace(self.moduleName+".py","")
-    self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
-    self.registrationResults = []
-    self.intraopDataDir = ""
-    self.preopDataDir = ""
     self.currentIntraopVolume = None
     self.currentIntraopLabel = None
+
     self.preopVolume = None
     self.preopLabel = None
     self.preopTargets = None
-    self.warningFlag = False
-    self.addedPatients = []
-    self.selectableRegistrationResults = []
+
     self.seriesItems = []
-    self.selectedSeries = []
-    self.rockCount = 0
-    self.rockTimer = qt.QTimer()
-    self.flickerTimer = qt.QTimer()
     self.revealCursor = None
-    self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
-    self.deletedMarkups.SetName('deletedMarkups')
+
     self.quickSegmentationActive = False
-    self.markupsLogic = slicer.modules.markups.logic()
-    self.logic = SliceTrackerLogic()
     self.comingFromPreopTag = False
     self.biasCorrectionDone = False
 
-    # set global slice widgets
-    self.layoutManager = slicer.app.layoutManager()
-    self.redWidget = self.layoutManager.sliceWidget('Red')
-    self.yellowWidget = self.layoutManager.sliceWidget('Yellow')
-    self.greenWidget = self.layoutManager.sliceWidget('Green')
-    self.greenSliceLogic = self.greenWidget.sliceLogic()
-    self.greenSliceNode = self.greenSliceLogic.GetSliceNode()
-    self.compositeNodeRed = self.redWidget.mrmlSliceCompositeNode()
-    self.compositeNodeYellow = self.yellowWidget.mrmlSliceCompositeNode()
-    self.compositeNodeGreen = self.greenWidget.mrmlSliceCompositeNode()
-    self.redSliceView = self.redWidget.sliceView()
-    self.yellowSliceView = self.yellowWidget.sliceView()
-    self.redSliceLogic = self.redWidget.sliceLogic()
-    self.yellowSliceLogic = self.yellowWidget.sliceLogic()
-    self.redSliceNode = self.redSliceLogic.GetSliceNode()
-    self.yellowSliceNode = self.yellowSliceLogic.GetSliceNode()
-    self.currentFOVRed = []
-    self.currentFOVYellow = []
+    self.outputTargets = dict()
+    self.outputVolumes = dict()
+    self.outputTransforms = dict()
+
+    self.reRegistrationMode = False
+    self.registrationResults = []
+    self.selectableRegistrationResults = []
 
     self.createPatientWatchBox()
     self.setupIcons()
     self.createTabWidget()
 
+    self.setupSliceWidgets()
     self.setupDataSelectionStep()
     self.setupProstateSegmentationStep()
     self.setupRegistrationStep()
@@ -295,17 +276,40 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
     self.setAxialOrientation()
-    # initially, set Evaluation Section disabled
-    # TODO: set False again
-    # self.setTabsEnabled([1, 2, 3], False)
 
-    # enter Module on Tab 1
+    self.setTabsEnabled([1, 2, 3], False)
+
     self.onTab1clicked()
-
-    # set up color table
     self.logic.setupColorTable()
-
     self.removeSliceAnnotations()
+
+  def setupSliceWidgets(self):
+    self.setupRedSliceWidget()
+    self.setupYellowSliceWidget()
+    self.setupGreenSliceWidget()
+
+  def setupRedSliceWidget(self):
+    self.redWidget = self.layoutManager.sliceWidget('Red')
+    self.compositeNodeRed = self.redWidget.mrmlSliceCompositeNode()
+    self.redSliceLogic = self.redWidget.sliceLogic()
+    self.redSliceView = self.redWidget.sliceView()
+    self.redSliceNode = self.redSliceLogic.GetSliceNode()
+    self.currentFOVRed = []
+
+  def setupYellowSliceWidget(self):
+    self.yellowWidget = self.layoutManager.sliceWidget('Yellow')
+    self.compositeNodeYellow = self.yellowWidget.mrmlSliceCompositeNode()
+    self.yellowSliceLogic = self.yellowWidget.sliceLogic()
+    self.yellowSliceView = self.yellowWidget.sliceView()
+    self.yellowSliceNode = self.yellowSliceLogic.GetSliceNode()
+    self.currentFOVYellow = []
+
+  def setupGreenSliceWidget(self):
+    self.greenWidget = self.layoutManager.sliceWidget('Green')
+    self.compositeNodeGreen = self.greenWidget.mrmlSliceCompositeNode()
+    self.greenSliceLogic = self.greenWidget.sliceLogic()
+    self.greenSliceNode = self.greenSliceLogic.GetSliceNode()
+    self.currentFOVGreen = []
 
   def setStandardOrientation(self):
     self.redSliceNode.SetOrientationToAxial()
@@ -318,6 +322,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.greenSliceNode.SetOrientationToAxial()
 
   def setupDataSelectionStep(self):
+    self.preopDataDir = ""
     self.preopDirButton = self.createButton('choose directory', icon=self.folderIcon)
     self.dataSelectionGroupBoxLayout.addRow("Preop directory:", self.preopDirButton)
 
@@ -325,6 +330,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.outputDirButton = self.createButton(self.shortenDirText(self.outputDir), icon=self.folderIcon)
     self.dataSelectionGroupBoxLayout.addRow("Output directory:", self.outputDirButton)
 
+    self.intraopDataDir = ""
     self.intraopDirButton = self.createButton('choose directory', icon=self.folderIcon, enabled=False)
     self.dataSelectionGroupBoxLayout.addRow("Intraop directory:", self.intraopDirButton)
 
@@ -390,11 +396,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     # Set Icon Size for the 4 Icon Items
     size = qt.QSize(40, 40)
     self.quickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=size,
-                                                          styleSheet=self.STYLE_WHITE_BACKGROUND)
+                                                     styleSheet=self.STYLE_WHITE_BACKGROUND)
     self.quickSegmentationButton.setFixedHeight(50)
 
     self.labelSegmentationButton = self.createButton('Label Mode', icon=self.labelSegmentationIcon, iconSize=size,
-                                                          styleSheet=self.STYLE_WHITE_BACKGROUND)
+                                                     styleSheet=self.STYLE_WHITE_BACKGROUND)
     self.labelSegmentationButton.setFixedHeight(50)
 
     self.applySegmentationButton = self.createButton("", icon=self.applySegmentationIcon, iconSize=size,
@@ -473,10 +479,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.resultSelector.setFixedWidth(250)
     rowLayout.addWidget(self.resultSelector)
 
-    self.showPreopButton = qt.QPushButton('Show Preop')
-    self.showRigidButton = qt.QPushButton('Show Rigid Result')
-    self.showAffineButton = qt.QPushButton('Show Affine Result')
-    self.showBSplineButton = qt.QPushButton('Show BSpline Result')
+    self.showPreopResultButton = self.createButton('Show Preop')
+    self.showRigidResultButton = self.createButton('Show Rigid Result')
+    self.showAffineResultButton = self.createButton('Show Affine Result')
+    self.showBSplineResultButton = self.createButton('Show BSpline Result')
+
+    self.registrationButtonGroup = qt.QButtonGroup()
+    self.registrationButtonGroup.addButton(self.showPreopResultButton, 1)
+    self.registrationButtonGroup.addButton(self.showRigidResultButton, 2)
+    self.registrationButtonGroup.addButton(self.showAffineResultButton, 3)
+    self.registrationButtonGroup.addButton(self.showBSplineResultButton, 4)
 
     biggerWidget = qt.QWidget()
     twoRowLayout = qt.QVBoxLayout()
@@ -487,10 +499,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     secondRow = qt.QWidget()
     rowLayout = qt.QHBoxLayout()
     secondRow.setLayout(rowLayout)
-    rowLayout.addWidget(self.showPreopButton)
-    rowLayout.addWidget(self.showRigidButton)
-    rowLayout.addWidget(self.showAffineButton)
-    rowLayout.addWidget(self.showBSplineButton)
+    rowLayout.addWidget(self.showPreopResultButton)
+    rowLayout.addWidget(self.showRigidResultButton)
+    rowLayout.addWidget(self.showAffineResultButton)
+    rowLayout.addWidget(self.showBSplineResultButton)
     twoRowLayout.addWidget(secondRow)
 
     selectPatientRowLayout.addWidget(biggerWidget)
@@ -520,10 +532,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     animaHolder.setLayout(animaLayout)
     fadeLayout.addWidget(animaHolder)
 
+    self.rockCount = 0
+    self.rockTimer = qt.QTimer()
     self.rockCheckBox = qt.QCheckBox("Rock")
     self.rockCheckBox.checked = False
     animaLayout.addWidget(self.rockCheckBox)
 
+    self.flickerTimer = qt.QTimer()
     self.flickerCheckBox = qt.QCheckBox("Flicker")
     self.flickerCheckBox.checked = False
     animaLayout.addWidget(self.flickerCheckBox)
@@ -578,11 +593,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.forwardButton.connect('clicked(bool)',self.onForwardButtonClicked)
     self.backButton.connect('clicked(bool)',self.onBackButtonClicked)
     self.applyBSplineRegistrationButton.connect('clicked(bool)',self.onApplyRegistrationClicked)
-    self.resultSelector.connect('currentIndexChanged(int)',self.updateRegistrationResult)
-    self.showPreopButton.connect('clicked(bool)',self.onPreopCheckBoxClicked)
-    self.showRigidButton.connect('clicked(bool)',self.onRigidCheckBoxClicked)
-    self.showAffineButton.connect('clicked(bool)',self.onAffineCheckBoxClicked)
-    self.showBSplineButton.connect('clicked(bool)',self.onBSplineCheckBoxClicked)
+    self.resultSelector.connect('currentIndexChanged(int)',self.onRegistrationResultSelected)
     self.fadeSlider.connect('valueChanged(double)', self.changeOpacity)
     self.rockCheckBox.connect('toggled(bool)', self.onRockToggled)
     self.flickerCheckBox.connect('toggled(bool)', self.onFlickerToggled)
@@ -601,6 +612,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.rockTimer.connect('timeout()', self.onRockToggled)
     self.flickerTimer.connect('timeout()', self.onFlickerToggled)
     self.saveDataButton.connect('clicked(bool)',self.onSaveData)
+    self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
+    self.seriesModel.itemChanged.connect(self.updateSeriesSelectionButtons)
+
+  def onRegistrationButtonChecked(self, id):
+    if id == 1:
+      self.onPreopResultClicked()
+    elif id == 2:
+      self.onRigidResultClicked()
+    elif id == 3:
+      self.onAffineResultClicked()
+    elif id == 4:
+      self.onBSplineResultClicked()
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -626,7 +649,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.forwardButton.setEnabled(0)
 
   def startStoreSCP(self):
-    # TODO: add proper communcation establishment
+    # TODO: add proper communication establishment
     # command : $ sudo storescp -v -p 104
     pathToExe = os.path.join(slicer.app.slicerHome, 'bin', 'storescp')
     port = 104
@@ -635,9 +658,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
   def onLoadAndSegmentButtonClicked(self):
 
-    selectedSeriesList = self.getSelectedSeriesFromSelector()
+    selectedSeriesList = self.getSelectedSeries()
 
-    if os.path.exists(self.intraopDataDir):
+    if len(selectedSeriesList) > 0:
+      if self.reRegistrationMode:
+        if not self.yesNoDialog("You are currently in the Re-Registration mode. Are you sure, that you want to "
+                                "recreate the segmentation?"):
+          return
       self.currentIntraopVolume = self.logic.loadSeriesIntoSlicer(selectedSeriesList, self.intraopDataDir)
 
       # set last inputVolume Node as Reference Volume in Label Selection
@@ -649,126 +676,75 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       # Fit Volume To Screen
       slicer.app.applicationLogic().FitSliceToAll()
 
-      # uncheck loaded items in the Intraop series selection
-      for item in range(len(self.logic.seriesList)):
-        self.seriesModel.item(item).setCheckState(0)
-
       self.tabBar.setTabEnabled(1,True)
 
       # enter Label Selection Section
       self.onTab2clicked()
 
-  def updateRegistrationResult(self):
+  def uncheckSeriesSelectionItems(self):
+    for item in range(len(self.logic.seriesList)):
+      self.seriesModel.item(item).setCheckState(0)
+    self.updateSeriesSelectionButtons()
 
-    # distinguish between rigid and BSpline result
+  def updateSeriesSelectionButtons(self):
+    checkedItemCount = len(self.getSelectedSeries())
+    if checkedItemCount == 0 or (self.reRegistrationMode and checkedItemCount > 1):
+      self.reRegButton.setEnabled(False)
+    elif self.reRegistrationMode and checkedItemCount == 1:
+      self.reRegButton.setEnabled(True)
+    self.loadAndSegmentButton.setEnabled(checkedItemCount != 0)
+
+  def onReRegistrationClicked(self):
+    logging.debug('Performing Re-Registration')
+
+    selectedSeriesList = self.getSelectedSeries()
+
+    if len(selectedSeriesList) == 1:
+      self.currentIntraopVolume = self.logic.loadSeriesIntoSlicer(selectedSeriesList, self.intraopDataDir)
+      self.onInvokeReRegistration()
+    else:
+      self.warningDialog("You need to select ONE series for doing a Re-Registration. Please repeat your selection and "
+                         "press Re-Registration again.")
+
+  def onRegistrationResultSelected(self):
     for index, result in enumerate(self.registrationResults):
       self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsRigid'], False)
-      self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsAffine'], False)
+      if 'outputTargetsAffine' in result.keys():
+        self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsAffine'], False)
       self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsBSpline'], False)
 
       if result['name'] == self.resultSelector.currentText:
-        self.currentRegistrationResult = index
+        self.currentRegistrationResultIndex = index
 
-    # set variables needed by on xx clicked
-    mostRecentRegistrationResult = self.registrationResults[-1]
-    self.currentIntraopVolume = mostRecentRegistrationResult['fixedVolume']
-    self.outputVolumeRigid = mostRecentRegistrationResult['outputVolumeRigid']
-    self.outputVolumeAffine = mostRecentRegistrationResult['outputVolumeAffine']
-    self.outputVolumeBSpline = mostRecentRegistrationResult['outputVolumeBSpline']
-    self.outputTargetsRigid = mostRecentRegistrationResult['outputTargetsRigid']
-    self.outputTargetsAffine = mostRecentRegistrationResult['outputTargetsAffine']
-    self.outputTargetsBSpline = mostRecentRegistrationResult['outputTargetsBSpline']
-    self.preopVolume = mostRecentRegistrationResult['movingVolume']
+    self.currentIntraopVolume = self.registrationResults[-1]['fixedVolume']
+    self.outputVolumes = self.getMostRecentVolumes()
+    self.outputTargets = self.getTargetsForCurrentRegistrationResult()
+    self.preopVolume = self.registrationResults[-1]['movingVolume']
 
-    self.onRigidCheckBoxClicked()
+    self.showAffineResultButton.setEnabled(self.resultSelector.currentText == "COVER PROSTATE")
+
+    self.onBSplineResultClicked()
+
+  def getMostRecentVolumes(self):
+    results = self.registrationResults[-1]
+    volumes = {'Rigid':results['outputVolumeRigid'], 'BSpline':results['outputVolumeBSpline']}
+    if 'outputVolumeAffine' in results.keys():
+      volumes['Affine'] = results['outputVolumeAffine']
+    return volumes
+
+  def getTargetsForCurrentRegistrationResult(self):
+    results = self.registrationResults[self.currentRegistrationResultIndex]
+    targets = {'Rigid':results['outputTargetsRigid'], 'BSpline':results['outputTargetsBSpline']}
+    if 'outputTargetsAffine' in results.keys():
+      targets['Affine'] = results['outputTargetsAffine']
+    return targets
 
   def updateRegistrationResultSelector(self):
-    items = [self.registrationResults[result]['name'] for result in range(len(self.registrationResults))]
-    for item in items:
-      if item not in self.selectableRegistrationResults:
-        self.selectableRegistrationResults.append(item)
-        self.resultSelector.addItem(item)
-        index = self.resultSelector.findText(item)
-        self.resultSelector.currentIndex = index
-
-  def onReRegistrationClicked(self):
-    logging.debug(('performing reregistration'))
-
-    index = len(self.registrationResults)-1
-
-    # fixed volume: current intraop volume
-    selectedSeriesList = self.getSelectedSeriesFromSelector()
-    directory = self.intraopDataDir
-    self.currentIntraopVolume = self.logic.loadSeriesIntoSlicer(selectedSeriesList, directory)
-
-    # moving volume: copy last fixed volume
-    sourceVolumeNode = self.registrationResults[0]['fixedVolume']
-    volumesLogic = slicer.modules.volumes.logic()
-    movingVolume = volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolumeNode, 'movingVolumeReReg')
-    movingLabel = None
-
-    # get the intraop targets
-    targets = self.registrationResults[0]['outputTargetsBSpline']
-
-    # take the 'intraop label map', which is always fixed label in the very first preop-intraop registration
-    originalFixedLabel = self.registrationResults[0]['fixedLabel']
-
-    # create fixed label
-    volumesLogic = slicer.modules.volumes.logic()
-    fixedLabel = volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,self.currentIntraopVolume,
-                                                      self.currentIntraopVolume.GetName()+'-label')
-
-    if index==0:
-      logging.debug('will resample label with same mask')
-      # last registration was preop-intraop, take the same mask
-      # this is an identity transform:
-      lastRigidTfm = vtk.vtkGeneralTransform()
-      lastRigidTfm.Identity()
-      self.logic.BRAINSResample(inputVolume=originalFixedLabel,referenceVolume=self.currentIntraopVolume,
-                                outputVolume=fixedLabel,warpTransform=lastRigidTfm)
-    else:
-      lastRigidTfm = self.registrationResults[index]['outputTransformRigid']
-      self.logic.BRAINSResample(inputVolume=originalFixedLabel,referenceVolume=self.currentIntraopVolume,
-                                outputVolume=fixedLabel,warpTransform=lastRigidTfm)
-
-    reRegOutput = self.logic.applyReRegistration(fixedVolume=self.currentIntraopVolume,movingVolume=movingVolume,
-                                                 fixedLabel=fixedLabel,targets=targets,lastRigidTfm=lastRigidTfm)
-
-    # create registration output dictionary
-    params = []
-    params.append(sourceVolumeNode)
-    params.append(self.currentIntraopVolume)
-    params.append(movingLabel)
-    params.append(fixedLabel)
-    params.append(targets)
-
-    name = str(self.currentIntraopVolume.GetName())
-    self.createRegistrationResult(name,params,reRegOutput)
-
-    self.outputVolumeRigid = reRegOutput[0]
-    self.outputVolumeAffine = reRegOutput[1]
-    self.outputVolumeBSpline = reRegOutput[2]
-    self.outputTransformRigid = reRegOutput[3]
-    self.outputTransformAffine = reRegOutput[4]
-    self.outputTransformBSpline = reRegOutput[5]
-    self.outputTargetsRigid = reRegOutput[6][0]
-    self.outputTargetsAffine = reRegOutput[6][1]
-    self.outputTargetsBSpline = reRegOutput[6][2]
-
-    slicer.mrmlScene.AddNode(self.outputTargetsRigid)
-    slicer.mrmlScene.AddNode(self.outputTargetsAffine)
-    slicer.mrmlScene.AddNode(self.outputTargetsBSpline)
-
-    # set up screens
-    self.setupScreenAfterRegistration()
-
-    # update the combo box
-    self.updateRegistrationResultSelector()
-
-    # select BSpline view
-    self.onBSplineCheckBoxClicked()
-
-    logging.debug(('Re-Registration Function is done'))
+    for result in [result for result in self.registrationResults if result not in self.selectableRegistrationResults]:
+      name = result['name']
+      self.resultSelector.addItem(name)
+      self.resultSelector.currentIndex = self.resultSelector.findText(name)
+      self.selectableRegistrationResults.append(result)
 
   def getSeriesInfoFromXML(self, f):
     import xml.dom.minidom
@@ -857,7 +833,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       pass
 
   def addSliceAnnotations(self):
-
+    # TODO: adapt when zoom is changed manually
     width = self.redSliceView.width
     renderWindow = self.redSliceView.renderWindow()
     self.red_renderer = renderWindow.GetRenderers().GetItemAsObject(0)
@@ -893,8 +869,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.yellowSliceView.update()
 
   def onForwardButtonClicked(self):
-
-    #logging.debug(('activeFiducials found')
     numberOfDeletedTargets = self.deletedMarkups.GetNumberOfFiducials()
     logging.debug(('numberOfTargets in deletedMarkups is'+str(numberOfDeletedTargets)))
     pos = [0.0,0.0,0.0]
@@ -973,6 +947,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def onPreopDirSelected(self):
     self.preopDataDir = qt.QFileDialog.getExistingDirectory(self.parent,'Preop data directory',
                                                             self.getSetting('PreopLocation'))
+    self.reRegistrationMode = False
+    self.reRegButton.setEnabled(False)
     if os.path.exists(self.preopDataDir):
       self.setTabsEnabled([1,2,3], False)
       self.setSetting('PreopLocation', self.preopDataDir)
@@ -1128,6 +1104,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     # enable re-registration function
     self.reRegButton.setEnabled(1)
+    self.reRegistrationMode = True
 
   def getDICOMValue(self, currentFile, tag, fallback=None):
     try:
@@ -1178,14 +1155,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.patientName.setText(self.currentPatientName)
 
   def updateSeriesSelectorTable(self, seriesList):
-
     self.seriesModel.clear()
     self.seriesItems = []
 
-    # write items in intraop series selection widget
-    for s in range(len(seriesList)):
-      seriesText = seriesList[s]
-      self.currentSeries = seriesText
+    for seriesText in seriesList:
       sItem = qt.QStandardItem(seriesText)
       self.seriesItems.append(sItem)
       self.seriesModel.appendRow(sItem)
@@ -1200,181 +1173,114 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
           self.seriesModel.item(item).setCheckState(0)
 
     self.intraopSeriesSelector.collapsed = False
-    self.loadAndSegmentButton.setEnabled(len(seriesList)>0)
+    self.updateSeriesSelectionButtons()
 
-  def onPreopCheckBoxClicked(self):
-    # TODO: simplify
+  def resetShowResultButtons(self, checkedButton):
+    checked = self.STYLE_GRAY_BACKGROUND_WHITE_FONT
+    unchecked = self.STYLE_WHITE_BACKGROUND
+    for button in self.registrationButtonGroup.buttons():
+      button.setStyleSheet(checked if button is checkedButton else unchecked)
+
+  def onPreopResultClicked(self):
     self.saveCurrentSliceViewPositions()
-    self.showPreopButton.setStyleSheet(self.STYLE_GRAY_BACKGROUND_WHITE_FONT)
-    self.showRigidButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.showAffineButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.showBSplineButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
+    self.resetShowResultButtons(checkedButton=self.showPreopResultButton)
 
-    # un-link images
-    self.compositeNodeRed.SetLinkedControl(0)
-    self.compositeNodeYellow.SetLinkedControl(0)
+    self.unlinkImages()
 
-    volumeNode = self.registrationResults[self.currentRegistrationResult]['movingVolume']
-    # Get the Volume Node
-    #self.compositeNodeRed.SetBackgroundVolumeID(slicer.mrmlScene.GetNodesByName('volume-PREOP').GetItemAsObject(0).GetID())
+    volumeNode = self.registrationResults[self.currentRegistrationResultIndex]['movingVolume']
     self.compositeNodeRed.SetBackgroundVolumeID(volumeNode.GetID())
-
-    fiducialNode = self.registrationResults[self.currentRegistrationResult]['targets']
+    self.compositeNodeRed.SetForegroundVolumeID(None)
 
      # show preop Targets
-    self.markupsLogic.SetAllMarkupsVisibility(fiducialNode,True)
+    fiducialNode = self.registrationResults[self.currentRegistrationResultIndex]['targets']
+    self.markupsLogic.SetAllMarkupsVisibility(fiducialNode, True)
 
-    # fit slice view
-    self.redSliceLogic.FitSliceToAll()
-
-    # zoom in
-    fovRed = self.redSliceNode.GetFieldOfView()
-    self.redSliceLogic.StartSliceNodeInteraction(2)
-    self.redSliceNode.SetFieldOfView(fovRed[0] * 0.5, fovRed[1] * 0.5, fovRed[2])
-    self.redSliceLogic.EndSliceNodeInteraction()
+    self.setDefaultFOV(self.redSliceLogic)
 
     # jump to first markup slice
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducialNode.GetID(),0)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(fiducialNode.GetID(), 0)
 
-    # reset the yellow slice view
-    restoredSliceOptions = self.getCurrentSliceViewPositions()
-    yellowOffset = restoredSliceOptions[1]
-    yellowFOV = restoredSliceOptions[3]
-
-    self.yellowSliceLogic.StartSliceNodeInteraction(2)
-    self.yellowSliceNode.SetFieldOfView(yellowFOV[0], yellowFOV[1], yellowFOV[2])
-    self.yellowSliceNode.SetSliceOffset(yellowOffset)
-    self.yellowSliceLogic.EndSliceNodeInteraction()
+    restoredSlicePositions = self.savedSlicePositions
+    self.setFOV(self.yellowSliceLogic, restoredSlicePositions['yellowFOV'], restoredSlicePositions['yellowOffset'])
 
     self.comingFromPreopTag = True
 
-  def onRigidCheckBoxClicked(self):
-    # TODO: simplify
-    self.showPreopButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.showRigidButton.setStyleSheet(self.STYLE_GRAY_BACKGROUND_WHITE_FONT)
-    self.showAffineButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.showBSplineButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
+  def setDefaultFOV(self, sliceLogic):
+    sliceLogic.FitSliceToAll()
+    FOV = sliceLogic.GetSliceNode().GetFieldOfView()
+    self.setFOV(sliceLogic, [FOV[0] * 0.5, FOV[1] * 0.5, FOV[2]])
 
-    # link images
-    self.compositeNodeRed.SetLinkedControl(1)
-    self.compositeNodeYellow.SetLinkedControl(1)
+  def setFOV(self, sliceLogic, FOV, offset=None):
+    sliceNode = sliceLogic.GetSliceNode()
+    sliceLogic.StartSliceNodeInteraction(2)
+    sliceNode.SetFieldOfView(FOV[0], FOV[1], FOV[2])
+    if offset:
+      sliceNode.SetSliceOffset(offset)
+    sliceLogic.EndSliceNodeInteraction()
 
-    # set the slice views
-    self.compositeNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
-    self.compositeNodeRed.SetForegroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
-    self.compositeNodeRed.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['outputVolumeRigid'].GetID())
+  def onRigidResultClicked(self):
+    self.displayRegistrationResults(button=self.showRigidResultButton, registrationType='Rigid')
 
-    if self.comingFromPreopTag:
-      self.resetSliceViews()
+  def onAffineResultClicked(self):
+    self.displayRegistrationResults(button=self.showAffineResultButton, registrationType='Affine')
 
-    #dispNodeTargetsREG = self.outputTargetsRigid.GetDisplayNode()
-    #dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
+  def onBSplineResultClicked(self):
+    self.displayRegistrationResults(button=self.showBSplineResultButton, registrationType='BSpline')
 
-    # set markups visible
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsRigid,1)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsAffine,0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsBSpline,0)
+  def displayRegistrationResults(self, button, registrationType):
+    self.resetShowResultButtons(checkedButton=button)
 
-    # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsRigid.GetID(),0)
-
-  def onAffineCheckBoxClicked(self):
-    # TODO: simplify
-    self.showPreopButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.showRigidButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.showAffineButton.setStyleSheet(self.STYLE_GRAY_BACKGROUND_WHITE_FONT)
-    self.showBSplineButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-
-    # link images
-    self.compositeNodeRed.SetLinkedControl(1)
-    self.compositeNodeYellow.SetLinkedControl(1)
-
-    # set the slice views
-    self.compositeNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
-    self.compositeNodeRed.SetForegroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
-    self.compositeNodeRed.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['outputVolumeAffine'].GetID())
+    self.linkImages()
+    self.setCurrentRegistrationResultSliceViews(registrationType)
 
     if self.comingFromPreopTag:
       self.resetSliceViews()
+    else:
+      self.setDefaultFOV(self.redSliceLogic)
+      self.setDefaultFOV(self.yellowSliceLogic)
 
-    #dispNodeTargetsREG = self.outputTargetsAffine.GetDisplayNode()
-    #dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
+    self.showTargets(registrationType=registrationType)
 
-    # set markups visible
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsRigid,0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsAffine,1)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsBSpline,0)
+  def unlinkImages(self):
+    self._linkImages(0)
 
-    # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsAffine.GetID(),0)
+  def linkImages(self):
+    self._linkImages(1)
 
-  def onBSplineCheckBoxClicked(self):
-    # TODO: simplify
-    self.showPreopButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.showRigidButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.showAffineButton.setStyleSheet(self.STYLE_WHITE_BACKGROUND)
-    self.showBSplineButton.setStyleSheet(self.STYLE_GRAY_BACKGROUND_WHITE_FONT)
+  def _linkImages(self, link):
+    self.compositeNodeRed.SetLinkedControl(link)
+    self.compositeNodeYellow.SetLinkedControl(link)
 
-    # link images
-    self.compositeNodeRed.SetLinkedControl(1)
-    self.compositeNodeYellow.SetLinkedControl(1)
+  def setCurrentRegistrationResultSliceViews(self, registrationType):
+    currentResult = self.registrationResults[self.currentRegistrationResultIndex]
+    self.compositeNodeYellow.SetBackgroundVolumeID(currentResult['fixedVolume'].GetID())
+    self.compositeNodeRed.SetForegroundVolumeID(currentResult['fixedVolume'].GetID())
+    self.compositeNodeRed.SetBackgroundVolumeID(currentResult['outputVolume'+registrationType].GetID())
 
-    # set the slice views
-    self.compositeNodeYellow.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
-    self.compositeNodeRed.SetForegroundVolumeID(self.registrationResults[self.currentRegistrationResult]['fixedVolume'].GetID())
-    self.compositeNodeRed.SetBackgroundVolumeID(self.registrationResults[self.currentRegistrationResult]['outputVolumeBSpline'].GetID())
-
-    if self.comingFromPreopTag:
-      self.resetSliceViews()
-
-    #dispNodeTargetsREG = self.outputTargetsBSpline.GetDisplayNode()
-    #dispNodeTargetsREG.AddViewNodeID(self.yellowSliceNode.GetID())
-
-    # set markups visible
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsRigid,0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsAffine,0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargetsBSpline,1)
-
-    # jump slice to show Targets in Yellow
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargetsBSpline.GetID(),0)
+  def showTargets(self, registrationType):
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets['Rigid'],1 if registrationType == 'Rigid' else 0)
+    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets['BSpline'],1 if registrationType == 'BSpline' else 0)
+    if 'Affine' in self.outputTargets.keys():
+      self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets['Affine'],1 if registrationType == 'Affine' else 0)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargets[registrationType].GetID(), 0)
 
   def resetSliceViews(self):
 
-    # get FOV and offset
-    restoredSliceOptions = self.getCurrentSliceViewPositions()
-    redOffset = restoredSliceOptions[0]
-    yellowOffset = restoredSliceOptions[1]
-    redFOV = restoredSliceOptions[2]
-    yellowFOV = restoredSliceOptions[3]
+    restoredSliceOptions = self.savedSlicePositions
 
     self.redSliceLogic.FitSliceToAll()
     self.yellowSliceLogic.FitSliceToAll()
 
-    # reset the slice views
-    self.yellowSliceLogic.StartSliceNodeInteraction(2)
-    self.yellowSliceNode.SetFieldOfView(yellowFOV[0], yellowFOV[1], yellowFOV[2])
-    self.yellowSliceNode.SetSliceOffset(yellowOffset)
-    self.yellowSliceLogic.EndSliceNodeInteraction()
+    self.setFOV(self.yellowSliceLogic, restoredSliceOptions['yellowFOV'], restoredSliceOptions['yellowOffset'])
+    self.setFOV(self.redSliceLogic, restoredSliceOptions['redFOV'], restoredSliceOptions['redOffset'])
 
-    self.redSliceLogic.StartSliceNodeInteraction(2)
-    self.redSliceNode.SetFieldOfView(redFOV[0], redFOV[1], redFOV[2])
-    self.redSliceNode.SetSliceOffset(redOffset)
-    self.redSliceLogic.EndSliceNodeInteraction()
-
-    # reset the tag
     self.comingFromPreopTag = False
 
   def saveCurrentSliceViewPositions(self):
-
-    # save the current slice view positions
-    self.currentSliceOffsetRed = self.redSliceNode.GetSliceOffset()
-    self.currentSliceOffsetYellow = self.yellowSliceNode.GetSliceOffset()
-
-    self.currentFOVRed = self.redSliceNode.GetFieldOfView()
-    self.currentFOVYellow = self.yellowSliceNode.GetFieldOfView()
-
-  def getCurrentSliceViewPositions(self):
-    return [self.currentSliceOffsetRed,self.currentSliceOffsetYellow,self.currentFOVRed,self.currentFOVYellow]
+    self.savedSlicePositions = {'redOffset':self.redSliceNode.GetSliceOffset(),
+                                'yellowOffset':self.yellowSliceNode.GetSliceOffset(),
+                                'redFOV':self.redSliceNode.GetFieldOfView(),
+                                'yellowFOV':self.yellowSliceNode.GetFieldOfView()}
 
   def onSimulateDataIncomeButton2(self):
     imagePath = os.path.join(self.modulePath, 'Resources', 'Testing', 'testData_1')
@@ -1388,6 +1294,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     imagePath = os.path.join(self.modulePath, 'Resources', 'Testing', 'testData_4')
     self.simulateDataIncome(imagePath)
 
+  def onSimulateDataIncomeButton5(self):
+    imagePath = os.path.join(self.modulePath, 'Resources', 'Testing', 'testData_5')
+    self.simulateDataIncome(imagePath)
+
   def simulateDataIncome(self, imagePath):
     # TODO: when module ready, remove this method
     # copy DICOM Files into intraop folder
@@ -1395,28 +1305,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     logging.debug(cmd)
     os.system(cmd)
 
-  def onSimulateDataIncomeButton5(self):
-    # TODO: when module ready, remove this method
-
-    # copy DICOM Files into intraop folder
-    imagePath= (self.modulePath +'Resources/Testing/testData_5/')
-    intraopPath=self.intraopDataDir
-    cmd = ('cp -a '+imagePath+'. '+intraopPath)
-    print cmd
-    os.system(cmd)
-
   def configureSliceNodesForPreopData(self):
-    # use label contours
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").SetUseLabelOutline(True)
-    # set orientation to axial
+    for nodeId in ["vtkMRMLSliceNodeRed", "vtkMRMLSliceNodeYellow", "vtkMRMLSliceNodeGreen"]:
+      slicer.mrmlScene.GetNodeByID(nodeId).SetUseLabelOutline(True)
     self.redSliceNode.SetOrientationToAxial()
 
   def getMostRecentNRRD(self):
     return self.getMostRecentFile(self.preopSegmentationPath, "nrrd")
 
-  def getMostRecentTargets(self):
+  def getMostRecentTargetsFile(self):
     return self.getMostRecentFile(self.preopTargetsPath, "fcsv")
 
   def getMostRecentFile(self, path, fileType):
@@ -1445,9 +1342,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
         displayNode = self.preopLabel.GetDisplayNode()
         displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
         # rotate volume to plane
-        slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(self.preopLabel)
-        slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(self.preopLabel)
-        slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeGreen").RotateToVolumePlane(self.preopLabel)
+        for nodeId in ["vtkMRMLSliceNodeRed", "vtkMRMLSliceNodeYellow", "vtkMRMLSliceNodeGreen"]:
+          slicer.mrmlScene.GetNodeByID(nodeId).RotateToVolumePlane(self.preopLabel)
         self.preopLabelSelector.setCurrentNode(self.preopLabel)
     return success
 
@@ -1459,7 +1355,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     return success
 
   def loadPreopTargets(self):
-    mostRecentTargets = self.getMostRecentTargets()
+    mostRecentTargets = self.getMostRecentTargetsFile()
     success = False
     if mostRecentTargets:
       filename = os.path.join(self.preopTargetsPath, mostRecentTargets)
@@ -1506,7 +1402,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
             self.seriesMap[seriesNumber] = {'MetaInfo':None, 'NRRDLocation':volumePath,'LongName':seriesName}
             self.seriesMap[seriesNumber]['ShortName'] = str(seriesNumber)+":"+seriesName
       elif resourceType == 'DICOM' and not self.patientInformationRetrieved:
-        print "DICOM Dir: %s" % root
         self.logic.importStudy(root)
         for f in files:
           self.updateCurrentPatientAndViewBox(os.path.join(root,f))
@@ -1569,29 +1464,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     logging.debug('TARGETS PREOP')
     logging.debug(self.preopTargets)
 
-    """
-    # load targets for rigid transformation
-    slicer.util.loadMarkupsFiducialList(self.setSetting('preopLocation')+'/Targets.fcsv')
-    self.targetsRigid=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-    self.targetsRigid.SetName('targets-RIGID')
-
-    # load targets for affine transformation
-    slicer.util.loadMarkupsFiducialList(self.setSetting('preopLocation')+'/Targets.fcsv')
-    self.targetsAffine=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-    self.targetsAffine.SetName('targets-AFFINE')
-
-    # load targets for bspline transformation
-    slicer.util.loadMarkupsFiducialList(self.setSetting('preopLocation')+'/Targets.fcsv')
-    self.targetsBSpline=slicer.mrmlScene.GetNodesByName('Targets').GetItemAsObject(0)
-    self.targetsBSpline.SetName('targets-BSPLINE')
-    """
-
-    # set markups visible
-    """
-    self.markupsLogic.SetAllMarkupsVisibility(self.targetsRigid,0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.targetsAffine,0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.targetsBSpline,0)
-    """
     self.markupsLogic.SetAllMarkupsVisibility(self.preopTargets,1)
 
     # set markups for registration
@@ -1610,32 +1482,24 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     # set Layout to redSliceViewOnly
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
-    # zoom in (in red slice view)
-    fovRed = self.redSliceNode.GetFieldOfView()
-
-    self.redSliceLogic.StartSliceNodeInteraction(2)
-    self.redSliceNode.SetFieldOfView(fovRed[0] * 0.5, fovRed[1] * 0.5, fovRed[2])
-    self.redSliceLogic.EndSliceNodeInteraction()
+    self.setDefaultFOV(self.redSliceLogic)
 
   def patientCheckAfterImport(self, directory, fileList):
     for currentFile in fileList:
       if self.dicomDatabase.fileValue(os.path.join(directory, currentFile),DICOMTAGS.PATIENT_ID) != self.currentID:
         incomePatient = self.dicomDatabase.fileValue(os.path.join(directory, fileList[2]),DICOMTAGS.PATIENT_ID)
-        self.updateSeriesSelectorTable([])
-        return self.warningDialog(message='WARNING: You selected Patient ID ' + self.currentID +
-                                 ', but Patient ID '+incomePatient+' just arrived in the income folder.',
-                                  title="Patients Not Matching")
-      else:
-        self.updateSeriesSelectorTable(self.logic.selectableSeries)
+        if not self.yesNoDialog(message='WARNING: You selected Patient ID ' + self.currentID + ', but Patient ID ' +
+                                         incomePatient + ' just arrived in the income folder.\nDo you still want to '
+                                         'continue?', title="Patients Not Matching"):
+          self.updateSeriesSelectorTable([])
+          return
+        else:
+          break
+    self.updateSeriesSelectorTable(self.logic.selectableSeries)
 
-  def getSelectedSeriesFromSelector(self):
-    if self.seriesItems:
-      checkedItems = [x for x in self.seriesItems if x.checkState()]
-      self.selectedSeries = []
-
-      for x in checkedItems:
-        self.selectedSeries.append(x.text())
-    return self.selectedSeries
+  def getSelectedSeries(self):
+    checkedItems = [x for x in self.seriesItems if x.checkState()] if self.seriesItems else []
+    return [x.text() for x in checkedItems]
 
   def onQuickSegmentationButtonClicked(self):
     self.clearCurrentLabels()
@@ -1657,16 +1521,24 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.logic.deleteClippingData()
     self.setSegmentationButtons(segmentationActive=True)
     self.deactivateUndoRedoButtons()
-    self.deletedMarkups.Reset()
+    self.setupQuickModeHistory()
     self.logic.runQuickSegmentationMode()
     self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,self.updateUndoRedoButtons)
+
+  def setupQuickModeHistory(self):
+    try:
+      self.deletedMarkups.Reset()
+    except AttributeError:
+      self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
+      self.deletedMarkups.SetName('deletedMarkups')
 
   def setQuickSegmentationModeOFF(self):
     self.quickSegmentationActive = False
     self.setSegmentationButtons(segmentationActive=False)
     self.deactivateUndoRedoButtons()
+    self.resetToRegularViewMode()
 
-    # reset persistent fiducial tool
+  def resetToRegularViewMode(self):
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
     interactionNode.SwitchToViewTransformMode()
     interactionNode.SetPlaceModePersistence(0)
@@ -1689,11 +1561,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def onQuickSegmentationFinished(self):
     inputVolume = self.referenceVolumeSelector.currentNode()
     continueSegmentation = False
-    if self.logic.inputMarkupNode.GetNumberOfFiducials() > 2:
+    if self.logic.inputMarkupNode.GetNumberOfFiducials() > 3 and self.validPointsForQuickModeSet():
 
-      labelname = self.referenceVolumeSelector.currentNode().GetName() + '-label'
+      labelName = self.referenceVolumeSelector.currentNode().GetName() + '-label'
       self.currentIntraopLabel = self.logic.labelMapFromClippingModel(inputVolume)
-      self.currentIntraopLabel.SetName(labelname)
+      self.currentIntraopLabel.SetName(labelName)
 
       displayNode = self.currentIntraopLabel.GetDisplayNode()
       displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
@@ -1704,9 +1576,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.logic.clippingModelNode.SetDisplayVisibility(False)
       self.setupScreenAfterSegmentation()
     else:
-      if self.yesNoDialog("You need to do a segmentation with the minimum count of 3 points to "
-                          "create a plane or more for creating a volume in order to be able to do "
-                          "a proper registration. Do you want to continue using the quick mode?"):
+      if self.yesNoDialog("You need to set at least three points with an additional one situated on a distinct slice "
+                          "as the algorithm input in order to be able to create a proper segmentation. This step is "
+                          "essential for an efficient registration. Do you want to continue using the quick mode?"):
         continueSegmentation = True
       else:
         self.logic.deleteClippingData()
@@ -1714,20 +1586,37 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.setQuickSegmentationModeOFF()
       self.setSegmentationButtons(segmentationActive=False)
 
+  def validPointsForQuickModeSet(self):
+    positions = self.getMarkupSlicePositions()
+    return min(positions) != max(positions)
+
+  def getMarkupSlicePositions(self):
+    markupNode = self.logic.inputMarkupNode
+    nOfControlPoints = markupNode.GetNumberOfFiducials()
+    positions = []
+    pos = [0, 0, 0]
+    for i in range(nOfControlPoints):
+      markupNode.GetNthFiducialPosition(i, pos)
+      positions.append(pos[2])
+    return positions
+
   def onLabelSegmentationFinished(self):
     continueSegmentation = False
+    deleteMask = False
     if self.isIntraopLabelValid():
-      # dilate label
-      editUtil = EditorLib.EditUtil.EditUtil()
-      logic = EditorLib.DilateEffectLogic(editUtil.getSliceLogic())
+      logic = EditorLib.DilateEffectLogic(self.editUtil.getSliceLogic())
       logic.erode(0, '4', 1)
       self.setupScreenAfterSegmentation()
     else:
       if self.yesNoDialog("You need to do a label segmentation. Do you want to continue using the label mode?"):
         continueSegmentation = True
+      else:
+        deleteMask = True
     if not continueSegmentation:
       self.editorParameterNode.SetParameter('effect', 'DefaultTool')
       self.setSegmentationButtons(segmentationActive=False)
+      if deleteMask:
+        slicer.mrmlScene.RemoveNode(self.currentIntraopLabel)
 
   def isIntraopLabelValid(self):
     import SimpleITK as sitk
@@ -1753,27 +1642,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.compositeNodeYellow.SetLabelVolumeID(self.currentIntraopLabel.GetID())
 
     # rotate volume to plane
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(self.preopVolume)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(self.currentIntraopLabel)
+    self.redSliceNode.RotateToVolumePlane(self.preopVolume)
+    self.yellowSliceNode.RotateToVolumePlane(self.currentIntraopLabel)
 
     self.redSliceLogic.FitSliceToAll()
     self.yellowSliceLogic.FitSliceToAll()
 
-    # zoom in properly
     self.yellowSliceNode.SetFieldOfView(86, 136, 3.5)
     self.redSliceNode.SetFieldOfView(86, 136, 3.5)
 
-    self.tabBar.setTabEnabled(2,True)
-
-    # get the slice Offset to reset yellow after JumpSlicesTo
-    offset = self.yellowSliceNode.GetSliceOffset()
-
-    # jump slice to show Targets
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.preopTargets.GetID(),0)
-
-    self.yellowSliceNode.SetSliceOffset(offset)
-
-    # change to Registration Tab
+    self.tabBar.setTabEnabled(2, True)
     self.tabBar.currentIndex = 2
 
   def onLabelSegmentationButtonClicked(self):
@@ -1785,9 +1663,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     # create new labelmap and set
     referenceVolume = self.referenceVolumeSelector.currentNode()
-    volumesLogic = slicer.modules.volumes.logic()
-    self.currentIntraopLabel = volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,referenceVolume,
-                                                        referenceVolume.GetName() + '-label')
+    self.currentIntraopLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,referenceVolume,
+                                                                         referenceVolume.GetName() + '-label')
     self.intraopLabelSelector.setCurrentNode(self.currentIntraopLabel)
     selectionNode = slicer.app.applicationLogic().GetSelectionNode()
     selectionNode.SetReferenceActiveVolumeID(referenceVolume.GetID())
@@ -1798,7 +1675,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.compositeNodeRed.SetLabelOpacity(1)
 
     # set color table
-    logging.debug('intraopLabelID : '+str(self.currentIntraopLabel.GetID()))
+    logging.debug('intraopLabelID : ' + str(self.currentIntraopLabel.GetID()))
 
     # set color table
     displayNode = self.currentIntraopLabel.GetDisplayNode()
@@ -1811,38 +1688,35 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.editUtil.setLabel(1)
     self.editUtil.setLabelOutline(1)
 
-  def createRegistrationResult(self,name,params,output):
+  def createRegistrationResult(self, params):
 
     # this function stores information and nodes of a single
     # registration run to be able to switch between results.
 
-      # this is a summary for bspline registration output
+    # name = self.currentIntraopVolume.GetName()
+    summary = {'name':self.logic.getRegistrationName(),
+               'movingVolume':params[0],
+               'fixedVolume':params[1],
+               'movingLabel':params[2],
+               'fixedLabel':params[3],
+               'targets':params[4],
+               'outputVolumeRigid':self.outputVolumes['Rigid'],
+               'outputVolumeBSpline':self.outputVolumes['BSpline'],
+               'outputTransformRigid':self.outputTransforms['Rigid'],
+               'outputTransformBSpline':self.outputTransforms['BSpline'],
+               'outputTargetsRigid':self.outputTargets['Rigid'],
+               'outputTargetsBSpline':self.outputTargets['BSpline']}
 
-    summary = {'index': str(len(self.registrationResults) + 1),
-               'name' : name,
-               'movingVolume' : params[0],
-               'fixedVolume' : params[1],
-               'movingLabel' : params[2],
-               'fixedLabel' : params[3],
-               'targets' : params[4],
-               'outputVolumeRigid' : output[0],
-               'outputVolumeAffine' : output[1],
-               'outputVolumeBSpline' :output[2],
-               'outputTransformRigid' :output[3],
-               'outputTransformAffine' :output[4],
-               'outputTransformBSpline' :output[5],
-               'outputTargetsRigid' :output[6][0],
-               'outputTargetsAffine' :output[6][1],
-               'outputTargetsBSpline' :output[6][2]}
+    if 'Affine' in self.outputVolumes.keys():
+      summary['outputVolumeAffine'] = self.outputVolumes['Affine']
+      summary['outputTransformAffine'] = self.outputTransforms['Affine']
+      summary['outputTargetsAffine'] = self.outputTargets['Affine']
 
-    # add to results
     self.registrationResults.append(summary)
 
     logging.debug('# ___________________________  registration output  ________________________________')
     logging.debug(summary)
     logging.debug('# __________________________________________________________________________________')
-
-    return True
 
   def onApplyRegistrationClicked(self):
     fixedVolume= self.intraopVolumeSelector.currentNode()
@@ -1851,79 +1725,88 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     targets = self.fiducialSelector.currentNode()
 
     sourceVolumeNode = self.preopVolumeSelector.currentNode()
-    volumesLogic = slicer.modules.volumes.logic()
-    movingVolume = volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolumeNode, 'movingVolume-PREOP-INTRAOP')
+    movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolumeNode, 'movingVolume-PREOP-INTRAOP')
 
-    params = []
-    params.append(sourceVolumeNode)
-    params.append(fixedVolume)
-    params.append(movingLabel)
-    params.append(fixedLabel)
-    params.append(targets)
+    registrationOutput = self.logic.applyRegistration(fixedVolume, movingVolume, fixedLabel, movingLabel, targets)
 
-    registrationOutput = self.logic.applyBSplineRegistration(fixedVolume,movingVolume,fixedLabel,movingLabel,targets)
+    params = [sourceVolumeNode, fixedVolume, movingLabel, fixedLabel, targets]
 
-    self.outputVolumeRigid = registrationOutput[0]
-    self.outputVolumeAffine = registrationOutput[1]
-    self.outputVolumeBSpline = registrationOutput[2]
-    self.outputTransformRigid = registrationOutput[3]
-    self.outputTransformAffine = registrationOutput[4]
-    self.outputTransformBSpline = registrationOutput[5]
-    self.outputTargetsRigid = registrationOutput[6][0]
-    self.outputTargetsAffine = registrationOutput[6][1]
-    self.outputTargetsBSpline = registrationOutput[6][2]
+    self.finalizeRegistrationStep(params, registrationOutput)
 
-    slicer.mrmlScene.AddNode(self.outputTargetsRigid)
-    slicer.mrmlScene.AddNode(self.outputTargetsAffine)
-    slicer.mrmlScene.AddNode(self.outputTargetsBSpline)
+    logging.debug('Registration is done')
 
-    # create a summary
-    name = str(self.currentIntraopVolume.GetName())
-    summary = self.createRegistrationResult(name,params,registrationOutput)
+  def onInvokeReRegistration(self):
+    # moving volume: copy last fixed volume
+    sourceVolumeNode = self.registrationResults[0]['fixedVolume']
+    movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolumeNode, 'movingVolumeReReg')
 
-    # update the combo box
+    # get the intraop targets
+    targets = self.registrationResults[0]['outputTargetsBSpline']
+
+    # take the 'intraop label map', which is always fixed label in the very first preop-intraop registration
+    originalFixedLabel = self.registrationResults[0]['fixedLabel']
+
+    # create fixed label
+    fixedLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.currentIntraopVolume,
+                                                           self.currentIntraopVolume.GetName()+'-label')
+
+    lastRigidTfm = self.getLastRigidTransformation()
+    self.logic.BRAINSResample(inputVolume=originalFixedLabel, referenceVolume=self.currentIntraopVolume,
+                              outputVolume=fixedLabel, warpTransform=lastRigidTfm)
+
+    reRegOutput = self.logic.applyReRegistration(fixedVolume=self.currentIntraopVolume, movingVolume=movingVolume,
+                                                 fixedLabel=fixedLabel,targets=targets, lastRigidTfm=lastRigidTfm)
+
+    movingLabel = None
+    params = [sourceVolumeNode, self.currentIntraopVolume, movingLabel, fixedLabel, targets]
+
+    self.finalizeRegistrationStep(params, reRegOutput)
+
+    logging.debug(('Re-Registration is done'))
+
+  def finalizeRegistrationStep(self, params, registrationOutput):
+    self.outputVolumes = registrationOutput[0]
+    self.outputTransforms = registrationOutput[1]
+    self.outputTargets = registrationOutput[2]
+
+    self.createRegistrationResult(params)
+
+    for targetNode in self.outputTargets.values():
+      slicer.mrmlScene.AddNode(targetNode)
+
     self.updateRegistrationResultSelector()
-
-    # set up screens
     self.setupScreenAfterRegistration()
+    self.uncheckSeriesSelectionItems()
 
-    # select BSpline view
-    self.onBSplineCheckBoxClicked()
+  def getLastRigidTransformation(self):
+    if len(self.registrationResults) == 1:
+      logging.debug('Resampling label with same mask')
+      # last registration was preop-intraop, take the same mask
+      # this is an identity transform:
+      lastRigidTfm = vtk.vtkGeneralTransform()
+      lastRigidTfm.Identity()
+    else:
+      lastRigidTfm = self.registrationResults[-1]['outputTransformRigid']
+    return lastRigidTfm
 
-    logging.debug('Registration Function is done')
 
   def setupScreenAfterRegistration(self):
 
-    index = int(len(self.registrationResults)-1)
-
-    logging.debug('index = '+str(index))
     self.compositeNodeRed.SetForegroundVolumeID(self.currentIntraopVolume.GetID())
-    self.compositeNodeRed.SetBackgroundVolumeID(self.registrationResults[index]['outputVolumeBSpline'].GetID())
+    self.compositeNodeRed.SetBackgroundVolumeID(self.registrationResults[-1]['outputVolumeBSpline'].GetID())
     self.compositeNodeYellow.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
 
     self.redSliceLogic.FitSliceToAll()
     self.yellowSliceLogic.FitSliceToAll()
 
-    # remove view node ID's from Red Slice view
-    dispNodeRigid = self.outputTargetsRigid.GetDisplayNode()
-    dispNodeAffine = self.outputTargetsAffine.GetDisplayNode()
-    dispNodeBSpline = self.outputTargetsBSpline.GetDisplayNode()
-    dispNodePreop = self.preopTargets.GetDisplayNode()
+    self.refreshViewNodeIDs(self.preopTargets, self.redSliceNode)
+    self.refreshViewNodeIDs(self.outputTargets['Rigid'], self.yellowSliceNode)
+    self.refreshViewNodeIDs(self.outputTargets['BSpline'], self.yellowSliceNode)
 
-    dispNodeRigid.RemoveAllViewNodeIDs()
-    dispNodeAffine.RemoveAllViewNodeIDs()
-    dispNodeBSpline.RemoveAllViewNodeIDs()
-    dispNodePreop.RemoveAllViewNodeIDs()
+    if 'Affine' in self.outputTargets.keys():
+      self.refreshViewNodeIDs(self.outputTargets['Affine'], self.yellowSliceNode)
 
-    dispNodePreop.AddViewNodeID(self.redSliceNode.GetID())
-    dispNodeRigid.AddViewNodeID(self.yellowSliceNode.GetID())
-    dispNodeAffine.AddViewNodeID(self.yellowSliceNode.GetID())
-    dispNodeBSpline.AddViewNodeID(self.yellowSliceNode.GetID())
-
-    # set fiducial place mode back to regular view mode
-    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
-    interactionNode.SwitchToViewTransformMode()
-    interactionNode.SetPlaceModePersistence(0)
+    self.resetToRegularViewMode()
 
     # set Side By Side View to compare volumes
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
@@ -1932,26 +1815,19 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.compositeNodeRed.SetLabelOpacity(0)
     self.compositeNodeYellow.SetLabelOpacity(0)
 
-    # set both orientations to axial
-    self.redSliceNode.SetOrientationToAxial()
-    self.yellowSliceNode.SetOrientationToAxial()
-
-    # zoom in
-    fovRed = self.redSliceNode.GetFieldOfView()
-    fovYellow = self.yellowSliceNode.GetFieldOfView()
-
-    self.redSliceLogic.StartSliceNodeInteraction(2)
-    self.redSliceNode.SetFieldOfView(fovRed[0] * 0.5, fovRed[1] * 0.5, fovRed[2])
-    self.redSliceLogic.EndSliceNodeInteraction()
-
-    self.yellowSliceLogic.StartSliceNodeInteraction(2)
-    self.yellowSliceNode.SetFieldOfView(fovYellow[0] * 0.5, fovYellow[1] * 0.5, fovYellow[2])
-    self.yellowSliceLogic.EndSliceNodeInteraction()
+    self.setAxialOrientation()
 
     self.tabBar.setTabEnabled(3,True)
 
     # switch to Evaluation Section
     self.tabWidget.setCurrentIndex(3)
+    self.onBSplineResultClicked()
+
+  def refreshViewNodeIDs(self, targets, sliceNode):
+    # remove view node ID's from Red Slice view
+    displayNode = targets.GetDisplayNode()
+    displayNode.RemoveAllViewNodeIDs()
+    displayNode.AddViewNodeID(sliceNode.GetID())
 
   def checkTabAfterImport(self):
     # change icon of tabBar if user is not in Data selection tab
@@ -1961,10 +1837,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
 class SliceTrackerLogic(ScriptedLoadableModuleLogic):
 
+  INITIAL_REGISTRATION = 'InitialRegistration'
+  NEEDLE_IMAGE_REGISTRATION = 'NeedleConfirmation'
+
   def __init__(self, parent=None):
     ScriptedLoadableModuleLogic.__init__(self, parent)
     self.inputMarkupNode = None
     self.clippingModelNode = None
+    self.volumes = {}
+    self.transforms = {}
+    self.reRegistrationCount = 0
+
+  def getRegistrationName(self):
+    if self.reRegistrationCount == 0:
+      return "COVER PROSTATE"
+    else:
+      return "GUIDANCE_FOR_NEEDLE_" + str(self.reRegistrationCount)
 
   def applyBiasCorrection(self, volume, label):
 
@@ -1980,172 +1868,192 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
               'numberOfIterations': '500,400,300'}
 
     self.cliNode = None
-    self.cliNode = slicer.cli.run(slicer.modules.n4itkbiasfieldcorrection, self.cliNode, params, wait_for_completion = True)
+    self.cliNode = slicer.cli.run(slicer.modules.n4itkbiasfieldcorrection, self.cliNode, params,
+                                  wait_for_completion=True)
 
     progress.setValue(2)
     progress.close()
     return outputVolume
 
-  def createTransformAndVolumeNode(self, transformName, volumeName, transFormNodeType='Linear'):
-    outputTransform = self.createTransformNode(transFormNodeType)
-    outputTransform.SetName(transformName)
+  def createVolumeAndTransformNodes(self, registrationTypes, suffix):
+    self.volumes = {}
+    self.transforms = {}
+    for regType in registrationTypes:
+      name = regType + '-' + suffix
+      isBSpline = regType=='BSpline'
+      self.transforms[regType] = self.createTransformNode(name, isBSpline)
+      self.volumes[regType] = self.createVolumeNode(name)
 
-    outputVolume = slicer.vtkMRMLScalarVolumeNode()
-    outputVolume.SetName(volumeName)
-
-    slicer.mrmlScene.AddNode(outputTransform)
-    slicer.mrmlScene.AddNode(outputVolume)
-    return outputTransform, outputVolume
-
-  def createTransformNode(self, transformNodeType):
-    node = slicer.vtkMRMLBSplineTransformNode()
-    if transformNodeType == 'Linear':
-      node = slicer.vtkMRMLLinearTransformNode()
-    elif transformNodeType == 'BSpline':
-      node = slicer.vtkMRMLBSplineTransformNode()
+  def createTransformNode(self, suffix, isBSpline):
+    node = slicer.vtkMRMLBSplineTransformNode() if isBSpline else slicer.vtkMRMLLinearTransformNode()
+    node.SetName('transform-'+suffix)
+    slicer.mrmlScene.AddNode(node)
     return node
 
-  def applyBSplineRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
+  def createVolumeNode(self, suffix):
+    volume = slicer.vtkMRMLScalarVolumeNode()
+    volume.SetName('volume-' + suffix)
+    slicer.mrmlScene.AddNode(volume)
+    return volume
+
+  def applyRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
 
     if fixedVolume and movingVolume and fixedLabel and movingLabel:
+      self.fixedVolume = fixedVolume
+      self.movingVolume = movingVolume
+      self.fixedLabel = fixedLabel
+      self.movingLabel = movingLabel
 
-     progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
+      progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
 
-     outputTransformRigid, outputVolumeRigid = self.createTransformAndVolumeNode(transformName='transform-Rigid',
-                                                                                 volumeName='reg-Rigid')
+      self.createVolumeAndTransformNodes(['Rigid', 'Affine', 'BSpline'], self.INITIAL_REGISTRATION)
 
-     outputTransformAffine, outputVolumeAffine = self.createTransformAndVolumeNode(transformName='transform-Affine',
-                                                                                   volumeName='reg-Affine')
+      progress.labelText = '\nRigid registration'
+      self.doRigidRegistration(movingBinaryVolume=self.movingLabel, initializeTransformMode="useCenterOfROIAlign")
 
-     outputTransformBSpline, outputVolumeBSpline = self.createTransformAndVolumeNode(transformName='transform-BSpline',
-                                                                                     volumeName='reg-BSpline',
-                                                                                     transFormNodeType='BSpline')
+      progress.labelText = '\nAffine registration'
+      progress.setValue(2)
+      self.doAffineRegistration()
 
-     #   ++++++++++      RIGID REGISTRATION       ++++++++++
+      progress.labelText = '\nBSpline registration'
+      progress.setValue(3)
+      self.doBSplineRegistration(initialTransform=self.transforms['Affine'], useScaleVersor3D=False, useScaleSkewVersor3D=True,
+                                 movingBinaryVolume=self.movingLabel, useAffine=False, samplingPercentage="0.002",
+                                 maskInferiorCutOffFromCenter="1000", numberOfHistogramBins="50",
+                                 numberOfMatchPoints="10", metricSamplingStrategy="Random", costMetric="MMI")
 
-     paramsRigid = {'fixedVolume': fixedVolume,
-                    'movingVolume': movingVolume,
-                    'fixedBinaryVolume' : fixedLabel,
-                    'movingBinaryVolume' : movingLabel,
-                    'outputTransform' : outputTransformRigid.GetID(),
-                    'outputVolume' : outputVolumeRigid.GetID(),
-                    'maskProcessingMode' : "ROI",
-                    'initializeTransformMode' : "useCenterOfROIAlign",
-                    'useRigid' : True,
-                    'useAffine' : False,
-                    'useScaleVersor3D' : False,
-                    'useScaleSkewVersor3D' : False,
-                    'useROIBSpline' : False,
-                    'useBSpline' : False,}
+      outputTargets = self.transformTargets(['Rigid', 'Affine', 'BSpline'], targets, self.INITIAL_REGISTRATION)
 
-     progress.labelText = '\nRigid registration'
+      progress.labelText = '\nCompleted Registration'
+      progress.setValue(4)
+      progress.close()
 
-     self.cliNode = None
-     self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
+      self.reRegistrationCount = 0
 
-     #   ++++++++++      AFFINE REGISTRATION       ++++++++++
+      return self.volumes, self.transforms, outputTargets
 
-     paramsAffine = {'fixedVolume': fixedVolume,
-               'movingVolume': movingVolume,
-               'fixedBinaryVolume' : fixedLabel,
-               'movingBinaryVolume' : movingLabel,
-               'outputTransform' : outputTransformAffine.GetID(),
-               'outputVolume' : outputVolumeAffine.GetID(),
-               'maskProcessingMode' : "ROI",
-               #'initializeTransformMode' : "useCenterOfROIAlign",
-               'useAffine' : True,
-               'initialTransform' : outputTransformRigid}
+  def applyReRegistration(self, fixedVolume, movingVolume, fixedLabel, targets, lastRigidTfm):
 
-     progress.labelText = '\nAffine registration'
-     progress.setValue(2)
+    if fixedVolume and movingVolume and fixedLabel and lastRigidTfm:
+      self.fixedVolume = fixedVolume
+      self.movingVolume = movingVolume
+      self.fixedLabel = fixedLabel
 
-     # run Affine Registration
-     self.cliNode = None
-     self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsAffine, wait_for_completion = True)
+      progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
+      prefix = self.NEEDLE_IMAGE_REGISTRATION + str(self.reRegistrationCount)
 
-     #   ++++++++++      BSPLINE REGISTRATION       ++++++++++
+      self.createVolumeAndTransformNodes(['Rigid', 'BSpline'], prefix)
 
-     paramsBSpline = {'fixedVolume': fixedVolume,
-                      'movingVolume': movingVolume,
-                      'outputVolume' : outputVolumeBSpline.GetID(),
-                      'bsplineTransform' : outputTransformBSpline.GetID(),
-                      'movingBinaryVolume' : movingLabel,
-                      'fixedBinaryVolume' : fixedLabel,
-                      'samplingPercentage' : "0.002",
-                      'useRigid' : False,
-                      'useAffine' : False,
-                      'useROIBSpline' : True,
-                      'useBSpline' : True,
-                      'useScaleVersor3D' : False,
-                      'useScaleSkewVersor3D' : True, # False - ? maybe
-                      'splineGridSize' : "3,3,3",
-                      'numberOfIterations' : "1500",
-                      'maskProcessing' : "ROI",
-                      'outputVolumePixelType' : "float",
-                      'backgroundFillValue' : "0",
-                      'maskInferiorCutOffFromCenter' : "1000",
-                      'interpolationMode' : "Linear",
-                      'minimumStepLength' : "0.005",
-                      'translationScale' : "1000",
-                      'reproportionScale' : "1",
-                      'skewScale' : "1",
-                      'numberOfHistogramBins' : "50",
-                      'numberOfMatchPoints': "10",
-                      'fixedVolumeTimeIndex' : "0",
-                      'movingVolumeTimeIndex' : "0",
-                      'medianFilterSize' : "0,0,0",
-                      'ROIAutoDilateSize' : "0",
-                      'relaxationFactor' : "0.5",
-                      'maximumStepLength' : "0.2",
-                      'failureExitCode' : "-1",
-                      'numberOfThreads': "-1",
-                      'debugLevel': "0",
-                      'costFunctionConvergenceFactor' : "1.00E+09",
-                      'projectedGradientTolerance' : "1.00E-05",
-                      'maxBSplineDisplacement' : "0",
-                      'maximumNumberOfEvaluations' : "900",
-                      'maximumNumberOfCorrections': "25",
-                      'metricSamplingStrategy' : "Random",
-                      'costMetric' : "MMI",
-                      'removeIntensityOutliers' : "0",
-                      'ROIAutoClosingSize' : "9",
-                      'maskProcessingMode' : "ROI",
-                      'initialTransform' : outputTransformAffine
-                      }
+      progress.labelText = '\nRigid registration'
+      progress.setValue(2)
 
-     progress.labelText = '\nBSpline registration'
-     progress.setValue(3)
+      self.doRigidRegistration(initialTransform=lastRigidTfm)
 
-     # run BSpline Registration
-     self.cliNode = None
-     self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsBSpline, wait_for_completion = True)
+      self.dilateMask(fixedLabel)
 
+      progress.labelText = '\nBSpline registration'
+      progress.setValue(3)
+      self.doBSplineRegistration(initialTransform=self.transforms['Rigid'], useScaleVersor3D=True,
+                                 useScaleSkewVersor3D=True, useAffine=True)
 
-     #   ++++++++++      TRANSFORM FIDUCIALS        ++++++++++
+      outputTargets = self.transformTargets(['Rigid', 'BSpline'], targets, prefix)
 
-     outputTargets = []
-     if targets:
-       rigidTargets = self.cloneFiducialAndApplyTransformation('targets-RIGID', targets, outputTransformRigid)
-       affineTargets = self.cloneFiducialAndApplyTransformation('targets-AFFINE', targets, outputTransformAffine)
-       bSplineTargets = self.cloneFiducialAndApplyTransformation('targets-BSPLINE', targets, outputTransformBSpline)
+      progress.labelText = '\nCompleted Registration'
+      progress.setValue(4)
+      progress.close()
+      self.reRegistrationCount += 1
 
-       outputTargets.append(rigidTargets)
-       outputTargets.append(affineTargets)
-       outputTargets.append(bSplineTargets)
+      return self.volumes, self.transforms, outputTargets
 
-     progress.labelText = '\nCompleted Registration'
-     progress.setValue(4)
-     progress.close()
+  def doBSplineRegistration(self, initialTransform, useScaleVersor3D, useScaleSkewVersor3D, **kwargs):
+    paramsBSpline = {'fixedVolume': self.fixedVolume,
+                     'movingVolume': self.movingVolume,
+                     'outputVolume': self.volumes['BSpline'].GetID(),
+                     'bsplineTransform': self.transforms['BSpline'].GetID(),
+                     'fixedBinaryVolume': self.fixedLabel,
+                     'useRigid': False,
+                     'useROIBSpline': True,
+                     'useBSpline': True,
+                     'useScaleVersor3D': useScaleVersor3D,
+                     'useScaleSkewVersor3D': useScaleSkewVersor3D,
+                     'splineGridSize': "3,3,3",
+                     'numberOfIterations': "1500",
+                     'maskProcessing': "ROI",
+                     'outputVolumePixelType': "float",
+                     'backgroundFillValue': "0",
+                     'interpolationMode': "Linear",
+                     'minimumStepLength': "0.005",
+                     'translationScale': "1000",
+                     'reproportionScale': "1",
+                     'skewScale': "1",
+                     'fixedVolumeTimeIndex': "0",
+                     'movingVolumeTimeIndex': "0",
+                     'medianFilterSize': "0,0,0",
+                     'ROIAutoDilateSize': "0",
+                     'relaxationFactor': "0.5",
+                     'maximumStepLength': "0.2",
+                     'failureExitCode': "-1",
+                     'numberOfThreads': "-1",
+                     'debugLevel': "0",
+                     'costFunctionConvergenceFactor': "1.00E+09",
+                     'projectedGradientTolerance': "1.00E-05",
+                     'maxBSplineDisplacement': "0",
+                     'maximumNumberOfEvaluations': "900",
+                     'maximumNumberOfCorrections': "25",
+                     'removeIntensityOutliers': "0",
+                     'ROIAutoClosingSize': "9",
+                     'maskProcessingMode': "ROI",
+                     'initialTransform': initialTransform}
+    for key, value in kwargs.iteritems():
+      paramsBSpline[key] = value
+    self.cliNode = None
+    self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsBSpline, wait_for_completion=True)
 
-     return [outputVolumeRigid, outputVolumeAffine, outputVolumeBSpline,
-             outputTransformRigid, outputTransformAffine, outputTransformBSpline, outputTargets]
+  def doAffineRegistration(self):
+    paramsAffine = {'fixedVolume': self.fixedVolume,
+                    'movingVolume': self.movingVolume,
+                    'fixedBinaryVolume': self.fixedLabel,
+                    'movingBinaryVolume': self.movingLabel,
+                    'outputTransform': self.transforms['Affine'].GetID(),
+                    'outputVolume': self.volumes['Affine'].GetID(),
+                    'maskProcessingMode': "ROI",
+                    'useAffine': True,
+                    'initialTransform': self.transforms['Rigid']}
+    self.cliNode = None
+    self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsAffine, wait_for_completion=True)
 
-  def cloneFiducialAndApplyTransformation(self, cloneName, originalTargets, transformNode):
+  def doRigidRegistration(self, **kwargs):
+    paramsRigid = {'fixedVolume': self.fixedVolume,
+                   'movingVolume': self.movingVolume,
+                   'fixedBinaryVolume': self.fixedLabel,
+                   'outputTransform': self.transforms['Rigid'].GetID(),
+                   'outputVolume': self.volumes['Rigid'].GetID(),
+                   'maskProcessingMode': "ROI",
+                   'useRigid': True,
+                   'useAffine': False,
+                   'useBSpline': False,
+                   'useScaleVersor3D': False,
+                   'useScaleSkewVersor3D': False,
+                   'useROIBSpline': False}
+    for key, value in kwargs.iteritems():
+      paramsRigid[key] = value
+    self.cliNode = None
+    self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion=True)
+
+  def transformTargets(self, registrations, targets, prefix):
+    outputTargets = {}
+    if targets:
+      for registration in registrations:
+        name = prefix + '-targets-' + registration
+        outputTargets[registration] = self.cloneFiducialAndTransform(name, targets, self.transforms[registration])
+    return outputTargets
+
+  def cloneFiducialAndTransform(self, cloneName, originalTargets, transformNode):
     tfmLogic = slicer.modules.transforms.logic()
     clonedTargets = self.cloneFiducials(originalTargets, cloneName)
     clonedTargets.SetAndObserveTransformNodeID(transformNode.GetID())
     tfmLogic.hardenTransform(clonedTargets)
-    self.renameFiducials(clonedTargets)
+    # self.renameFiducials(clonedTargets)
     return clonedTargets
 
   def cloneFiducials(self, original, cloneName):
@@ -2160,136 +2068,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
       clone.SetNthFiducialLabel(i,name)
     return clone
 
-  def applyReRegistration(self,fixedVolume,movingVolume,fixedLabel,targets,lastRigidTfm):
-
-    if fixedVolume and movingVolume and fixedLabel and lastRigidTfm:
-
-     progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
-
-     outputTransformRigid, outputVolumeRigid = self.createTransformAndVolumeNode(transformName='transform-REREG-Rigid',
-                                                                                 volumeName='Rereg-Rigid')
-
-     outputTransformAffine, outputVolumeAffine = self.createTransformAndVolumeNode(transformName='transform-REREG-Affine',
-                                                                                   volumeName='Rereg-Affine')
-
-     outputTransformBSpline, outputVolumeBSpline = self.createTransformAndVolumeNode(transformName='transform-REREG-BSpline',
-                                                                                     volumeName='Rereg-BSpline',
-                                                                                     transFormNodeType='BSpline')
-
-     #   ++++++++++      RIGID REGISTRATION       ++++++++++
-
-     paramsRigid = {'fixedVolume': fixedVolume,
-                    'movingVolume': movingVolume,
-                    'fixedBinaryVolume' : fixedLabel,
-                    # 'movingBinaryVolume' : movingLabel,
-                    'outputTransform' : outputTransformRigid.GetID(),
-                    'outputVolume' : outputVolumeRigid.GetID(),
-                    'maskProcessingMode' : "ROI",
-                    # 'initializeTransformMode' : "useCenterOfROIAlign",
-                    'useRigid' : True,
-                    'useAffine' : False,
-                    'useScaleVersor3D' : False,
-                    'useScaleSkewVersor3D' : False,
-                    'useROIBSpline' : False,
-                    'useBSpline' : False,
-                    'initialTransform':lastRigidTfm}
-
-     progress.labelText = '\nRigid registration'
-
-
-     # run Rigid Registration
-     self.cliNode = None
-     self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion = True)
-
-     # TODO: Set output of useScaleVersor3D and useScaleSkewVersor3D here instead of affine result
-
-     self.dilateMask(fixedLabel)
-
-     #   ++++++++++      BSPLINE REGISTRATION       ++++++++++
-
-     paramsBSpline = {'fixedVolume': fixedVolume,
-                      'movingVolume': movingVolume,
-                      'outputVolume' : outputVolumeBSpline.GetID(),
-                      'bsplineTransform' : outputTransformBSpline.GetID(),
-                      # 'movingBinaryVolume' : movingLabel,
-                      'fixedBinaryVolume' : fixedLabel,
-                      # 'initializeTransformMode' : "useCenterOfROIAlign",
-                      # 'samplingPercentage' : "0.002",
-                      'useRigid' : False,
-                      'useAffine' : True, # ? maybe
-                      'useROIBSpline' : True,
-                      'useBSpline' : True,
-                      'useScaleVersor3D' : True, # ? maybe
-                      'useScaleSkewVersor3D' : True, # ? maybe
-                      'splineGridSize' : "3,3,3",
-                      'numberOfIterations' : "1500",
-                      'maskProcessing' : "ROI",
-                      'outputVolumePixelType' : "float",
-                      'backgroundFillValue' : "0",
-                      # 'maskInferiorCutOffFromCenter' : "1000",
-                      'interpolationMode' : "Linear",
-                      'minimumStepLength' : "0.005",
-                      'translationScale' : "1000",
-                      'reproportionScale' : "1",
-                      'skewScale' : "1",
-                      # 'numberOfHistogramBins' : "50",
-                      # 'numberOfMatchPoints': "10",
-                      'fixedVolumeTimeIndex' : "0",
-                      'movingVolumeTimeIndex' : "0",
-                      'medianFilterSize' : "0,0,0",
-                      'ROIAutoDilateSize' : "0",
-                      'relaxationFactor' : "0.5",
-                      'maximumStepLength' : "0.2",
-                      'failureExitCode' : "-1",
-                      'numberOfThreads': "-1",
-                      'debugLevel': "0",
-                      'costFunctionConvergenceFactor' : "1.00E+09",
-                      'projectedGradientTolerance' : "1.00E-05",
-                      'maxBSplineDisplacement' : "0",
-                      'maximumNumberOfEvaluations' : "900",
-                      'maximumNumberOfCorrections': "25",
-                      # 'metricSamplingStrategy' : "Random",
-                      # 'costMetric' : "MMI",
-                      'removeIntensityOutliers' : "0",
-                      'ROIAutoClosingSize' : "9",
-                      'maskProcessingMode' : "ROI",
-                      'initialTransform' : outputTransformRigid
-                      }
-
-     progress.labelText = '\nBSpline registration'
-     progress.setValue(3)
-
-     # run BSpline Registration
-     self.cliNode = None
-     self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsBSpline, wait_for_completion = True)
-
-
-     #   ++++++++++      TRANSFORM FIDUCIALS        ++++++++++
-
-     outputTargets = []
-     if targets:
-
-       rigidTargets = self.cloneFiducialAndApplyTransformation('targets-REREG-RIGID', targets, outputTransformRigid)
-       affineTargets = self.cloneFiducialAndApplyTransformation('targets-REREG-AFFINE', targets, outputTransformAffine)
-       bSplineTargets = self.cloneFiducialAndApplyTransformation('targets-REREG-BSPLINE', targets, outputTransformBSpline)
-
-       outputTargets.append(rigidTargets)
-       outputTargets.append(affineTargets)
-       outputTargets.append(bSplineTargets)
-
-     progress.labelText = '\nCompleted Registration'
-     progress.setValue(4)
-     progress.close()
-
-     return [outputVolumeRigid, outputVolumeAffine, outputVolumeBSpline,
-             outputTransformRigid, outputTransformAffine, outputTransformBSpline, outputTargets]
-
   def dilateMask(self,mask):
 
       import SimpleITK as sitk
       import sitkUtils
 
-      print 'mask '+str(mask.GetName()+' is dilated')
+      logging.debug('mask ' + mask.GetName() +' is dilated')
 
       labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mask.GetName()))
 
@@ -2299,7 +2083,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
       labelImage=grayscale_dilate_filter.Execute(labelImage)
 
       sitk.WriteImage(labelImage, sitkUtils.GetSlicerITKReadWriteAddress(mask.GetName()))
-      print 'dilate mask through'
+      logging.debug('dilate mask through')
 
 
   def renameFiducials(self,fiducialNode):
@@ -2372,9 +2156,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
             fileListOfSeries.append(currentFile)
         self.loadableList.append(fileListOfSeries)
 
-  def loadSeriesIntoSlicer(self,selectedSeries,directory):
+  def loadSeriesIntoSlicer(self, selectedSeries, directory):
 
-    self.createLoadableFileListFromSelection(selectedSeries,directory)
+    self.createLoadableFileListFromSelection(selectedSeries, directory)
 
     for series in range(len(selectedSeries)):
 
@@ -2552,17 +2336,17 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     distance_2D_y = abs(target_position[1]-needleTip_position[1])
     distance_2D_z = abs(target_position[2]-needleTip_position[2])
 
-    # logging.debug('distance_xRAS = '+str(distance_2D_x))
-    # logging.debug('distance_yRAS = '+str(distance_2D_y))
-    # logging.debug('distance_zRAS = '+str(distance_2D_z))
-
     # calculate 3D distance
+    distance_3D = self.get3dDistance(needleTip_position, target_position)
+
+    return [distance_2D_x,distance_2D_y,distance_2D_z,distance_3D]
+
+  def get3dDistance(self, needleTip_position, target_position):
     rulerNode = slicer.vtkMRMLAnnotationRulerNode()
     rulerNode.SetPosition1(target_position)
     rulerNode.SetPosition2(needleTip_position)
     distance_3D = rulerNode.GetDistanceMeasurement()
-
-    return [distance_2D_x,distance_2D_y,distance_2D_z,distance_3D]
+    return distance_3D
 
   def setupColorTable(self):
 
@@ -2585,19 +2369,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
         colorNode.SetColor(index,row['Label'],float(row['R'])/255,
                 float(row['G'])/255,float(row['B'])/255,float(row['A']))
         self.structureNames.append(row['Label'])
-
-  def hasImageData(self,volumeNode):
-    """This is a dummy logic method that
-    returns true if the passed in volume
-    node has valid image data
-    """
-    if not volumeNode:
-      logging.debug('no volume node')
-      return False
-    if volumeNode.GetImageData() is None:
-      logging.debug('no image data')
-      return False
-    return True
 
   def takeScreenshot(self,name,description,layout=-1):
     # show the message even if not taking a screen shot
@@ -2640,7 +2411,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     annotationLogic.CreateSnapShot(name, description, layout, self.screenshotScaleFactor, imageData)
 
   def run(self):
-
     return True
 
   def runQuickSegmentationMode(self):
@@ -2767,14 +2537,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     Parameter (4/0): numberOfThreads
     """
 
-    # define params
     params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume' : outputVolume,
               'warpTransform' : warpTransform,'interpolationMode' : 'NearestNeighbor'}
 
     logging.debug('about to run BRAINSResample CLI with those params: ')
     logging.debug(params)
-    # run ModelToLabelMap-CLI Module
-    cliNode = slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
+    slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
     logging.debug('resample labelmap through')
     slicer.mrmlScene.AddNode(outputVolume)
 
