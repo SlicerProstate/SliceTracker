@@ -277,7 +277,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
     self.setAxialOrientation()
 
-    self.setTabsEnabled([1, 2, 3], True)
+    self.setTabsEnabled([1, 2, 3], False)
 
     self.onTab1clicked()
     self.logic.setupColorTable()
@@ -309,7 +309,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.compositeNodeGreen = self.greenWidget.mrmlSliceCompositeNode()
     self.greenSliceLogic = self.greenWidget.sliceLogic()
     self.greenSliceNode = self.greenSliceLogic.GetSliceNode()
-    self.currentFOVGreen = []
 
   def setStandardOrientation(self):
     self.redSliceNode.SetOrientationToAxial()
@@ -516,9 +515,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     fadeLayout = qt.QHBoxLayout()
     fadeHolder.setLayout(fadeLayout)
 
-    self.groupBox = qt.QGroupBox("Visual Evaluation")
-    self.groupBoxLayout = qt.QFormLayout(self.groupBox)
-    self.evaluationGroupBoxLayout.addWidget(self.groupBox)
+    self.visualEffectsGroupBox = qt.QGroupBox("Visual Evaluation")
+    self.groupBoxLayout = qt.QFormLayout(self.visualEffectsGroupBox)
+    self.evaluationGroupBoxLayout.addWidget(self.visualEffectsGroupBox)
 
     self.fadeSlider = ctk.ctkSliderWidget()
     self.fadeSlider.minimum = 0
@@ -1067,9 +1066,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def onTab1clicked(self):
     # (re)set the standard Icon
     self.tabBar.setTabIcon(0,self.dataSelectionIcon)
+    self.uncheckAndDisableVisualEffects()
+    self.removeSliceAnnotations()
+
+  def uncheckAndDisableVisualEffects(self):
     self.flickerCheckBox.checked = False
     self.rockCheckBox.checked = False
-    self.removeSliceAnnotations()
+    self.visualEffectsGroupBox.setEnabled(False)
 
   def onTab2clicked(self):
     self.tabWidget.setCurrentIndex(1)
@@ -1187,6 +1190,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.saveCurrentSliceViewPositions()
     self.resetShowResultButtons(checkedButton=self.showPreopResultButton)
 
+    self.uncheckAndDisableVisualEffects()
     self.unlinkImages()
 
     volumeNode = self.registrationResults[self.currentRegistrationResultIndex]['movingVolume']
@@ -1242,6 +1246,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.setDefaultFOV(self.yellowSliceLogic)
 
     self.showTargets(registrationType=registrationType)
+    self.visualEffectsGroupBox.setEnabled(True)
 
   def unlinkImages(self):
     self._linkImages(0)
