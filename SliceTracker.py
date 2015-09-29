@@ -1167,13 +1167,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.seriesModel.appendRow(sItem)
       sItem.setCheckable(1)
 
-      if "PROSTATE" in seriesText:
-        sItem.setCheckState(1)
-      if "GUIDANCE" in seriesText:
-        sItem.setCheckState(1)
-        for item in range(seriesList.index(seriesText)-1):
-          self.seriesModel.item(item).setCheckState(0)
-
+    for item in list(reversed(range(len(seriesList)))):
+      seriesText = self.seriesModel.item(item).text()
+      if "PROSTATE" in seriesText or "GUIDANCE" in seriesText:
+        self.seriesModel.item(item).setCheckState(1)
+        break
     self.intraopSeriesSelector.collapsed = False
     self.updateSeriesSelectionButtons()
 
@@ -2185,7 +2183,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     self.newFileList = []
     self.seriesList = []
     self.selectableSeries = []
-    self.acqusitionTimes = {}
     indexer = ctk.ctkDICOMIndexer()
     db = slicer.dicomDatabase
 
@@ -2210,8 +2207,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
         seriesNumberDescription = seriesNumber + ":" + seriesDescription
         if seriesNumberDescription not in self.seriesList:
           self.seriesList.append(seriesNumberDescription)
-          acqTime = self.getDICOMValue(currentFile, DICOMTAGS.ACQUISITION_TIME)[0:6]
-          self.acqusitionTimes[seriesNumberDescription] = str(acqTime)
 
     indexer.addDirectory(db, str(self.directory))
     indexer.waitForImportFinished()
@@ -2221,7 +2216,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
       if series not in self.selectableSeries:
         self.selectableSeries.append(series)
 
-    self.selectableSeries = sorted(self.acqusitionTimes, key=self.acqusitionTimes.get)
+    self.selectableSeries = sorted(self.seriesList, key=lambda series: int(series.split(":")[0]))
 
     # TODO: update GUI from here is not very nice. Find a way to call logic and get the self.selectableSeries
     # as a return
@@ -2375,7 +2370,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     else:
       # default to using the full window
       widget = slicer.util.mainWindow()
-      # reset the layout so that the node is set correctly
+      # reset the layout so that the node is set correctlyupdateSeriesSelectorTable
       layout = slicer.qMRMLScreenShotDialog.FullLayout
 
     # grab and convert to vtk image data
