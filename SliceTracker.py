@@ -13,6 +13,7 @@ class DICOMTAGS:
   PATIENT_ID            = '0010,0020'
   PATIENT_BIRTH_DATE    = '0010,0030'
   SERIES_DESCRIPTION    = '0008,103E'
+  SERIES_NUMBER         = '0020,0011'
   STUDY_DATE            = '0008,0020'
   STUDY_TIME            = '0008,0030'
   ACQUISITION_TIME      = '0008,0032'
@@ -610,7 +611,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.fiducialSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
     self.rockTimer.connect('timeout()', self.onRockToggled)
     self.flickerTimer.connect('timeout()', self.onFlickerToggled)
-    self.saveDataButton.connect('clicked(bool)',self.onSaveData)
+    self.saveDataButton.connect('clicked(bool)',self.onSaveDataButtonClicked)
     self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
     self.seriesModel.itemChanged.connect(self.updateSeriesSelectionButtons)
 
@@ -981,7 +982,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     else:
       self.saveDataButton.setEnabled(False)
 
-  def onSaveData(self):
+  def onSaveDataButtonClicked(self):
     # TODO: if registration was redone: make a sub folder and move all initial results there
 
     self.successfullySavedData = []
@@ -1016,7 +1017,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     # if user clicked on the tip position - save that as well, prefixed with the series number
     pass
 
-  def saveData(self, node, extension, name=None):
+  def saveNodeData(self, node, extension, name=None):
     try:
       name = name if name else node.GetName()
       filename = os.path.join(self.outputDirectory, name + extension )
@@ -1027,31 +1028,35 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.failedSaveOfData.append(name)
 
   def saveIntraopSegmentation(self):
-    self.saveData(self.currentIntraopLabel, '.nrrd', name="IntraopSegmentationLabel")
-    self.saveData(self.preopTargets, '.fcsv', name="PreopTargets")
-    self.saveData(self.logic.clippingModelNode, '.vtk', name="IntraopSegmentationSurfaceModel")
+    self.saveNodeData(self.currentIntraopLabel, '.nrrd', name="IntraopSegmentationLabel")
+    self.saveNodeData(self.preopTargets, '.fcsv', name="PreopTargets")
+    self.saveNodeData(self.logic.clippingModelNode, '.vtk', name="IntraopSegmentationSurfaceModel")
 
   def saveBiasCorrectionResult(self):
     if self.biasCorrectionDone:
-      self.saveData(self.preopVolume, '.nrrd')
+      self.saveNodeData(self.preopVolume, '.nrrd')
 
   def saveRegistrationResults(self):
-    # TODO
     self.saveRegistrationCommandLineArguments()
     self.saveOutputTransformations()
     self.saveTransformedFiducials()
 
   def saveRegistrationCommandLineArguments(self):
-    # for all registration steps:
-    #   - command line or arguments (text file or json file),
-    pass
+    for result in self.registrationResults:
+      filename = os.path.join(self.outputDirectory, result["name"] + ".txt")
+      f = open(filename, 'w+')
+      f.write(result["cmdArguments"])
+      f.close()
 
   def saveOutputTransformations(self):
-    pass
+    for result in self.registrationResults:
+      for key in [key for key in result.keys() if key.find("outputTransform") != -1]:
+        self.saveNodeData(result[key], ".h5")
 
   def saveTransformedFiducials(self):
-    # pre-fixed with series number corresponding to the fixed image during registration
-    pass
+    for result in self.registrationResults:
+      for key in [key for key in result.keys() if key.find("outputTargets") != -1]:
+        self.saveNodeData(result[key], ".fcsv")
 
   def onTabWidgetClicked(self):
     if self.tabWidget.currentIndex==0:
@@ -1111,15 +1116,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.reRegButton.setEnabled(1)
     self.reRegistrationMode = True
 
-  def getDICOMValue(self, currentFile, tag, fallback=None):
-    try:
-      value = self.dicomDatabase.fileValue(currentFile, tag)
-    except:
-      value = fallback
-    return value
-
   def updateCurrentPatientAndViewBox(self, currentFile):
-    self.currentID = self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
+    self.currentID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
     self.patientID.setText(self.currentID)
     self.updatePatientBirthdate(currentFile)
     self.updateCurrentStudyDate()
@@ -1127,7 +1125,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.updatePatientName(currentFile)
 
   def updatePreopStudyDate(self, currentFile):
-    self.preopStudyDateDICOM = self.getDICOMValue(currentFile, DICOMTAGS.STUDY_DATE)
+    self.preopStudyDateDICOM = self.logic.getDICOMValue(currentFile, DICOMTAGS.STUDY_DATE)
     formattedDate = self.preopStudyDateDICOM[0:4] + "-" + self.preopStudyDateDICOM[4:6] + "-" + \
                     self.preopStudyDateDICOM[6:8]
     self.preopStudyDate.setText(formattedDate)
@@ -1137,7 +1135,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.currentStudyDate.setText(str(currentStudyDate))
 
   def updatePatientBirthdate(self, currentFile):
-    currentBirthDateDICOM = self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_BIRTH_DATE)
+    currentBirthDateDICOM = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_BIRTH_DATE)
     if currentBirthDateDICOM is None:
       self.patientBirthDate.setText('No Date found')
     else:
@@ -1149,7 +1147,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
   def updatePatientName(self, currentFile):
     self.currentPatientName = None
-    currentPatientNameDICOM = self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)
+    currentPatientNameDICOM = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)
     # convert patient name from XXXX^XXXX to XXXXX, XXXXX
     if currentPatientNameDICOM:
       splitted = currentPatientNameDICOM.split('^')
@@ -1173,8 +1171,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
         sItem.setCheckState(1)
       if "GUIDANCE" in seriesText:
         sItem.setCheckState(1)
-        rowsAboveCurrentItem = int(len(seriesList) - 1)
-        for item in range(rowsAboveCurrentItem):
+        for item in range(seriesList.index(seriesText)-1):
           self.seriesModel.item(item).setCheckState(0)
 
     self.intraopSeriesSelector.collapsed = False
@@ -1493,10 +1490,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
   def patientCheckAfterImport(self, directory, fileList):
     for currentFile in fileList:
-      if self.dicomDatabase.fileValue(os.path.join(directory, currentFile),DICOMTAGS.PATIENT_ID) != self.currentID:
-        incomePatient = self.dicomDatabase.fileValue(os.path.join(directory, fileList[2]),DICOMTAGS.PATIENT_ID)
+      currentFile = os.path.join(directory, currentFile)
+      patientID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
+      if patientID != self.currentID and patientID is not None:
         if not self.yesNoDialog(message='WARNING: You selected Patient ID ' + self.currentID + ', but Patient ID ' +
-                                         incomePatient + ' just arrived in the income folder.\nDo you still want to '
+                                         patientID + ' just arrived in the income folder.\nDo you still want to '
                                          'continue?', title="Patients Not Matching"):
           self.updateSeriesSelectorTable([])
           return
@@ -1700,8 +1698,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     # this function stores information and nodes of a single
     # registration run to be able to switch between results.
 
-    # name = self.currentIntraopVolume.GetName()
-    summary = {'name':self.logic.getRegistrationName(),
+    summary = {'name':self.currentIntraopVolume.GetName(),
+               'cmdArguments':self.logic.cmdArguments,
                'movingVolume':params[0],
                'fixedVolume':params[1],
                'movingLabel':params[2],
@@ -1734,13 +1732,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     sourceVolumeNode = self.preopVolumeSelector.currentNode()
     movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolumeNode, 'movingVolume-PREOP-INTRAOP')
 
-    registrationOutput = self.logic.applyRegistration(fixedVolume, movingVolume, fixedLabel, movingLabel, targets)
-
-    params = [sourceVolumeNode, fixedVolume, movingLabel, fixedLabel, targets]
-
-    self.finalizeRegistrationStep(params, registrationOutput)
-
-    logging.debug('Registration is done')
+    if self.logic.applyRegistration(fixedVolume, movingVolume, fixedLabel, movingLabel, targets):
+      params = [sourceVolumeNode, fixedVolume, movingLabel, fixedLabel, targets]
+      self.finalizeRegistrationStep(params)
+      logging.debug('Registration is done')
 
   def onInvokeReRegistration(self):
     # moving volume: copy last fixed volume
@@ -1761,20 +1756,20 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.logic.BRAINSResample(inputVolume=originalFixedLabel, referenceVolume=self.currentIntraopVolume,
                               outputVolume=fixedLabel, warpTransform=lastRigidTfm)
 
-    reRegOutput = self.logic.applyReRegistration(fixedVolume=self.currentIntraopVolume, movingVolume=movingVolume,
-                                                 fixedLabel=fixedLabel,targets=targets, lastRigidTfm=lastRigidTfm)
+    if self.logic.applyReRegistration(fixedVolume=self.currentIntraopVolume, movingVolume=movingVolume,
+                                      fixedLabel=fixedLabel,targets=targets, lastRigidTfm=lastRigidTfm):
 
-    movingLabel = None
-    params = [sourceVolumeNode, self.currentIntraopVolume, movingLabel, fixedLabel, targets]
+      movingLabel = None
+      params = [sourceVolumeNode, self.currentIntraopVolume, movingLabel, fixedLabel, targets]
 
-    self.finalizeRegistrationStep(params, reRegOutput)
+      self.finalizeRegistrationStep(params)
 
-    logging.debug(('Re-Registration is done'))
+      logging.debug(('Re-Registration is done'))
 
-  def finalizeRegistrationStep(self, params, registrationOutput):
-    self.outputVolumes = registrationOutput[0]
-    self.outputTransforms = registrationOutput[1]
-    self.outputTargets = registrationOutput[2]
+  def finalizeRegistrationStep(self, params):
+    self.outputVolumes = self.logic.volumes
+    self.outputTransforms = self.logic.transforms
+    self.outputTargets = self.logic.transformedTargets
 
     self.createRegistrationResult(params)
 
@@ -1844,22 +1839,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
 class SliceTrackerLogic(ScriptedLoadableModuleLogic):
 
-  INITIAL_REGISTRATION = 'InitialRegistration'
-  NEEDLE_IMAGE_REGISTRATION = 'NeedleConfirmation'
-
   def __init__(self, parent=None):
     ScriptedLoadableModuleLogic.__init__(self, parent)
     self.inputMarkupNode = None
     self.clippingModelNode = None
     self.volumes = {}
     self.transforms = {}
-    self.reRegistrationCount = 0
-
-  def getRegistrationName(self):
-    if self.reRegistrationCount == 0:
-      return "COVER PROSTATE"
-    else:
-      return "GUIDANCE_FOR_NEEDLE_" + str(self.reRegistrationCount)
+    self.transformedTargets = {}
+    self.cmdArguments = ""
 
   def applyBiasCorrection(self, volume, label):
 
@@ -1874,9 +1861,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
               'outputImageName': outputVolume.GetID(),
               'numberOfIterations': '500,400,300'}
 
-    self.cliNode = None
-    self.cliNode = slicer.cli.run(slicer.modules.n4itkbiasfieldcorrection, self.cliNode, params,
-                                  wait_for_completion=True)
+    slicer.cli.run(slicer.modules.n4itkbiasfieldcorrection, None, params, wait_for_completion=True)
 
     progress.setValue(2)
     progress.close()
@@ -1886,93 +1871,75 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     self.volumes = {}
     self.transforms = {}
     for regType in registrationTypes:
-      name = regType + '-' + suffix
       isBSpline = regType=='BSpline'
-      self.transforms[regType] = self.createTransformNode(name, isBSpline)
-      self.volumes[regType] = self.createVolumeNode(name)
+      self.transforms[regType] = self.createTransformNode(suffix + '--TRANSFORM--' + regType, isBSpline)
+      self.volumes[regType] = self.createVolumeNode(suffix + '--VOLUME--' + regType)
 
-  def createTransformNode(self, suffix, isBSpline):
+  def createTransformNode(self, name, isBSpline):
     node = slicer.vtkMRMLBSplineTransformNode() if isBSpline else slicer.vtkMRMLLinearTransformNode()
-    node.SetName('transform-'+suffix)
+    node.SetName(name)
     slicer.mrmlScene.AddNode(node)
     return node
 
-  def createVolumeNode(self, suffix):
+  def createVolumeNode(self, name):
     volume = slicer.vtkMRMLScalarVolumeNode()
-    volume.SetName('volume-' + suffix)
+    volume.SetName(name)
     slicer.mrmlScene.AddNode(volume)
     return volume
 
-  def applyRegistration(self,fixedVolume,movingVolume,fixedLabel,movingLabel,targets):
+  def applyRegistration(self, fixedVolume, movingVolume, fixedLabel, movingLabel, targets):
 
     if fixedVolume and movingVolume and fixedLabel and movingLabel:
+      self.cmdArguments = ""
       self.fixedVolume = fixedVolume
       self.movingVolume = movingVolume
       self.fixedLabel = fixedLabel
       self.movingLabel = movingLabel
 
-      progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
+      self.progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
 
-      self.createVolumeAndTransformNodes(['Rigid', 'Affine', 'BSpline'], self.INITIAL_REGISTRATION)
+      prefix = fixedVolume.GetName()
+      self.createVolumeAndTransformNodes(['Rigid', 'Affine', 'BSpline'], prefix)
 
-      progress.labelText = '\nRigid registration'
       self.doRigidRegistration(movingBinaryVolume=self.movingLabel, initializeTransformMode="useCenterOfROIAlign")
-
-      progress.labelText = '\nAffine registration'
-      progress.setValue(2)
       self.doAffineRegistration()
-
-      progress.labelText = '\nBSpline registration'
-      progress.setValue(3)
       self.doBSplineRegistration(initialTransform=self.transforms['Affine'], useScaleVersor3D=False, useScaleSkewVersor3D=True,
                                  movingBinaryVolume=self.movingLabel, useAffine=False, samplingPercentage="0.002",
                                  maskInferiorCutOffFromCenter="1000", numberOfHistogramBins="50",
                                  numberOfMatchPoints="10", metricSamplingStrategy="Random", costMetric="MMI")
 
-      outputTargets = self.transformTargets(['Rigid', 'Affine', 'BSpline'], targets, self.INITIAL_REGISTRATION)
-
-      progress.labelText = '\nCompleted Registration'
-      progress.setValue(4)
-      progress.close()
-
-      self.reRegistrationCount = 0
-
-      return self.volumes, self.transforms, outputTargets
+      self.transformedTargets = self.transformTargets(['Rigid', 'Affine', 'BSpline'], targets, prefix)
+      return True
+    else:
+      return False
 
   def applyReRegistration(self, fixedVolume, movingVolume, fixedLabel, targets, lastRigidTfm):
 
     if fixedVolume and movingVolume and fixedLabel and lastRigidTfm:
+      self.cmdArguments = ""
       self.fixedVolume = fixedVolume
       self.movingVolume = movingVolume
       self.fixedLabel = fixedLabel
 
-      progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
-      prefix = self.NEEDLE_IMAGE_REGISTRATION + str(self.reRegistrationCount)
+      self.progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
+      prefix = fixedVolume.GetName()
 
       self.createVolumeAndTransformNodes(['Rigid', 'BSpline'], prefix)
 
-      progress.labelText = '\nRigid registration'
-      progress.setValue(2)
-
       self.doRigidRegistration(initialTransform=lastRigidTfm)
-
       self.dilateMask(fixedLabel)
-
-      progress.labelText = '\nBSpline registration'
-      progress.setValue(3)
       self.doBSplineRegistration(initialTransform=self.transforms['Rigid'], useScaleVersor3D=True,
                                  useScaleSkewVersor3D=True, useAffine=True)
 
-      outputTargets = self.transformTargets(['Rigid', 'BSpline'], targets, prefix)
+      self.transformedTargets = self.transformTargets(['Rigid', 'BSpline'], targets, prefix)
 
-      progress.labelText = '\nCompleted Registration'
-      progress.setValue(4)
-      progress.close()
-      self.reRegistrationCount += 1
-
-      return self.volumes, self.transforms, outputTargets
+      return True
+    else:
+      return False
 
   def doBSplineRegistration(self, initialTransform, useScaleVersor3D, useScaleSkewVersor3D, **kwargs):
+    self.progress.labelText = '\nBSpline registration'
+    self.progress.setValue(3)
     paramsBSpline = {'fixedVolume': self.fixedVolume,
                      'movingVolume': self.movingVolume,
                      'outputVolume': self.volumes['BSpline'].GetID(),
@@ -2013,10 +1980,17 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                      'initialTransform': initialTransform}
     for key, value in kwargs.iteritems():
       paramsBSpline[key] = value
-    self.cliNode = None
-    self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsBSpline, wait_for_completion=True)
+
+    slicer.cli.run(slicer.modules.brainsfit, None, paramsBSpline, wait_for_completion=True)
+    self.cmdArguments += "BSpline Registration Parameters: %s" % str(paramsBSpline) + "\n\n"
+
+    self.progress.labelText = '\nCompleted Registration'
+    self.progress.setValue(4)
+    self.progress.close()
 
   def doAffineRegistration(self):
+    self.progress.labelText = '\nAffine registration'
+    self.progress.setValue(2)
     paramsAffine = {'fixedVolume': self.fixedVolume,
                     'movingVolume': self.movingVolume,
                     'fixedBinaryVolume': self.fixedLabel,
@@ -2026,10 +2000,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                     'maskProcessingMode': "ROI",
                     'useAffine': True,
                     'initialTransform': self.transforms['Rigid']}
-    self.cliNode = None
-    self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsAffine, wait_for_completion=True)
+    slicer.cli.run(slicer.modules.brainsfit, None, paramsAffine, wait_for_completion=True)
+    self.cmdArguments += "Affine Registration Parameters: %s" % str(paramsAffine) + "\n\n"
 
   def doRigidRegistration(self, **kwargs):
+    self.progress.labelText = '\nRigid registration'
+    self.progress.setValue(2)
     paramsRigid = {'fixedVolume': self.fixedVolume,
                    'movingVolume': self.movingVolume,
                    'fixedBinaryVolume': self.fixedLabel,
@@ -2044,14 +2020,14 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
                    'useROIBSpline': False}
     for key, value in kwargs.iteritems():
       paramsRigid[key] = value
-    self.cliNode = None
-    self.cliNode = slicer.cli.run(slicer.modules.brainsfit, self.cliNode, paramsRigid, wait_for_completion=True)
+    slicer.cli.run(slicer.modules.brainsfit, None, paramsRigid, wait_for_completion=True)
+    self.cmdArguments += "Rigid Registration Parameters: %s" % str(paramsRigid) + "\n\n"
 
   def transformTargets(self, registrations, targets, prefix):
     outputTargets = {}
     if targets:
       for registration in registrations:
-        name = prefix + '-targets-' + registration
+        name = prefix + '--TARGETS--' + registration
         outputTargets[registration] = self.cloneFiducialAndTransform(name, targets, self.transforms[registration])
     return outputTargets
 
@@ -2060,7 +2036,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     clonedTargets = self.cloneFiducials(originalTargets, cloneName)
     clonedTargets.SetAndObserveTransformNodeID(transformNode.GetID())
     tfmLogic.hardenTransform(clonedTargets)
-    # self.renameFiducials(clonedTargets)
     return clonedTargets
 
   def cloneFiducials(self, original, cloneName):
@@ -2129,7 +2104,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     else:
       self.thereAreFilesInTheFolderFlag = 0
 
-  def createLoadableFileListFromSelection(self,selectedSeriesList,directory):
+  def createLoadableFileListFromSelection(self, selectedSeriesList, directory):
 
     # this function creates a DICOM filelist for all files in intraop directory.
     # It compares the names of the studies in seriesList to the
@@ -2137,20 +2112,16 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     # list, where it puts together all DICOM files of one series into one list
 
     db = slicer.dicomDatabase
+    self.selectedFileList = []
 
-    # create dcmFileList that lists all .dcm files in directory
+    selectedSeriesList = [series.split(":")[1] for series in selectedSeriesList]
+
     if os.path.exists(directory):
-      dcmFileList = []
       for dcm in os.listdir(directory):
         if dcm != ".DS_Store":
-          dcmFileList.append(os.path.join(directory, dcm))
-
-      self.selectedFileList = []
-
-      # write all selected files in selectedFileList
-      for currentFile in dcmFileList:
-       if db.fileValue(currentFile,DICOMTAGS.SERIES_DESCRIPTION) in selectedSeriesList:
-         self.selectedFileList.append(currentFile)
+          currentFile = os.path.join(directory, dcm)
+          if db.fileValue(currentFile, DICOMTAGS.SERIES_DESCRIPTION) in selectedSeriesList:
+            self.selectedFileList.append(currentFile)
 
       # create a list with lists of files of each series in them
       self.loadableList = []
@@ -2159,13 +2130,14 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
       for series in selectedSeriesList:
         fileListOfSeries = []
         for currentFile in self.selectedFileList:
-          if db.fileValue(currentFile,DICOMTAGS.SERIES_DESCRIPTION) == series:
+          if db.fileValue(currentFile, DICOMTAGS.SERIES_DESCRIPTION) == series:
             fileListOfSeries.append(currentFile)
         self.loadableList.append(fileListOfSeries)
 
   def loadSeriesIntoSlicer(self, selectedSeries, directory):
 
     self.createLoadableFileListFromSelection(selectedSeries, directory)
+    volume = None
 
     for series in range(len(selectedSeries)):
 
@@ -2181,12 +2153,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
         logging.debug('There is nothing to load. You have to select series')
 
       name = loadables[0].name
-      v = scalarVolumePlugin.load(loadables[0])
-      v.SetName(name)
-      slicer.mrmlScene.AddNode(v)
+      volume = scalarVolumePlugin.load(loadables[0])
+      volume.SetName(name)
+      slicer.mrmlScene.AddNode(volume)
 
     # return the last series to continue with segmentation
-    return v
+    return volume
 
   def importStudy(self, dicomDataDir):
     indexer = ctk.ctkDICOMIndexer()
@@ -2199,6 +2171,14 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     logging.debug('waiting 5 more seconds for the series to be completed')
 
     qt.QTimer.singleShot(5000,self.importDICOMSeries)
+
+  def getDICOMValue(self, currentFile, tag, fallback=None):
+    db = slicer.dicomDatabase
+    try:
+      value = db.fileValue(currentFile, tag)
+    except:
+      value = fallback
+    return value
 
   def importDICOMSeries(self):
 
@@ -2219,21 +2199,21 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
           if not item == ".DS_Store":
             self.newFileList.append(item)
 
-    # import file in DICOM database
     for currentFile in self.newFileList:
       indexer.addFile(db,os.path.join(self.directory, currentFile),None)
       # logging.debug('file '+str(file)+' was added by Indexer')
 
-      # add Series to seriesList
-      if db.fileValue(os.path.join(self.directory, currentFile),DICOMTAGS.SERIES_DESCRIPTION) not in self.seriesList:
-        importfile = os.path.join(self.directory, currentFile)
-        self.seriesList.append(db.fileValue(importfile,DICOMTAGS.SERIES_DESCRIPTION))
+      currentFile = os.path.join(self.directory, currentFile)
+      seriesDescription = self.getDICOMValue(currentFile, DICOMTAGS.SERIES_DESCRIPTION)
+      seriesNumber = self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER)
+      if seriesDescription and seriesNumber:
+        seriesNumberDescription = seriesNumber + ":" + seriesDescription
+        if seriesNumberDescription not in self.seriesList:
+          self.seriesList.append(seriesNumberDescription)
+          acqTime = self.getDICOMValue(currentFile, DICOMTAGS.ACQUISITION_TIME)[0:6]
+          self.acqusitionTimes[seriesNumberDescription] = str(acqTime)
 
-        # get acquisition time and save in dictionary
-        acqTime = db.fileValue(importfile,DICOMTAGS.ACQUISITION_TIME)[0:6]
-        self.acqusitionTimes[str(db.fileValue(importfile,DICOMTAGS.SERIES_DESCRIPTION))] = str(acqTime)
-
-    indexer.addDirectory(db,str(self.directory))
+    indexer.addDirectory(db, str(self.directory))
     indexer.waitForImportFinished()
 
     # pass items from seriesList to selectableSeries to keep them in the right order
@@ -2241,23 +2221,13 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
       if series not in self.selectableSeries:
         self.selectableSeries.append(series)
 
-    # sort list by acquisition time
-    self.selectableSeries = self.sortSeriesByAcquisitionTime(self.selectableSeries)
+    self.selectableSeries = sorted(self.acqusitionTimes, key=self.acqusitionTimes.get)
 
     # TODO: update GUI from here is not very nice. Find a way to call logic and get the self.selectableSeries
     # as a return
 
     slicer.modules.SliceTrackerWidget.patientCheckAfterImport(self.directory, self.newFileList)
     slicer.modules.SliceTrackerWidget.checkTabAfterImport()
-
-  def sortSeriesByAcquisitionTime(self,inputSeriesList):
-    # this function sorts the self.acqusitionTimes
-    # dictionary over its acquisiton times (values).
-    # it returnes a sorted series list (keys) whereas
-    # the 0th item is the earliest obtained series
-
-    sortedList = sorted(self.acqusitionTimes, key=self.acqusitionTimes.get)
-    return sortedList
 
   def removeEverythingInIntraopTestFolder(self):
     cmd = ('rm -rfv '+slicer.modules.SliceTrackerWidget.modulePath +'Resources/Testing/intraopDir/*')
@@ -2346,7 +2316,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     # calculate 3D distance
     distance_3D = self.get3dDistance(needleTip_position, target_position)
 
-    return [distance_2D_x,distance_2D_y,distance_2D_z,distance_3D]
+    return [distance_2D_x, distance_2D_y, distance_2D_z, distance_3D]
 
   def get3dDistance(self, needleTip_position, target_position):
     rulerNode = slicer.vtkMRMLAnnotationRulerNode()
@@ -2503,7 +2473,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
 
     logging.debug(params)
     # run ModelToLabelMap-CLI Module
-    cliNode = slicer.cli.run(slicer.modules.modeltolabelmap, None, params, wait_for_completion=True)
+    slicer.cli.run(slicer.modules.modeltolabelmap, None, params, wait_for_completion=True)
 
     # use label contours
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
@@ -2529,7 +2499,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     compositeNodeRed.SetLabelOpacity(1)
     return outputLabelMap
 
-  def BRAINSResample(self,inputVolume,referenceVolume,outputVolume,warpTransform):
+  def BRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
     """
     Parameter (0/0): inputVolume
     Parameter (0/1): referenceVolume
