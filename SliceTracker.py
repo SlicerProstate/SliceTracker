@@ -3,6 +3,8 @@ import math, re
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from Editor import EditorWidget
+import SimpleITK as sitk
+import sitkUtils
 import EditorLib
 import logging
 
@@ -954,7 +956,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.setSetting('PreopLocation', self.preopDataDir)
       self.preopDirButton.text = self.shortenDirText(self.preopDataDir)
       self.loadPreopData()
-      self.updateSeriesSelectorTable([])
+      self.updateSeriesSelectorTable()
 
   def shortenDirText(self, directory):
     try:
@@ -1157,10 +1159,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
         self.currentPatientName = splitted[0]
     self.patientName.setText(self.currentPatientName)
 
-  def updateSeriesSelectorTable(self, seriesList):
+  def updateSeriesSelectorTable(self):
     self.seriesModel.clear()
     self.seriesItems = []
-
+    seriesList = self.logic.seriesList
     for seriesText in seriesList:
       sItem = qt.QStandardItem(seriesText)
       self.seriesItems.append(sItem)
@@ -1491,14 +1493,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       currentFile = os.path.join(directory, currentFile)
       patientID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
       if patientID != self.currentID and patientID is not None:
-        if not self.yesNoDialog(message='WARNING: You selected Patient ID ' + self.currentID + ', but Patient ID ' +
-                                         patientID + ' just arrived in the income folder.\nDo you still want to '
-                                         'continue?', title="Patients Not Matching"):
-          self.updateSeriesSelectorTable([])
+        if not self.yesNoDialog(message='WARNING: Preop data of Patient ID ' + self.currentID + ' was selected, but '
+                                        ' data of patient with ID ' + patientID + ' just arrived in the income folder.'
+                                        '\nDo you still want to continue?', title="Patients Not Matching"):
+          self.updateSeriesSelectorTable()
           return
         else:
           break
-    self.updateSeriesSelectorTable(self.logic.selectableSeries)
+    self.updateSeriesSelectorTable()
 
   def getSelectedSeries(self):
     checkedItems = [x for x in self.seriesItems if x.checkState()] if self.seriesItems else []
@@ -1622,8 +1624,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
         slicer.mrmlScene.RemoveNode(self.currentIntraopLabel)
 
   def isIntraopLabelValid(self):
-    import SimpleITK as sitk
-    import sitkUtils
     labelAddress = sitkUtils.GetSlicerITKReadWriteAddress(self.currentIntraopLabel.GetName())
     labelImage = sitk.ReadImage(labelAddress)
 
@@ -1832,10 +1832,44 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def checkTabAfterImport(self):
     # change icon of tabBar if user is not in Data selection tab
     if not self.tabWidget.currentIndex == 0:
-      self.tabBar.setTabIcon(0,self.newImageDataIcon)
+      self.tabBar.setTabIcon(0, self.newImageDataIcon)
 
 
 class SliceTrackerLogic(ScriptedLoadableModuleLogic):
+
+  @staticmethod
+  def getDICOMValue(currentFile, tag, fallback=None):
+    db = slicer.dicomDatabase
+    try:
+      value = db.fileValue(currentFile, tag)
+    except RuntimeError:
+      logging.info("There are problems with accessing DICOM values from file %s" % currentFile)
+      value = fallback
+    return value
+
+  @staticmethod
+  def getFileList(directory):
+    return [f for f in os.listdir(directory) if ".DS_Store" not in f]
+
+  @staticmethod
+  def importStudy(dicomDataDir):
+    indexer = ctk.ctkDICOMIndexer()
+    indexer.addDirectory(slicer.dicomDatabase, dicomDataDir)
+    indexer.waitForImportFinished()
+
+  @staticmethod
+  def createTransformNode(name, isBSpline):
+    node = slicer.vtkMRMLBSplineTransformNode() if isBSpline else slicer.vtkMRMLLinearTransformNode()
+    node.SetName(name)
+    slicer.mrmlScene.AddNode(node)
+    return node
+
+  @staticmethod
+  def createVolumeNode(name):
+    volume = slicer.vtkMRMLScalarVolumeNode()
+    volume.SetName(name)
+    slicer.mrmlScene.AddNode(volume)
+    return volume
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleLogic.__init__(self, parent)
@@ -1845,6 +1879,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     self.transforms = {}
     self.transformedTargets = {}
     self.cmdArguments = ""
+    self.seriesList = []
 
   def applyBiasCorrection(self, volume, label):
 
@@ -1872,18 +1907,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
       isBSpline = regType=='BSpline'
       self.transforms[regType] = self.createTransformNode(suffix + '--TRANSFORM--' + regType, isBSpline)
       self.volumes[regType] = self.createVolumeNode(suffix + '--VOLUME--' + regType)
-
-  def createTransformNode(self, name, isBSpline):
-    node = slicer.vtkMRMLBSplineTransformNode() if isBSpline else slicer.vtkMRMLLinearTransformNode()
-    node.SetName(name)
-    slicer.mrmlScene.AddNode(node)
-    return node
-
-  def createVolumeNode(self, name):
-    volume = slicer.vtkMRMLScalarVolumeNode()
-    volume.SetName(name)
-    slicer.mrmlScene.AddNode(volume)
-    return volume
 
   def applyRegistration(self, fixedVolume, movingVolume, fixedLabel, movingLabel, targets):
 
@@ -2042,58 +2065,45 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     clone = slicer.mrmlScene.GetNodeByID(nodeId)
     for i in range(original.GetNumberOfFiducials()):
       pos = [0.0,0.0,0.0]
-      original.GetNthFiducialPosition(i,pos)
+      original.GetNthFiducialPosition(i, pos)
       name = original.GetNthFiducialLabel(i)
-      clone.AddFiducial(pos[0],pos[1],pos[2])
-      clone.SetNthFiducialLabel(i,name)
+      clone.AddFiducial(pos[0], pos[1], pos[2])
+      clone.SetNthFiducialLabel(i, name)
     return clone
 
   def dilateMask(self,mask):
+    logging.debug('mask ' + mask.GetName() +' is dilated')
 
-      import SimpleITK as sitk
-      import sitkUtils
+    labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mask.GetName()))
+    labelImage = self.createGrayscaleLabelImage(labelImage)
 
-      logging.debug('mask ' + mask.GetName() +' is dilated')
+    sitk.WriteImage(labelImage, sitkUtils.GetSlicerITKReadWriteAddress(mask.GetName()))
+    logging.debug('dilate mask through')
 
-      labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mask.GetName()))
+  def createGrayscaleLabelImage(self, labelImage):
+    grayscale_dilate_filter = sitk.GrayscaleDilateImageFilter()
+    grayscale_dilate_filter.SetKernelRadius([12, 12, 0])
+    grayscale_dilate_filter.SetKernelType(sitk.sitkBall)
+    labelImage = grayscale_dilate_filter.Execute(labelImage)
+    return labelImage
 
-      grayscale_dilate_filter = sitk.GrayscaleDilateImageFilter()
-      grayscale_dilate_filter.SetKernelRadius([12,12,0])
-      grayscale_dilate_filter.SetKernelType(sitk.sitkBall)
-      labelImage=grayscale_dilate_filter.Execute(labelImage)
-
-      sitk.WriteImage(labelImage, sitkUtils.GetSlicerITKReadWriteAddress(mask.GetName()))
-      logging.debug('dilate mask through')
-
-
-  def renameFiducials(self,fiducialNode):
-    # rename the targets to "[targetname]-REG"
-    numberOfTargets = fiducialNode.GetNumberOfFiducials()
-    logging.debug('number of targets : '+str(numberOfTargets))
-
-    for index in range(numberOfTargets):
-      oldname = fiducialNode.GetNthFiducialLabel(index)
-      fiducialNode.SetNthFiducialLabel(index,str(oldname)+'-REG')
-      logging.debug('changed name from '+oldname+' to '+str(oldname)+'-REG')
-
-  def initializeListener(self,directory):
-    numberOfFiles = len([item for item in os.listdir(directory)])
+  def initializeListener(self, directory):
+    numberOfFiles = len(self.getFileList(directory))
     self.lastFileCount = numberOfFiles
     self.directory = directory
     self.createCurrentFileList(directory)
     self.startTimer()
 
   def startTimer(self):
-    currentFileCount = len(os.listdir(self.directory))
-    if self.lastFileCount < currentFileCount:
+    currentFileCount = len(self.getFileList(self.directory))
+    if self.lastFileCount != currentFileCount:
      self.waitingForSeriesToBeCompleted()
     self.lastFileCount = currentFileCount
     qt.QTimer.singleShot(500, self.startTimer)
 
-  def createCurrentFileList(self,directory):
-
+  def createCurrentFileList(self, directory):
     self.currentFileList = []
-    for item in os.listdir(directory):
+    for item in self.getFileList(directory):
       self.currentFileList.append(item)
 
     if len(self.currentFileList) > 1:
@@ -2110,34 +2120,25 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     # list, where it puts together all DICOM files of one series into one list
 
     db = slicer.dicomDatabase
-    self.selectedFileList = []
-
-    selectedSeriesList = [series.split(":")[1] for series in selectedSeriesList]
 
     if os.path.exists(directory):
-      for dcm in os.listdir(directory):
-        if dcm != ".DS_Store":
-          currentFile = os.path.join(directory, dcm)
-          if db.fileValue(currentFile, DICOMTAGS.SERIES_DESCRIPTION) in selectedSeriesList:
-            self.selectedFileList.append(currentFile)
 
-      # create a list with lists of files of each series in them
-      self.loadableList = []
-
-      # add all found series to loadableList
+      self.loadableList = {}
       for series in selectedSeriesList:
-        fileListOfSeries = []
-        for currentFile in self.selectedFileList:
-          if db.fileValue(currentFile, DICOMTAGS.SERIES_DESCRIPTION) == series:
-            fileListOfSeries.append(currentFile)
-        self.loadableList.append(fileListOfSeries)
+        self.loadableList[series] = []
+
+      for dcm in self.getFileList(directory):
+        currentFile = os.path.join(directory, dcm)
+        seriesNumberDescription = self.makeSeriesNumberDescription(currentFile)
+        if seriesNumberDescription and seriesNumberDescription in selectedSeriesList:
+          self.loadableList[seriesNumberDescription].append(currentFile)
 
   def loadSeriesIntoSlicer(self, selectedSeries, directory):
 
     self.createLoadableFileListFromSelection(selectedSeries, directory)
     volume = None
 
-    for series in range(len(selectedSeries)):
+    for series in selectedSeries:
 
       # get the filelist for the current series only
       files = self.loadableList[series]
@@ -2158,11 +2159,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     # return the last series to continue with segmentation
     return volume
 
-  def importStudy(self, dicomDataDir):
-    indexer = ctk.ctkDICOMIndexer()
-    indexer.addDirectory(slicer.dicomDatabase, dicomDataDir)
-    indexer.waitForImportFinished()
-
   def waitingForSeriesToBeCompleted(self):
 
     logging.debug('**  new data in intraop directory detected **')
@@ -2170,59 +2166,39 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
 
     qt.QTimer.singleShot(5000,self.importDICOMSeries)
 
-  def getDICOMValue(self, currentFile, tag, fallback=None):
-    db = slicer.dicomDatabase
-    try:
-      value = db.fileValue(currentFile, tag)
-    except:
-      value = fallback
-    return value
-
   def importDICOMSeries(self):
-
-    self.newFileList = []
-    self.seriesList = []
-    self.selectableSeries = []
+    newFileList = []
     indexer = ctk.ctkDICOMIndexer()
     db = slicer.dicomDatabase
 
     if self.thereAreFilesInTheFolderFlag == 1:
-      self.newFileList = self.currentFileList
+      newFileList = self.currentFileList
       self.thereAreFilesInTheFolderFlag = 0
     else:
-      # create a List NewFileList that contains only new files in the intraop directory
-      for item in os.listdir(self.directory):
-        if item not in self.currentFileList:
-          if not item == ".DS_Store":
-            self.newFileList.append(item)
+      newFileList = list(set(self.getFileList(self.directory)) - set(self.currentFileList))
 
-    for currentFile in self.newFileList:
-      indexer.addFile(db,os.path.join(self.directory, currentFile),None)
-      # logging.debug('file '+str(file)+' was added by Indexer')
-
+    for currentFile in newFileList:
       currentFile = os.path.join(self.directory, currentFile)
-      seriesDescription = self.getDICOMValue(currentFile, DICOMTAGS.SERIES_DESCRIPTION)
-      seriesNumber = self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER)
-      if seriesDescription and seriesNumber:
-        seriesNumberDescription = seriesNumber + ":" + seriesDescription
-        if seriesNumberDescription not in self.seriesList:
-          self.seriesList.append(seriesNumberDescription)
+      indexer.addFile(db, currentFile, None)
+      seriesNumberDescription = self.makeSeriesNumberDescription(currentFile)
+      if seriesNumberDescription and seriesNumberDescription not in self.seriesList:
+        self.seriesList.append(seriesNumberDescription)
 
     indexer.addDirectory(db, str(self.directory))
     indexer.waitForImportFinished()
 
-    # pass items from seriesList to selectableSeries to keep them in the right order
-    for series in self.seriesList:
-      if series not in self.selectableSeries:
-        self.selectableSeries.append(series)
+    self.seriesList = sorted(self.seriesList, key=lambda series: int(series.split(":")[0]))
 
-    self.selectableSeries = sorted(self.seriesList, key=lambda series: int(series.split(":")[0]))
-
-    # TODO: update GUI from here is not very nice. Find a way to call logic and get the self.selectableSeries
-    # as a return
-
-    slicer.modules.SliceTrackerWidget.patientCheckAfterImport(self.directory, self.newFileList)
+    slicer.modules.SliceTrackerWidget.patientCheckAfterImport(self.directory, newFileList)
     slicer.modules.SliceTrackerWidget.checkTabAfterImport()
+
+  def makeSeriesNumberDescription(self, dicomFile):
+    seriesDescription = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_DESCRIPTION)
+    seriesNumber = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_NUMBER)
+    seriesNumberDescription = None
+    if seriesDescription and seriesNumber:
+        seriesNumberDescription = seriesNumber + ":" + seriesDescription
+    return seriesNumberDescription
 
   def removeEverythingInIntraopTestFolder(self):
     cmd = ('rm -rfv '+slicer.modules.SliceTrackerWidget.modulePath +'Resources/Testing/intraopDir/*')
@@ -2402,7 +2378,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     placeModePersistence = 1
     slicer.modules.markups.logic().StartPlaceMode(placeModePersistence)
 
-  def updateModel(self,observer,caller):
+  def updateModel(self, observer, caller):
     import VolumeClipWithModel
     clipLogic = VolumeClipWithModel.VolumeClipWithModelLogic()
     clipLogic.updateModelFromMarkup(self.inputMarkupNode, self.clippingModelNode)
