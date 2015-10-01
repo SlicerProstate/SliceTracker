@@ -481,7 +481,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.resultSelector.setFixedWidth(250)
     rowLayout.addWidget(self.resultSelector)
 
-    self.showPreopResultButton = self.createButton('Show Preop')
+    self.showPreopResultButton = self.createButton('Show Cover Prostate')
     self.showRigidResultButton = self.createButton('Show Rigid Result')
     self.showAffineResultButton = self.createButton('Show Affine Result')
     self.showBSplineResultButton = self.createButton('Show BSpline Result')
@@ -1022,6 +1022,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def saveNodeData(self, node, extension, name=None):
     try:
       name = name if name else node.GetName()
+      name = self.replaceUnwantedCharacters(name)
       filename = os.path.join(self.outputDirectory, name + extension )
       success = slicer.util.saveNode(node, filename)
       listToAdd = self.successfullySavedData if success else self.failedSaveOfData
@@ -1029,10 +1030,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     except AttributeError:
       self.failedSaveOfData.append(name)
 
+  def replaceUnwantedCharacters(self, string, characters=[": "," ",":", "/"], replaceWith="-"):
+    for character in characters:
+      string = string.replace(character, replaceWith)
+    return string
+
   def saveIntraopSegmentation(self):
-    self.saveNodeData(self.currentIntraopLabel, '.nrrd', name="IntraopSegmentationLabel")
+    intraopLabelName = self.currentIntraopLabel.GetName().replace("label", "LABEL")
+    self.saveNodeData(self.currentIntraopLabel, '.nrrd', name=intraopLabelName)
     self.saveNodeData(self.preopTargets, '.fcsv', name="PreopTargets")
-    self.saveNodeData(self.logic.clippingModelNode, '.vtk', name="IntraopSegmentationSurfaceModel")
+    modelName = self.currentIntraopLabel.GetName().replace("label", "MODEL")
+    self.saveNodeData(self.logic.clippingModelNode, '.vtk', name=modelName)
 
   def saveBiasCorrectionResult(self):
     if self.biasCorrectionDone:
@@ -1045,7 +1053,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
   def saveRegistrationCommandLineArguments(self):
     for result in self.registrationResults:
-      filename = os.path.join(self.outputDirectory, result["name"] + ".txt")
+      name = self.replaceUnwantedCharacters(result["name"])
+      filename = os.path.join(self.outputDirectory, name + "-CMD-PARAMETERS.txt")
       f = open(filename, 'w+')
       f.write(result["cmdArguments"])
       f.close()
@@ -1073,13 +1082,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def onTab1clicked(self):
     # (re)set the standard Icon
     self.tabBar.setTabIcon(0,self.dataSelectionIcon)
-    self.uncheckAndDisableVisualEffects()
+    self.uncheckVisualEffects()
     self.removeSliceAnnotations()
 
-  def uncheckAndDisableVisualEffects(self):
+  def uncheckVisualEffects(self):
     self.flickerCheckBox.checked = False
     self.rockCheckBox.checked = False
-    self.visualEffectsGroupBox.setEnabled(False)
 
   def onTab2clicked(self):
     self.tabWidget.setCurrentIndex(1)
@@ -1187,12 +1195,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.saveCurrentSliceViewPositions()
     self.resetShowResultButtons(checkedButton=self.showPreopResultButton)
 
-    self.uncheckAndDisableVisualEffects()
     self.unlinkImages()
 
-    volumeNode = self.registrationResults[self.currentRegistrationResultIndex]['movingVolume']
-    self.compositeNodeRed.SetBackgroundVolumeID(volumeNode.GetID())
-    self.compositeNodeRed.SetForegroundVolumeID(None)
+    currentResult = self.registrationResults[self.currentRegistrationResultIndex]
+    self.compositeNodeRed.SetBackgroundVolumeID(currentResult['movingVolume'].GetID())
+    self.compositeNodeRed.SetForegroundVolumeID(currentResult['fixedVolume'].GetID())
 
      # show preop Targets
     fiducialNode = self.registrationResults[self.currentRegistrationResultIndex]['targets']
@@ -1905,8 +1912,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     self.transforms = {}
     for regType in registrationTypes:
       isBSpline = regType=='BSpline'
-      self.transforms[regType] = self.createTransformNode(suffix + '--TRANSFORM--' + regType, isBSpline)
-      self.volumes[regType] = self.createVolumeNode(suffix + '--VOLUME--' + regType)
+      self.transforms[regType] = self.createTransformNode(suffix + '-TRANSFORM-' + regType, isBSpline)
+      self.volumes[regType] = self.createVolumeNode(suffix + '-VOLUME-' + regType)
 
   def applyRegistration(self, fixedVolume, movingVolume, fixedLabel, movingLabel, targets):
 
@@ -1919,7 +1926,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
 
       self.progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
 
-      prefix = fixedVolume.GetName()
+      prefix = fixedVolume.GetName().split(":")[0]
       self.createVolumeAndTransformNodes(['Rigid', 'Affine', 'BSpline'], prefix)
 
       self.doRigidRegistration(movingBinaryVolume=self.movingLabel, initializeTransformMode="useCenterOfROIAlign")
@@ -1943,7 +1950,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
       self.fixedLabel = fixedLabel
 
       self.progress = SliceTrackerWidget.makeProgressIndicator(4, 1)
-      prefix = fixedVolume.GetName()
+      prefix = fixedVolume.GetName().split(":")[0]
 
       self.createVolumeAndTransformNodes(['Rigid', 'BSpline'], prefix)
 
@@ -2048,7 +2055,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     outputTargets = {}
     if targets:
       for registration in registrations:
-        name = prefix + '--TARGETS--' + registration
+        name = prefix + '-TARGETS-' + registration
         outputTargets[registration] = self.cloneFiducialAndTransform(name, targets, self.transforms[registration])
     return outputTargets
 
