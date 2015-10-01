@@ -1321,13 +1321,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.GetNodeByID(nodeId).SetUseLabelOutline(True)
     self.redSliceNode.SetOrientationToAxial()
 
-  def getMostRecentNRRD(self):
-    return self.getMostRecentFile(self.preopSegmentationPath, "nrrd")
+  def getMostRecentWholeGlantSegmentation(self):
+    return self.getMostRecentFile(self.preopSegmentationPath, "nrrd", filter="WholeGland")
 
   def getMostRecentTargetsFile(self):
     return self.getMostRecentFile(self.preopTargetsPath, "fcsv")
 
-  def getMostRecentFile(self, path, fileType):
+  def getMostRecentFile(self, path, fileType, filter=None):
     assert type(fileType) is str
     files = [f for f in os.listdir(path) if f.endswith(fileType)]
     if len(files) == 0:
@@ -1335,6 +1335,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     mostRecent = None
     storedTimeStamp = 0
     for filename in files:
+      if filter and not filter in filename:
+        continue
       actualFileName = filename.split(".")[0]
       timeStamp = int(actualFileName.split("-")[-1])
       if timeStamp > storedTimeStamp:
@@ -1343,7 +1345,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     return mostRecent
 
   def loadT2Label(self):
-    mostRecentFilename = self.getMostRecentNRRD()
+    mostRecentFilename = self.getMostRecentWholeGlantSegmentation()
     success = False
     if mostRecentFilename:
       filename = os.path.join(self.preopSegmentationPath, mostRecentFilename)
