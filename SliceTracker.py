@@ -763,11 +763,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.target_positions = []
 
     # get the positions of needle Tip and Targets
-    [self.needleTip_position, self.target_positions] = self.logic.getNeedleTipAndTargetsPositions()
+    [self.needleTip_position, self.target_positions] = self.logic.getNeedleTipAndTargetsPositions(self.outputTargets['BSpline'])
 
     # get the targets
-    fidNode1=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
-    number_of_targets = fidNode1.GetNumberOfFiducials()
+    bSplineTargets = self.outputTargets["BSpline"]
+    number_of_targets = bSplineTargets.GetNumberOfFiducials()
 
     # set number of rows in targetTable
     self.targetTable.setRowCount(number_of_targets)
@@ -775,7 +775,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     # refresh the targetTable
     for target in range(number_of_targets):
-      target_text = fidNode1.GetNthFiducialLabel(target)
+      target_text = bSplineTargets.GetNthFiducialLabel(target)
       item = qt.QTableWidgetItem(target_text)
       self.targetTable.setItem(target,0,item)
       # make sure to keep a reference to the item
@@ -2189,10 +2189,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     except:
       logging.debug('DEBUG: could not delete files in ' + self.modulePath+'Resources/Testing/intraopDir')
 
-  def getNeedleTipAndTargetsPositions(self):
+  def getNeedleTipAndTargetsPositions(self, bSplineTargets):
 
     # Get the fiducial lists
-    fidNode1=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
     fidNode2=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
 
     # get the needleTip_position
@@ -2200,12 +2199,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     fidNode2.GetNthFiducialPosition(0,self.needleTip_position)
 
     # get the target position(s)
-    number_of_targets = fidNode1.GetNumberOfFiducials()
+    number_of_targets = bSplineTargets.GetNumberOfFiducials()
     self.target_positions = []
 
     for target in range(number_of_targets):
       target_position = [0.0,0.0,0.0]
-      fidNode1.GetNthFiducialPosition(target,target_position)
+      bSplineTargets.GetNthFiducialPosition(target,target_position)
       self.target_positions.append(target_position)
 
     logging.debug('needleTip_position = '+str(self.needleTip_position))
