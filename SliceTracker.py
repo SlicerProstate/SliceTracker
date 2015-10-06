@@ -156,7 +156,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       if hasattr(button, key):
         setattr(button, key, value)
       else:
-        logging.error("QPushButton does not have attribute %s" % key)
+        if key == "fixedHeight":
+          button.minimumHeight = value
+          button.maximumHeight = value
+        else:
+          logging.error("QPushButton does not have attribute %s" % key)
     return button
 
   def createComboBox(self, **kwargs):
@@ -175,7 +179,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
   def setupIcons(self):
     self.labelSegmentationIcon = self.createIcon('icon-labelSegmentation.png')
-    self.applySegmentationIcon = self.createIcon('icon-applySegmentation.png')
+    self.cancelSegmentationIcon = self.createIcon('icon-cancelSegmentation.png')
     self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
     self.quickSegmentationIcon = self.createIcon('icon-quickSegmentation.png')
     self.folderIcon = self.createIcon('icon-folder.png')
@@ -185,6 +189,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.evaluationSectionIcon = self.createIcon('icon-evaluation_fit.png')
     self.newImageDataIcon = self.createIcon('icon-newImageData.png')
     self.littleDiscIcon = self.createIcon('icon-littleDisc.png')
+    self.undoIcon = self.createIcon('icon-undo.png')
+    self.redoIcon = self.createIcon('icon-redo.png')
 
   def createTabWidget(self):
     self.tabWidget = qt.QTabWidget()
@@ -373,24 +379,23 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.labelSelectionGroupBoxLayout.addRow(firstRow)
 
     # Set Icon Size for the 4 Icon Items
-    size = qt.QSize(40, 40)
+    size = qt.QSize(70, 30)
     self.quickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=size,
                                                      styleSheet=self.STYLE_WHITE_BACKGROUND)
-    self.quickSegmentationButton.setFixedHeight(50)
 
     self.labelSegmentationButton = self.createButton('Label Mode', icon=self.labelSegmentationIcon, iconSize=size,
                                                      styleSheet=self.STYLE_WHITE_BACKGROUND)
-    self.labelSegmentationButton.setFixedHeight(50)
 
-    self.applySegmentationButton = self.createButton("", icon=self.applySegmentationIcon, iconSize=size,
+    self.applySegmentationButton = self.createButton("", icon=self.greenCheckIcon, iconSize=size,
                                                      styleSheet=self.STYLE_WHITE_BACKGROUND, enabled=False)
-    self.applySegmentationButton.setFixedHeight(50)
 
-    self.forwardButton = qt.QPushButton('Step forward')
-    self.forwardButton.setFixedHeight(50)
 
-    self.backButton = qt.QPushButton('Step back')
-    self.backButton.setFixedHeight(50)
+    self.cancelSegmentationButton = self.createButton("", icon=self.cancelSegmentationIcon,
+                                                      iconSize=size, enabled=False)
+
+
+    self.backButton = self.createButton("", icon=self.undoIcon, iconSize=size)
+    self.forwardButton = self.createButton("", icon=self.redoIcon, iconSize=size)
 
     self.deactivateUndoRedoButtons()
 
@@ -400,6 +405,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     buttonBox1.centerButtons = False
     buttonBox1.addButton(self.forwardButton, buttonBox1.ActionRole)
     buttonBox1.addButton(self.backButton, buttonBox1.ActionRole)
+    buttonBox1.addButton(self.cancelSegmentationButton, buttonBox1.ActionRole)
     buttonBox1.addButton(self.applySegmentationButton, buttonBox1.ActionRole)
     buttonBox1.addButton(self.quickSegmentationButton, buttonBox1.ActionRole)
     buttonBox1.addButton(self.labelSegmentationButton, buttonBox1.ActionRole)
@@ -580,6 +586,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.needleTipButton.connect('clicked(bool)',self.onNeedleTipButtonClicked)
     self.outputDirButton.connect('clicked()', self.onOutputDirSelected)
     self.quickSegmentationButton.connect('clicked(bool)',self.onQuickSegmentationButtonClicked)
+    self.cancelSegmentationButton.connect('clicked(bool)',self.onCancelSegmentationButtonClicked)
     self.labelSegmentationButton.connect('clicked(bool)',self.onLabelSegmentationButtonClicked)
     self.applySegmentationButton.connect('clicked(bool)',self.onApplySegmentationButtonClicked)
     self.loadAndSegmentButton.connect('clicked(bool)',self.onLoadAndSegmentButtonClicked)
@@ -1481,6 +1488,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     checkedItems = [x for x in self.seriesItems if x.checkState()] if self.seriesItems else []
     return [x.text() for x in checkedItems]
 
+  def onCancelSegmentationButtonClicked(self):
+    if self.yesNoDialog("Do you really want to cancel the segmentation process?"):
+      if self.quickSegmentationActive:
+        self.setQuickSegmentationModeOFF()
+      else:
+        self.editorParameterNode.SetParameter('effect', 'DefaultTool')
+        slicer.mrmlScene.RemoveNode(self.currentIntraopLabel)
+        self.compositeNodeRed.SetLabelVolumeID(None)
+      self.setSegmentationButtons(segmentationActive=False)
+
   def onQuickSegmentationButtonClicked(self):
     self.clearCurrentLabels()
     self.setBackgroundToCurrentReferenceVolume()
@@ -1537,6 +1554,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.quickSegmentationButton.setEnabled(not segmentationActive)
     self.labelSegmentationButton.setEnabled(not segmentationActive)
     self.applySegmentationButton.setEnabled(segmentationActive)
+    self.cancelSegmentationButton.setEnabled(segmentationActive)
 
   def onQuickSegmentationFinished(self):
     inputVolume = self.referenceVolumeSelector.currentNode()
