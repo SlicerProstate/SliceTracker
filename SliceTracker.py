@@ -213,27 +213,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.tabWidget.addTab(self.registrationGroupBox, self.registrationSectionIcon, '')
     self.tabWidget.addTab(self.evaluationGroupBox, self.evaluationSectionIcon, '')
 
-  def createIncomeSimulationButtons(self):
-    self.simDataIncomeButton2 = self.createButton("Simulate Data Income 1", styleSheet=self.STYLE_ORANGE_BACKGROUND,
-                                                  toolTip="Localizer, COVER TEMPLATE, NEEDLE GUIDANCE 3")
-    self.dataSelectionGroupBoxLayout.addWidget(self.simDataIncomeButton2)
-
-    self.simDataIncomeButton3 = self.createButton("Simulate Data Income 2", styleSheet=self.STYLE_ORANGE_BACKGROUND)
-    self.dataSelectionGroupBoxLayout.addWidget(self.simDataIncomeButton3)
-
-    self.simDataIncomeButton4 = self.createButton("Simulate Data Income 3", styleSheet=self.STYLE_ORANGE_BACKGROUND)
-    self.dataSelectionGroupBoxLayout.addWidget(self.simDataIncomeButton4)
-
-    self.showSimulationButtons(showButtons=False)
-
-  def showSimulationButtons(self, showButtons=True):
-    for button in [self.simDataIncomeButton2, self.simDataIncomeButton3, self.simDataIncomeButton4]:
-      button.show() if showButtons else button.hide()
-    if showButtons:
-      self.simDataIncomeButton2.connect('clicked(bool)',self.onSimulateDataIncomeButton2)
-      self.simDataIncomeButton3.connect('clicked(bool)',self.onSimulateDataIncomeButton3)
-      self.simDataIncomeButton4.connect('clicked(bool)',self.onSimulateDataIncomeButton4)
-
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
 
@@ -356,8 +335,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.loadAndSegmentButton = self.createButton("Load and Segment", enabled=False, toolTip="Load and Segment")
     rowLayout.addWidget(self.loadAndSegmentButton)
-
-    self.createIncomeSimulationButtons()
 
     self.reRegButton = self.createButton("Re-Registration", toolTip="Re-Registration", enabled=False,
                                          styleSheet=self.STYLE_WHITE_BACKGROUND)
@@ -606,11 +583,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.labelSegmentationButton.connect('clicked(bool)',self.onLabelSegmentationButtonClicked)
     self.applySegmentationButton.connect('clicked(bool)',self.onApplySegmentationButtonClicked)
     self.loadAndSegmentButton.connect('clicked(bool)',self.onLoadAndSegmentButtonClicked)
-    self.preopVolumeSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
-    self.intraopVolumeSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
-    self.intraopLabelSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
-    self.preopLabelSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
-    self.fiducialSelector.connect('currentNodeChanged(bool)',self.onTab3clicked)
+    self.preopVolumeSelector.connect('currentNodeChanged(bool)',self.updateRegistrationOverviewTab)
+    self.intraopVolumeSelector.connect('currentNodeChanged(bool)',self.updateRegistrationOverviewTab)
+    self.intraopLabelSelector.connect('currentNodeChanged(bool)',self.updateRegistrationOverviewTab)
+    self.preopLabelSelector.connect('currentNodeChanged(bool)',self.updateRegistrationOverviewTab)
+    self.fiducialSelector.connect('currentNodeChanged(bool)',self.updateRegistrationOverviewTab)
     self.rockTimer.connect('timeout()', self.onRockToggled)
     self.flickerTimer.connect('timeout()', self.onFlickerToggled)
     self.saveDataButton.connect('clicked(bool)',self.onSaveDataButtonClicked)
@@ -786,11 +763,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.target_positions = []
 
     # get the positions of needle Tip and Targets
-    [self.needleTip_position, self.target_positions] = self.logic.getNeedleTipAndTargetsPositions()
+    [self.needleTip_position, self.target_positions] = self.logic.getNeedleTipAndTargetsPositions(self.outputTargets['BSpline'])
 
     # get the targets
-    fidNode1=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
-    number_of_targets = fidNode1.GetNumberOfFiducials()
+    bSplineTargets = self.outputTargets["BSpline"]
+    number_of_targets = bSplineTargets.GetNumberOfFiducials()
 
     # set number of rows in targetTable
     self.targetTable.setRowCount(number_of_targets)
@@ -798,7 +775,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     # refresh the targetTable
     for target in range(number_of_targets):
-      target_text = fidNode1.GetNthFiducialLabel(target)
+      target_text = bSplineTargets.GetNthFiducialLabel(target)
       item = qt.QTableWidgetItem(target_text)
       self.targetTable.setItem(target,0,item)
       # make sure to keep a reference to the item
@@ -1110,7 +1087,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     slicer.app.applicationLogic().FitSliceToAll()
 
   def onTab3clicked(self):
-    self.applyBSplineRegistrationButton.setEnabled(1 if self.inputsAreSet() else 0)
+    self.updateRegistrationOverviewTab()
+
+  def updateRegistrationOverviewTab(self):
+    # if current tab is Registration TAB
+    if self.tabBar.currentIndex == 2:
+      self.setupScreenAfterSegmentation()
 
   def inputsAreSet(self):
     return not (self.preopVolumeSelector.currentNode() is None and self.intraopVolumeSelector.currentNode() is None and
@@ -1292,22 +1274,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
                                 'yellowOffset':self.yellowSliceNode.GetSliceOffset(),
                                 'redFOV':self.redSliceNode.GetFieldOfView(),
                                 'yellowFOV':self.yellowSliceNode.GetFieldOfView()}
-
-  def onSimulateDataIncomeButton2(self):
-    imagePath = os.path.join(self.modulePath, 'Resources', 'Testing', 'testData_1')
-    self.simulateDataIncome(imagePath)
-
-  def onSimulateDataIncomeButton3(self):
-    imagePath = os.path.join(self.modulePath, 'Resources', 'Testing', 'testData_2')
-    self.simulateDataIncome(imagePath)
-
-  def onSimulateDataIncomeButton4(self):
-    imagePath = os.path.join(self.modulePath, 'Resources', 'Testing', 'testData_4')
-    self.simulateDataIncome(imagePath)
-
-  def onSimulateDataIncomeButton5(self):
-    imagePath = os.path.join(self.modulePath, 'Resources', 'Testing', 'testData_5')
-    self.simulateDataIncome(imagePath)
 
   def simulateDataIncome(self, imagePath):
     # TODO: when module ready, remove this method
@@ -1645,17 +1611,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
 
+    preopVolume = self.preopVolumeSelector.currentNode()
+    preopLabel = self.preopLabelSelector.currentNode()
+    intraopVolume = self.intraopVolumeSelector.currentNode()
+    intraopLabel = self.intraopLabelSelector.currentNode()
+
     # set up preop image and label
-    self.compositeNodeRed.SetReferenceBackgroundVolumeID(self.preopVolume.GetID())
-    self.compositeNodeRed.SetLabelVolumeID(self.preopLabel.GetID())
+    self.compositeNodeRed.SetReferenceBackgroundVolumeID(preopVolume.GetID())
+    self.compositeNodeRed.SetLabelVolumeID(preopLabel.GetID())
 
     # set up intraop image and label
-    self.compositeNodeYellow.SetReferenceBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
-    self.compositeNodeYellow.SetLabelVolumeID(self.currentIntraopLabel.GetID())
+    self.compositeNodeYellow.SetReferenceBackgroundVolumeID(intraopVolume.GetID())
+    self.compositeNodeYellow.SetLabelVolumeID(intraopLabel.GetID())
 
     # rotate volume to plane
-    self.redSliceNode.RotateToVolumePlane(self.preopVolume)
-    self.yellowSliceNode.RotateToVolumePlane(self.currentIntraopLabel)
+    self.redSliceNode.RotateToVolumePlane(preopVolume)
+    self.yellowSliceNode.RotateToVolumePlane(intraopLabel)
 
     self.redSliceLogic.FitSliceToAll()
     self.yellowSliceLogic.FitSliceToAll()
@@ -1665,6 +1636,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.tabBar.setTabEnabled(2, True)
     self.tabBar.currentIndex = 2
+
+    self.applyBSplineRegistrationButton.setEnabled(1 if self.inputsAreSet() else 0)
 
   def onLabelSegmentationButtonClicked(self):
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
@@ -2216,10 +2189,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     except:
       logging.debug('DEBUG: could not delete files in ' + self.modulePath+'Resources/Testing/intraopDir')
 
-  def getNeedleTipAndTargetsPositions(self):
+  def getNeedleTipAndTargetsPositions(self, bSplineTargets):
 
     # Get the fiducial lists
-    fidNode1=slicer.mrmlScene.GetNodesByName('targets-BSPLINE').GetItemAsObject(0)
     fidNode2=slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
 
     # get the needleTip_position
@@ -2227,12 +2199,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     fidNode2.GetNthFiducialPosition(0,self.needleTip_position)
 
     # get the target position(s)
-    number_of_targets = fidNode1.GetNumberOfFiducials()
+    number_of_targets = bSplineTargets.GetNumberOfFiducials()
     self.target_positions = []
 
     for target in range(number_of_targets):
       target_position = [0.0,0.0,0.0]
-      fidNode1.GetNthFiducialPosition(target,target_position)
+      bSplineTargets.GetNthFiducialPosition(target,target_position)
       self.target_positions.append(target_position)
 
     logging.debug('needleTip_position = '+str(self.needleTip_position))
