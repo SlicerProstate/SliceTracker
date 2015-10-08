@@ -269,7 +269,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.setTabsEnabled([1, 2, 3], False)
 
-    self.onTab1clicked()
+    self.currentTabIndex = 0
+    self.showAcceptRegistrationWarning = False
+    self.tabWidget.setCurrentIndex(0)
     self.logic.setupColorTable()
     self.removeSliceAnnotations()
 
@@ -678,8 +680,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
       self.tabBar.setTabEnabled(1, True)
 
-      # enter Label Selection Section
-      self.onTab2clicked()
+      self.tabWidget.setCurrentIndex(1)
 
   def onReRegistrationClicked(self):
     logging.debug('Performing Re-Registration')
@@ -842,6 +843,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       pass
 
   def addSliceAnnotations(self):
+    self.removeSliceAnnotations()
     # TODO: adapt when zoom is changed manually
     width = self.redSliceView.width
     renderWindow = self.redSliceView.renderWindow()
@@ -1088,16 +1090,27 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
   def onTab1clicked(self):
     # (re)set the standard Icon
+    self.removeSliceAnnotations()
+    self.currentTabIndex = 0
+    if self.currentTabIndex == 3:
+      lastRegistrationResult = self.registrationResults[-1]
+      if not lastRegistrationResult['accepted'] and not lastRegistrationResult['discarded']:
+        self.warningDialog("You need to accept or retry the most recent registration before continuing "
+                            "with further registrations.")
+        self.tabWidget.setCurrentIndex(3)
     self.tabBar.setTabIcon(0, self.dataSelectionIcon)
     self.uncheckVisualEffects()
-    self.removeSliceAnnotations()
 
   def uncheckVisualEffects(self):
     self.flickerCheckBox.checked = False
     self.rockCheckBox.checked = False
 
   def onTab2clicked(self):
-    self.tabWidget.setCurrentIndex(1)
+    if self.retryMode:
+      self.setTabsEnabled([0], False)
+    self.currentIndex = 1
+
+    self.removeSliceAnnotations()
 
     self.referenceVolumeSelector.setCurrentNode(self.currentIntraopVolume)
     self.intraopVolumeSelector.setCurrentNode(self.currentIntraopVolume)
@@ -1106,18 +1119,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.labelSegmentationButton.setEnabled(enableButton)
     self.quickSegmentationButton.setEnabled(enableButton)
 
-    self.removeSliceAnnotations()
-
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
     self.compositeNodeRed.Reset()
     self.markupsLogic.SetAllMarkupsVisibility(self.preopTargets, False)
     self.compositeNodeRed.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
 
-    self.setStandardOrientation()
+    # self.setStandardOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
 
   def onTab3clicked(self):
+    self.currentTabIndex = 2
     self.updateRegistrationOverviewTab()
 
   def updateRegistrationOverviewTab(self):
@@ -1130,13 +1142,20 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
                 self.fiducialSelector.currentNode() is None)
 
   def onTab4clicked(self):
-    self.addSliceAnnotations()
+    if self.retryMode:
+      self.setTabsEnabled([0], True)
+      self.retryMode = False
+
+    self.currentTabIndex = 3
 
     self.setTabsEnabled([1, 2], False)
 
     # enable re-registration function
     self.reRegButton.setEnabled(1)
     self.reRegistrationMode = True
+
+    self.setupScreenAfterRegistration()
+    self.addSliceAnnotations()
 
   def updateCurrentPatientAndViewBox(self, currentFile):
     self.currentID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
@@ -1836,7 +1855,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     #                     "label on the current needle image?"):
     # self.deleteRegistrationResult(-1)
     self.retryMode = True
-    self.onTab2clicked()
+    self.tabWidget.setCurrentIndex(1)
 
   def deleteRegistrationResult(self, index):
     result = self.registrationResults[index]
@@ -1895,7 +1914,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.AddNode(targetNode)
 
     self.updateRegistrationResultSelector()
-    self.setupScreenAfterRegistration()
+    self.tabWidget.setCurrentIndex(3)
     self.uncheckSeriesSelectionItems()
 
   def getLastRigidTransformation(self):
@@ -1939,8 +1958,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.tabBar.setTabEnabled(3, True)
 
-    # switch to Evaluation Section
-    self.tabWidget.setCurrentIndex(3)
     self.onBSplineResultClicked()
 
   def refreshViewNodeIDs(self, targets, sliceNode):
