@@ -1091,13 +1091,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def onTab1clicked(self):
     # (re)set the standard Icon
     self.removeSliceAnnotations()
-    self.currentTabIndex = 0
     if self.currentTabIndex == 3:
       lastRegistrationResult = self.registrationResults[-1]
       if not lastRegistrationResult['accepted'] and not lastRegistrationResult['discarded']:
         self.warningDialog("You need to accept or retry the most recent registration before continuing "
                             "with further registrations.")
         self.tabWidget.setCurrentIndex(3)
+    self.currentTabIndex = 0
     self.tabBar.setTabIcon(0, self.dataSelectionIcon)
     self.uncheckVisualEffects()
 
@@ -1125,7 +1125,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.markupsLogic.SetAllMarkupsVisibility(self.preopTargets, False)
     self.compositeNodeRed.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
 
-    # self.setStandardOrientation()
+    self.setStandardOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
 
   def onTab3clicked(self):
