@@ -46,6 +46,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   STYLE_LIGHT_GRAY_BACKGROUND       = 'background-color: rgb(230,230,230)'
   STYLE_ORANGE_BACKGROUND           = 'background-color: rgb(255,102,0)'
 
+  COLOR_RED = qt.QColor(qt.Qt.red)
+  COLOR_YELLOW = qt.QColor(qt.Qt.yellow)
+  COLOR_GREEN = qt.QColor(qt.Qt.green)
+
   @staticmethod
   def makeProgressIndicator(maxVal, initialValue=0):
     progressIndicator = qt.QProgressDialog()
@@ -148,6 +152,31 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     path = os.path.join(self.iconPath, filename)
     pixmap = qt.QPixmap(path)
     return qt.QIcon(pixmap)
+
+  def createLabel(self, title, **kwargs):
+    label = qt.QLabel(title)
+    return self.extendQtGuiElementProperties(label, **kwargs)
+
+  def createButton(self, title, **kwargs):
+    button = qt.QPushButton(title)
+    return self.extendQtGuiElementProperties(button, **kwargs)
+
+  def extendQtGuiElementProperties(self, element, **kwargs):
+    for key, value in kwargs.iteritems():
+      if hasattr(element, key):
+        setattr(element, key, value)
+      else:
+        if key == "fixedHeight":
+          element.minimumHeight = value
+          element.maximumHeight = value
+        elif key == 'hidden':
+          if value:
+            element.hide()
+          else:
+            element.show()
+        else:
+          logging.error("%s does not have attribute %s" % (element.className(), key))
+    return element
 
   def createButton(self, title, **kwargs):
     button = qt.QPushButton(title)
@@ -370,13 +399,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
                                                        selectNodeUponCreation=True, showChildNodeTypes=False,
                                                        toolTip="Pick the input to the algorithm.")
     rowLayout.addWidget(self.referenceVolumeSelector)
-    # set info box
 
-    self.helperLabel = qt.QLabel()
     helperPixmap = qt.QPixmap(os.path.join(self.iconPath, 'icon-infoBox.png'))
     helperPixmap = helperPixmap.scaled(qt.QSize(20, 20))
-    self.helperLabel.setPixmap(helperPixmap)
-    self.helperLabel.setToolTip('This is the information you needed, right?')
+    self.helperLabel = self.createLabel("", pixmap=helperPixmap, toolTip="This is the information you needed, right?")
 
     rowLayout.addWidget(self.helperLabel)
 
@@ -467,19 +493,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.acceptRegistrationResultButton = self.createButton("Accept Result")
     self.retryRegistrationButton = self.createButton("Retry")
-    self.acceptedRegistrationResultLabel = qt.QLabel()
-    self.acceptedRegistrationResultLabel.setPixmap(self.acceptedIcon.pixmap(20, 20))
-    self.acceptedRegistrationResultLabel.hide()
+    self.skipRegistrationResultButton = self.createButton("Skip Result")
 
-    self.discardedRegistrationResultLabel = qt.QLabel()
-    self.discardedRegistrationResultLabel.setPixmap(self.discardedIcon.pixmap(20, 20))
-    self.discardedRegistrationResultLabel.hide()
-    self.registrationResultStatus = qt.QLabel("accepted!")
-    self.registrationResultStatus.hide()
+    self.acceptedRegistrationResultLabel = self.createLabel("", pixmap=self.acceptedIcon.pixmap(20, 20), hidden=True)
+    self.discardedRegistrationResultLabel = self.createLabel("", pixmap=self.discardedIcon.pixmap(20, 20), hidden=True)
+    self.registrationResultStatus = self.createLabel("accepted!", hidden=True)
 
     rowLayout.addWidget(self.resultSelector)
     rowLayout.addWidget(self.acceptRegistrationResultButton)
     rowLayout.addWidget(self.retryRegistrationButton)
+    rowLayout.addWidget(self.skipRegistrationResultButton)
     rowLayout.addWidget(self.acceptedRegistrationResultLabel)
     rowLayout.addWidget(self.discardedRegistrationResultLabel)
     rowLayout.addWidget(self.registrationResultStatus)
@@ -610,6 +633,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.labelSegmentationButton.connect('clicked(bool)', self.onLabelSegmentationButtonClicked)
     self.applySegmentationButton.connect('clicked(bool)', self.onApplySegmentationButtonClicked)
     self.acceptRegistrationResultButton.connect('clicked(bool)', self.onAcceptRegistrationResultButtonClicked)
+    self.skipRegistrationResultButton.connect('clicked(bool)', self.onSkipRegistrationResultButtonClicked)
     self.retryRegistrationButton.connect('clicked(bool)', self.onRetryRegistrationButtonClicked)
     self.loadAndSegmentButton.connect('clicked(bool)', self.onLoadAndSegmentButtonClicked)
     self.preopVolumeSelector.connect('currentNodeChanged(bool)', self.updateRegistrationOverviewTab)
@@ -697,9 +721,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def uncheckSeriesSelectionItems(self):
     for item in range(len(self.logic.seriesList)):
       self.seriesModel.item(item).setCheckState(0)
-    self.updateSeriesSelectionButtons()
 
-  def updateSeriesSelectionButtons(self):
+  def updateSeriesSelectionButtons(self, item=None):
     checkedItemCount = len(self.getSelectedSeries())
     if checkedItemCount == 0 or (self.reRegistrationMode and checkedItemCount > 1):
       self.reRegButton.setEnabled(False)
@@ -1206,11 +1229,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       sItem = qt.QStandardItem(seriesText)
       self.seriesItems.append(sItem)
       self.seriesModel.appendRow(sItem)
-      if self.wasRegistrationResultAccepted(seriesText):
-        sItem.setCheckable(0)
-        # sItem.setCheckState(0)
+      sItem.setCheckable(0)
+      color = self.COLOR_YELLOW
+      if self.registrationResultWasAccepted(seriesText):
+        color = self.COLOR_GREEN
+      elif self.registrationResultWasSkipped(seriesText):
+        color = self.COLOR_RED
       else:
         sItem.setCheckable(1)
+      self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
 
     for item in list(reversed(range(len(seriesList)))):
       seriesText = self.seriesModel.item(item).text()
@@ -1219,12 +1246,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
         break
     self.updateSeriesSelectionButtons()
 
-  def wasRegistrationResultAccepted(self, series):
+  def registrationResultWasSkipped(self, series):
+    wasSkipped = False
+    if series in self.logic.alreadyLoadedSeries.keys():
+      for result in self.registrationResults:
+        if series.split(':')[0] == result['name'].split(':')[0]:
+          if result['accepted'] and result['discarded']:
+            wasSkipped = True
+    return wasSkipped
+
+  def registrationResultWasAccepted(self, series):
     wasAccepted = False
     if series in self.logic.alreadyLoadedSeries.keys():
       for result in self.registrationResults:
-        if series.split(':')[0] == result['name'].split(':')[0] and result['accepted']:
-          wasAccepted = True
+        if series.split(':')[0] == result['name'].split(':')[0]:
+          if result['accepted'] and not result['discarded']:
+            wasAccepted = True
     return wasAccepted
 
   def resetShowResultButtons(self, checkedButton):
@@ -1608,23 +1645,42 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
           result['discarded'] = True
     self.updateRegistrationResultStatus()
 
+  def onSkipRegistrationResultButtonClicked(self):
+    currentResult = self.getCurrentRegistrationResult()
+    currentResult['accepted'] = True
+    currentResult['discarded'] = True
+    currentSeriesNumber = currentResult['name'].split(':')[0]
+    for result in self.registrationResults:
+      if result is not currentResult:
+        seriesNumber = result['name'].split(':')[0]
+        if currentSeriesNumber == seriesNumber:
+          result['accepted'] = True
+          result['discarded'] = True
+    self.updateRegistrationResultStatus()
+    pass
+
   def updateRegistrationResultStatus(self):
     currentResult = self.getCurrentRegistrationResult()
     if currentResult['accepted'] or currentResult['discarded']:
       self.acceptRegistrationResultButton.hide()
       self.retryRegistrationButton.hide()
+      self.skipRegistrationResultButton.hide()
       self.registrationResultStatus.show()
-      if currentResult['accepted']:
+      if currentResult['accepted'] and not currentResult['discarded']:
         self.discardedRegistrationResultLabel.hide()
         self.acceptedRegistrationResultLabel.show()
         self.registrationResultStatus.setText("accepted!")
-      else:
+      elif currentResult['discarded']:
         self.acceptedRegistrationResultLabel.hide()
         self.discardedRegistrationResultLabel.show()
-        self.registrationResultStatus.setText("discarded!")
+        if currentResult['accepted']:
+          self.registrationResultStatus.setText("skipped!")
+        else:
+          self.registrationResultStatus.setText("discarded!")
     else:
       self.acceptRegistrationResultButton.show()
       self.retryRegistrationButton.show()
+      self.skipRegistrationResultButton.show()
       self.acceptedRegistrationResultLabel.hide()
       self.discardedRegistrationResultLabel.hide()
       self.registrationResultStatus.hide()
@@ -1754,7 +1810,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def getMostRecentAcceptedCoverProstateRegistration(self):
     mostRecent = None
     for result in self.registrationResults:
-      if "COVER PROSTATE" in result['name'] and result['accepted']:
+      if "COVER PROSTATE" in result['name'] and result['accepted'] and not result['discarded']:
         mostRecent = result
     return mostRecent
 
