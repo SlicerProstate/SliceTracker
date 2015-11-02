@@ -763,23 +763,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
   def onNeedleTipButtonClicked(self):
     self.needleTipButton.enabled = False
-    self.logic.setNeedleTipPosition()
+    self.logic.setNeedleTipPosition(callback=self.updateTargetTable)
     self.clearTargetTable()
 
   def clearTargetTable(self):
-
     self.needleTipButton.enabled = False
-
     self.targetTable.clear()
     self.targetTable.setColumnCount(3)
-    self.targetTable.setColumnWidth(0, 180)
-    self.targetTable.setColumnWidth(1, 200)
-    self.targetTable.setColumnWidth(2, 200)
-    self.targetTable.setHorizontalHeaderLabels(['Target', 'Distance to needle-tip 2D [mm]',
-                                                'Distance to needle-tip 3D [mm]'])
+    self.targetTable.setHorizontalHeaderLabels(['Target', 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]'])
+    self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
 
   def updateTargetTable(self, observer=None, caller=None):
-
+    self.clearTargetTable()
     bSplineTargets = self.outputTargets['BSpline']
     number_of_targets = bSplineTargets.GetNumberOfFiducials()
 
@@ -2393,16 +2388,16 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     logging.debug('target_positions are ' + str(target_positions))
     return target_positions
 
-  def setNeedleTipPosition(self):
+  def setNeedleTipPosition(self, callback=None):
 
     if self.needleTipMarkupNode is None:
-      self.needleTipMarkupNode = self.createNeedleTipMarkupNode()
+      self.needleTipMarkupNode = self.createNeedleTipMarkupNode(callback)
     else:
       self.needleTipMarkupNode.RemoveAllMarkups()
 
     self.startNeedleTipPlacingMode()
 
-  def createNeedleTipMarkupNode(self):
+  def createNeedleTipMarkupNode(self, callback=None):
 
     needleTipMarkupDisplayNode = slicer.vtkMRMLMarkupsDisplayNode()
     needleTipMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
@@ -2412,8 +2407,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
     # don't show needle tip in red Slice View
     needleTipMarkupDisplayNode.AddViewNodeID(slicer.modules.SliceTrackerWidget.yellowSliceNode.GetID())
-    needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,
-                                         slicer.modules.SliceTrackerWidget.updateTargetTable)
+    if callback:
+      needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, callback)
+
     needleTipMarkupDisplayNode.SetTextScale(1.6)
     needleTipMarkupDisplayNode.SetGlyphScale(2.0)
     needleTipMarkupDisplayNode.SetGlyphType(12)
