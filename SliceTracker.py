@@ -731,6 +731,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.onBSplineResultClicked()
     self.updateRegistrationResultStatus()
+    self.updateTargetTable()
 
   def getMostRecentVolumes(self):
     results = self.registrationResults[-1]
@@ -760,6 +761,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.resultSelector.currentIndex = self.resultSelector.findText(name)
       self.selectableRegistrationResults.append(result)
 
+  def onNeedleTipButtonClicked(self):
+    self.needleTipButton.enabled = False
+    self.logic.setNeedleTipPosition()
+    self.clearTargetTable()
+
   def clearTargetTable(self):
 
     self.needleTipButton.enabled = False
@@ -772,28 +778,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.targetTable.setHorizontalHeaderLabels(['Target', 'Distance to needle-tip 2D [mm]',
                                                 'Distance to needle-tip 3D [mm]'])
 
-  def onNeedleTipButtonClicked(self):
-    self.needleTipButton.enabled = False
-    self.logic.setNeedleTipPosition()
+  def updateTargetTable(self, observer=None, caller=None):
 
-  def updateTargetTable(self, observer, caller):
-
-    self.needleTip_position = []
-    self.target_positions = []
-
-    # get the positions of needle Tip and Targets
-    [self.needleTip_position, self.target_positions] = self.logic.getNeedleTipAndTargetsPositions(
-      self.outputTargets['BSpline'])
-
-    # get the targets
     bSplineTargets = self.outputTargets['BSpline']
     number_of_targets = bSplineTargets.GetNumberOfFiducials()
 
-    # set number of rows in targetTable
+    needleTip_position, target_positions = self.logic.getNeedleTipAndTargetsPositions(bSplineTargets)
+
     self.targetTable.setRowCount(number_of_targets)
     self.target_items = []
 
-    # refresh the targetTable
     for target in range(number_of_targets):
       target_text = bSplineTargets.GetNthFiducialLabel(target)
       item = qt.QTableWidgetItem(target_text)
@@ -801,25 +795,25 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       # make sure to keep a reference to the item
       self.target_items.append(item)
 
-    self.items_2D = []
-    self.items_3D = []
+    if len(needleTip_position) > 0:
+      self.items_2D = []
+      self.items_3D = []
 
-    for index in range(number_of_targets):
-      distances = self.logic.measureDistance(self.target_positions[index], self.needleTip_position)
-      text_for_2D_column = ('x = ' + str(round(distances[0], 2)) + ' y = ' + str(round(distances[1], 2)))
-      text_for_3D_column = str(round(distances[3], 2))
+      for index in range(number_of_targets):
+        distances = self.logic.measureDistance(target_positions[index], needleTip_position)
+        text_for_2D_column = ('x = ' + str(round(distances[0], 2)) + ' y = ' + str(round(distances[1], 2)))
+        text_for_3D_column = str(round(distances[3], 2))
 
-      item_2D = qt.QTableWidgetItem(text_for_2D_column)
-      self.targetTable.setItem(index, 1, item_2D)
-      self.items_2D.append(item_2D)
-      logging.debug(str(text_for_2D_column))
+        item_2D = qt.QTableWidgetItem(text_for_2D_column)
+        self.targetTable.setItem(index, 1, item_2D)
+        self.items_2D.append(item_2D)
+        logging.debug(str(text_for_2D_column))
 
-      item_3D = qt.QTableWidgetItem(text_for_3D_column)
-      self.targetTable.setItem(index, 2, item_3D)
-      self.items_3D.append(item_3D)
-      logging.debug(str(text_for_3D_column))
+        item_3D = qt.QTableWidgetItem(text_for_3D_column)
+        self.targetTable.setItem(index, 2, item_3D)
+        self.items_3D.append(item_3D)
+        logging.debug(str(text_for_3D_column))
 
-    # reset needleTipButton
     self.needleTipButton.enabled = True
 
   def removeSliceAnnotations(self):
@@ -2015,6 +2009,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     self.cmdArguments = ""
     self.seriesList = []
     self.alreadyLoadedSeries = {}
+    self.needleTipMarkupNode = None
 
   def getSeriesInfoFromXML(self, f):
     import xml.dom.minidom
@@ -2341,7 +2336,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     qt.QTimer.singleShot(5000, self.importDICOMSeries)
 
   def importDICOMSeries(self):
-    newFileList = []
     indexer = ctk.ctkDICOMIndexer()
     db = slicer.dicomDatabase
 
@@ -2374,73 +2368,63 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
       seriesNumberDescription = seriesNumber + ":" + seriesDescription
     return seriesNumberDescription
 
-  def getNeedleTipAndTargetsPositions(self, bSplineTargets):
+  def getNeedleTipAndTargetsPositions(self, registeredTargets):
+    needleTip_position = self.getNeedleTipPosition()
+    target_positions = self.getTargetPositions(registeredTargets)
+    return [needleTip_position, target_positions]
 
-    # Get the fiducial lists
-    fidNode2 = slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
+  def getNeedleTipPosition(self):
 
-    # get the needleTip_position
-    self.needleTip_position = [0.0, 0.0, 0.0]
-    fidNode2.GetNthFiducialPosition(0, self.needleTip_position)
+    needleTip_position = []
+    if self.needleTipMarkupNode:
+      needleTip_position = [0.0, 0.0, 0.0]
+      self.needleTipMarkupNode.GetNthFiducialPosition(0, needleTip_position)
+      logging.debug('needleTip_position = ' + str(needleTip_position))
+    return needleTip_position
 
-    # get the target position(s)
-    number_of_targets = bSplineTargets.GetNumberOfFiducials()
-    self.target_positions = []
+  def getTargetPositions(self, registeredTargets):
 
+    number_of_targets = registeredTargets.GetNumberOfFiducials()
+    target_positions = []
     for target in range(number_of_targets):
       target_position = [0.0, 0.0, 0.0]
-      bSplineTargets.GetNthFiducialPosition(target, target_position)
-      self.target_positions.append(target_position)
-
-    logging.debug('needleTip_position = ' + str(self.needleTip_position))
-    logging.debug('target_positions are ' + str(self.target_positions))
-
-    return [self.needleTip_position, self.target_positions]
+      registeredTargets.GetNthFiducialPosition(target, target_position)
+      target_positions.append(target_position)
+    logging.debug('target_positions are ' + str(target_positions))
+    return target_positions
 
   def setNeedleTipPosition(self):
 
-    if slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0) is None:
-
-      # if needle tip is placed for the first time:
-
-      # create Markups Node & display node to store needle tip position
-      needleTipMarkupDisplayNode = slicer.vtkMRMLMarkupsDisplayNode()
-      needleTipMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
-      needleTipMarkupNode.SetName('needle-tip')
-      slicer.mrmlScene.AddNode(needleTipMarkupDisplayNode)
-      slicer.mrmlScene.AddNode(needleTipMarkupNode)
-      needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
-
-      # dont show needle tip in red Slice View
-      needleNode = slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
-      needleDisplayNode = needleNode.GetDisplayNode()
-      needleDisplayNode.AddViewNodeID(slicer.modules.SliceTrackerWidget.yellowSliceNode.GetID())
-
-      # update the target table when markup was set
-      needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,
-                                      slicer.modules.SliceTrackerWidget.updateTargetTable)
-
-      # be sure to have the correct display node
-      needleTipMarkupDisplayNode = slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0).GetDisplayNode()
-
-      # Set visual fiducial attributes
-      needleTipMarkupDisplayNode.SetTextScale(1.6)
-      needleTipMarkupDisplayNode.SetGlyphScale(2.0)
-      needleTipMarkupDisplayNode.SetGlyphType(12)
-      # TODO: set color is somehow not working here
-      needleTipMarkupDisplayNode.SetColor(1, 1, 50)
-
+    if self.needleTipMarkupNode is None:
+      self.needleTipMarkupNode = self.createNeedleTipMarkupNode()
     else:
-      # remove fiducial
-      needleNode = slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0)
-      needleNode.RemoveAllMarkups()
+      self.needleTipMarkupNode.RemoveAllMarkups()
 
-      # clear target table
-      slicer.modules.SliceTrackerWidget.clearTargetTable()
+    self.startNeedleTipPlacingMode()
 
-    # set active node ID and start place mode
+  def createNeedleTipMarkupNode(self):
+
+    needleTipMarkupDisplayNode = slicer.vtkMRMLMarkupsDisplayNode()
+    needleTipMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
+    needleTipMarkupNode.SetName('needle-tip')
+    slicer.mrmlScene.AddNode(needleTipMarkupDisplayNode)
+    slicer.mrmlScene.AddNode(needleTipMarkupNode)
+    needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
+    # don't show needle tip in red Slice View
+    needleTipMarkupDisplayNode.AddViewNodeID(slicer.modules.SliceTrackerWidget.yellowSliceNode.GetID())
+    needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,
+                                         slicer.modules.SliceTrackerWidget.updateTargetTable)
+    needleTipMarkupDisplayNode.SetTextScale(1.6)
+    needleTipMarkupDisplayNode.SetGlyphScale(2.0)
+    needleTipMarkupDisplayNode.SetGlyphType(12)
+    # TODO: set color is somehow not working here
+    needleTipMarkupDisplayNode.SetColor(1, 1, 50)
+    return needleTipMarkupNode
+
+  def startNeedleTipPlacingMode(self):
+
     mlogic = slicer.modules.markups.logic()
-    mlogic.SetActiveListID(slicer.mrmlScene.GetNodesByName('needle-tip').GetItemAsObject(0))
+    mlogic.SetActiveListID(self.needleTipMarkupNode)
     slicer.modules.markups.logic().StartPlaceMode(0)
 
   def measureDistance(self, target_position, needleTip_position):
@@ -2456,6 +2440,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     return [distance_2D_x, distance_2D_y, distance_2D_z, distance_3D]
 
   def get3dDistance(self, needleTip_position, target_position):
+
     rulerNode = slicer.vtkMRMLAnnotationRulerNode()
     rulerNode.SetPosition1(target_position)
     rulerNode.SetPosition2(needleTip_position)
