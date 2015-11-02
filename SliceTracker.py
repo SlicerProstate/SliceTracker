@@ -178,19 +178,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
           logging.error("%s does not have attribute %s" % (element.className(), key))
     return element
 
-  def createButton(self, title, **kwargs):
-    button = qt.QPushButton(title)
-    for key, value in kwargs.iteritems():
-      if hasattr(button, key):
-        setattr(button, key, value)
-      else:
-        if key == "fixedHeight":
-          button.minimumHeight = value
-          button.maximumHeight = value
-        else:
-          logging.error("QPushButton does not have attribute %s" % key)
-    return button
-
   def createComboBox(self, **kwargs):
     combobox = slicer.qMRMLNodeComboBox()
     combobox.addEnabled = False
@@ -225,25 +212,25 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   def createTabWidget(self):
     self.tabWidget = qt.QTabWidget()
     self.layout.addWidget(self.tabWidget)
-    # get the TabBar
+
     self.tabBar = self.tabWidget.childAt(1, 1)
-    # create Widgets inside each tab
+
     self.dataSelectionGroupBox = qt.QGroupBox()
     self.labelSelectionGroupBox = qt.QGroupBox()
     self.registrationGroupBox = qt.QGroupBox()
     self.evaluationGroupBox = qt.QGroupBox()
     self.tabWidget.setIconSize(qt.QSize(110, 50))
-    # create Layout for each groupBox
+
     self.dataSelectionGroupBoxLayout = qt.QFormLayout()
     self.labelSelectionGroupBoxLayout = qt.QFormLayout()
     self.registrationGroupBoxLayout = qt.QFormLayout()
     self.evaluationGroupBoxLayout = qt.QFormLayout()
-    # set Layout
+
     self.dataSelectionGroupBox.setLayout(self.dataSelectionGroupBoxLayout)
     self.labelSelectionGroupBox.setLayout(self.labelSelectionGroupBoxLayout)
     self.registrationGroupBox.setLayout(self.registrationGroupBoxLayout)
     self.evaluationGroupBox.setLayout(self.evaluationGroupBoxLayout)
-    # add Tabs
+
     self.tabWidget.addTab(self.dataSelectionGroupBox, self.dataSelectionIcon, '')
     self.tabWidget.addTab(self.labelSelectionGroupBox, self.labelSelectionIcon, '')
     self.tabWidget.addTab(self.registrationGroupBox, self.registrationSectionIcon, '')
@@ -381,11 +368,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.dataSelectionGroupBoxLayout.addWidget(row)
 
   def setupProstateSegmentationStep(self):
-    self.labelSelectionCollapsibleButton = ctk.ctkCollapsibleButton()
-    self.labelSelectionCollapsibleButton.text = "Step 2: Label Selection"
-    self.labelSelectionCollapsibleButton.collapsed = 0
-    self.labelSelectionCollapsibleButton.hide()
-    self.layout.addWidget(self.labelSelectionCollapsibleButton)
 
     firstRow = qt.QWidget()
     rowLayout = qt.QHBoxLayout()
@@ -778,22 +760,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.resultSelector.currentIndex = self.resultSelector.findText(name)
       self.selectableRegistrationResults.append(result)
 
-  def getSeriesInfoFromXML(self, f):
-    import xml.dom.minidom
-    dom = xml.dom.minidom.parse(f)
-    number = self.findElement(dom, 'SeriesNumber')
-    name = self.findElement(dom, 'SeriesDescription')
-    name = name.replace('-', '')
-    name = name.replace('(', '')
-    name = name.replace(')', '')
-    return number, name
-
-  def findElement(self, dom, name):
-    els = dom.getElementsByTagName('element')
-    for e in els:
-      if e.getAttribute('name') == name:
-        return e.childNodes[0].nodeValue
-
   def clearTargetTable(self):
 
     self.needleTipButton.enabled = False
@@ -820,7 +786,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.outputTargets['BSpline'])
 
     # get the targets
-    bSplineTargets = self.outputTargets["BSpline"]
+    bSplineTargets = self.outputTargets['BSpline']
     number_of_targets = bSplineTargets.GetNumberOfFiducials()
 
     # set number of rows in targetTable
@@ -1384,31 +1350,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.GetNodeByID(nodeId).SetUseLabelOutline(True)
     self.redSliceNode.SetOrientationToAxial()
 
-  def getMostRecentWholeGlantSegmentation(self):
-    return self.getMostRecentFile(self.preopSegmentationPath, "nrrd", filter="WholeGland")
-
-  def getMostRecentTargetsFile(self):
-    return self.getMostRecentFile(self.preopTargetsPath, "fcsv")
-
-  def getMostRecentFile(self, path, fileType, filter=None):
-    assert type(fileType) is str
-    files = [f for f in os.listdir(path) if f.endswith(fileType)]
-    if len(files) == 0:
-      return None
-    mostRecent = None
-    storedTimeStamp = 0
-    for filename in files:
-      if filter and not filter in filename:
-        continue
-      actualFileName = filename.split(".")[0]
-      timeStamp = int(actualFileName.split("-")[-1])
-      if timeStamp > storedTimeStamp:
-        mostRecent = filename
-        storedTimeStamp = timeStamp
-    return mostRecent
-
   def loadT2Label(self):
-    mostRecentFilename = self.getMostRecentWholeGlantSegmentation()
+    mostRecentFilename = self.logic.getMostRecentWholeGlantSegmentation(self.preopSegmentationPath)
     success = False
     if mostRecentFilename:
       filename = os.path.join(self.preopSegmentationPath, mostRecentFilename)
@@ -1431,7 +1374,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     return success
 
   def loadPreopTargets(self):
-    mostRecentTargets = self.getMostRecentTargetsFile()
+    mostRecentTargets = self.logic.getMostRecentTargetsFile(self.preopTargetsPath)
     success = False
     if mostRecentTargets:
       filename = os.path.join(self.preopTargetsPath, mostRecentTargets)
@@ -1440,13 +1383,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
         self.preopTargets.SetName('targets-PREOP')
     return success
 
-  def loadDataPCAMPStyle(self):
-    self.selectedStudyName = os.path.basename(self.preopDataDir)
-
-    self.resourcesDir = os.path.join(self.preopDataDir, 'RESOURCES')
+  def loadPCAMPReviewProcessedData(self):
+    resourcesDir = os.path.join(self.preopDataDir, 'RESOURCES')
     self.preopTargetsPath = os.path.join(self.preopDataDir, 'Targets')
 
-    if not os.path.exists(self.resourcesDir):
+    if not os.path.exists(resourcesDir):
       self.confirmDialog("The selected directory does not fit the PCampReview directory structure. Make sure that you "
                          "select the study root directory which includes directories RESOURCES")
       return False
@@ -1455,7 +1396,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.patientInformationRetrieved = False
 
-    for root, subdirs, files in os.walk(self.resourcesDir):
+    for root, subdirs, files in os.walk(resourcesDir):
       logging.debug('Root: ' + root + ', files: ' + str(files))
       resourceType = os.path.split(root)[1]
 
@@ -1468,7 +1409,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
             metaFile = os.path.join(root, f)
             logging.debug('Ends with xml: ' + metaFile)
             try:
-              (seriesNumber, seriesName) = self.getSeriesInfoFromXML(metaFile)
+              (seriesNumber, seriesName) = self.logic.getSeriesInfoFromXML(metaFile)
               logging.debug(str(seriesNumber) + ' ' + seriesName)
             except:
               logging.debug('Failed to get from XML')
@@ -1523,7 +1464,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     return True
 
   def loadPreopData(self):
-    if not self.loadDataPCAMPStyle():
+    if not self.loadPCAMPReviewProcessedData():
       return
     self.configureSliceNodesForPreopData()
     if not self.loadT2Label() or not self.loadPreopVolume() or not self.loadPreopTargets():
@@ -2029,6 +1970,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
 
 class SliceTrackerLogic(ScriptedLoadableModuleLogic):
+
   @staticmethod
   def getDICOMValue(currentFile, tag, fallback=None):
     db = slicer.dicomDatabase
@@ -2073,6 +2015,45 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     self.cmdArguments = ""
     self.seriesList = []
     self.alreadyLoadedSeries = {}
+
+  def getSeriesInfoFromXML(self, f):
+    import xml.dom.minidom
+    dom = xml.dom.minidom.parse(f)
+    number = self.findElement(dom, 'SeriesNumber')
+    name = self.findElement(dom, 'SeriesDescription')
+    name = name.replace('-', '')
+    name = name.replace('(', '')
+    name = name.replace(')', '')
+    return number, name
+
+  def findElement(self, dom, name):
+    els = dom.getElementsByTagName('element')
+    for e in els:
+      if e.getAttribute('name') == name:
+        return e.childNodes[0].nodeValue
+
+  def getMostRecentWholeGlantSegmentation(self, path):
+    return self.getMostRecentFile(path, "nrrd", filter="WholeGland")
+
+  def getMostRecentTargetsFile(self, path):
+    return self.getMostRecentFile(path, "fcsv")
+
+  def getMostRecentFile(self, path, fileType, filter=None):
+    assert type(fileType) is str
+    files = [f for f in os.listdir(path) if f.endswith(fileType)]
+    if len(files) == 0:
+      return None
+    mostRecent = None
+    storedTimeStamp = 0
+    for filename in files:
+      if filter and not filter in filename:
+        continue
+      actualFileName = filename.split(".")[0]
+      timeStamp = int(actualFileName.split("-")[-1])
+      if timeStamp > storedTimeStamp:
+        mostRecent = filename
+        storedTimeStamp = timeStamp
+    return mostRecent
 
   def clearAlreadyLoadedSeries(self):
     for series, volume in self.alreadyLoadedSeries.iteritems():
@@ -2392,13 +2373,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     if seriesDescription and seriesNumber:
       seriesNumberDescription = seriesNumber + ":" + seriesDescription
     return seriesNumberDescription
-
-  def removeEverythingInIntraopTestFolder(self):
-    cmd = ('rm -rfv ' + slicer.modules.SliceTrackerWidget.modulePath + 'Resources/Testing/intraopDir/*')
-    try:
-      os.system(cmd)
-    except:
-      logging.debug('DEBUG: could not delete files in ' + self.modulePath + 'Resources/Testing/intraopDir')
 
   def getNeedleTipAndTargetsPositions(self, bSplineTargets):
 
