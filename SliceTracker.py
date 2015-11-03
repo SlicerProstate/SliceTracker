@@ -636,9 +636,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     elif buttonId == 2:
       self.onRigidResultClicked()
     elif buttonId == 3:
+      if not 'Affine' in self.outputTargets.keys():
+        return self.onRegistrationButtonChecked(4)
       self.onAffineResultClicked()
     elif buttonId == 4:
       self.onBSplineResultClicked()
+    self.activeRegistrationResultButtonId = buttonId
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -1080,7 +1083,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
     self.compositeNodeRed.Reset()
-    self.markupsLogic.SetAllMarkupsVisibility(self.preopTargets, False)
+    self.setTargetVisibility(self.preopTargets, show=False)
     self.compositeNodeRed.SetBackgroundVolumeID(self.currentIntraopVolume.GetID())
 
     self.setStandardOrientation()
@@ -1219,16 +1222,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.showAffineResultButton.setEnabled("GUIDANCE" not in self.resultSelector.currentText)
 
-    self.onBSplineResultClicked()
+    self.onRegistrationButtonChecked(self.activeRegistrationResultButtonId)
     self.updateRegistrationResultStatus()
     self.updateTargetTable()
 
   def hideAllTargets(self):
     for result in self.registrationResults:
-      self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsRigid'], False)
+      self.setTargetVisibility(result['outputTargetsRigid'], show=False)
       if 'outputTargetsAffine' in result.keys():
-        self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsAffine'], False)
-      self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsBSpline'], False)
+        self.setTargetVisibility(result['outputTargetsAffine'], show=False)
+      self.setTargetVisibility(result['outputTargetsBSpline'], show=False)
 
   def onPreopResultClicked(self):
     self.saveCurrentSliceViewPositions()
@@ -1240,9 +1243,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.compositeNodeRed.SetBackgroundVolumeID(currentResult['movingVolume'].GetID())
     self.compositeNodeRed.SetForegroundVolumeID(currentResult['fixedVolume'].GetID())
 
-    # show preop Targets
     fiducialNode = currentResult['targets']
-    self.markupsLogic.SetAllMarkupsVisibility(fiducialNode, True)
+    self.setTargetVisibility(fiducialNode)
 
     self.setDefaultFOV(self.redSliceLogic)
 
@@ -1308,11 +1310,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.compositeNodeRed.SetBackgroundVolumeID(currentResult['outputVolume' + registrationType].GetID())
 
   def showTargets(self, registrationType):
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets['Rigid'], 1 if registrationType == 'Rigid' else 0)
-    self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets['BSpline'], 1 if registrationType == 'BSpline' else 0)
+    self.setTargetVisibility(self.outputTargets['Rigid'], show=registrationType == 'Rigid')
+    self.setTargetVisibility(self.outputTargets['BSpline'], show=registrationType == 'BSpline')
     if 'Affine' in self.outputTargets.keys():
-      self.markupsLogic.SetAllMarkupsVisibility(self.outputTargets['Affine'], 1 if registrationType == 'Affine' else 0)
+      self.setTargetVisibility(self.outputTargets['Affine'], show=registrationType == 'Affine')
     self.markupsLogic.JumpSlicesToNthPointInMarkup(self.outputTargets[registrationType].GetID(), 0)
+
+  def setTargetVisibility(self, targetNode, show=True):
+    self.markupsLogic.SetAllMarkupsVisibility(targetNode, show)
 
   def resetSliceViews(self):
 
@@ -1372,7 +1377,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     success = False
     if mostRecentTargets:
       filename = os.path.join(self.preopTargetsPath, mostRecentTargets)
-      (success, self.preopTargets) = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
+      success, self.preopTargets = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
       if success:
         self.preopTargets.SetName('targets-PREOP')
     return success
@@ -1475,7 +1480,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     logging.debug('TARGETS PREOP')
     logging.debug(self.preopTargets)
 
-    self.markupsLogic.SetAllMarkupsVisibility(self.preopTargets, 1)
+    self.setTargetVisibility(self.preopTargets, show=True)
 
     # set markups for registration
     self.fiducialSelector.setCurrentNode(self.preopTargets)
@@ -1648,7 +1653,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
       self.intraopLabelSelector.setCurrentNode(self.currentIntraopLabel)
 
-      self.markupsLogic.SetAllMarkupsVisibility(self.logic.inputMarkupNode, False)
+      self.setTargetVisibility(self.logic.inputMarkupNode, show=False)
       self.logic.clippingModelNode.SetDisplayVisibility(False)
       self.setupScreenAfterSegmentation()
     else:
@@ -1904,6 +1909,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     for targetNode in self.outputTargets.values():
       slicer.mrmlScene.AddNode(targetNode)
 
+    self.activeRegistrationResultButtonId = 4
     self.updateRegistrationResultSelector()
     self.tabWidget.setCurrentIndex(3)
     self.uncheckSeriesSelectionItems()
