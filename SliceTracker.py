@@ -2,11 +2,13 @@ import os
 import math, re
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
+from Utils.helpers import ModuleWidgetMixin, ModuleLogicMixin
 from Editor import EditorWidget
 import SimpleITK as sitk
 import sitkUtils
 import EditorLib
 import logging
+from subprocess import Popen
 
 
 class DICOMTAGS:
@@ -35,7 +37,7 @@ class SliceTracker(ScriptedLoadableModule):
                                           R01 CA111288 and P41 EB015898."""
 
 
-class SliceTrackerWidget(ScriptedLoadableModuleWidget):
+class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -49,47 +51,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
   COLOR_RED = qt.QColor(qt.Qt.red)
   COLOR_YELLOW = qt.QColor(qt.Qt.yellow)
   COLOR_GREEN = qt.QColor(qt.Qt.green)
-
-  @staticmethod
-  def makeProgressIndicator(maxVal, initialValue=0):
-    progressIndicator = qt.QProgressDialog()
-    progressIndicator.minimumDuration = 0
-    progressIndicator.modal = True
-    progressIndicator.setMaximum(maxVal)
-    progressIndicator.setValue(initialValue)
-    progressIndicator.setWindowTitle("Processing...")
-    progressIndicator.show()
-    progressIndicator.autoClose = False
-    return progressIndicator
-
-  @staticmethod
-  def createDirectory(directory, message=None):
-    if message:
-      logging.debug(message)
-    try:
-      os.makedirs(directory)
-    except OSError:
-      logging.debug('Failed to create the following directory: ' + directory)
-
-  @staticmethod
-  def confirmDialog(message, title='SliceTracker'):
-    result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
-                                     qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
-    return result == qt.QMessageBox.Ok
-
-  @staticmethod
-  def notificationDialog(message, title='SliceTracker'):
-    return qt.QMessageBox.information(slicer.util.mainWindow(), title, message)
-
-  @staticmethod
-  def yesNoDialog(message, title='SliceTracker'):
-    result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
-                                     qt.QMessageBox.Yes | qt.QMessageBox.No)
-    return result == qt.QMessageBox.Yes
-
-  @staticmethod
-  def warningDialog(message, title='SliceTracker'):
-    return qt.QMessageBox.warning(slicer.util.mainWindow(), title, message)
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -666,14 +627,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     else:
       self.forwardButton.setEnabled(0)
 
-  def startStoreSCP(self):
-    # TODO: add proper communication establishment
-    # command : $ sudo storescp -v -p 104
-    pathToExe = os.path.join(slicer.app.slicerHome, 'bin', 'storescp')
-    port = 104
-    cmd = ('sudo ' + pathToExe + ' -v -p ' + str(port))
-    os.system(cmd)
-
   def onLoadAndSegmentButtonClicked(self):
     self.retryMode = False
     selectedSeriesList = self.getSelectedSeries()
@@ -943,6 +896,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.intraopDirButton.text = self.shortenDirText(self.intraopDataDir)
       self.setSetting('IntraopLocation', self.intraopDataDir)
       self.logic.initializeListener(self.intraopDataDir)
+      self.logic.startStoreSCP(self.intraopDataDir)
 
   def onOutputDirSelected(self):
     self.outputDir = qt.QFileDialog.getExistingDirectory(self.parent, 'Preop data directory',
@@ -965,7 +919,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     dirName = self.patientID.text + "-biopsy-" + self.currentStudyDate.text + time
     self.outputDirectory = os.path.join(self.outputDir, dirName, "MRgBiopsy")
 
-    self.createDirectory(self.outputDirectory)
+    self.logic.createDirectory(self.outputDirectory)
 
     self.saveIntraopSegmentation()
     self.saveBiasCorrectionResult()
@@ -1969,27 +1923,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
       self.tabBar.setTabIcon(0, self.newImageDataIcon)
 
 
-class SliceTrackerLogic(ScriptedLoadableModuleLogic):
-
-  @staticmethod
-  def getDICOMValue(currentFile, tag, fallback=None):
-    db = slicer.dicomDatabase
-    try:
-      value = db.fileValue(currentFile, tag)
-    except RuntimeError:
-      logging.info("There are problems with accessing DICOM values from file %s" % currentFile)
-      value = fallback
-    return value
-
-  @staticmethod
-  def getFileList(directory):
-    return [f for f in os.listdir(directory) if ".DS_Store" not in f]
-
-  @staticmethod
-  def importStudy(dicomDataDir):
-    indexer = ctk.ctkDICOMIndexer()
-    indexer.addDirectory(slicer.dicomDatabase, dicomDataDir)
-    indexer.waitForImportFinished()
+class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
   @staticmethod
   def createTransformNode(name, isBSpline):
@@ -1997,13 +1931,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     node.SetName(name)
     slicer.mrmlScene.AddNode(node)
     return node
-
-  @staticmethod
-  def createVolumeNode(name):
-    volume = slicer.vtkMRMLScalarVolumeNode()
-    volume.SetName(name)
-    slicer.mrmlScene.AddNode(volume)
-    return volume
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleLogic.__init__(self, parent)
@@ -2016,6 +1943,20 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     self.seriesList = []
     self.alreadyLoadedSeries = {}
     self.needleTipMarkupNode = None
+    self.storeSCPProcess = None
+
+  def __del__(self):
+    if self.storeSCPProcess:
+      self.storeSCPProcess.kill()
+
+  def startStoreSCP(self, intraopDirectory):
+    if self.storeSCPProcess:
+      self.storeSCPProcess.kill()
+    # command : $ sudo storescp -v -p 104 -od intraopDir
+    pathToExe = os.path.join(slicer.app.slicerHome, 'bin', 'storescp')
+    self.storeSCPProcess = Popen(["sudo", pathToExe, "-v", "-p", "104", "-od", intraopDirectory])
+    if not self.storeSCPProcess:
+      logging.error("storescp process could not be started. View log messages for further information.")
 
   def getSeriesInfoFromXML(self, f):
     import xml.dom.minidom
@@ -2089,7 +2030,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic):
     for regType in registrationTypes:
       isBSpline = regType == 'BSpline'
       self.transforms[regType] = self.createTransformNode(suffix + '-TRANSFORM-' + regType, isBSpline)
-      self.volumes[regType] = self.createVolumeNode(suffix + '-VOLUME-' + regType)
+      self.volumes[regType] = self.createScalarVolumeNode(suffix + '-VOLUME-' + regType)
 
   def applyRegistration(self, fixedVolume, movingVolume, fixedLabel, movingLabel, targets):
 
