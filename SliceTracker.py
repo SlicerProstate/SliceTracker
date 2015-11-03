@@ -629,14 +629,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
     self.seriesModel.itemChanged.connect(self.updateSeriesSelectionButtons)
 
-  def onRegistrationButtonChecked(self, id):
-    if id == 1:
+  def onRegistrationButtonChecked(self, buttonId):
+    self.hideAllTargets()
+    if buttonId == 1:
       self.onPreopResultClicked()
-    elif id == 2:
+    elif buttonId == 2:
       self.onRigidResultClicked()
-    elif id == 3:
+    elif buttonId == 3:
       self.onAffineResultClicked()
-    elif id == 4:
+    elif buttonId == 4:
       self.onBSplineResultClicked()
 
   def cleanup(self):
@@ -711,27 +712,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     elif self.reRegistrationMode and checkedItemCount == 1:
       self.reRegButton.setEnabled(True)
     self.loadAndSegmentButton.setEnabled(checkedItemCount != 0)
-
-  def onRegistrationResultSelected(self):
-    for index, result in enumerate(self.registrationResults):
-      self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsRigid'], False)
-      if 'outputTargetsAffine' in result.keys():
-        self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsAffine'], False)
-      self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsBSpline'], False)
-
-      if result['name'] == self.resultSelector.currentText:
-        self.currentRegistrationResultIndex = index
-
-    self.currentIntraopVolume = self.registrationResults[-1]['fixedVolume']
-    self.outputVolumes = self.getMostRecentVolumes()
-    self.outputTargets = self.getTargetsForCurrentRegistrationResult()
-    self.preopVolume = self.registrationResults[-1]['movingVolume']
-
-    self.showAffineResultButton.setEnabled("GUIDANCE" not in self.resultSelector.currentText)
-
-    self.onBSplineResultClicked()
-    self.updateRegistrationResultStatus()
-    self.updateTargetTable()
 
   def getMostRecentVolumes(self):
     results = self.registrationResults[-1]
@@ -1225,6 +1205,31 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
     for button in self.registrationButtonGroup.buttons():
       button.setStyleSheet(checked if button is checkedButton else unchecked)
 
+  def onRegistrationResultSelected(self):
+    self.hideAllTargets()
+
+    for index, result in enumerate(self.registrationResults):
+      if result['name'] == self.resultSelector.currentText:
+        self.currentRegistrationResultIndex = index
+
+    self.currentIntraopVolume = self.registrationResults[-1]['fixedVolume']
+    self.outputVolumes = self.getMostRecentVolumes()
+    self.outputTargets = self.getTargetsForCurrentRegistrationResult()
+    self.preopVolume = self.registrationResults[-1]['movingVolume']
+
+    self.showAffineResultButton.setEnabled("GUIDANCE" not in self.resultSelector.currentText)
+
+    self.onBSplineResultClicked()
+    self.updateRegistrationResultStatus()
+    self.updateTargetTable()
+
+  def hideAllTargets(self):
+    for result in self.registrationResults:
+      self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsRigid'], False)
+      if 'outputTargetsAffine' in result.keys():
+        self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsAffine'], False)
+      self.markupsLogic.SetAllMarkupsVisibility(result['outputTargetsBSpline'], False)
+
   def onPreopResultClicked(self):
     self.saveCurrentSliceViewPositions()
     self.resetShowResultButtons(checkedButton=self.showPreopResultButton)
@@ -1249,19 +1254,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.comingFromPreopTag = True
 
-  def setDefaultFOV(self, sliceLogic):
-    sliceLogic.FitSliceToAll()
-    FOV = sliceLogic.GetSliceNode().GetFieldOfView()
-    self.setFOV(sliceLogic, [FOV[0] * 0.5, FOV[1] * 0.5, FOV[2]])
-
-  def setFOV(self, sliceLogic, FOV, offset=None):
-    sliceNode = sliceLogic.GetSliceNode()
-    sliceLogic.StartSliceNodeInteraction(2)
-    sliceNode.SetFieldOfView(FOV[0], FOV[1], FOV[2])
-    if offset:
-      sliceNode.SetSliceOffset(offset)
-    sliceLogic.EndSliceNodeInteraction()
-
   def onRigidResultClicked(self):
     self.displayRegistrationResults(button=self.showRigidResultButton, registrationType='Rigid')
 
@@ -1285,6 +1277,19 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget):
 
     self.showTargets(registrationType=registrationType)
     self.visualEffectsGroupBox.setEnabled(True)
+
+  def setDefaultFOV(self, sliceLogic):
+    sliceLogic.FitSliceToAll()
+    FOV = sliceLogic.GetSliceNode().GetFieldOfView()
+    self.setFOV(sliceLogic, [FOV[0] * 0.5, FOV[1] * 0.5, FOV[2]])
+
+  def setFOV(self, sliceLogic, FOV, offset=None):
+    sliceNode = sliceLogic.GetSliceNode()
+    sliceLogic.StartSliceNodeInteraction(2)
+    sliceNode.SetFieldOfView(FOV[0], FOV[1], FOV[2])
+    if offset:
+      sliceNode.SetSliceOffset(offset)
+    sliceLogic.EndSliceNodeInteraction()
 
   def unlinkImages(self):
     self._linkImages(0)
