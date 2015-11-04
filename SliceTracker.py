@@ -2,7 +2,7 @@ import os
 import math, re
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
-from Utils.helpers import ModuleWidgetMixin, ModuleLogicMixin
+from Utils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from Editor import EditorWidget
 import SimpleITK as sitk
 import sitkUtils
