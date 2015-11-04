@@ -227,7 +227,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.reRegistrationMode = False
     self.registrationResults = []
-    self.selectableRegistrationResults = []
 
     self.createPatientWatchBox()
     self.setupIcons()
@@ -691,11 +690,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     return targets
 
   def updateRegistrationResultSelector(self):
-    for result in [result for result in self.registrationResults if result not in self.selectableRegistrationResults]:
-      name = result['name']
-      self.resultSelector.addItem(name)
-      self.resultSelector.currentIndex = self.resultSelector.findText(name)
-      self.selectableRegistrationResults.append(result)
+    for name in [result['name'] for result in self.registrationResults]:
+      if self.resultSelector.findText(name) == -1:
+        self.resultSelector.addItem(name)
+        self.resultSelector.currentIndex = self.resultSelector.findText(name)
 
   def onNeedleTipButtonClicked(self):
     self.needleTipButton.enabled = False
