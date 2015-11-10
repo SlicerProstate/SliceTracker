@@ -41,6 +41,7 @@ class STYLE:
 
 
 class SliceTracker(ScriptedLoadableModule):
+
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker"
@@ -58,6 +59,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
+  LEFT_VIEWER_SLICE_ANNOTATION_TEXT = 'PREOP'
+  RIGHT_VIEWER_SLICE_ANNOTATION_TEXT = 'INTRAOP'
 
   @property
   def registrationResults(self):
@@ -677,8 +680,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def removeSliceAnnotations(self):
     try:
-      self.red_renderer.RemoveActor(self.text_preop)
-      self.yellow_renderer.RemoveActor(self.text_intraop)
+      redRenderer = self.redSliceView.renderWindow().GetRenderers().GetItemAsObject(0)
+      redRenderer.RemoveActor(self.text_preop)
+      yellowRenderer = self.yellowSliceView.renderWindow().GetRenderers().GetItemAsObject(0)
+      yellowRenderer.RemoveActor(self.text_intraop)
       self.redSliceView.update()
       self.yellowSliceView.update()
     except:
@@ -686,40 +691,26 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def addSliceAnnotations(self):
     self.removeSliceAnnotations()
-    # TODO: adapt when zoom is changed manually
-    width = self.redSliceView.width
-    renderWindow = self.redSliceView.renderWindow()
-    self.red_renderer = renderWindow.GetRenderers().GetItemAsObject(0)
+    self.text_preop = self.createTextActor(self.redSliceView, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT)
+    self.text_intraop = self.createTextActor(self.yellowSliceView, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT)
 
-    self.text_preop = vtk.vtkTextActor()
-    self.text_preop.SetInput('PREOP')
-    textProperty = self.text_preop.GetTextProperty()
+  def createTextActor(self, sliceView, text):
+    textActor = vtk.vtkTextActor()
+    textActor.SetInput(text)
+    textProperty = textActor.GetTextProperty()
     textProperty.SetFontSize(70)
     textProperty.SetColor(1, 0, 0)
     textProperty.SetBold(1)
-    self.text_preop.SetTextProperty(textProperty)
-
+    textActor.SetTextProperty(textProperty)
+    # TODO: adapt when zoom is changed manually
     # TODO: the 90px shift to the left are hard-coded right now, it would be better to
     # take the size of the vtk.vtkTextActor and shift by that size * 0.5
     # BUT -> could not find how to get vtkViewPort from sliceWidget
-
-    self.text_preop.SetDisplayPosition(int(width * 0.5 - 90), 50)
-    self.red_renderer.AddActor(self.text_preop)
-    self.redSliceView.update()
-
-    renderWindow = self.yellowSliceView.renderWindow()
-    self.yellow_renderer = renderWindow.GetRenderers().GetItemAsObject(0)
-
-    self.text_intraop = vtk.vtkTextActor()
-    self.text_intraop.SetInput('INTRAOP')
-    textProperty = self.text_intraop.GetTextProperty()
-    textProperty.SetFontSize(70)
-    textProperty.SetColor(1, 0, 0)
-    textProperty.SetBold(1)
-    self.text_intraop.SetTextProperty(textProperty)
-    self.text_intraop.SetDisplayPosition(int(width * 0.5 - 140), 50)
-    self.yellow_renderer.AddActor(self.text_intraop)
-    self.yellowSliceView.update()
+    textActor.SetDisplayPosition(int(sliceView.width * 0.5 - 90), 50)
+    renderer = sliceView.renderWindow().GetRenderers().GetItemAsObject(0)
+    renderer.AddActor(textActor)
+    sliceView.update()
+    return textActor
 
   def onForwardButtonClicked(self):
     numberOfDeletedTargets = self.deletedMarkups.GetNumberOfFiducials()
