@@ -141,3 +141,10 @@ class ModuleLogicMixin(object):
     volume.SetName(name)
     slicer.mrmlScene.AddNode(volume)
     return volume
+
+  @staticmethod
+  def createTransformNode(name, isBSpline):
+    node = slicer.vtkMRMLBSplineTransformNode() if isBSpline else slicer.vtkMRMLLinearTransformNode()
+    node.SetName(name)
+    slicer.mrmlScene.AddNode(node)
+    return node
