@@ -1,6 +1,6 @@
 import os
 import math, re
-from __main__ import vtk, qt, ctk, slicer
+import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from Utils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from Editor import EditorWidget
@@ -121,7 +121,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.layoutManager = slicer.app.layoutManager()
     self.markupsLogic = slicer.modules.markups.logic()
     self.volumesLogic = slicer.modules.volumes.logic()
-    self.modulePath = slicer.modules.slicetracker.path.replace(self.moduleName + ".py", "")
+    self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
     self._outputRoot = None
 
@@ -644,36 +644,28 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.clearTargetTable()
     bSplineTargets = self.currentResult.bSplineTargets
     number_of_targets = bSplineTargets.GetNumberOfFiducials()
+    self.targetTable.setRowCount(number_of_targets)
 
     needleTip_position, target_positions = self.logic.getNeedleTipAndTargetsPositions(bSplineTargets)
-
-    self.targetTable.setRowCount(number_of_targets)
-    self.target_items = []
 
     for target in range(number_of_targets):
       target_text = bSplineTargets.GetNthFiducialLabel(target)
       item = qt.QTableWidgetItem(target_text)
       self.targetTable.setItem(target, 0, item)
       # make sure to keep a reference to the item
-      self.target_items.append(item)
 
     if len(needleTip_position) > 0:
-      self.items_2D = []
-      self.items_3D = []
-
       for index in range(number_of_targets):
-        distances = self.logic.measureDistance(target_positions[index], needleTip_position)
-        text_for_2D_column = ('x = ' + str(round(distances[0], 2)) + ' y = ' + str(round(distances[1], 2)))
-        text_for_3D_column = str(round(distances[3], 2))
-
+        distance2D = self.logic.getNeedleTipTargetDistance2D(target_positions[index], needleTip_position)
+        text_for_2D_column = ('x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2)))
         item_2D = qt.QTableWidgetItem(text_for_2D_column)
         self.targetTable.setItem(index, 1, item_2D)
-        self.items_2D.append(item_2D)
         logging.debug(str(text_for_2D_column))
 
+        distance3D = self.logic.getNeedleTipTargetDistance3D(target_positions[index], needleTip_position)
+        text_for_3D_column = str(round(distance3D, 2))
         item_3D = qt.QTableWidgetItem(text_for_3D_column)
         self.targetTable.setItem(index, 2, item_3D)
-        self.items_3D.append(item_3D)
         logging.debug(str(text_for_3D_column))
 
     self.needleTipButton.enabled = True
@@ -2188,8 +2180,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     needleTipMarkupDisplayNode.SetTextScale(1.6)
     needleTipMarkupDisplayNode.SetGlyphScale(2.0)
     needleTipMarkupDisplayNode.SetGlyphType(12)
-    # TODO: set color is somehow not working here
-    needleTipMarkupDisplayNode.SetColor(1, 1, 50)
     return needleTipMarkupNode
 
   def startNeedleTipPlacingMode(self):
@@ -2198,20 +2188,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     mlogic.SetActiveListID(self.needleTipMarkupNode)
     slicer.modules.markups.logic().StartPlaceMode(0)
 
-  def measureDistance(self, target_position, needleTip_position):
+  def getNeedleTipTargetDistance2D(self, target_position, needleTip_position):
+    x = abs(target_position[0] - needleTip_position[0])
+    y = abs(target_position[1] - needleTip_position[1])
+    return [x, y]
 
-    # calculate 2D distance
-    distance_2D_x = abs(target_position[0] - needleTip_position[0])
-    distance_2D_y = abs(target_position[1] - needleTip_position[1])
-    distance_2D_z = abs(target_position[2] - needleTip_position[2])
-
-    # calculate 3D distance
-    distance_3D = self.get3dDistance(needleTip_position, target_position)
-
-    return [distance_2D_x, distance_2D_y, distance_2D_z, distance_3D]
-
-  def get3dDistance(self, needleTip_position, target_position):
-
+  def getNeedleTipTargetDistance3D(self, target_position, needleTip_position):
     rulerNode = slicer.vtkMRMLAnnotationRulerNode()
     rulerNode.SetPosition1(target_position)
     rulerNode.SetPosition2(needleTip_position)
