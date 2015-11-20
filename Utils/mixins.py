@@ -3,6 +3,14 @@ import logging, qt, ctk, os, slicer
 
 class ModuleWidgetMixin(object):
 
+  @property
+  def layoutManager(self):
+    return slicer.app.layoutManager()
+
+  @property
+  def dicomDatabase(self):
+    return slicer.dicomDatabase
+
   @staticmethod
   def makeProgressIndicator(maxVal, initialValue=0):
     progressIndicator = qt.QProgressDialog()
@@ -35,6 +43,14 @@ class ModuleWidgetMixin(object):
   def warningDialog(message, title='SliceTracker'):
     return qt.QMessageBox.warning(slicer.util.mainWindow(), title, message)
 
+  def getSetting(self, setting):
+    settings = qt.QSettings()
+    return str(settings.value(self.moduleName + '/' + setting))
+
+  def setSetting(self, setting, value):
+    settings = qt.QSettings()
+    settings.setValue(self.moduleName + '/' + setting, value)
+
   def createHLayout(self, elements, **kwargs):
     return self._createLayout(qt.QHBoxLayout, elements, **kwargs)
 
@@ -52,8 +68,10 @@ class ModuleWidgetMixin(object):
         setattr(rowLayout, key, value)
     return widget
 
-  def createIcon(self, filename):
-    path = os.path.join(self.iconPath, filename)
+  def createIcon(self, filename, iconPath=None):
+    if not iconPath:
+      iconPath = os.path.join(self.modulePath, 'Resources/Icons')
+    path = os.path.join(iconPath, filename)
     pixmap = qt.QPixmap(path)
     return qt.QIcon(pixmap)
 
@@ -63,6 +81,7 @@ class ModuleWidgetMixin(object):
 
   def createButton(self, title, **kwargs):
     button = qt.QPushButton(title)
+    button.setCursor(qt.Qt.PointingHandCursor)
     return self.extendQtGuiElementProperties(button, **kwargs)
 
   def createDirectoryButton(self, **kwargs):
