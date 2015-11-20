@@ -1254,6 +1254,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.redCompositeNode.SetForegroundOpacity(value)
 
   def openEvaluationStep(self):
+    self.currentRegisteredSeries.setText(self.logic.currentIntraopVolume.GetName())
     self.targetingGroupBox.hide()
     self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTable, 4, 0)
     self.registrationEvaluationGroupBox.show()
@@ -1391,6 +1392,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.setupScreenForSegmentationComparison("red", preopVolume, preopLabel)
     self.setupScreenForSegmentationComparison("yellow", intraopVolume, intraopLabel)
     self.applyRegistrationButton.setEnabled(1 if self.inputsAreSet() else 0)
+    self.registrationWatchBox.show()
 
   def setupScreenForSegmentationComparison(self, viewName, volume, label):
     compositeNode = getattr(self, viewName+"CompositeNode")
