@@ -176,7 +176,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     return watchBox, watchBoxLayout
 
   def setupIcons(self):
-    self.labelSegmentationIcon = self.createIcon('icon-labelSegmentation.png')
     self.cancelSegmentationIcon = self.createIcon('icon-cancelSegmentation.png')
     self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
     self.quickSegmentationIcon = self.createIcon('icon-quickSegmentation.png')
@@ -200,7 +199,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.revealCursor = None
     self.currentTargets = None
 
-    self.quickSegmentationActive = False
     self.comingFromPreopTag = False
     self.logic.retryMode = False
 
@@ -329,8 +327,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
                                                        selectNodeUponCreation=True, showChildNodeTypes=False)
     self.quickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=iconSize,
                                                      styleSheet=STYLE.WHITE_BACKGROUND)
-    self.labelSegmentationButton = self.createButton('Label Mode', icon=self.labelSegmentationIcon, iconSize=iconSize,
-                                                     styleSheet=STYLE.WHITE_BACKGROUND)
     self.applySegmentationButton = self.createButton("", icon=self.greenCheckIcon, iconSize=iconSize,
                                                      styleSheet=STYLE.WHITE_BACKGROUND, enabled=False)
     self.cancelSegmentationButton = self.createButton("", icon=self.cancelSegmentationIcon,
@@ -339,19 +335,23 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.forwardButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False)
 
     self.applyRegistrationButton = self.createButton("Apply Registration", icon=self.greenCheckIcon,
-                                                     toolTip="Run the algorithm.")
+                                                     toolTip="Run Registration.")
     self.applyRegistrationButton.setFixedHeight(45)
 
+    self.editorWidgetButton = self.createButton("", icon=self.settingsIcon, toolTip="Show Label Editor",
+                                                enabled=False)
+
     segmentationButtons = self.setupSegmentationButtonBox()
-    editorWidgetParent = self.setupEditorWidget()
+    self.setupEditorWidget()
 
     self.segmentationGroupBox = qt.QGroupBox()
     self.segmentationGroupBoxLayout = qt.QFormLayout()
     self.segmentationGroupBox.setLayout(self.segmentationGroupBoxLayout)
-    self.segmentationGroupBox.hide()
-    self.segmentationGroupBoxLayout.addWidget(segmentationButtons)
-    self.segmentationGroupBoxLayout.addRow(editorWidgetParent)
+    self.segmentationGroupBoxLayout.addWidget(self.createHLayout([segmentationButtons, self.editorWidgetButton]))
+    self.segmentationGroupBoxLayout.addRow(self.editorWidgetParent)
     self.segmentationGroupBoxLayout.addRow(self.applyRegistrationButton)
+    self.segmentationGroupBox.hide()
+    self.editorWidgetParent.hide()
 
   def setupSegmentationButtonBox(self):
     segmentationButtons = qt.QDialogButtonBox()
@@ -362,18 +362,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     segmentationButtons.addButton(self.cancelSegmentationButton, segmentationButtons.ActionRole)
     segmentationButtons.addButton(self.applySegmentationButton, segmentationButtons.ActionRole)
     segmentationButtons.addButton(self.quickSegmentationButton, segmentationButtons.ActionRole)
-    segmentationButtons.addButton(self.labelSegmentationButton, segmentationButtons.ActionRole)
     return segmentationButtons
 
   def setupEditorWidget(self):
-    editorWidgetParent = slicer.qMRMLWidget()
-    editorWidgetParent.setLayout(qt.QVBoxLayout())
-    editorWidgetParent.setMRMLScene(slicer.mrmlScene)
+    self.editorWidgetParent = slicer.qMRMLWidget()
+    self.editorWidgetParent.setLayout(qt.QVBoxLayout())
+    self.editorWidgetParent.setMRMLScene(slicer.mrmlScene)
     self.editUtil = EditorLib.EditUtil.EditUtil()
-    self.editorWidget = EditorWidget(parent=editorWidgetParent, showVolumesFrame=False)
+    self.editorWidget = EditorWidget(parent=self.editorWidgetParent, showVolumesFrame=False)
     self.editorWidget.setup()
     self.editorParameterNode = self.editUtil.getParameterNode()
-    return editorWidgetParent
 
   def setupRegistrationStepUIElements(self):
     self.registrationGroupBox = qt.QGroupBox()
@@ -487,9 +485,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.intraopDirButton.directorySelected.connect(lambda: setattr(self, "intraopDataDir", self.intraopDirButton.directory))
       self.forwardButton.clicked.connect(self.onForwardButtonClicked)
       self.backButton.clicked.connect(self.onBackButtonClicked)
+      self.editorWidgetButton.clicked.connect(self.onEditorGearIconClicked)
       self.applyRegistrationButton.clicked.connect(lambda: self.onInvokeRegistration(initial=True))
       # self.needleTipButton.clicked.connect(self.onNeedleTipButtonClicked)
-      self.labelSegmentationButton.clicked.connect(self.onLabelSegmentationButtonClicked)
       self.quickSegmentationButton.clicked.connect(self.onQuickSegmentationButtonClicked)
       self.cancelSegmentationButton.clicked.connect(self.onCancelSegmentationButtonClicked)
       self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
@@ -812,7 +810,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.intraopVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
 
     enableButton = self.referenceVolumeSelector.currentNode() is not None
-    self.labelSegmentationButton.setEnabled(enableButton)
     self.quickSegmentationButton.setEnabled(enableButton)
 
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
@@ -1072,6 +1069,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     return success
 
   def loadMpReviewProcessedData(self):
+    #TODO: should be moved to logic or better use logic from mpReview
     resourcesDir = os.path.join(self.preopDataDir, 'RESOURCES')
     self.preopTargetsPath = os.path.join(self.preopDataDir, 'Targets')
 
@@ -1152,6 +1150,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     return True
 
   def loadPreopData(self):
+    # TODO: using decorators
     if not self.loadMpReviewProcessedData():
       return
     self.configureSliceNodesForPreopData()
@@ -1213,13 +1212,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def onCancelSegmentationButtonClicked(self):
     if self.yesNoDialog("Do you really want to cancel the segmentation process?"):
-      if self.quickSegmentationActive:
-        self.setQuickSegmentationModeOFF()
-      else:
-        self.editorParameterNode.SetParameter('effect', 'DefaultTool')
-        slicer.mrmlScene.RemoveNode(self.currentIntraopLabel)
-        self.redCompositeNode.SetLabelVolumeID(None)
-      self.setSegmentationButtons(segmentationActive=False)
+      self.setQuickSegmentationModeOFF()
 
   def onQuickSegmentationButtonClicked(self):
     self.clearCurrentLabels()
@@ -1232,18 +1225,32 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.greenCompositeNode.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
 
   def clearCurrentLabels(self):
-    self.redCompositeNode.SetLabelVolumeID(None)
-    self.yellowCompositeNode.SetLabelVolumeID(None)
-    self.greenCompositeNode.SetLabelVolumeID(None)
+    for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
+      compositeNode.SetLabelVolumeID(None)
 
   def setQuickSegmentationModeON(self):
-    self.quickSegmentationActive = True
     self.logic.deleteClippingData()
     self.setSegmentationButtons(segmentationActive=True)
     self.deactivateUndoRedoButtons()
+    self.disableEditorWidgetAndResetEditorTool()
     self.setupQuickModeHistory()
     self.logic.runQuickSegmentationMode()
     self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateUndoRedoButtons)
+
+  def disableEditorWidgetAndResetEditorTool(self, enabledButton=False):
+    self.editorWidgetParent.hide()
+    self.editorParameterNode.SetParameter('effect', 'DefaultTool')
+    self.editorWidgetButton.setEnabled(enabledButton)
+
+  def setQuickSegmentationModeOFF(self):
+    self.setSegmentationButtons(segmentationActive=False)
+    self.deactivateUndoRedoButtons()
+    self.resetToRegularViewMode()
+
+  def setSegmentationButtons(self, segmentationActive=False):
+    self.quickSegmentationButton.setEnabled(not segmentationActive)
+    self.applySegmentationButton.setEnabled(segmentationActive)
+    self.cancelSegmentationButton.setEnabled(segmentationActive)
 
   def setupQuickModeHistory(self):
     try:
@@ -1251,12 +1258,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     except AttributeError:
       self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
       self.deletedMarkups.SetName('deletedMarkups')
-
-  def setQuickSegmentationModeOFF(self):
-    self.quickSegmentationActive = False
-    self.setSegmentationButtons(segmentationActive=False)
-    self.deactivateUndoRedoButtons()
-    self.resetToRegularViewMode()
 
   def resetToRegularViewMode(self):
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
@@ -1309,16 +1310,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def onApplySegmentationButtonClicked(self):
     self.setAxialOrientation()
-    if self.quickSegmentationActive is True:
-      self.onQuickSegmentationFinished()
-    else:
-      self.onLabelSegmentationFinished()
-
-  def setSegmentationButtons(self, segmentationActive=False):
-    self.quickSegmentationButton.setEnabled(not segmentationActive)
-    self.labelSegmentationButton.setEnabled(not segmentationActive)
-    self.applySegmentationButton.setEnabled(segmentationActive)
-    self.cancelSegmentationButton.setEnabled(segmentationActive)
+    self.onQuickSegmentationFinished()
 
   def onQuickSegmentationFinished(self):
     inputVolume = self.referenceVolumeSelector.currentNode()
@@ -1362,32 +1354,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       positions.append(pos[2])
     return positions
 
-  def onLabelSegmentationFinished(self):
-    continueSegmentation = False
-    deleteMask = False
-    if self.isIntraopLabelValid():
-      logic = EditorLib.DilateEffectLogic(self.editUtil.getSliceLogic())
-      logic.erode(0, '4', 1)
-      self.setupScreenAfterSegmentation()
-    else:
-      if self.yesNoDialog("You need to do a label segmentation. Do you want to continue using the label mode?"):
-        continueSegmentation = True
-      else:
-        deleteMask = True
-    if not continueSegmentation:
-      self.editorParameterNode.SetParameter('effect', 'DefaultTool')
-      self.setSegmentationButtons(segmentationActive=False)
-      if deleteMask:
-        slicer.mrmlScene.RemoveNode(self.currentIntraopLabel)
-
-  def isIntraopLabelValid(self):
-    labelAddress = sitkUtils.GetSlicerITKReadWriteAddress(self.currentIntraopLabel.GetName())
-    labelImage = sitk.ReadImage(labelAddress)
-
-    ls = sitk.LabelStatisticsImageFilter()
-    ls.Execute(labelImage, labelImage)
-    return ls.GetNumberOfLabels() == 2
-
   def setupScreenAfterSegmentation(self):
     self.clearCurrentLabels()
     self.hideAllTargets()
@@ -1408,6 +1374,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.setupScreenForSegmentationComparison("red", preopVolume, preopLabel)
     self.setupScreenForSegmentationComparison("yellow", intraopVolume, intraopLabel)
     self.applyRegistrationButton.setEnabled(1 if self.inputsAreSet() else 0)
+    self.editorWidgetButton.setEnabled(True)
     self.registrationWatchBox.show()
 
   def setupScreenForSegmentationComparison(self, viewName, volume, label):
@@ -1432,9 +1399,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   def initiateOrRetryTracking(self):
     self.logic.loadSeriesIntoSlicer(self.intraopSeriesSelector.currentText, clearOldSeries=True)
     self.segmentationGroupBox.show()
+    self.editorWidgetButton.setEnabled(False)
     self.collapsibleRegistrationArea.collapsed = True
     self.collapsibleRegistrationArea.enabled = False
-    # self.targetTable.setSelectionMode(qt.QAbstractItemView.NoSelection)
     self.registrationWatchBox.hide()
     self.configureSegmentationMode()
 
@@ -1445,31 +1412,19 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.segmentationGroupBox.hide()
     self.collapsibleRegistrationArea.collapsed = False
 
-  def onLabelSegmentationButtonClicked(self):
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
-    self.clearCurrentLabels()
-    self.setSegmentationButtons(segmentationActive=True)
-    self.redCompositeNode.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
-    referenceVolume = self.referenceVolumeSelector.currentNode()
-    self.currentIntraopLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, referenceVolume,
-                                                                         referenceVolume.GetName() + '-label')
-    self.intraopLabelSelector.setCurrentNode(self.currentIntraopLabel)
-    selectionNode = slicer.app.applicationLogic().GetSelectionNode()
-    selectionNode.SetReferenceActiveVolumeID(referenceVolume.GetID())
-    selectionNode.SetReferenceActiveLabelVolumeID(self.currentIntraopLabel.GetID())
-    slicer.app.applicationLogic().PropagateVolumeSelection(50)
-    self.redCompositeNode.SetLabelOpacity(1)
-    # set color table
-    logging.debug('intraopLabelID : ' + str(self.currentIntraopLabel.GetID()))
-    # set color table
-    displayNode = self.currentIntraopLabel.GetDisplayNode()
-    displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
-    parameterNode = self.editUtil.getParameterNode()
-    parameterNode.SetParameter('effect', 'DrawEffect')
-    self.editUtil.setLabel(1)
-    self.editUtil.setLabelOutline(1)
+  def onEditorGearIconClicked(self):
+    if self.editorWidgetParent.visible:
+      self.disableEditorWidgetAndResetEditorTool(enabledButton=True)
+    else:
+      self.editorWidgetParent.show()
+      displayNode = self.currentIntraopLabel.GetDisplayNode()
+      displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+      self.editorParameterNode.SetParameter('effect', 'DrawEffect')
+      self.editUtil.setLabel(8)
+      self.editUtil.setLabelOutline(1)
 
   def onInvokeRegistration(self, initial=True):
+    self.disableEditorWidgetAndResetEditorTool()
     self.applyRegistrationButton.setEnabled(False)
     self.progress = self.makeProgressIndicator(4, 1)
     if initial:
@@ -2237,7 +2192,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def createClippingModelDisplayNode(self):
     clippingModelDisplayNode = slicer.vtkMRMLModelDisplayNode()
     clippingModelDisplayNode.SetSliceIntersectionThickness(3)
-    clippingModelDisplayNode.SetColor([247/255.0,129/255.0,17/255.0]) # orange
+    clippingModelDisplayNode.SetColor([0.200, 0.800, 0.000]) # green for glant
     clippingModelDisplayNode.BackfaceCullingOff()
     clippingModelDisplayNode.SliceIntersectionVisibilityOn()
     clippingModelDisplayNode.SetOpacity(0.3)
@@ -2256,7 +2211,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     outputLabelMap = slicer.vtkMRMLLabelMapVolumeNode()
     slicer.mrmlScene.AddNode(outputLabelMap)
 
-    params = {'sampleDistance': 0.1, 'labelValue': 5, 'InputVolume': inputVolume.GetID(),
+    params = {'sampleDistance': 0.1, 'labelValue': 8, 'InputVolume': inputVolume.GetID(),
               'surface': self.clippingModelNode.GetID(), 'OutputVolume': outputLabelMap.GetID()}
 
     logging.debug(params)
