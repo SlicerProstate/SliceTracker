@@ -667,18 +667,19 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   def removeSliceAnnotations(self):
     try:
       redRenderer = self.redSliceView.renderWindow().GetRenderers().GetItemAsObject(0)
-      redRenderer.RemoveActor(self.text_preop)
+      redRenderer.RemoveActor(self.leftViewerAnnotation)
       yellowRenderer = self.yellowSliceView.renderWindow().GetRenderers().GetItemAsObject(0)
-      yellowRenderer.RemoveActor(self.text_intraop)
-      self.redSliceView.update()
-      self.yellowSliceView.update()
+      yellowRenderer.RemoveActor(self.rightViewerAnnotation)
     except:
       pass
+    finally:
+      self.redSliceView.update()
+      self.yellowSliceView.update()
 
   def addSliceAnnotations(self, fontSize=30):
     self.removeSliceAnnotations()
-    self.text_preop = self._createTextActor(self.redSliceView, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
-    self.text_intraop = self._createTextActor(self.yellowSliceView, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
+    self.leftViewerAnnotation = self._createTextActor(self.redSliceView, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
+    self.rightViewerAnnotation = self._createTextActor(self.yellowSliceView, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
 
   def _createTextActor(self, sliceView, text, fontSize):
     textActor = vtk.vtkTextActor()
