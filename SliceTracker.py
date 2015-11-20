@@ -909,7 +909,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def onRegistrationResultSelected(self, seriesText):
     if seriesText:
-      print "Selection of registration result changed! %s " % seriesText
       self.hideAllTargets()
       self.currentResult = seriesText
       self.showAffineResultButton.setEnabled("GUIDANCE" not in seriesText)
@@ -1288,7 +1287,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   def onApproveRegistrationResultButtonClicked(self):
     self.currentResult.approve()
 
-    self.ratingWindow.show(disableWidget=self.parent, callback=self.openTargetingStep)
+    if self.ratingWindow.isRatingEnabled():
+      self.ratingWindow.show(disableWidget=self.parent, callback=self.openTargetingStep)
+    else:
+      self.openTargetingStep()
 
   def onSkipRegistrationResultButtonClicked(self):
     self.currentResult.skip()
@@ -2598,8 +2600,7 @@ class RatingWindow(qt.QWidget, ModuleWidgetMixin):
     self.maximumValue = maximumValue
     self.text = text
     self.iconPath = os.path.join(os.path.dirname(sys.modules[self.__module__].__file__), 'Resources/Icons')
-    self.filledStarIcon = self.createIcon("icon-star-filled.png", self.iconPath)
-    self.unfilledStarIcon = self.createIcon("icon-star-unfilled.png", self.iconPath)
+    self.setupIcons()
     self.setLayout(qt.QGridLayout())
     self.setWindowFlags(qt.Qt.WindowStaysOnTopHint | qt.Qt.FramelessWindowHint)
     self.setupElements()
@@ -2608,6 +2609,13 @@ class RatingWindow(qt.QWidget, ModuleWidgetMixin):
 
   def __del__(self):
     self.disconnectButtons()
+
+  def isRatingEnabled(self):
+    return not self.disableWidgetCheckbox.checked
+
+  def setupIcons(self):
+    self.filledStarIcon = self.createIcon("icon-star-filled.png", self.iconPath)
+    self.unfilledStarIcon = self.createIcon("icon-star-unfilled.png", self.iconPath)
 
   def show(self, disableWidget=None, callback=None):
     self.disabledWidget = disableWidget
@@ -2631,6 +2639,10 @@ class RatingWindow(qt.QWidget, ModuleWidgetMixin):
     self.ratingLabel = self.createLabel("")
     row = self.createHLayout(list(self.ratingButtonGroup.buttons()) + [self.ratingLabel])
     self.layout().addWidget(row, 1, 0)
+
+    self.disableWidgetCheckbox = qt.QCheckBox("Don't display this window again")
+    self.disableWidgetCheckbox.checked = False
+    self.layout().addWidget(self.disableWidgetCheckbox, 2, 0)
 
   def connectButtons(self):
     self.ratingButtonGroup.connect('buttonClicked(int)', self.onRatingButtonClicked)
