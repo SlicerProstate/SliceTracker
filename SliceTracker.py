@@ -38,6 +38,10 @@ class STYLE:
   WHITE_BACKGROUND            = 'background-color: rgb(255,255,255)'
   LIGHT_GRAY_BACKGROUND       = 'background-color: rgb(230,230,230)'
   ORANGE_BACKGROUND           = 'background-color: rgb(255,102,0)'
+  YELLOW_BACKGROUND           = 'background-color: yellow;'
+  GREEN_BACKGROUND            = 'background-color: green;'
+  GRAY_BACKGROUND             = 'background-color: gray;'
+  RED_BACKGROUND              = 'background-color: red;'
 
 
 class SliceTracker(ScriptedLoadableModule):
@@ -59,6 +63,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   LEFT_VIEWER_SLICE_ANNOTATION_TEXT = 'BIOPSY PLAN'
   RIGHT_VIEWER_SLICE_ANNOTATION_TEXT = 'TRACKED TARGETS'
+  APPROVED_RESULT_TEXT_ANNOTATION = "approved"
+  REJECTED_RESULT_TEXT_ANNOTATION = "rejected"
+  SKIPPED_RESULT_TEXT_ANNOTATION = "skipped"
 
   @property
   def registrationResults(self):
@@ -497,6 +504,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     def setupSelectorConnections():
       self.resultSelector.connect('currentIndexChanged(QString)', self.onRegistrationResultSelected)
+      self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.updateSeriesSelectionButtons)
       # self.preopVolumeSelector.connect('currentNodeChanged(bool)', self.setupScreenAfterSegmentation)
       # self.intraopVolumeSelector.connect('currentNodeChanged(bool)', self.setupScreenAfterSegmentation)
       # self.intraopLabelSelector.connect('currentNodeChanged(bool)', self.setupScreenAfterSegmentation)
@@ -512,7 +520,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.fadeSlider.connect('valueChanged(double)', self.changeOpacity)
       self.rockTimer.connect('timeout()', self.onRockToggled)
       self.flickerTimer.connect('timeout()', self.onFlickerToggled)
-      self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.updateSeriesSelectionButtons)
       self.targetTable.connect('clicked(QModelIndex)', self.jumpToTarget)
 
     setupCheckBoxConnections()
@@ -551,6 +558,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.backButton.setEnabled(self.logic.inputMarkupNode.GetNumberOfFiducials() > 0)
 
   def updateSeriesSelectionButtons(self, selectedSeries=None):
+    self.removeSliceAnnotations()
     if not selectedSeries:
       return
     seriesNumber = self.logic.getSeriesNumberFromString(self.intraopSeriesSelector.currentText)
@@ -558,18 +566,25 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.trackTargetsButton.setEnabled(trackingPossible and
                                        (self.registrationResults.getMostRecentApprovedCoverProstateRegistration() or
                                         "COVER PROSTATE" in self.intraopSeriesSelector.currentText))
-    style = "background-color:yellow;"
+    style = STYLE.YELLOW_BACKGROUND
+
     if not trackingPossible:
       if self.registrationResults.registrationResultWasApproved(seriesNumber):
         self.displayRegistrationResultForSelectedSeries(selectedSeries)
-        style = "background-color:green;"
+        style = STYLE.GREEN_BACKGROUND
+        annotationText = self.APPROVED_RESULT_TEXT_ANNOTATION
       else:
         result = self.registrationResults.getResultsBySeriesNumber(seriesNumber)[0]
         self.setupScreenForDisplayingSeries(result.fixedVolume)
-        if self.registrationResults.registrationResultWasApproved(seriesNumber):
-          style = "background-color:gray;"
+        if self.registrationResults.registrationResultWasRejected(seriesNumber):
+          style = STYLE.GRAY_BACKGROUND
+          annotationText = self.REJECTED_RESULT_TEXT_ANNOTATION
         else:
-          style = "background-color:red;"
+          style = STYLE.RED_BACKGROUND
+          annotationText = self.SKIPPED_RESULT_TEXT_ANNOTATION
+        # TODO Positioning....
+      self.rightViewerRegistrationResultStatusAnnotation = self._createTextActor(self.yellowSliceView, annotationText,
+                                                                                 fontSize=20, xPos=0, yPos=25)
     self.intraopSeriesSelector.setStyleSheet(style)
 
   def uncheckVisualEffects(self):
@@ -579,7 +594,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def setupScreenForDisplayingSeries(self, volume):
     self.hideAllTargets()
-    self.removeSliceAnnotations()
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
     self.redCompositeNode.Reset()
     self.redCompositeNode.SetBackgroundVolumeID(volume.GetID())
@@ -670,6 +684,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       redRenderer.RemoveActor(self.leftViewerAnnotation)
       yellowRenderer = self.yellowSliceView.renderWindow().GetRenderers().GetItemAsObject(0)
       yellowRenderer.RemoveActor(self.rightViewerAnnotation)
+      yellowRenderer.RemoveActor(self.rightViewerRegistrationResultStatusAnnotation)
     except:
       pass
     finally:
@@ -680,20 +695,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.removeSliceAnnotations()
     self.leftViewerAnnotation = self._createTextActor(self.redSliceView, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
     self.rightViewerAnnotation = self._createTextActor(self.yellowSliceView, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
+    self.rightViewerRegistrationResultStatusAnnotation = None
 
-  def _createTextActor(self, sliceView, text, fontSize):
+  def _createTextActor(self, sliceView, text, fontSize, xPos=-90, yPos=50):
     textActor = vtk.vtkTextActor()
     textActor.SetInput(text)
     textProperty = textActor.GetTextProperty()
     textProperty.SetFontSize(fontSize)
     textProperty.SetColor(1, 0, 0)
     textProperty.SetBold(1)
+    textProperty.SetShadow(1)
     textActor.SetTextProperty(textProperty)
-    # TODO: adapt when zoom is changed manually
-    # TODO: the 90px shift to the left are hard-coded right now, it would be better to
-    # take the size of the vtk.vtkTextActor and shift by that size * 0.5
-    # BUT -> could not find how to get vtkViewPort from sliceWidget
-    textActor.SetDisplayPosition(int(sliceView.width * 0.5 - 90), 50)
+    textActor.SetDisplayPosition(int(sliceView.width * 0.5 + xPos), yPos)
     renderer = sliceView.renderWindow().GetRenderers().GetItemAsObject(0)
     renderer.AddActor(textActor)
     sliceView.update()
