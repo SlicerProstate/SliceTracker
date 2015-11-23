@@ -558,30 +558,37 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.trackTargetsButton.setEnabled(trackingPossible and
                                        (self.registrationResults.getMostRecentApprovedCoverProstateRegistration() or
                                         "COVER PROSTATE" in selectedSeries))
-    self.configureColorsAndViewersForSelectedIntraopSeries(selectedSeries)
+    if not trackingPossible:
+      self.configureColorsAndViewersForSelectedIntraopSeries(selectedSeries)
+    self.setIntraopSeriesSelectorColorAndSliceAnnotations(selectedSeries, trackingPossible)
 
-  def configureColorsAndViewersForSelectedIntraopSeries(self, selectedSeries):
-    seriesNumber = self.logic.getSeriesNumberFromString(selectedSeries)
-    trackingPossible = self.logic.isTrackingPossible(seriesNumber)
+  def setIntraopSeriesSelectorColorAndSliceAnnotations(self, selectedSeries, trackingPossible):
     style = STYLE.YELLOW_BACKGROUND
     if not trackingPossible:
+      seriesNumber = self.logic.getSeriesNumberFromString(selectedSeries)
       if self.registrationResults.registrationResultWasApproved(seriesNumber):
         style = STYLE.GREEN_BACKGROUND
         annotationText = self.APPROVED_RESULT_TEXT_ANNOTATION
-        self.displayRegistrationResultForSelectedSeries(selectedSeries)
-      elif self.registrationResults.registrationResultWasRejected(seriesNumber):
-        style = STYLE.GRAY_BACKGROUND
-        annotationText = self.REJECTED_RESULT_TEXT_ANNOTATION
-        result = self.registrationResults.getResultsBySeriesNumber(seriesNumber)[0]
-        self.setupScreenForDisplayingSeries(result.fixedVolume)
-      else:
+      elif self.registrationResults.registrationResultWasSkipped(seriesNumber):
         style = STYLE.RED_BACKGROUND
         annotationText = self.SKIPPED_RESULT_TEXT_ANNOTATION
-        self.displayRegistrationResultForSelectedSeries(selectedSeries)
+      else:
+        style = STYLE.GRAY_BACKGROUND
+        annotationText = self.REJECTED_RESULT_TEXT_ANNOTATION
       # TODO Positioning....
       self.rightViewerRegistrationResultStatusAnnotation = self._createTextActor(self.yellowSliceView, annotationText,
                                                                                  fontSize=20, xPos=0, yPos=25)
     self.intraopSeriesSelector.setStyleSheet(style)
+
+  def configureColorsAndViewersForSelectedIntraopSeries(self, selectedSeries):
+    seriesNumber = self.logic.getSeriesNumberFromString(selectedSeries)
+    if self.registrationResults.registrationResultWasApproved(seriesNumber):
+      self.showRegistrationResultSideBySideForSelectedSeries(selectedSeries)
+    elif self.registrationResults.registrationResultWasSkipped(seriesNumber):
+      self.showRegistrationResultSideBySideForSelectedSeries(selectedSeries)
+    else:
+      result = self.registrationResults.getResultsBySeriesNumber(seriesNumber)[0]
+      self.setupScreenForDisplayingSeries(result.fixedVolume)
 
   def uncheckVisualEffects(self):
     self.flickerCheckBox.checked = False
@@ -589,14 +596,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.revealCursorCheckBox.checked = False
 
   def setupScreenForDisplayingSeries(self, volume):
-    self.hideAllTargets()
+    self.disableTargetTable()
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
     self.redCompositeNode.Reset()
     self.redCompositeNode.SetBackgroundVolumeID(volume.GetID())
     self.setDefaultOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
 
-  def displayRegistrationResultForSelectedSeries(self, selectedSeries):
+  def showRegistrationResultSideBySideForSelectedSeries(self, selectedSeries):
+    self.targetTable.enabled = True
     seriesNumber = self.logic.getSeriesNumberFromString(self.intraopSeriesSelector.currentText)
     for result in self.registrationResults.getResultsBySeriesNumber(seriesNumber):
       if result.approved or result.skipped:
@@ -605,7 +613,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
         break
 
   def jumpToTarget(self, modelIndex=None):
-    # TODO: think about that method
     if not modelIndex:
       try:
         modelIndex = self.targetTable.selectedIndexes()[0]
@@ -616,15 +623,20 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     if not self.currentTargets:
       self.currentTargets = self.preopTargets
     self.markupsLogic.SetAllMarkupsVisibility(self.currentTargets, True)
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.currentTargets.GetID(), row)
+    self.jumpSliceNodeToTarget(self.redSliceNode, self.preopTargets, row)
+    self.jumpSliceNodeToTarget(self.yellowSliceNode, self.currentTargets, row)
+
+  def jumpSliceNodeToTarget(self, sliceNode, targetNode, n):
+    point = [0,0,0,0]
+    targetNode.GetMarkupPointWorld(n, 0, point)
+    sliceNode.JumpSlice(point[0], point[1], point[2])
 
   def updateRegistrationResultSelector(self):
     self.resultSelector.clear()
     results = self.registrationResults.getResultsBySeriesNumber(self.currentResult.seriesNumber)
-    for result in results:
+    for result in reversed(results):
       self.resultSelector.addItem(result.name)
     self.registrationResultAlternatives.visible = len(results) > 1
-    self.resultSelector.currentIndex = self.resultSelector.findText(results[-1].name)
 
   def onNeedleTipButtonClicked(self):
     self.needleTipButton.enabled = False
@@ -928,46 +940,29 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def displayRegistrationResults(self, button, registrationType):
     self.resetShowResultButtons(checkedButton=button)
-
     self.setCurrentRegistrationResultSliceViews(registrationType)
-
-    self.setDefaultFOV(self.redSliceLogic)
-    self.setDefaultFOV(self.yellowSliceLogic)
-
     self.showTargets(registrationType=registrationType)
     self.visualEffectsGroupBox.setEnabled(True)
+    self.jumpToTarget()
 
   def setDefaultFOV(self, sliceLogic):
     sliceLogic.FitSliceToAll()
     FOV = sliceLogic.GetSliceNode().GetFieldOfView()
     self.setFOV(sliceLogic, [FOV[0] * 0.5, FOV[1] * 0.5, FOV[2]])
 
-  def setFOV(self, sliceLogic, FOV, offset=None):
+  def setFOV(self, sliceLogic, FOV):
     sliceNode = sliceLogic.GetSliceNode()
     sliceLogic.StartSliceNodeInteraction(2)
     sliceNode.SetFieldOfView(FOV[0], FOV[1], FOV[2])
-    if offset:
-      sliceNode.SetSliceOffset(offset)
     sliceLogic.EndSliceNodeInteraction()
 
-  def unlinkImages(self):
-    self._linkImages(0)
-
-  def linkImages(self):
-    self._linkImages(1)
-
-  def _linkImages(self, link):
-    self.redCompositeNode.SetLinkedControl(link)
-    self.yellowCompositeNode.SetLinkedControl(link)
-
   def setCurrentRegistrationResultSliceViews(self, registrationType):
-
     self.redCompositeNode.SetBackgroundVolumeID(self.preopVolume.GetID())
     self.redCompositeNode.SetForegroundVolumeID(None)
-    self.setTargetVisibility(self.preopTargets)
-
     self.yellowCompositeNode.SetForegroundVolumeID(self.currentResult.fixedVolume.GetID())
     self.yellowCompositeNode.SetBackgroundVolumeID(self.currentResult.getVolume(registrationType).GetID())
+    self.setDefaultFOV(self.redSliceLogic)
+    self.setDefaultFOV(self.yellowSliceLogic)
 
   def showTargets(self, registrationType):
     self.setTargetVisibility(self.currentResult.rigidTargets, show=registrationType == 'rigid')
@@ -975,7 +970,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     if self.currentResult.affineTargets:
       self.setTargetVisibility(self.currentResult.affineTargets, show=registrationType == 'affine')
     self.currentTargets = getattr(self.currentResult, registrationType+'Targets')
-    self.jumpToTarget()
+    self.setTargetVisibility(self.preopTargets)
 
   def setTargetVisibility(self, targetNode, show=True):
     self.markupsLogic.SetAllMarkupsVisibility(targetNode, show)
@@ -1172,7 +1167,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.setQuickSegmentationModeOFF()
 
   def onQuickSegmentationButtonClicked(self):
-    self.clearCurrentLabels()
+    self.hideAllLabels()
     self.setBackgroundToCurrentReferenceVolume()
     self.setQuickSegmentationModeON()
 
@@ -1181,7 +1176,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.yellowCompositeNode.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
     self.greenCompositeNode.SetBackgroundVolumeID(self.referenceVolumeSelector.currentNode().GetID())
 
-  def clearCurrentLabels(self):
+  def hideAllLabels(self):
     for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
       compositeNode.SetLabelVolumeID(None)
 
@@ -1232,6 +1227,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def openTargetingStep(self, ratingResult=None):
     self.activeRegistrationResultButtonId = 3
+    self.hideAllLabels()
     if ratingResult:
       self.currentResult.score = ratingResult
     self.registrationWatchBox.hide()
@@ -1312,7 +1308,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     return positions
 
   def setupScreenAfterSegmentation(self):
-    self.clearCurrentLabels()
+    self.hideAllLabels()
     self.hideAllTargets()
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
 
@@ -1355,19 +1351,28 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def initiateOrRetryTracking(self):
     self.logic.loadSeriesIntoSlicer(self.intraopSeriesSelector.currentText, clearOldSeries=True)
+    self.disableTargetTable()
     self.segmentationGroupBox.show()
     self.editorWidgetButton.setEnabled(False)
-    self.collapsibleRegistrationArea.collapsed = True
-    self.collapsibleRegistrationArea.enabled = False
+    self.activateRegistrationResultsArea(collapsed=True, enabled=False)
     self.registrationWatchBox.hide()
     self.configureSegmentationMode()
+
+  def activateRegistrationResultsArea(self, collapsed, enabled):
+    self.collapsibleRegistrationArea.collapsed = collapsed
+    self.collapsibleRegistrationArea.enabled = enabled
+
+  def disableTargetTable(self):
+    self.hideAllTargets()
+    self.targetTable.clearSelection()
+    self.targetTable.enabled = False
 
   def repeatRegistrationForCurrentSelection(self):
     logging.debug('Performing Re-Registration')
     self.logic.loadSeriesIntoSlicer(self.intraopSeriesSelector.currentText)
     self.onInvokeRegistration(initial=False)
     self.segmentationGroupBox.hide()
-    self.collapsibleRegistrationArea.collapsed = False
+    self.activateRegistrationResultsArea(collapsed=False, enabled=True)
 
   def onEditorGearIconClicked(self):
     if self.editorWidgetParent.visible:
@@ -1411,32 +1416,23 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.onTrackTargetsButtonClicked()
 
   def finalizeRegistrationStep(self):
-    self.updateDisplayedTargets()
+    self.targetTable.enabled = True
+    self.addNewTargetsToScene()
     self.activeRegistrationResultButtonId = 3
     self.updateRegistrationResultSelector()
-    self.currentResult.printSummary()
     self.setupRegistrationResultView()
     self.onBSplineResultClicked()
     self.organizeUIAfterRegistration()
+    self.currentResult.printSummary()
 
-  def organizeUIAfterRegistration(self):
-    self.registrationWatchBox.show()
-    self.segmentationGroupBox.hide()
-    self.collapsibleRegistrationArea.collapsed = False
-    self.collapsibleRegistrationArea.enabled = True
-    self.evaluationButtonsGroupBox.enabled = True
-    self.updateRegistrationEvaluationButtons()
-
-  def updateDisplayedTargets(self):
+  def addNewTargetsToScene(self):
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
       slicer.mrmlScene.AddNode(targetNode)
 
   def setupRegistrationResultView(self):
-
+    self.hideAllLabels()
     self.addSliceAnnotations()
-
-    self.redSliceLogic.FitSliceToAll()
-    self.yellowSliceLogic.FitSliceToAll()
+    slicer.app.applicationLogic().FitSliceToAll()
 
     self.refreshViewNodeIDs(self.preopTargets, self.redSliceNode)
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
@@ -1444,17 +1440,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.resetToRegularViewMode()
 
-    # set Side By Side View to compare volumes
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
-
-    # Hide Labels
-    self.redCompositeNode.SetLabelOpacity(0)
-    self.yellowCompositeNode.SetLabelOpacity(0)
 
     self.setAxialOrientation()
 
+  def organizeUIAfterRegistration(self):
+    self.registrationWatchBox.show()
+    self.segmentationGroupBox.hide()
+    self.activateRegistrationResultsArea(collapsed=False, enabled=True)
+    self.evaluationButtonsGroupBox.enabled = True
+    self.updateRegistrationEvaluationButtons()
+
   def refreshViewNodeIDs(self, targets, sliceNode):
-    # remove view node ID's from Red Slice view
     displayNode = targets.GetDisplayNode()
     displayNode.RemoveAllViewNodeIDs()
     displayNode.AddViewNodeID(sliceNode.GetID())
