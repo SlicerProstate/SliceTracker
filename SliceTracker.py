@@ -92,6 +92,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.intraopDirButton.setEnabled(True)
     self.trackTargetsButton.setEnabled(False)
     self._updateOutputDir()
+    self.preopDirButton.text = self.preopDirButton.directory
 
   @property
   def intraopDataDir(self):
@@ -103,6 +104,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
     self.setSetting('IntraopLocation', path)
+    self.intraopDirButton.text = self.intraopDirButton.directory
 
   @property
   def outputDir(self):
@@ -115,6 +117,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.setSetting('OutputLocation', path)
       self._updateOutputDir()
       self.caseCompletedButton.setEnabled(True)
+      self.outputDirButton.text = self.outputDirButton.directory
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -456,10 +459,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.rockCount = 0
     self.rockTimer = qt.QTimer()
+    self.rockTimer.setInterval(50)
     self.rockCheckBox = qt.QCheckBox("Rock")
     self.rockCheckBox.checked = False
 
     self.flickerTimer = qt.QTimer()
+    self.flickerTimer.setInterval(400)
     self.flickerCheckBox = qt.QCheckBox("Flicker")
     self.flickerCheckBox.checked = False
 
@@ -778,7 +783,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     def startRocking():
       self.flickerCheckBox.setEnabled(False)
-      self.rockTimer.start(50)
+      self.rockTimer.start()
       self.fadeSlider.value = 0.5 + math.sin(self.rockCount / 10.) / 2.
       self.rockCount += 1
 
@@ -796,7 +801,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     def startFlickering():
       self.rockCheckBox.setEnabled(False)
-      self.flickerTimer.start(300)
+      self.flickerTimer.start()
       self.fadeSlider.value = 1.0 if self.fadeSlider.value == 0.0 else 0.0
 
     def stopFlickering():
@@ -820,8 +825,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.referenceVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
     self.intraopVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
 
-    enableButton = self.referenceVolumeSelector.currentNode() is not None
-    self.quickSegmentationButton.setEnabled(enableButton)
+    self.quickSegmentationButton.setEnabled(self.referenceVolumeSelector.currentNode() is not None)
 
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
@@ -832,6 +836,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.setDefaultOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
+
+    self.onQuickSegmentationButtonClicked()
 
   def inputsAreSet(self):
     return not (self.preopVolumeSelector.currentNode() is None and self.intraopVolumeSelector.currentNode() is None and
@@ -2154,14 +2160,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.clippingModelNode.SetAndObserveDisplayNodeID(clippingModelDisplayNode.GetID())
 
   def labelMapFromClippingModel(self, inputVolume):
-    """
-    PARAMETER FOR MODELTOLABELMAP CLI MODULE:
-    Parameter (0/0): sampleDistance
-    Parameter (0/1): labelValue
-    Parameter (1/0): InputVolume
-    Parameter (1/1): surface
-    Parameter (1/2): OutputVolume
-    """
     outputLabelMap = slicer.vtkMRMLLabelMapVolumeNode()
     slicer.mrmlScene.AddNode(outputLabelMap)
 
@@ -2171,30 +2169,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     logging.debug(params)
     slicer.cli.run(slicer.modules.modeltolabelmap, None, params, wait_for_completion=True)
 
-    # use label contours
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
 
-    # rotate volume to plane
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(outputLabelMap)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(outputLabelMap)
 
     return outputLabelMap
 
   def BRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
-    """
-    Parameter (0/0): inputVolume
-    Parameter (0/1): referenceVolume
-    Parameter (1/0): outputVolume
-    Parameter (1/1): pixelType
-    Parameter (2/0): deformationVolume
-    Parameter (2/1): warpTransform
-    Parameter (2/2): interpolationMode
-    Parameter (2/3): inverseTransform
-    Parameter (2/4): defaultValue
-    Parameter (3/0): gridSpacing
-    Parameter (4/0): numberOfThreads
-    """
 
     params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
               'warpTransform': warpTransform, 'interpolationMode': 'NearestNeighbor'}
