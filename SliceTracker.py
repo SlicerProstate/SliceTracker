@@ -202,6 +202,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.revealCursor = None
     self.currentTargets = None
 
+    self.crosshairNode = None
+    self.crosshairNodeObserverTag = None
+
     self.logic.retryMode = False
 
     self.createPatientWatchBox()
@@ -407,12 +410,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.setupCollapsibleRegistrationArea()
     self.setupRegistrationValidationButtons()
-    self.needleTipButton = qt.QPushButton('Set needle-tip')
     self.registrationEvaluationGroupBoxLayout.addWidget(self.registrationGroupBox, 1, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.segmentationGroupBox, 2, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.collapsibleRegistrationArea, 3, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.evaluationButtonsGroupBox, 5, 0)
-    # self.targetingGroupBoxLayout.addWidget(self.needleTipButton)
     self.layout.addWidget(self.registrationEvaluationGroupBox)
 
   def setupRegistrationValidationButtons(self):
@@ -488,7 +489,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.backButton.clicked.connect(self.onBackButtonClicked)
       self.editorWidgetButton.clicked.connect(self.onEditorGearIconClicked)
       self.applyRegistrationButton.clicked.connect(lambda: self.onInvokeRegistration(initial=True))
-      # self.needleTipButton.clicked.connect(self.onNeedleTipButtonClicked)
       self.quickSegmentationButton.clicked.connect(self.onQuickSegmentationButtonClicked)
       self.cancelSegmentationButton.clicked.connect(self.onCancelSegmentationButtonClicked)
       self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
@@ -643,18 +643,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.resultSelector.addItem(result.name)
     self.registrationResultAlternatives.visible = len(results) > 1
 
-  def onNeedleTipButtonClicked(self):
-    self.needleTipButton.enabled = False
-    self.logic.setNeedleTipPosition(destinationViewNode=self.yellowSliceNode, callback=self.updateTargetTable)
-    self.clearTargetTable()
-    self.needleTipButton.enabled = False
-
   def clearTargetTable(self):
     self.targetTable.clear()
     # TODO: change for needle tip
-    # self.targetTable.setColumnCount(3)
-    self.targetTable.setColumnCount(1)
-    self.targetTable.setHorizontalHeaderLabels(['Targets']) #, 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]'])
+    self.targetTable.setColumnCount(3)
+    self.targetTable.setHorizontalHeaderLabels(['Targets', 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]'])
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
 
   def updateTargets(self, targets):
@@ -663,34 +656,31 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.targetTable.setRowCount(number_of_targets)
     for target in range(number_of_targets):
       targetText = targets.GetNthFiducialLabel(target)
-      # TODO: change for needle tip
-      for idx, item in enumerate([qt.QTableWidgetItem(targetText)]): #, qt.QTableWidgetItem(""), qt.QTableWidgetItem("")]):
+      for idx, item in enumerate([qt.QTableWidgetItem(targetText), qt.QTableWidgetItem(""), qt.QTableWidgetItem("")]):
         item.setFlags(qt.Qt.ItemIsSelectable | qt.Qt.ItemIsEnabled)
         self.targetTable.setItem(target, idx, item)
 
-  def updateTargetTable(self, observer=None, caller=None):
+  def updateTargetTable(self, cursorPosition=None):
     bSplineTargets = self.currentResult.bSplineTargets
     number_of_targets = bSplineTargets.GetNumberOfFiducials()
     self.updateTargets(bSplineTargets)
 
-    needleTip_position, target_positions = self.logic.getNeedleTipAndTargetsPositions(bSplineTargets)
+    targetPositions = self.logic.getTargetPositions(bSplineTargets)
 
-    # if len(needleTip_position) > 0:
-    #   for index in range(number_of_targets):
-    #     distance2D = self.logic.getNeedleTipTargetDistance2D(target_positions[index], needleTip_position)
-    #     text_for_2D_column = ('x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2)))
-    #     item_2D = qt.QTableWidgetItem(text_for_2D_column)
-    #     self.targetTable.setItem(index, 1, item_2D)
-    #     logging.debug(str(text_for_2D_column))
-    #
-    #     distance3D = self.logic.getNeedleTipTargetDistance3D(target_positions[index], needleTip_position)
-    #     text_for_3D_column = str(round(distance3D, 2))
-    #     item_3D = qt.QTableWidgetItem(text_for_3D_column)
-    #     item_3D.setFlags(qt.Qt.ItemIsSelectable | qt.Qt.ItemIsEnabled)
-    #     self.targetTable.setItem(index, 2, item_3D)
-    #     logging.debug(str(text_for_3D_column))
-    #
-    # self.needleTipButton.enabled = True
+    if cursorPosition:
+      for index in range(number_of_targets):
+        distance2D = self.logic.getNeedleTipTargetDistance2D(targetPositions[index], cursorPosition)
+        text_for_2D_column = ('x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2)))
+        item_2D = qt.QTableWidgetItem(text_for_2D_column)
+        self.targetTable.setItem(index, 1, item_2D)
+        logging.debug(str(text_for_2D_column))
+
+        distance3D = self.logic.getNeedleTipTargetDistance3D(targetPositions[index], cursorPosition)
+        text_for_3D_column = str(round(distance3D, 2))
+        item_3D = qt.QTableWidgetItem(text_for_3D_column)
+        item_3D.setFlags(qt.Qt.ItemIsSelectable | qt.Qt.ItemIsEnabled)
+        self.targetTable.setItem(index, 2, item_3D)
+        logging.debug(str(text_for_3D_column))
 
   def removeSliceAnnotations(self):
     try:
@@ -1231,7 +1221,29 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTable, 4, 0)
     self.registrationEvaluationGroupBox.show()
 
+  def connectCrosshairNode(self):
+    if not self.crosshairNode:
+      self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
+    self.crosshairNodeObserverTag = self.crosshairNode.AddObserver(slicer.vtkMRMLCrosshairNode.CursorPositionModifiedEvent,
+                                                                   self.calcCursorTargetsDistance)
+
+  def disconnectCrosshairNode(self):
+    if self.crosshairNode and self.crosshairNodeObserverTag:
+      self.crosshairNode.RemoveObserver(self.crosshairNodeObserverTag)
+    self.crosshairNodeObserverTag = None
+
+  def calcCursorTargetsDistance(self, observee, event):
+    ras = [0.0,0.0,0.0]
+    xyz = [0.0,0.0,0.0]
+    insideView = self.crosshairNode.GetCursorPositionRAS(ras)
+    sliceNode = self.crosshairNode.GetCursorPositionXYZ(xyz)
+    if sliceNode is not self.yellowSliceNode or not insideView:
+       self.updateTargetTable()
+    else:
+      self.updateTargetTable(cursorPosition=ras)
+
   def openTargetingStep(self, ratingResult=None):
+    self.disconnectCrosshairNode()
     self.activeRegistrationResultButtonId = 3
     self.hideAllLabels()
     if ratingResult:
@@ -1430,6 +1442,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.onBSplineResultClicked()
     self.organizeUIAfterRegistration()
     self.currentResult.printSummary()
+    self.connectCrosshairNode()
 
   def addNewTargetsToScene(self):
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
@@ -1517,7 +1530,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.seriesList = []
     self.loadableList = {}
     self.alreadyLoadedSeries = {}
-    self.needleTipMarkupNode = None
     self.storeSCPProcess = None
 
     self.currentIntraopVolume = None
@@ -2004,22 +2016,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       seriesNumberDescription = seriesNumber + ": " + seriesDescription
     return seriesNumberDescription
 
-  def getNeedleTipAndTargetsPositions(self, registeredTargets):
-    needleTip_position = self.getNeedleTipPosition()
-    target_positions = self.getTargetPositions(registeredTargets)
-    return [needleTip_position, target_positions]
-
-  def getNeedleTipPosition(self):
-
-    needleTip_position = []
-    if self.needleTipMarkupNode:
-      needleTip_position = [0.0, 0.0, 0.0]
-      self.needleTipMarkupNode.GetNthFiducialPosition(0, needleTip_position)
-      logging.debug('needleTip_position = ' + str(needleTip_position))
-    return needleTip_position
-
   def getTargetPositions(self, registeredTargets):
-
     number_of_targets = registeredTargets.GetNumberOfFiducials()
     target_positions = []
     for target in range(number_of_targets):
@@ -2028,40 +2025,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       target_positions.append(target_position)
     logging.debug('target_positions are ' + str(target_positions))
     return target_positions
-
-  def setNeedleTipPosition(self, destinationViewNode=None, callback=None):
-
-    if self.needleTipMarkupNode is None:
-      self.needleTipMarkupNode = self.createNeedleTipMarkupNode(destinationViewNode, callback)
-    else:
-      self.needleTipMarkupNode.RemoveAllMarkups()
-
-    self.startNeedleTipPlacingMode()
-
-  def createNeedleTipMarkupNode(self, destinationViewNode, callback=None):
-
-    needleTipMarkupDisplayNode = slicer.vtkMRMLMarkupsDisplayNode()
-    needleTipMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
-    needleTipMarkupNode.SetName('needle-tip')
-    slicer.mrmlScene.AddNode(needleTipMarkupDisplayNode)
-    slicer.mrmlScene.AddNode(needleTipMarkupNode)
-    needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
-    # don't show needle tip in red Slice View
-    if destinationViewNode:
-      needleTipMarkupDisplayNode.AddViewNodeID(destinationViewNode.GetID())
-    if callback:
-      needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, callback)
-
-    needleTipMarkupDisplayNode.SetTextScale(1.6)
-    needleTipMarkupDisplayNode.SetGlyphScale(2.0)
-    needleTipMarkupDisplayNode.SetGlyphType(12)
-    return needleTipMarkupNode
-
-  def startNeedleTipPlacingMode(self):
-
-    mlogic = slicer.modules.markups.logic()
-    mlogic.SetActiveListID(self.needleTipMarkupNode)
-    slicer.modules.markups.logic().StartPlaceMode(0)
 
   def getNeedleTipTargetDistance2D(self, target_position, needleTip_position):
     x = abs(target_position[0] - needleTip_position[0])
