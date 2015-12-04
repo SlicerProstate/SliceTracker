@@ -63,6 +63,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   LEFT_VIEWER_SLICE_ANNOTATION_TEXT = 'BIOPSY PLAN'
   RIGHT_VIEWER_SLICE_ANNOTATION_TEXT = 'TRACKED TARGETS'
+  RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT = 'OLD'
+  RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT = 'NEW'
   APPROVED_RESULT_TEXT_ANNOTATION = "approved"
   REJECTED_RESULT_TEXT_ANNOTATION = "rejected"
   SKIPPED_RESULT_TEXT_ANNOTATION = "skipped"
@@ -688,6 +690,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       redRenderer.RemoveActor(self.leftViewerAnnotation)
       yellowRenderer = self.yellowSliceView.renderWindow().GetRenderers().GetItemAsObject(0)
       yellowRenderer.RemoveActor(self.rightViewerAnnotation)
+      yellowRenderer.RemoveActor(self.rightViewerOldImageAnnotation)
+      yellowRenderer.RemoveActor(self.rightViewerNewImageAnnotation)
       yellowRenderer.RemoveActor(self.rightViewerRegistrationResultStatusAnnotation)
     except:
       pass
@@ -697,11 +701,19 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def addSliceAnnotations(self, fontSize=30):
     self.removeSliceAnnotations()
-    self.leftViewerAnnotation = self._createTextActor(self.redSliceView, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
-    self.rightViewerAnnotation = self._createTextActor(self.yellowSliceView, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
+    self.leftViewerAnnotation = self._createTextActor(self.redSliceView, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT,
+                                                      fontSize)
+    self.rightViewerAnnotation = self._createTextActor(self.yellowSliceView, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT,
+                                                       fontSize)
+    self.rightViewerNewImageAnnotation = self._createTextActor(self.yellowSliceView,
+                                                               self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT,
+                                                               fontSize=20, xPos=0, yPos=25, show=False)
+    self.rightViewerOldImageAnnotation = self._createTextActor(self.yellowSliceView,
+                                                               self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT,
+                                                               fontSize=20, xPos=0, yPos=25)
     self.rightViewerRegistrationResultStatusAnnotation = None
 
-  def _createTextActor(self, sliceView, text, fontSize, xPos=-90, yPos=50):
+  def _createTextActor(self, sliceView, text, fontSize, xPos=-90, yPos=50, show=True):
     textActor = vtk.vtkTextActor()
     textActor.SetInput(text)
     textProperty = textActor.GetTextProperty()
@@ -709,6 +721,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     textProperty.SetColor(1, 0, 0)
     textProperty.SetBold(1)
     textProperty.SetShadow(1)
+    textProperty.SetOpacity(1.0 if show else 0.0)
     textActor.SetTextProperty(textProperty)
     textActor.SetDisplayPosition(int(sliceView.width * 0.5 + xPos), yPos)
     renderer = sliceView.renderWindow().GetRenderers().GetItemAsObject(0)
@@ -768,6 +781,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     if checked:
       import CompareVolumes
       self.revealCursor = CompareVolumes.LayerReveal()
+
+  def setOldNewIndicatorAnnotationOpacity(self, value):
+    newTextProperty = self.rightViewerNewImageAnnotation.GetTextProperty()
+    oldTextProperty = self.rightViewerOldImageAnnotation.GetTextProperty()
+    newTextProperty.SetOpacity(value)
+    oldTextProperty.SetOpacity(1.0-value)
+    self.yellowSliceView.update()
 
   def onRockToggled(self):
 
@@ -1214,6 +1234,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def changeOpacity(self, value):
     self.yellowCompositeNode.SetForegroundOpacity(value)
+    self.setOldNewIndicatorAnnotationOpacity(value)
 
   def openEvaluationStep(self):
     self.currentRegisteredSeries.setText(self.logic.currentIntraopVolume.GetName())
