@@ -185,7 +185,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
     self.quickSegmentationIcon = self.createIcon('icon-quickSegmentation.png')
     self.newImageDataIcon = self.createIcon('icon-newImageData.png')
-    self.littleDiscIcon = self.createIcon('icon-littleDisc.png')
     self.settingsIcon = self.createIcon('icon-settings.png')
     self.undoIcon = self.createIcon('icon-undo.png')
     self.redoIcon = self.createIcon('icon-redo.png')
@@ -225,10 +224,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.showAcceptRegistrationWarning = False
 
-    # TODO: should be fixed when we are sure, that there will not be any old versions of mpReview
-    colorFile = os.path.join(self.modulePath,'Resources/Colors/PCampReviewColors.csv')
-    if not os.path.exists(colorFile):
-      colorFile = os.path.join(self.modulePath,'Resources/Colors/mpReviewColors.csv')
+    colorFile = os.path.join(self.modulePath,'Resources/Colors/mpReviewColors.csv')
     self.logic.setupColorTable(colorFile=colorFile)
     self.layout.addStretch()
 
