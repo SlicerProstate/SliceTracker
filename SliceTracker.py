@@ -821,7 +821,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       stopFlickering()
 
   def onSaveDataButtonClicked(self):
-    return self.notificationDialog(self.logic.save())
+    self.save(showDialog=True)
+
+  def save(self, showDialog=False):
+    message = self.logic.save()
+    if showDialog:
+      self.notificationDialog(message)
 
   def configureSegmentationMode(self):
     self.applyRegistrationButton.setEnabled(False)
@@ -1260,6 +1265,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.updateTargetTable(cursorPosition=ras)
 
   def openTargetingStep(self, ratingResult=None):
+    self.save()
     self.disconnectCrosshairNode()
     self.activeRegistrationResultButtonId = 3
     self.hideAllLabels()
