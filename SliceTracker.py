@@ -63,6 +63,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   LEFT_VIEWER_SLICE_ANNOTATION_TEXT = 'BIOPSY PLAN'
   RIGHT_VIEWER_SLICE_ANNOTATION_TEXT = 'TRACKED TARGETS'
+  RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT = 'OLD'
+  RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT = 'NEW'
   APPROVED_RESULT_TEXT_ANNOTATION = "approved"
   REJECTED_RESULT_TEXT_ANNOTATION = "rejected"
   SKIPPED_RESULT_TEXT_ANNOTATION = "skipped"
@@ -92,6 +94,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.intraopDirButton.setEnabled(True)
     self.trackTargetsButton.setEnabled(False)
     self._updateOutputDir()
+    self.preopDirButton.text = self.preopDirButton.directory
 
   @property
   def intraopDataDir(self):
@@ -103,6 +106,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
     self.setSetting('IntraopLocation', path)
+    self.intraopDirButton.text = self.intraopDirButton.directory
 
   @property
   def outputDir(self):
@@ -115,6 +119,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.setSetting('OutputLocation', path)
       self._updateOutputDir()
       self.caseCompletedButton.setEnabled(True)
+      self.outputDirButton.text = self.outputDirButton.directory
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -180,7 +185,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
     self.quickSegmentationIcon = self.createIcon('icon-quickSegmentation.png')
     self.newImageDataIcon = self.createIcon('icon-newImageData.png')
-    self.littleDiscIcon = self.createIcon('icon-littleDisc.png')
     self.settingsIcon = self.createIcon('icon-settings.png')
     self.undoIcon = self.createIcon('icon-undo.png')
     self.redoIcon = self.createIcon('icon-redo.png')
@@ -198,6 +202,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.seriesItems = []
     self.revealCursor = None
     self.currentTargets = None
+
+    self.crosshairNode = None
+    self.crosshairNodeObserverTag = None
 
     self.logic.retryMode = False
 
@@ -217,10 +224,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.showAcceptRegistrationWarning = False
 
-    # TODO: should be fixed when we are sure, that there will not be any old versions of mpReview
-    colorFile = os.path.join(self.modulePath,'Resources/Colors/PCampReviewColors.csv')
-    if not os.path.exists(colorFile):
-      colorFile = os.path.join(self.modulePath,'Resources/Colors/mpReviewColors.csv')
+    colorFile = os.path.join(self.modulePath,'Resources/Colors/mpReviewColors.csv')
     self.logic.setupColorTable(colorFile=colorFile)
     self.layout.addStretch()
 
@@ -404,12 +408,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.setupCollapsibleRegistrationArea()
     self.setupRegistrationValidationButtons()
-    self.needleTipButton = qt.QPushButton('Set needle-tip')
     self.registrationEvaluationGroupBoxLayout.addWidget(self.registrationGroupBox, 1, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.segmentationGroupBox, 2, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.collapsibleRegistrationArea, 3, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.evaluationButtonsGroupBox, 5, 0)
-    # self.targetingGroupBoxLayout.addWidget(self.needleTipButton)
     self.layout.addWidget(self.registrationEvaluationGroupBox)
 
   def setupRegistrationValidationButtons(self):
@@ -456,10 +458,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.rockCount = 0
     self.rockTimer = qt.QTimer()
+    self.rockTimer.setInterval(50)
     self.rockCheckBox = qt.QCheckBox("Rock")
     self.rockCheckBox.checked = False
 
     self.flickerTimer = qt.QTimer()
+    self.flickerTimer.setInterval(400)
     self.flickerCheckBox = qt.QCheckBox("Flicker")
     self.flickerCheckBox.checked = False
 
@@ -483,7 +487,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.backButton.clicked.connect(self.onBackButtonClicked)
       self.editorWidgetButton.clicked.connect(self.onEditorGearIconClicked)
       self.applyRegistrationButton.clicked.connect(lambda: self.onInvokeRegistration(initial=True))
-      # self.needleTipButton.clicked.connect(self.onNeedleTipButtonClicked)
       self.quickSegmentationButton.clicked.connect(self.onQuickSegmentationButtonClicked)
       self.cancelSegmentationButton.clicked.connect(self.onCancelSegmentationButtonClicked)
       self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
@@ -638,18 +641,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.resultSelector.addItem(result.name)
     self.registrationResultAlternatives.visible = len(results) > 1
 
-  def onNeedleTipButtonClicked(self):
-    self.needleTipButton.enabled = False
-    self.logic.setNeedleTipPosition(destinationViewNode=self.yellowSliceNode, callback=self.updateTargetTable)
-    self.clearTargetTable()
-    self.needleTipButton.enabled = False
-
   def clearTargetTable(self):
     self.targetTable.clear()
     # TODO: change for needle tip
-    # self.targetTable.setColumnCount(3)
-    self.targetTable.setColumnCount(1)
-    self.targetTable.setHorizontalHeaderLabels(['Targets']) #, 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]'])
+    self.targetTable.setColumnCount(3)
+    self.targetTable.setHorizontalHeaderLabels(['Targets', 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]'])
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
 
   def updateTargets(self, targets):
@@ -658,34 +654,31 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.targetTable.setRowCount(number_of_targets)
     for target in range(number_of_targets):
       targetText = targets.GetNthFiducialLabel(target)
-      # TODO: change for needle tip
-      for idx, item in enumerate([qt.QTableWidgetItem(targetText)]): #, qt.QTableWidgetItem(""), qt.QTableWidgetItem("")]):
+      for idx, item in enumerate([qt.QTableWidgetItem(targetText), qt.QTableWidgetItem(""), qt.QTableWidgetItem("")]):
         item.setFlags(qt.Qt.ItemIsSelectable | qt.Qt.ItemIsEnabled)
         self.targetTable.setItem(target, idx, item)
 
-  def updateTargetTable(self, observer=None, caller=None):
+  def updateTargetTable(self, cursorPosition=None):
     bSplineTargets = self.currentResult.bSplineTargets
     number_of_targets = bSplineTargets.GetNumberOfFiducials()
     self.updateTargets(bSplineTargets)
 
-    needleTip_position, target_positions = self.logic.getNeedleTipAndTargetsPositions(bSplineTargets)
+    targetPositions = self.logic.getTargetPositions(bSplineTargets)
 
-    # if len(needleTip_position) > 0:
-    #   for index in range(number_of_targets):
-    #     distance2D = self.logic.getNeedleTipTargetDistance2D(target_positions[index], needleTip_position)
-    #     text_for_2D_column = ('x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2)))
-    #     item_2D = qt.QTableWidgetItem(text_for_2D_column)
-    #     self.targetTable.setItem(index, 1, item_2D)
-    #     logging.debug(str(text_for_2D_column))
-    #
-    #     distance3D = self.logic.getNeedleTipTargetDistance3D(target_positions[index], needleTip_position)
-    #     text_for_3D_column = str(round(distance3D, 2))
-    #     item_3D = qt.QTableWidgetItem(text_for_3D_column)
-    #     item_3D.setFlags(qt.Qt.ItemIsSelectable | qt.Qt.ItemIsEnabled)
-    #     self.targetTable.setItem(index, 2, item_3D)
-    #     logging.debug(str(text_for_3D_column))
-    #
-    # self.needleTipButton.enabled = True
+    if cursorPosition:
+      for index in range(number_of_targets):
+        distance2D = self.logic.getNeedleTipTargetDistance2D(targetPositions[index], cursorPosition)
+        text_for_2D_column = ('x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2)))
+        item_2D = qt.QTableWidgetItem(text_for_2D_column)
+        self.targetTable.setItem(index, 1, item_2D)
+        logging.debug(str(text_for_2D_column))
+
+        distance3D = self.logic.getNeedleTipTargetDistance3D(targetPositions[index], cursorPosition)
+        text_for_3D_column = str(round(distance3D, 2))
+        item_3D = qt.QTableWidgetItem(text_for_3D_column)
+        item_3D.setFlags(qt.Qt.ItemIsSelectable | qt.Qt.ItemIsEnabled)
+        self.targetTable.setItem(index, 2, item_3D)
+        logging.debug(str(text_for_3D_column))
 
   def removeSliceAnnotations(self):
     try:
@@ -693,6 +686,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       redRenderer.RemoveActor(self.leftViewerAnnotation)
       yellowRenderer = self.yellowSliceView.renderWindow().GetRenderers().GetItemAsObject(0)
       yellowRenderer.RemoveActor(self.rightViewerAnnotation)
+      yellowRenderer.RemoveActor(self.rightViewerOldImageAnnotation)
+      yellowRenderer.RemoveActor(self.rightViewerNewImageAnnotation)
       yellowRenderer.RemoveActor(self.rightViewerRegistrationResultStatusAnnotation)
     except:
       pass
@@ -702,11 +697,19 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def addSliceAnnotations(self, fontSize=30):
     self.removeSliceAnnotations()
-    self.leftViewerAnnotation = self._createTextActor(self.redSliceView, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
-    self.rightViewerAnnotation = self._createTextActor(self.yellowSliceView, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize)
+    self.leftViewerAnnotation = self._createTextActor(self.redSliceView, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT,
+                                                      fontSize)
+    self.rightViewerAnnotation = self._createTextActor(self.yellowSliceView, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT,
+                                                       fontSize)
+    self.rightViewerNewImageAnnotation = self._createTextActor(self.yellowSliceView,
+                                                               self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT,
+                                                               fontSize=20, xPos=0, yPos=25, show=False)
+    self.rightViewerOldImageAnnotation = self._createTextActor(self.yellowSliceView,
+                                                               self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT,
+                                                               fontSize=20, xPos=0, yPos=25)
     self.rightViewerRegistrationResultStatusAnnotation = None
 
-  def _createTextActor(self, sliceView, text, fontSize, xPos=-90, yPos=50):
+  def _createTextActor(self, sliceView, text, fontSize, xPos=-90, yPos=50, show=True):
     textActor = vtk.vtkTextActor()
     textActor.SetInput(text)
     textProperty = textActor.GetTextProperty()
@@ -714,6 +717,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     textProperty.SetColor(1, 0, 0)
     textProperty.SetBold(1)
     textProperty.SetShadow(1)
+    textProperty.SetOpacity(1.0 if show else 0.0)
     textActor.SetTextProperty(textProperty)
     textActor.SetDisplayPosition(int(sliceView.width * 0.5 + xPos), yPos)
     renderer = sliceView.renderWindow().GetRenderers().GetItemAsObject(0)
@@ -774,11 +778,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       import CompareVolumes
       self.revealCursor = CompareVolumes.LayerReveal()
 
+  def setOldNewIndicatorAnnotationOpacity(self, value):
+    newTextProperty = self.rightViewerNewImageAnnotation.GetTextProperty()
+    oldTextProperty = self.rightViewerOldImageAnnotation.GetTextProperty()
+    newTextProperty.SetOpacity(value)
+    oldTextProperty.SetOpacity(1.0-value)
+    self.yellowSliceView.update()
+
   def onRockToggled(self):
 
     def startRocking():
       self.flickerCheckBox.setEnabled(False)
-      self.rockTimer.start(50)
+      self.rockTimer.start()
       self.fadeSlider.value = 0.5 + math.sin(self.rockCount / 10.) / 2.
       self.rockCount += 1
 
@@ -796,7 +807,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     def startFlickering():
       self.rockCheckBox.setEnabled(False)
-      self.flickerTimer.start(300)
+      self.flickerTimer.start()
       self.fadeSlider.value = 1.0 if self.fadeSlider.value == 0.0 else 0.0
 
     def stopFlickering():
@@ -810,7 +821,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       stopFlickering()
 
   def onSaveDataButtonClicked(self):
-    return self.notificationDialog(self.logic.save())
+    self.save(showDialog=True)
+
+  def save(self, showDialog=False):
+    message = self.logic.save()
+    if showDialog:
+      self.notificationDialog(message)
 
   def configureSegmentationMode(self):
     self.applyRegistrationButton.setEnabled(False)
@@ -820,8 +836,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.referenceVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
     self.intraopVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
 
-    enableButton = self.referenceVolumeSelector.currentNode() is not None
-    self.quickSegmentationButton.setEnabled(enableButton)
+    self.quickSegmentationButton.setEnabled(self.referenceVolumeSelector.currentNode() is not None)
 
     self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
 
@@ -832,6 +847,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.setDefaultOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
+
+    self.onQuickSegmentationButtonClicked()
 
   def inputsAreSet(self):
     return not (self.preopVolumeSelector.currentNode() is None and self.intraopVolumeSelector.currentNode() is None and
@@ -1218,6 +1235,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def changeOpacity(self, value):
     self.yellowCompositeNode.SetForegroundOpacity(value)
+    self.setOldNewIndicatorAnnotationOpacity(value)
 
   def openEvaluationStep(self):
     self.currentRegisteredSeries.setText(self.logic.currentIntraopVolume.GetName())
@@ -1225,7 +1243,30 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTable, 4, 0)
     self.registrationEvaluationGroupBox.show()
 
+  def connectCrosshairNode(self):
+    if not self.crosshairNode:
+      self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
+    self.crosshairNodeObserverTag = self.crosshairNode.AddObserver(slicer.vtkMRMLCrosshairNode.CursorPositionModifiedEvent,
+                                                                   self.calcCursorTargetsDistance)
+
+  def disconnectCrosshairNode(self):
+    if self.crosshairNode and self.crosshairNodeObserverTag:
+      self.crosshairNode.RemoveObserver(self.crosshairNodeObserverTag)
+    self.crosshairNodeObserverTag = None
+
+  def calcCursorTargetsDistance(self, observee, event):
+    ras = [0.0,0.0,0.0]
+    xyz = [0.0,0.0,0.0]
+    insideView = self.crosshairNode.GetCursorPositionRAS(ras)
+    sliceNode = self.crosshairNode.GetCursorPositionXYZ(xyz)
+    if sliceNode is not self.yellowSliceNode or not insideView:
+       self.updateTargetTable()
+    else:
+      self.updateTargetTable(cursorPosition=ras)
+
   def openTargetingStep(self, ratingResult=None):
+    self.save()
+    self.disconnectCrosshairNode()
     self.activeRegistrationResultButtonId = 3
     self.hideAllLabels()
     if ratingResult:
@@ -1424,6 +1465,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.onBSplineResultClicked()
     self.organizeUIAfterRegistration()
     self.currentResult.printSummary()
+    self.connectCrosshairNode()
 
   def addNewTargetsToScene(self):
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
@@ -1511,7 +1553,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.seriesList = []
     self.loadableList = {}
     self.alreadyLoadedSeries = {}
-    self.needleTipMarkupNode = None
     self.storeSCPProcess = None
 
     self.currentIntraopVolume = None
@@ -1998,22 +2039,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       seriesNumberDescription = seriesNumber + ": " + seriesDescription
     return seriesNumberDescription
 
-  def getNeedleTipAndTargetsPositions(self, registeredTargets):
-    needleTip_position = self.getNeedleTipPosition()
-    target_positions = self.getTargetPositions(registeredTargets)
-    return [needleTip_position, target_positions]
-
-  def getNeedleTipPosition(self):
-
-    needleTip_position = []
-    if self.needleTipMarkupNode:
-      needleTip_position = [0.0, 0.0, 0.0]
-      self.needleTipMarkupNode.GetNthFiducialPosition(0, needleTip_position)
-      logging.debug('needleTip_position = ' + str(needleTip_position))
-    return needleTip_position
-
   def getTargetPositions(self, registeredTargets):
-
     number_of_targets = registeredTargets.GetNumberOfFiducials()
     target_positions = []
     for target in range(number_of_targets):
@@ -2022,40 +2048,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       target_positions.append(target_position)
     logging.debug('target_positions are ' + str(target_positions))
     return target_positions
-
-  def setNeedleTipPosition(self, destinationViewNode=None, callback=None):
-
-    if self.needleTipMarkupNode is None:
-      self.needleTipMarkupNode = self.createNeedleTipMarkupNode(destinationViewNode, callback)
-    else:
-      self.needleTipMarkupNode.RemoveAllMarkups()
-
-    self.startNeedleTipPlacingMode()
-
-  def createNeedleTipMarkupNode(self, destinationViewNode, callback=None):
-
-    needleTipMarkupDisplayNode = slicer.vtkMRMLMarkupsDisplayNode()
-    needleTipMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
-    needleTipMarkupNode.SetName('needle-tip')
-    slicer.mrmlScene.AddNode(needleTipMarkupDisplayNode)
-    slicer.mrmlScene.AddNode(needleTipMarkupNode)
-    needleTipMarkupNode.SetAndObserveDisplayNodeID(needleTipMarkupDisplayNode.GetID())
-    # don't show needle tip in red Slice View
-    if destinationViewNode:
-      needleTipMarkupDisplayNode.AddViewNodeID(destinationViewNode.GetID())
-    if callback:
-      needleTipMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, callback)
-
-    needleTipMarkupDisplayNode.SetTextScale(1.6)
-    needleTipMarkupDisplayNode.SetGlyphScale(2.0)
-    needleTipMarkupDisplayNode.SetGlyphType(12)
-    return needleTipMarkupNode
-
-  def startNeedleTipPlacingMode(self):
-
-    mlogic = slicer.modules.markups.logic()
-    mlogic.SetActiveListID(self.needleTipMarkupNode)
-    slicer.modules.markups.logic().StartPlaceMode(0)
 
   def getNeedleTipTargetDistance2D(self, target_position, needleTip_position):
     x = abs(target_position[0] - needleTip_position[0])
@@ -2154,14 +2146,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.clippingModelNode.SetAndObserveDisplayNodeID(clippingModelDisplayNode.GetID())
 
   def labelMapFromClippingModel(self, inputVolume):
-    """
-    PARAMETER FOR MODELTOLABELMAP CLI MODULE:
-    Parameter (0/0): sampleDistance
-    Parameter (0/1): labelValue
-    Parameter (1/0): InputVolume
-    Parameter (1/1): surface
-    Parameter (1/2): OutputVolume
-    """
     outputLabelMap = slicer.vtkMRMLLabelMapVolumeNode()
     slicer.mrmlScene.AddNode(outputLabelMap)
 
@@ -2171,30 +2155,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     logging.debug(params)
     slicer.cli.run(slicer.modules.modeltolabelmap, None, params, wait_for_completion=True)
 
-    # use label contours
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
 
-    # rotate volume to plane
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(outputLabelMap)
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(outputLabelMap)
 
     return outputLabelMap
 
   def BRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
-    """
-    Parameter (0/0): inputVolume
-    Parameter (0/1): referenceVolume
-    Parameter (1/0): outputVolume
-    Parameter (1/1): pixelType
-    Parameter (2/0): deformationVolume
-    Parameter (2/1): warpTransform
-    Parameter (2/2): interpolationMode
-    Parameter (2/3): inverseTransform
-    Parameter (2/4): defaultValue
-    Parameter (3/0): gridSpacing
-    Parameter (4/0): numberOfThreads
-    """
 
     params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
               'warpTransform': warpTransform, 'interpolationMode': 'NearestNeighbor'}

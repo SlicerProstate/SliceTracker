@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 2.8.9)
 # Extension meta-information
 set(EXTENSION_NAME SliceTracker)
 set(EXTENSION_HOMEPAGE "http://www.example.com/Slicer/Extensions/Registration")
-set(EXTENSION_CATEGORY "Examples")
-set(EXTENSION_CONTRIBUTORS "Peter Behringer (SPL), Andriy Fedorov (SPL)")
+set(EXTENSION_CATEGORY "Radiology")
+set(EXTENSION_CONTRIBUTORS "Peter Behringer (SPL), Christian Herz (SPL), Andriy Fedorov (SPL)")
 set(EXTENSION_DESCRIPTION "This extension provides an easy to use registration interface for image, target and mask selection. Registration results are visible step-wise. ")
 set(EXTENSION_ICONURL "http://www.example.com/Slicer/Extensions/Registration.png")
 set(EXTENSION_SCREENSHOTURLS "http://www.example.com/Slicer/Extensions/Registration/Screenshots/1.png")
@@ -19,23 +19,23 @@ set(MODULE_NAME SliceTracker)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
+  Utils/__init__.py
+  Utils/mixins.py
+  Utils/decorators.py
   ${MODULE_NAME}.py
   )
 
 set(MODULE_PYTHON_RESOURCES
-  Resources/Colors/PCampReviewColors.csv
-  Resources/Icons/icon-applySegmentation.png
-  Resources/Icons/icon-dataselection_fit.png
-  Resources/Icons/icon-evaluation_fit.png
-  Resources/Icons/icon-folder.png
+  Resources/Colors/mpReviewColors.csv
+  Resources/Icons/icon-cancelSegmentation.png
+  Resources/Icons/icon-redo.png
+  Resources/Icons/icon-undo.png
   Resources/Icons/icon-greenCheck.png
-  Resources/Icons/icon-labelSegmentation.png
-  Resources/Icons/icon-labelselection_fit.png
-  Resources/Icons/icon-littleDisc.png
   Resources/Icons/icon-newImageData.png
   Resources/Icons/icon-quickSegmentation.png
-  Resources/Icons/icon-registration_fit.png
-  Resources/Icons/icon-update.png
+  Resources/Icons/icon-settings.png
+  Resources/Icons/icon-star-filled.png
+  Resources/Icons/icon-star-unfilled.png
   Resources/Icons/icon-infoBox.png
   Resources/Icons/${MODULE_NAME}.png
   )
