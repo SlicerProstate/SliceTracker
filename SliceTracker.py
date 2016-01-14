@@ -2,7 +2,8 @@ import os
 import math, re, sys
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
-from Utils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from Utils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ExtendedQMessageBox
+from Utils.decorators import logmethod
 from Editor import EditorWidget
 import SimpleITK as sitk
 import sitkUtils
@@ -202,11 +203,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.seriesItems = []
     self.revealCursor = None
     self.currentTargets = None
+    self.evaluationModeOn = False
 
     self.crosshairNode = None
     self.crosshairNodeObserverTag = None
 
     self.logic.retryMode = False
+
+    self.notifyUserAboutNewData = True
 
     self.createPatientWatchBox()
     self.createRegistrationWatchBox()
@@ -502,11 +506,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     def setupSelectorConnections():
       self.resultSelector.connect('currentIndexChanged(QString)', self.onRegistrationResultSelected)
       self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.onIntraopSeriesSelectionChanged)
-      # self.preopVolumeSelector.connect('currentNodeChanged(bool)', self.setupScreenAfterSegmentation)
-      # self.intraopVolumeSelector.connect('currentNodeChanged(bool)', self.setupScreenAfterSegmentation)
-      # self.intraopLabelSelector.connect('currentNodeChanged(bool)', self.setupScreenAfterSegmentation)
-      # self.preopLabelSelector.connect('currentNodeChanged(bool)', self.setupScreenAfterSegmentation)
-      # self.fiducialSelector.connect('currentNodeChanged(bool)', self.setupScreenAfterSegmentation)
 
     def setupCheckBoxConnections():
       self.rockCheckBox.connect('toggled(bool)', self.onRockToggled)
@@ -1170,8 +1169,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       patientID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
       if patientID != self.currentID and patientID is not None:
         if not self.yesNoDialog(message='WARNING: Preop data of Patient ID ' + self.currentID + ' was selected, but '
-                                        ' data of patient with ID ' + patientID + ' just arrived in the income folder.'
-                                        '\nDo you still want to continue?',
+                                        ' data of patient with ID ' + patientID + ' just arrived in the folder, which '
+                                        'you selected for incoming data.\nDo you still want to continue?',
                                 title="Patients Not Matching"):
           self.updateSeriesSelectorTable()
           return
@@ -1238,6 +1237,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.setOldNewIndicatorAnnotationOpacity(value)
 
   def openEvaluationStep(self):
+    self.evaluationModeOn = True
     self.currentRegisteredSeries.setText(self.logic.currentIntraopVolume.GetName())
     self.targetingGroupBox.hide()
     self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTable, 4, 0)
@@ -1265,6 +1265,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.updateTargetTable(cursorPosition=ras)
 
   def openTargetingStep(self, ratingResult=None):
+    self.evaluationModeOn = False
     self.save()
     self.disconnectCrosshairNode()
     self.activeRegistrationResultButtonId = 3
@@ -1501,9 +1502,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   def onNewImageDataReceived(self, **kwargs):
     newFileList = kwargs.pop('newList')
     self.patientCheckAfterImport(newFileList)
-    # change icon of tabBar if user is not in Data selection tab
-    # if not self.tabWidget.currentIndex == 0:
-    #   self.tabBar.setTabIcon(0, self.newImageDataIcon)
+    if self.evaluationModeOn is True:
+      return
+    if self.notifyUserAboutNewData and ("COVER PROSTATE" in self.intraopSeriesSelector.currentText or
+                                            "GUIDANCE" in self.intraopSeriesSelector.currentText):
+      dialog = IncomingDataMessageBox()
+      answer, checked = dialog.exec_()
+      self.notifyUserAboutNewData = not checked
+      if answer == qt.QMessageBox.AcceptRole:
+        self.onTrackTargetsButtonClicked()
 
 
 class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
@@ -1543,8 +1550,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   @currentResult.setter
   def currentResult(self, series):
     self.registrationResults.activeResult = series
-    # self.currentIntraopVolume
-    # self.preop
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleLogic.__init__(self, parent)
@@ -1949,7 +1954,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def startTimer(self):
     currentFileCount = len(self.getFileList(self._intraopDataDir))
     if self.lastFileCount != currentFileCount:
-      self.waitingForSeriesToBeCompleted()
+      qt.QTimer.singleShot(5000, lambda count=currentFileCount: self.importDICOMSeries(count))
     self.lastFileCount = currentFileCount
     qt.QTimer.singleShot(500, self.startTimer)
 
@@ -1960,7 +1965,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
     if len(self.currentFileList) > 1:
       self.thereAreFilesInTheFolderFlag = 1
-      self.importDICOMSeries()
+      self.importDICOMSeries(len(self.currentFileList))
     else:
       self.thereAreFilesInTheFolderFlag = 0
 
@@ -1996,17 +2001,10 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     else:
       self.currentIntraopVolume = self.alreadyLoadedSeries[selectedSeries]
 
-  def waitingForSeriesToBeCompleted(self):
-
-    logging.debug('**  new data in intraop directory detected **')
-    logging.debug('waiting 5 more seconds for the series to be completed')
-
-    qt.QTimer.singleShot(5000, self.importDICOMSeries)
-
   def getSeriesNumberFromString(self, text):
     return int(text.split(": ")[0])
 
-  def importDICOMSeries(self):
+  def importDICOMSeries(self, currentFileCount):
     indexer = ctk.ctkDICOMIndexer()
     db = slicer.dicomDatabase
 
@@ -2028,7 +2026,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
     self.seriesList = sorted(self.seriesList, key=lambda series: self.getSeriesNumberFromString(series))
 
-    if self._incomingDataCallback:
+    if self._incomingDataCallback and len(newFileList) > 0 and \
+                    len(self.getFileList(self._intraopDataDir)) == currentFileCount:
       self._incomingDataCallback(newList=newFileList)
 
   def makeSeriesNumberDescription(self, dicomFile):
@@ -2458,6 +2457,18 @@ class RegistrationResult(object):
     logging.debug('# ___________________________  registration output  ________________________________')
     logging.debug(self.__dict__)
     logging.debug('# __________________________________________________________________________________')
+
+
+class IncomingDataMessageBox(ExtendedQMessageBox):
+
+  def __init__(self, parent=None):
+    super(IncomingDataMessageBox, self).__init__(parent)
+    self.setWindowTitle("Dialog with CheckBox")
+    self.setText("New data has been received. What would you do?")
+    self.setIcon(qt.QMessageBox.Question)
+    trackButton =  self.addButton(qt.QPushButton('Track targets'), qt.QMessageBox.AcceptRole)
+    self.addButton(qt.QPushButton('Postpone'), qt.QMessageBox.NoRole)
+    self.setDefaultButton(trackButton)
 
 
 class RatingWindow(qt.QWidget, ModuleWidgetMixin):
