@@ -197,6 +197,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.fourUpIcon = self.createIcon('icon-four-up.png')
     self.sideBySideIcon = self.createIcon('icon-side-by-side.png')
     self.threeOverThreeIcon = self.createIcon('icon-three-over-three.png')
+    self.crosshairIcon = self.createIcon('icon-crosshair')
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -223,6 +224,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.createPatientWatchBox()
     self.createRegistrationWatchBox()
     self.setupLayoutsButton()
+    self.setupCrosshairButton()
+    self.layout.addWidget(self.createHLayout([self.layoutsMenuButton, self.crosshairButton]))
 
     self.setupSliceWidgets()
     self.setupTargetingStepUIElements()
@@ -240,6 +243,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     colorFile = os.path.join(self.modulePath,'Resources/Colors/mpReviewColors.csv')
     self.logic.setupColorTable(colorFile=colorFile)
     self.layout.addStretch()
+
+  def setupCrosshairButton(self):
+    self.crosshairButton = self.createButton("Show crosshair", checkable=True, icon=self.crosshairIcon)
+    self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
+    self.crosshairNode.SetCrosshairBehavior(self.crosshairNode.ShowSmallBasic)
 
   def setupSliceWidgets(self):
     self.setupRedSliceWidget()
@@ -326,7 +334,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.layoutDict[self.LAYOUT_FOUR_UP] = self.layoutsMenu.addAction(self.fourUpIcon, "Four-Up")
     self.layoutDict[self.LAYOUT_THREE_BY_THREE] = self.layoutsMenu.addAction(self.threeOverThreeIcon, "Three over three")
     self.layoutsMenuButton.setMenu(self.layoutsMenu)
-    self.layout.addWidget(self.layoutsMenuButton)
 
   def createHelperLabel(self, toolTipText=""):
     helperPixmap = qt.QPixmap(os.path.join(self.iconPath, 'icon-infoBox.png'))
@@ -521,6 +528,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.caseCompletedButton.clicked.connect(self.onSaveDataButtonClicked)
       self.registrationSettingsButton.clicked.connect(self.showRegistrationDetails)
       self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
+      self.crosshairButton.clicked.connect(self.onCrosshairButtonClicked)
 
     def setupSelectorConnections():
       self.resultSelector.connect('currentIndexChanged(QString)', self.onRegistrationResultSelected)
@@ -571,6 +579,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     for layout, action in self.layoutDict.iteritems():
       if action is searchedAction:
         return layout
+
+  def onCrosshairButtonClicked(self):
+    if self.crosshairButton.checked:
+      self.crosshairNode.SetCrosshairMode(5)
+      self.crosshairButton.setText("Hide crosshair")
+    else:
+      self.crosshairButton.setText("Show croshair")
+      self.crosshairNode.SetCrosshairMode(0)
 
   def onRegistrationButtonChecked(self, buttonId):
     self.hideAllTargets()
@@ -1286,8 +1302,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.registrationEvaluationGroupBox.show()
 
   def connectCrosshairNode(self):
-    if not self.crosshairNode:
-      self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
     self.crosshairNodeObserverTag = self.crosshairNode.AddObserver(slicer.vtkMRMLCrosshairNode.CursorPositionModifiedEvent,
                                                                    self.calcCursorTargetsDistance)
 
