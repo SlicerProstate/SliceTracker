@@ -70,6 +70,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   REJECTED_RESULT_TEXT_ANNOTATION = "rejected"
   SKIPPED_RESULT_TEXT_ANNOTATION = "skipped"
 
+  LAYOUT_FOUR_UP = slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView
+  LAYOUT_SIDE_BY_SIDE = slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView
+  LAYOUT_THREE_BY_THREE = slicer.vtkMRMLLayoutNode.SlicerLayoutThreeOverThreeView
+  ALLOWED_LAYOUTS = [LAYOUT_SIDE_BY_SIDE, LAYOUT_FOUR_UP, LAYOUT_THREE_BY_THREE]
+
   @property
   def registrationResults(self):
     return self.logic.registrationResults
@@ -189,6 +194,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.settingsIcon = self.createIcon('icon-settings.png')
     self.undoIcon = self.createIcon('icon-undo.png')
     self.redoIcon = self.createIcon('icon-redo.png')
+    self.fourUpIcon = self.createIcon('icon-four-up.png')
+    self.sideBySideIcon = self.createIcon('icon-side-by-side.png')
+    self.threeOverThreeIcon = self.createIcon('icon-three-over-three.png')
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -283,6 +291,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.caseCompletedButton = self.createButton('Case completed', enabled=os.path.exists(self.getSetting('OutputLocation')))
     self.setupTargetsTable()
+    self.setupLayoutsButton()
     self.setupIntraopSeriesSelector()
     self.outputDirButton.directory = self.getSetting('OutputLocation')
     self._outputRoot = self.outputDirButton.directory
@@ -307,7 +316,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.targetingGroupBoxLayout.addWidget(self.intraopSeriesSelector, 2, 0)
     self.targetingGroupBoxLayout.addWidget(self.trackTargetsButton, 3, 0)
     self.targetingGroupBoxLayout.addWidget(self.caseCompletedButton, 4, 0)
+    self.targetingGroupBoxLayout.addWidget(self.layoutsMenuButton, 5, 0)
     self.layout.addWidget(self.targetingGroupBox)
+
+  def setupLayoutsButton(self):
+    self.layoutsMenuButton = self.createButton("Layouts")
+    self.layoutsMenu = qt.QMenu()
+    self.layoutDict = dict()
+    self.layoutDict[self.LAYOUT_SIDE_BY_SIDE] = self.layoutsMenu.addAction(self.sideBySideIcon, "side-by-side")
+    self.layoutDict[self.LAYOUT_FOUR_UP] = self.layoutsMenu.addAction(self.fourUpIcon, "Four-Up")
+    self.layoutDict[self.LAYOUT_THREE_BY_THREE] = self.layoutsMenu.addAction(self.threeOverThreeIcon, "Three over three")
+    self.layoutsMenuButton.setMenu(self.layoutsMenu)
 
   def createHelperLabel(self, toolTipText=""):
     helperPixmap = qt.QPixmap(os.path.join(self.iconPath, 'icon-infoBox.png'))
@@ -517,6 +536,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.rockTimer.connect('timeout()', self.onRockToggled)
       self.flickerTimer.connect('timeout()', self.onFlickerToggled)
       self.targetTable.connect('clicked(QModelIndex)', self.jumpToTarget)
+      self.layoutsMenu.triggered.connect(self.onLayoutSelectionChanged)
+      self.layoutManager.layoutChanged.connect(self.layoutChanged)
 
     setupCheckBoxConnections()
     setupButtonConnections()
@@ -530,6 +551,26 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     else:
       self.registrationGroupBox.show()
       self.registrationGroupBox.enabled = False
+
+  def layoutChanged(self):
+    if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
+      self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
+      self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
+    else:
+      self.layoutsMenuButton.setIcon(qt.QIcon())
+      self.layoutsMenuButton.setText("Layouts")
+
+  def onLayoutSelectionChanged(self, action):
+    self.layoutsMenuButton.setIcon(action.icon)
+    self.layoutsMenuButton.setText(action.text)
+    selectedLayout = self.getLayoutByAction(action)
+    if self.layoutManager.layout != selectedLayout:
+      self.layoutManager.setLayout(selectedLayout)
+
+  def getLayoutByAction(self, searchedAction):
+    for layout, action in self.layoutDict.iteritems():
+      if action is searchedAction:
+        return layout
 
   def onRegistrationButtonChecked(self, buttonId):
     self.hideAllTargets()
@@ -599,7 +640,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def setupScreenForDisplayingSeries(self, volume):
     self.disableTargetTable()
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
+    self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
     self.redCompositeNode.Reset()
     self.redCompositeNode.SetBackgroundVolumeID(volume.GetID())
     self.setDefaultOrientation()
@@ -1202,6 +1243,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.deactivateUndoRedoButtons()
     self.disableEditorWidgetAndResetEditorTool()
     self.setupQuickModeHistory()
+    self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
     self.logic.runQuickSegmentationMode()
     self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateUndoRedoButtons)
 
@@ -1352,7 +1394,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   def setupScreenAfterSegmentation(self):
     self.hideAllLabels()
     self.hideAllTargets()
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+    self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
 
     if self.logic.retryMode:
       coverProstateRegResult = self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
@@ -1483,7 +1525,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.resetToRegularViewMode()
 
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView)
+    self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
 
     self.setAxialOrientation()
 
@@ -2087,9 +2129,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.placeFiducials()
 
   def setVolumeClipUserMode(self):
-    lm = slicer.app.layoutManager()
-    lm.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
-
     for widgetName in ['Red', 'Green', 'Yellow']:
       slice = lm.sliceWidget(widgetName)
       sliceLogic = slice.sliceLogic()
