@@ -222,6 +222,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.createPatientWatchBox()
     self.createRegistrationWatchBox()
+    self.setupLayoutsButton()
 
     self.setupSliceWidgets()
     self.setupTargetingStepUIElements()
@@ -291,7 +292,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.caseCompletedButton = self.createButton('Case completed', enabled=os.path.exists(self.getSetting('OutputLocation')))
     self.setupTargetsTable()
-    self.setupLayoutsButton()
     self.setupIntraopSeriesSelector()
     self.outputDirButton.directory = self.getSetting('OutputLocation')
     self._outputRoot = self.outputDirButton.directory
@@ -316,7 +316,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.targetingGroupBoxLayout.addWidget(self.intraopSeriesSelector, 2, 0)
     self.targetingGroupBoxLayout.addWidget(self.trackTargetsButton, 3, 0)
     self.targetingGroupBoxLayout.addWidget(self.caseCompletedButton, 4, 0)
-    self.targetingGroupBoxLayout.addWidget(self.layoutsMenuButton, 5, 0)
     self.layout.addWidget(self.targetingGroupBox)
 
   def setupLayoutsButton(self):
@@ -327,6 +326,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.layoutDict[self.LAYOUT_FOUR_UP] = self.layoutsMenu.addAction(self.fourUpIcon, "Four-Up")
     self.layoutDict[self.LAYOUT_THREE_BY_THREE] = self.layoutsMenu.addAction(self.threeOverThreeIcon, "Three over three")
     self.layoutsMenuButton.setMenu(self.layoutsMenu)
+    self.layout.addWidget(self.layoutsMenuButton)
 
   def createHelperLabel(self, toolTipText=""):
     helperPixmap = qt.QPixmap(os.path.join(self.iconPath, 'icon-infoBox.png'))
@@ -2129,6 +2129,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.placeFiducials()
 
   def setVolumeClipUserMode(self):
+    lm = slicer.app.layoutManager()
     for widgetName in ['Red', 'Green', 'Yellow']:
       slice = lm.sliceWidget(widgetName)
       sliceLogic = slice.sliceLogic()
