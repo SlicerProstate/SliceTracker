@@ -256,9 +256,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def setupCrosshairButton(self):
     self.crosshairButton = self.createButton("Show crosshair", checkable=True, icon=self.crosshairIcon)
-    self.crosshairNodeObserverTag = None
     self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
-    self.crosshairNode.SetCrosshairBehavior(self.crosshairNode.ShowSmallBasic)
 
   def setupSliceWidgets(self):
     self.setupSliceWidget("Red")
@@ -584,9 +582,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   def onCrosshairButtonClicked(self):
     if self.crosshairButton.checked:
       self.crosshairNode.SetCrosshairMode(5)
+      self.crosshairNode.SetCrosshairBehavior(self.crosshairNode.ShowSmallBasic)
       self.crosshairButton.setText("Hide crosshair")
     else:
-      self.crosshairButton.setText("Show croshair")
+      self.crosshairButton.setText("Show crosshair")
       self.crosshairNode.SetCrosshairMode(0)
 
   def onRegistrationButtonChecked(self, buttonId):
