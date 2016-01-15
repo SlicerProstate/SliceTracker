@@ -261,51 +261,23 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.crosshairNode.SetCrosshairBehavior(self.crosshairNode.ShowSmallBasic)
 
   def setupSliceWidgets(self):
-    self.setupRedSliceWidget()
-    self.setupYellowSliceWidget()
-    self.setupGreenSliceWidget()
+    self.setupSliceWidget("Red")
+    self.setupSliceWidget("Yellow")
+    self.setupSliceWidget("Green")
     self.layoutManager.setLayout(self.LAYOUT_THREE_OVER_THREE)
-    self.setupSlice4SliceWidget()
-    self.setupSlice5SliceWidget()
+    self.setupSliceWidget("Slice4")
+    self.setupSliceWidget("Slice5")
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
 
-  def setupRedSliceWidget(self):
-    self.redWidget = self.layoutManager.sliceWidget('Red')
-    self.redCompositeNode = self.redWidget.mrmlSliceCompositeNode()
-    self.redSliceView = self.redWidget.sliceView()
-    self.redSliceLogic = self.redWidget.sliceLogic()
-    self.redSliceNode = self.redSliceLogic.GetSliceNode()
-    self.redFOV = []
-
-  def setupYellowSliceWidget(self):
-    self.yellowWidget = self.layoutManager.sliceWidget('Yellow')
-    self.yellowCompositeNode = self.yellowWidget.mrmlSliceCompositeNode()
-    self.yellowSliceLogic = self.yellowWidget.sliceLogic()
-    self.yellowSliceView = self.yellowWidget.sliceView()
-    self.yellowSliceNode = self.yellowSliceLogic.GetSliceNode()
-    self.yellowFOV = []
-
-  def setupGreenSliceWidget(self):
-    self.greenWidget = self.layoutManager.sliceWidget('Green')
-    self.greenCompositeNode = self.greenWidget.mrmlSliceCompositeNode()
-    self.greenSliceLogic = self.greenWidget.sliceLogic()
-    self.greenSliceNode = self.greenSliceLogic.GetSliceNode()
-
-  def setupSlice4SliceWidget(self):
-    self.slice4Widget = self.layoutManager.sliceWidget('Slice4')
-    self.slice4CompositeNode = self.slice4Widget.mrmlSliceCompositeNode()
-    self.slice4SliceLogic = self.slice4Widget.sliceLogic()
-    self.slice4SliceView = self.slice4Widget.sliceView()
-    self.slice4SliceNode = self.slice4SliceLogic.GetSliceNode()
-    self.slice4FOV = []
-  
-  def setupSlice5SliceWidget(self):
-    self.slice5Widget = self.layoutManager.sliceWidget('Slice5')
-    self.slice5CompositeNode = self.slice5Widget.mrmlSliceCompositeNode()
-    self.slice5SliceLogic = self.slice5Widget.sliceLogic()
-    self.slice5SliceView = self.slice5Widget.sliceView()
-    self.slice5SliceNode = self.slice5SliceLogic.GetSliceNode()
-    self.slice5FOV = []
+  def setupSliceWidget(self, name):
+    widget = self.layoutManager.sliceWidget(name)
+    setattr(self, name.lower()+"Widget", widget)
+    setattr(self, name.lower()+"CompositeNode", widget.mrmlSliceCompositeNode())
+    setattr(self, name.lower()+"SliceView", widget.sliceView())
+    logic = widget.sliceLogic()
+    setattr(self, name.lower()+"SliceLogic", logic)
+    setattr(self, name.lower()+"SliceNode", logic.GetSliceNode())
+    setattr(self, name.lower()+"FOV", [])
 
   def setDefaultOrientation(self):
     self.redSliceNode.SetOrientationToAxial()
