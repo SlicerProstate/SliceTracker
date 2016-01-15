@@ -93,6 +93,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   @preopDataDir.setter
   def preopDataDir(self, path):
+    self.hideAllMarkups()
     self.logic.preopDataDir = path
     self.setSetting('PreopLocation', path)
     self.loadPreopData()
@@ -137,6 +138,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
     self._outputRoot = None
     self.setupIcons()
+
+  def hideAllMarkups(self):
+    fiducialNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLMarkupsFiducialNode")
+    for itemNum in xrange(fiducialNodes.GetNumberOfItems()):
+      node = fiducialNodes.GetItemAsObject(itemNum)
+      self.markupsLogic.SetAllMarkupsVisibility(node, False)
 
   def onReload(self):
     ScriptedLoadableModuleWidget.onReload(self)
