@@ -69,10 +69,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   REJECTED_RESULT_TEXT_ANNOTATION = "rejected"
   SKIPPED_RESULT_TEXT_ANNOTATION = "skipped"
 
+  LAYOUT_RED_SLICE_ONLY = slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView
   LAYOUT_FOUR_UP = slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView
   LAYOUT_SIDE_BY_SIDE = slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView
-  LAYOUT_THREE_BY_THREE = slicer.vtkMRMLLayoutNode.SlicerLayoutThreeOverThreeView
-  ALLOWED_LAYOUTS = [LAYOUT_SIDE_BY_SIDE, LAYOUT_FOUR_UP, LAYOUT_THREE_BY_THREE]
+  LAYOUT_THREE_OVER_THREE = slicer.vtkMRMLLayoutNode.SlicerLayoutThreeOverThreeView
+  ALLOWED_LAYOUTS = [LAYOUT_SIDE_BY_SIDE, LAYOUT_FOUR_UP, LAYOUT_THREE_OVER_THREE]
 
   @property
   def registrationResults(self):
@@ -149,6 +150,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     ScriptedLoadableModuleWidget.onReload(self)
     self.logic = SliceTrackerLogic()
     self.removeSliceAnnotations()
+    self.uncheckVisualEffects()
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -262,6 +264,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.setupRedSliceWidget()
     self.setupYellowSliceWidget()
     self.setupGreenSliceWidget()
+    self.layoutManager.setLayout(self.LAYOUT_THREE_OVER_THREE)
+    self.setupSlice4SliceWidget()
+    self.setupSlice5SliceWidget()
+    self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
 
   def setupRedSliceWidget(self):
     self.redWidget = self.layoutManager.sliceWidget('Red')
@@ -285,6 +291,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.greenSliceLogic = self.greenWidget.sliceLogic()
     self.greenSliceNode = self.greenSliceLogic.GetSliceNode()
 
+  def setupSlice4SliceWidget(self):
+    self.slice4Widget = self.layoutManager.sliceWidget('Slice4')
+    self.slice4CompositeNode = self.slice4Widget.mrmlSliceCompositeNode()
+    self.slice4SliceLogic = self.slice4Widget.sliceLogic()
+    self.slice4SliceView = self.slice4Widget.sliceView()
+    self.slice4SliceNode = self.slice4SliceLogic.GetSliceNode()
+    self.slice4FOV = []
+  
+  def setupSlice5SliceWidget(self):
+    self.slice5Widget = self.layoutManager.sliceWidget('Slice5')
+    self.slice5CompositeNode = self.slice5Widget.mrmlSliceCompositeNode()
+    self.slice5SliceLogic = self.slice5Widget.sliceLogic()
+    self.slice5SliceView = self.slice5Widget.sliceView()
+    self.slice5SliceNode = self.slice5SliceLogic.GetSliceNode()
+    self.slice5FOV = []
+
   def setDefaultOrientation(self):
     self.redSliceNode.SetOrientationToAxial()
     self.yellowSliceNode.SetOrientationToSagittal()
@@ -294,6 +316,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.redSliceNode.SetOrientationToAxial()
     self.yellowSliceNode.SetOrientationToAxial()
     self.greenSliceNode.SetOrientationToAxial()
+
+  def setSagittalOrientation(self):
+    self.slice4SliceNode.SetOrientationToSagittal()
+    self.slice5SliceNode.SetOrientationToSagittal()
 
   def setupTargetingStepUIElements(self):
     self.targetingGroupBox = qt.QGroupBox()
@@ -343,7 +369,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.layoutDict = dict()
     self.layoutDict[self.LAYOUT_SIDE_BY_SIDE] = self.layoutsMenu.addAction(self.sideBySideIcon, "side-by-side")
     self.layoutDict[self.LAYOUT_FOUR_UP] = self.layoutsMenu.addAction(self.fourUpIcon, "Four-Up")
-    self.layoutDict[self.LAYOUT_THREE_BY_THREE] = self.layoutsMenu.addAction(self.threeOverThreeIcon, "Three over three")
+    self.layoutDict[self.LAYOUT_THREE_OVER_THREE] = self.layoutsMenu.addAction(self.threeOverThreeIcon, "Three over three")
     self.layoutsMenuButton.setMenu(self.layoutsMenu)
 
   def createHelperLabel(self, toolTipText=""):
@@ -698,9 +724,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.currentTargets = self.preopTargets
     self.markupsLogic.SetAllMarkupsVisibility(self.currentTargets, True)
     self.jumpSliceNodeToTarget(self.redSliceNode, self.preopTargets, row)
+    self.jumpSliceNodeToTarget(self.slice4SliceNode, self.preopTargets, row)
     self.setTargetSelected(self.preopTargets, selected=False)
     self.preopTargets.SetNthFiducialSelected(row, True)
     self.jumpSliceNodeToTarget(self.yellowSliceNode, self.currentTargets, row)
+    self.jumpSliceNodeToTarget(self.slice5SliceNode, self.currentTargets, row)
     self.setTargetSelected(self.currentTargets, selected=False)
     self.currentTargets.SetNthFiducialSelected(row, True)
 
@@ -1058,10 +1086,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     sliceLogic.EndSliceNodeInteraction()
 
   def setCurrentRegistrationResultSliceViews(self, registrationType):
-    self.redCompositeNode.SetBackgroundVolumeID(self.preopVolume.GetID())
-    self.redCompositeNode.SetForegroundVolumeID(None)
-    self.yellowCompositeNode.SetForegroundVolumeID(self.currentResult.fixedVolume.GetID())
-    self.yellowCompositeNode.SetBackgroundVolumeID(self.currentResult.getVolume(registrationType).GetID())
+    for compositeNode in [self.redCompositeNode, self.slice4CompositeNode]:
+      compositeNode.SetBackgroundVolumeID(self.preopVolume.GetID())
+      compositeNode.SetForegroundVolumeID(None)
+
+    for compositeNode in [self.yellowCompositeNode, self.slice5CompositeNode]:
+      compositeNode.SetForegroundVolumeID(self.currentResult.fixedVolume.GetID())
+      compositeNode.SetBackgroundVolumeID(self.currentResult.getVolume(registrationType).GetID())
+
+    for compositeNode in [self.slice4CompositeNode, self.slice5CompositeNode, self.greenCompositeNode]:
+      compositeNode.SetLabelOpacity(0)
+    self.greenCompositeNode.SetForegroundVolumeID(None)
+    self.greenCompositeNode.SetBackgroundVolumeID(None)
     self.setDefaultFOV(self.redSliceLogic)
     self.setDefaultFOV(self.yellowSliceLogic)
 
@@ -1319,6 +1355,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def changeOpacity(self, value):
     self.yellowCompositeNode.SetForegroundOpacity(value)
+    self.slice5CompositeNode.SetForegroundOpacity(value)
     self.setOldNewIndicatorAnnotationOpacity(value)
 
   def openEvaluationStep(self):
@@ -1574,6 +1611,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
 
     self.setAxialOrientation()
+    self.setSagittalOrientation()
 
   def organizeUIAfterRegistration(self):
     self.registrationWatchBox.show()
