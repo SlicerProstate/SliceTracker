@@ -3,7 +3,6 @@ import math, re, sys
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from Utils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ExtendedQMessageBox
-from Utils.decorators import logmethod
 from Editor import EditorWidget
 import SimpleITK as sitk
 import sitkUtils
@@ -93,6 +92,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   @preopDataDir.setter
   def preopDataDir(self, path):
+    self.removeSliceAnnotations()
     self.hideAllMarkups()
     self.logic.preopDataDir = path
     self.setSetting('PreopLocation', path)
@@ -147,12 +147,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def onReload(self):
     ScriptedLoadableModuleWidget.onReload(self)
-    slicer.mrmlScene.Clear(0)
     self.logic = SliceTrackerLogic()
     self.removeSliceAnnotations()
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
+    self.disconnectCrosshairNode()
 
   def _updateOutputDir(self):
     if self._outputRoot and self.patientID and self.currentStudyDate:
@@ -254,6 +254,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def setupCrosshairButton(self):
     self.crosshairButton = self.createButton("Show crosshair", checkable=True, icon=self.crosshairIcon)
+    self.crosshairNodeObserverTag = None
     self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
     self.crosshairNode.SetCrosshairBehavior(self.crosshairNode.ShowSmallBasic)
 
@@ -697,7 +698,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.currentTargets = self.preopTargets
     self.markupsLogic.SetAllMarkupsVisibility(self.currentTargets, True)
     self.jumpSliceNodeToTarget(self.redSliceNode, self.preopTargets, row)
+    self.setTargetSelected(self.preopTargets, selected=False)
+    self.preopTargets.SetNthFiducialSelected(row, True)
     self.jumpSliceNodeToTarget(self.yellowSliceNode, self.currentTargets, row)
+    self.setTargetSelected(self.currentTargets, selected=False)
+    self.currentTargets.SetNthFiducialSelected(row, True)
 
   def jumpSliceNodeToTarget(self, sliceNode, targetNode, n):
     point = [0,0,0,0]
@@ -1019,6 +1024,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
         self.setTargetVisibility(targetNode, show=False)
     self.setTargetVisibility(self.preopTargets, show=False)
 
+  def deselectAllTargets(self):
+    for result in self.registrationResults.getResultsAsList():
+      for targetNode in [targets for targets in result.targets.values() if targets]:
+        self.setTargetSelected(targetNode)
+    self.setTargetSelected(self.preopTargets)
+
   def onRigidResultClicked(self):
     self.displayRegistrationResults(button=self.showRigidResultButton, registrationType='rigid')
 
@@ -1064,6 +1075,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   def setTargetVisibility(self, targetNode, show=True):
     self.markupsLogic.SetAllMarkupsVisibility(targetNode, show)
+
+  def setTargetSelected(self, targetNode, selected=False):
+    self.markupsLogic.SetAllMarkupsSelected(targetNode, selected)
 
   def simulateDataIncome(self, imagePath):
     # TODO: when module ready, remove this method
@@ -1225,11 +1239,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     # jump to first markup slice
     self.markupsLogic.JumpSlicesToNthPointInMarkup(self.preopTargets.GetID(), 0)
 
-    # Set Fiducial Properties
-    markupsDisplayNode = self.preopTargets.GetDisplayNode()
-    markupsDisplayNode.SetTextScale(1.9)
-    markupsDisplayNode.SetGlyphScale(1.0)
-
+    self.logic.styleDisplayNode(self.preopTargets.GetDisplayNode())
     self.redCompositeNode.SetLabelOpacity(1)
 
     # set Layout to redSliceViewOnly
@@ -1246,7 +1256,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
                                         ' data of patient with ID ' + patientID + ' just arrived in the folder, which '
                                         'you selected for incoming data.\nDo you still want to continue?',
                                 title="Patients Not Matching"):
-          self.updateSeriesSelectorTable()
+          self.intraopSeriesSelector.clear()
           return
         else:
           break
@@ -1319,8 +1329,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.registrationEvaluationGroupBox.show()
 
   def connectCrosshairNode(self):
-    self.crosshairNodeObserverTag = self.crosshairNode.AddObserver(slicer.vtkMRMLCrosshairNode.CursorPositionModifiedEvent,
-                                                                   self.calcCursorTargetsDistance)
+    if not self.crosshairNodeObserverTag:
+      self.crosshairNodeObserverTag = self.crosshairNode.AddObserver(slicer.vtkMRMLCrosshairNode.CursorPositionModifiedEvent,
+                                                                     self.calcCursorTargetsDistance)
 
   def disconnectCrosshairNode(self):
     if self.crosshairNode and self.crosshairNodeObserverTag:
@@ -1990,6 +2001,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     tfmLogic = slicer.modules.transforms.logic()
     clonedTargets = self.cloneFiducials(originalTargets, cloneName)
     clonedTargets.SetAndObserveTransformNodeID(transformNode.GetID())
+    clonedTargets.SetAndObserveDisplayNodeID(self.displayNode.GetID())
     tfmLogic.hardenTransform(clonedTargets)
     return clonedTargets
 
@@ -2195,18 +2207,17 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateModel)
 
   def createMarkupAndDisplayNodeForFiducials(self):
-    displayNode = slicer.vtkMRMLMarkupsDisplayNode()
-    slicer.mrmlScene.AddNode(displayNode)
+    self.displayNode = slicer.vtkMRMLMarkupsDisplayNode()
+    slicer.mrmlScene.AddNode(self.displayNode)
     self.inputMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
     self.inputMarkupNode.SetName('inputMarkupNode')
     slicer.mrmlScene.AddNode(self.inputMarkupNode)
-    self.inputMarkupNode.SetAndObserveDisplayNodeID(displayNode.GetID())
-    self.styleDisplayNode(displayNode)
+    self.inputMarkupNode.SetAndObserveDisplayNodeID(self.displayNode.GetID())
+    self.styleDisplayNode(self.displayNode)
 
   def styleDisplayNode(self, displayNode):
     displayNode.SetTextScale(0)
     displayNode.SetGlyphScale(2.0)
-    displayNode.SetColor(0, 0, 0)
 
   def createClippingModelDisplayNode(self):
     clippingModelDisplayNode = slicer.vtkMRMLModelDisplayNode()
