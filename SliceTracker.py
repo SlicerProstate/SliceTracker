@@ -102,7 +102,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.intraopDirButton.setEnabled(True)
     self.trackTargetsButton.setEnabled(False)
     self._updateOutputDir()
-    self.preopDirButton.text = self.preopDirButton.directory
+    self.preopDirButton.text = self.truncatePath(self.preopDirButton.directory)
 
   @property
   def intraopDataDir(self):
@@ -115,7 +115,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
     self.setSetting('IntraopLocation', path)
-    self.intraopDirButton.text = self.intraopDirButton.directory
+    self.intraopDirButton.text = self.truncatePath(self.intraopDirButton.directory)
 
   @property
   def outputDir(self):
@@ -128,7 +128,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.setSetting('OutputLocation', path)
       self._updateOutputDir()
       self.caseCompletedButton.setEnabled(True)
-      self.outputDirButton.text = self.outputDirButton.directory
+      self.outputDirButton.text = self.truncatePath(self.outputDirButton.directory)
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -309,7 +309,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.caseCompletedButton = self.createButton('Case completed', enabled=os.path.exists(self.getSetting('OutputLocation')))
     self.setupTargetsTable()
     self.setupIntraopSeriesSelector()
-    self.outputDirButton.directory = self.getSetting('OutputLocation')
+    self.outputDirButton.directory = self.truncatePath(self.getSetting('OutputLocation'))
     self._outputRoot = self.outputDirButton.directory
     self.caseCompletedButton.setEnabled(self._outputRoot is not None)
 
@@ -363,7 +363,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.intraopSeriesSelector.setModel(self.seriesModel)
 
   def setupSegmentationUIElements(self):
-    iconSize = qt.QSize(70, 30)
+    iconSize = qt.QSize(24, 24)
 
     self.referenceVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled=True,
                                                        selectNodeUponCreation=True, showChildNodeTypes=False)
@@ -376,35 +376,26 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.backButton = self.createButton("", icon=self.undoIcon, iconSize=iconSize, enabled=False)
     self.forwardButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False)
 
-    self.applyRegistrationButton = self.createButton("Apply Registration", icon=self.greenCheckIcon,
+    self.applyRegistrationButton = self.createButton("Apply Registration", icon=self.greenCheckIcon, iconSize=iconSize,
                                                      toolTip="Run Registration.")
     self.applyRegistrationButton.setFixedHeight(45)
 
     self.editorWidgetButton = self.createButton("", icon=self.settingsIcon, toolTip="Show Label Editor",
-                                                enabled=False)
+                                                enabled=False, iconSize=iconSize)
 
-    segmentationButtons = self.setupSegmentationButtonBox()
+    segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
+                                              self.cancelSegmentationButton, self.backButton, self.forwardButton,
+                                              self.editorWidgetButton])
     self.setupEditorWidget()
 
     self.segmentationGroupBox = qt.QGroupBox()
     self.segmentationGroupBoxLayout = qt.QFormLayout()
     self.segmentationGroupBox.setLayout(self.segmentationGroupBoxLayout)
-    self.segmentationGroupBoxLayout.addWidget(self.createHLayout([segmentationButtons, self.editorWidgetButton]))
+    self.segmentationGroupBoxLayout.addWidget(segmentationButtons)
     self.segmentationGroupBoxLayout.addRow(self.editorWidgetParent)
     self.segmentationGroupBoxLayout.addRow(self.applyRegistrationButton)
     self.segmentationGroupBox.hide()
     self.editorWidgetParent.hide()
-
-  def setupSegmentationButtonBox(self):
-    segmentationButtons = qt.QDialogButtonBox()
-    segmentationButtons.setLayoutDirection(1)
-    segmentationButtons.centerButtons = False
-    segmentationButtons.addButton(self.forwardButton, segmentationButtons.ActionRole)
-    segmentationButtons.addButton(self.backButton, segmentationButtons.ActionRole)
-    segmentationButtons.addButton(self.cancelSegmentationButton, segmentationButtons.ActionRole)
-    segmentationButtons.addButton(self.applySegmentationButton, segmentationButtons.ActionRole)
-    segmentationButtons.addButton(self.quickSegmentationButton, segmentationButtons.ActionRole)
-    return segmentationButtons
 
   def setupEditorWidget(self):
     self.editorWidgetParent = slicer.qMRMLWidget()
@@ -454,10 +445,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.layout.addWidget(self.registrationEvaluationGroupBox)
 
   def setupRegistrationValidationButtons(self):
-    self.approveRegistrationResultButton = self.createButton("Approve Result")
+    self.approveRegistrationResultButton = self.createButton("Approve")
     self.retryRegistrationButton = self.createButton("Retry")
-    self.skipRegistrationResultButton = self.createButton("Skip Result")
-    self.rejectRegistrationResultButton = self.createButton("Reject Result")
+    self.skipRegistrationResultButton = self.createButton("Skip")
+    self.rejectRegistrationResultButton = self.createButton("Reject")
     self.evaluationButtonsGroupBox = self.createHLayout([self.skipRegistrationResultButton, self.retryRegistrationButton,
                                                          self.approveRegistrationResultButton, self.rejectRegistrationResultButton])
     self.evaluationButtonsGroupBox.enabled = False

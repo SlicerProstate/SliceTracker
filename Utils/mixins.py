@@ -43,6 +43,15 @@ class ModuleWidgetMixin(object):
   def warningDialog(message, title='SliceTracker'):
     return qt.QMessageBox.warning(slicer.util.mainWindow(), title, message)
 
+  @staticmethod
+  def truncatePath(path):
+    try:
+      split = path.split('/')
+      path = '.../' + split[-2] + '/' + split[-1]
+    except IndexError:
+      pass
+    return path
+
   def getSetting(self, setting):
     settings = qt.QSettings()
     return str(settings.value(self.moduleName + '/' + setting))
