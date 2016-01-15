@@ -108,6 +108,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
   @intraopDataDir.setter
   def intraopDataDir(self, path):
+    self.skippedIntraopSeries = []
     self.collapsibleDirectoryConfigurationArea.collapsed = True
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
@@ -298,6 +299,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
                                                        directory=self.getSetting('IntraopLocation'), enabled=False)
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
+    self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series", enabled=False)
     self.caseCompletedButton = self.createButton('Case completed', enabled=os.path.exists(self.getSetting('OutputLocation')))
     self.setupTargetsTable()
     self.setupIntraopSeriesSelector()
@@ -319,11 +321,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
                                                                        "DICOM data will be arriving during the biopsy")
                                                 , 3, 1, 1, 1, qt.Qt.AlignRight)
 
-    self.targetingGroupBoxLayout.addWidget(self.collapsibleDirectoryConfigurationArea, 0, 0)
-    self.targetingGroupBoxLayout.addWidget(self.targetTable, 1, 0)
+    self.targetingGroupBoxLayout.addWidget(self.collapsibleDirectoryConfigurationArea, 0, 0, 1, 2)
+    self.targetingGroupBoxLayout.addWidget(self.targetTable, 1, 0, 1, 2)
     self.targetingGroupBoxLayout.addWidget(self.intraopSeriesSelector, 2, 0)
-    self.targetingGroupBoxLayout.addWidget(self.trackTargetsButton, 3, 0)
-    self.targetingGroupBoxLayout.addWidget(self.caseCompletedButton, 4, 0)
+    self.targetingGroupBoxLayout.addWidget(self.skipIntraopSeriesButton, 2, 1)
+    self.targetingGroupBoxLayout.addWidget(self.trackTargetsButton, 3, 0, 1, 2)
+    self.targetingGroupBoxLayout.addWidget(self.caseCompletedButton, 4, 0, 1, 2)
     self.layout.addWidget(self.targetingGroupBox)
 
   def setupLayoutsButton(self):
@@ -523,6 +526,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.applySegmentationButton.clicked.connect(self.onApplySegmentationButtonClicked)
       self.approveRegistrationResultButton.clicked.connect(self.onApproveRegistrationResultButtonClicked)
       self.skipRegistrationResultButton.clicked.connect(self.onSkipRegistrationResultButtonClicked)
+      self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
       self.rejectRegistrationResultButton.clicked.connect(self.onRejectRegistrationResultButtonClicked)
       self.retryRegistrationButton.clicked.connect(self.onRetryRegistrationButtonClicked)
       self.caseCompletedButton.clicked.connect(self.onSaveDataButtonClicked)
@@ -613,10 +617,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     if not selectedSeries:
       return
     seriesNumber = self.logic.getSeriesNumberFromString(selectedSeries)
-    trackingPossible = self.logic.isTrackingPossible(seriesNumber)
+    trackingPossible = self.logic.isTrackingPossible(seriesNumber) and not self.wasSeriesSkipped(selectedSeries)
     self.trackTargetsButton.setEnabled(trackingPossible and
                                        (self.registrationResults.getMostRecentApprovedCoverProstateRegistration() or
                                         "COVER PROSTATE" in selectedSeries))
+    self.skipIntraopSeriesButton.setEnabled(self.trackTargetsButton.enabled)
     if not trackingPossible:
       self.configureColorsAndViewersForSelectedIntraopSeries(selectedSeries)
     self.setIntraopSeriesSelectorColorAndSliceAnnotations(selectedSeries, trackingPossible)
@@ -640,6 +645,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.intraopSeriesSelector.setStyleSheet(style)
 
   def configureColorsAndViewersForSelectedIntraopSeries(self, selectedSeries):
+    if self.wasSeriesSkipped(selectedSeries):
+      return
     seriesNumber = self.logic.getSeriesNumberFromString(selectedSeries)
     if self.registrationResults.registrationResultWasApproved(seriesNumber):
       self.showRegistrationResultSideBySideForSelectedSeries(selectedSeries)
@@ -964,7 +971,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       seriesNumber = self.logic.getSeriesNumberFromString(series)
       if self.registrationResults.registrationResultWasApproved(seriesNumber):
         color = COLOR.GREEN
-      elif self.registrationResults.registrationResultWasSkipped(seriesNumber):
+      elif self.registrationResults.registrationResultWasSkipped(seriesNumber) or self.wasSeriesSkipped(series):
         color = COLOR.RED
       elif self.registrationResults.registrationResultWasRejected(seriesNumber):
         color = COLOR.GRAY
@@ -995,6 +1002,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.showAffineResultButton.setEnabled("GUIDANCE" not in seriesText)
       self.onRegistrationButtonChecked(self.activeRegistrationResultButtonId)
       self.updateTargetTable()
+
+  def wasSeriesSkipped(self, series):
+    return series in self.skippedIntraopSeries
 
   def hideAllTargets(self):
     for result in self.registrationResults.getResultsAsList():
@@ -1331,7 +1341,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.registrationWatchBox.hide()
     self.updateSeriesSelectorTable()
     self.registrationEvaluationGroupBox.hide()
-    self.targetingGroupBoxLayout.addWidget(self.targetTable, 1, 0)
+    self.targetingGroupBoxLayout.addWidget(self.targetTable, 1, 0, 1, 2)
     self.targetingGroupBox.show()
     self.removeSliceAnnotations()
     self.uncheckVisualEffects()
@@ -1347,6 +1357,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
   def onSkipRegistrationResultButtonClicked(self):
     self.currentResult.skip()
     self.openTargetingStep()
+
+  def onSkipIntraopSeriesButtonClicked(self):
+    self.skippedIntraopSeries.append(self.intraopSeriesSelector.currentText)
+    self.updateSeriesSelectorTable()
 
   def onRejectRegistrationResultButtonClicked(self):
     results = self.registrationResults.getResultsBySeriesNumber(self.currentResult.seriesNumber)
@@ -1820,7 +1834,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.progressCallback = progressCallback
     if not self.retryMode:
       self.registrationResults = RegistrationResults()
-    name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(fixedVolume)
+    name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(fixedVolume.GetName())
     result = self.registrationResults.createResult(name+suffix)
     result.fixedVolume = fixedVolume
     result.fixedLabel = fixedLabel
@@ -1851,7 +1865,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     # take the 'intraop label map', which is always fixed label in the very first preop-intraop registration
     lastRigidTfm = self.registrationResults.getLastApprovedRigidTransformation()
 
-    name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(self.currentIntraopVolume)
+    name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(self.currentIntraopVolume.GetName())
     result = self.registrationResults.createResult(name+suffix)
     result.fixedVolume = self.currentIntraopVolume
     result.fixedLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.currentIntraopVolume,
@@ -1873,8 +1887,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.transformTargets(['rigid', 'bSpline'], result.originalTargets, str(result.seriesNumber))
     result.movingVolume = sourceVolume
 
-  def getRegistrationResultNameAndGeneratedSuffix(self, intraopVolume):
-    name = intraopVolume.GetName()
+  def getRegistrationResultNameAndGeneratedSuffix(self, name):
     nOccurences = sum([1 for result in self.registrationResults.getResultsAsList() if name in result.name])
     suffix = ""
     if nOccurences:
