@@ -2,7 +2,8 @@ import os
 import math, re, sys
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
-from Utils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ExtendedQMessageBox
+from Utils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from Utils.helpers import SliceAnnotation, ExtendedQMessageBox
 from Editor import EditorWidget
 import SimpleITK as sitk
 import sitkUtils
@@ -220,6 +221,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
 
     self.ratingWindow = RatingWindow(maximumValue=5)
     self.seriesItems = []
+    self.sliceAnnotations = []
     self.revealCursor = None
     self.currentTargets = None
     self.evaluationModeOn = False
@@ -635,9 +637,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       else:
         style = STYLE.GRAY_BACKGROUND
         annotationText = self.REJECTED_RESULT_TEXT_ANNOTATION
-      # TODO Positioning....
-      self.rightViewerRegistrationResultStatusAnnotation = self._createTextActor(self.yellowSliceView, annotationText,
-                                                                                 fontSize=20, xPos=0, yPos=25)
+      self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, annotationText, fontSize=15, yPos=20))
     self.intraopSeriesSelector.setStyleSheet(style)
 
   def configureColorsAndViewersForSelectedIntraopSeries(self, selectedSeries):
@@ -645,9 +645,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       return
     seriesNumber = self.logic.getSeriesNumberFromString(selectedSeries)
     if self.registrationResults.registrationResultWasApproved(seriesNumber):
-      self.showRegistrationResultSideBySideForSelectedSeries(selectedSeries)
+      self.showRegistrationResultSideBySideForSelectedSeries()
     elif self.registrationResults.registrationResultWasSkipped(seriesNumber):
-      self.showRegistrationResultSideBySideForSelectedSeries(selectedSeries)
+      self.showRegistrationResultSideBySideForSelectedSeries()
     else:
       result = self.registrationResults.getResultsBySeriesNumber(seriesNumber)[0]
       self.setupScreenForDisplayingSeries(result.fixedVolume)
@@ -665,7 +665,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     self.setDefaultOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
 
-  def showRegistrationResultSideBySideForSelectedSeries(self, selectedSeries):
+  def showRegistrationResultSideBySideForSelectedSeries(self):
     self.targetTable.enabled = True
     seriesNumber = self.logic.getSeriesNumberFromString(self.intraopSeriesSelector.currentText)
     for result in self.registrationResults.getResultsBySeriesNumber(seriesNumber):
@@ -746,49 +746,28 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
         logging.debug(str(text_for_3D_column))
 
   def removeSliceAnnotations(self):
-    try:
-      redRenderer = self.redSliceView.renderWindow().GetRenderers().GetItemAsObject(0)
-      redRenderer.RemoveActor(self.leftViewerAnnotation)
-      yellowRenderer = self.yellowSliceView.renderWindow().GetRenderers().GetItemAsObject(0)
-      yellowRenderer.RemoveActor(self.rightViewerAnnotation)
-      yellowRenderer.RemoveActor(self.rightViewerOldImageAnnotation)
-      yellowRenderer.RemoveActor(self.rightViewerNewImageAnnotation)
-      yellowRenderer.RemoveActor(self.rightViewerRegistrationResultStatusAnnotation)
-    except:
-      pass
-    finally:
-      self.redSliceView.update()
-      self.yellowSliceView.update()
+    for annotation in self.sliceAnnotations:
+      annotation.remove()
+    self.sliceAnnotations = []
 
-  def addSliceAnnotations(self, fontSize=30):
+  def addSliceAnnotations(self):
     self.removeSliceAnnotations()
-    self.leftViewerAnnotation = self._createTextActor(self.redSliceView, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT,
-                                                      fontSize)
-    self.rightViewerAnnotation = self._createTextActor(self.yellowSliceView, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT,
-                                                       fontSize)
-    self.rightViewerNewImageAnnotation = self._createTextActor(self.yellowSliceView,
-                                                               self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT,
-                                                               fontSize=20, xPos=0, yPos=25, show=False)
-    self.rightViewerOldImageAnnotation = self._createTextActor(self.yellowSliceView,
-                                                               self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT,
-                                                               fontSize=20, xPos=0, yPos=25)
+    self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize=30,
+                                                 yPos=55))
+    self.sliceAnnotations.append(SliceAnnotation(self.slice4Widget, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize=30,
+                                                 yPos=55))
+    self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=55,
+                                                 fontSize=30))
+    self.sliceAnnotations.append(SliceAnnotation(self.slice5Widget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=55,
+                                                 fontSize=30))
+    self.rightViewerNewImageAnnotation = SliceAnnotation(self.yellowWidget,
+                                                         self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, yPos=35,
+                                                         opacity=0.0, color=(0,0.5,0))
+    self.sliceAnnotations.append(self.rightViewerNewImageAnnotation)
+    self.rightViewerOldImageAnnotation = SliceAnnotation(self.yellowWidget,
+                                                         self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, yPos=35)
+    self.sliceAnnotations.append(self.rightViewerOldImageAnnotation)
     self.rightViewerRegistrationResultStatusAnnotation = None
-
-  def _createTextActor(self, sliceView, text, fontSize, xPos=-90, yPos=50, show=True):
-    textActor = vtk.vtkTextActor()
-    textActor.SetInput(text)
-    textProperty = textActor.GetTextProperty()
-    textProperty.SetFontSize(fontSize)
-    textProperty.SetColor(1, 0, 0)
-    textProperty.SetBold(1)
-    textProperty.SetShadow(1)
-    textProperty.SetOpacity(1.0 if show else 0.0)
-    textActor.SetTextProperty(textProperty)
-    textActor.SetDisplayPosition(int(sliceView.width * 0.5 + xPos), yPos)
-    renderer = sliceView.renderWindow().GetRenderers().GetItemAsObject(0)
-    renderer.AddActor(textActor)
-    sliceView.update()
-    return textActor
 
   def onForwardButtonClicked(self):
     numberOfDeletedTargets = self.deletedMarkups.GetNumberOfFiducials()
@@ -844,11 +823,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.revealCursor = CompareVolumes.LayerReveal()
 
   def setOldNewIndicatorAnnotationOpacity(self, value):
-    newTextProperty = self.rightViewerNewImageAnnotation.GetTextProperty()
-    oldTextProperty = self.rightViewerOldImageAnnotation.GetTextProperty()
-    newTextProperty.SetOpacity(value)
-    oldTextProperty.SetOpacity(1.0-value)
-    self.yellowSliceView.update()
+    self.rightViewerNewImageAnnotation.opacity = value
+    self.rightViewerOldImageAnnotation.opacity = 1.0-value
 
   def onRockToggled(self):
 
@@ -894,25 +870,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       self.notificationDialog(message)
 
   def configureSegmentationMode(self):
-    self.applyRegistrationButton.setEnabled(False)
-
-    self.removeSliceAnnotations()
-
     self.referenceVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
     self.intraopVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
-
+    self.applyRegistrationButton.setEnabled(False)
     self.quickSegmentationButton.setEnabled(self.referenceVolumeSelector.currentNode() is not None)
-
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
-
-    self.redCompositeNode.Reset()
-    # TODO: Display targets or not?
-    # self.setTargetVisibility(self.preopTargets, show=False)
-    self.redCompositeNode.SetBackgroundVolumeID(self.logic.currentIntraopVolume.GetID())
-
-    self.setDefaultOrientation()
-    slicer.app.applicationLogic().FitSliceToAll()
-
+    self.setupScreenForDisplayingSeries(self.logic.currentIntraopVolume)
     self.onQuickSegmentationButtonClicked()
 
   def inputsAreSet(self):
@@ -934,21 +896,20 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       currentStudyDate = qt.QDate().currentDate()
       self.currentStudyDate.setText(str(currentStudyDate))
 
-    def updatePatientBirthdate():
+    def updatePatientBirthDate():
       currentBirthDateDICOM = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_BIRTH_DATE)
       if currentBirthDateDICOM is None:
         self.patientBirthDate.setText('No Date found')
       else:
-        # convert date of birth from 19550112 (yyyymmdd) to 1955-01-12
         currentBirthDateDICOM = str(currentBirthDateDICOM)
-        self.currentBirthDate = currentBirthDateDICOM[0:4] + "-" + currentBirthDateDICOM[
-                                                                   4:6] + "-" + currentBirthDateDICOM[6:8]
+        self.currentBirthDate = currentBirthDateDICOM[0:4] + "-" + \
+                                currentBirthDateDICOM[4:6] + "-" + \
+                                currentBirthDateDICOM[6:8]
         self.patientBirthDate.setText(self.currentBirthDate)
 
     def updatePatientName():
       self.currentPatientName = None
       currentPatientNameDICOM = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)
-      # convert patient name from XXXX^XXXX to XXXXX, XXXXX
       if currentPatientNameDICOM:
         splitted = currentPatientNameDICOM.split('^')
         try:
@@ -957,7 +918,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
           self.currentPatientName = splitted[0]
       self.patientName.setText(self.currentPatientName)
 
-    updatePatientBirthdate()
+    updatePatientBirthDate()
     updateCurrentStudyDate()
     updatePreopStudyDate()
     updatePatientName()
@@ -998,12 +959,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
       button.setStyleSheet(checked if button is checkedButton else unchecked)
 
   def onRegistrationResultSelected(self, seriesText):
-    if seriesText:
-      self.hideAllTargets()
-      self.currentResult = seriesText
-      self.showAffineResultButton.setEnabled("GUIDANCE" not in seriesText)
-      self.onRegistrationButtonChecked(self.activeRegistrationResultButtonId)
-      self.updateTargetTable()
+    if not seriesText:
+      return
+    self.hideAllTargets()
+    self.currentResult = seriesText
+    self.showAffineResultButton.setEnabled("GUIDANCE" not in seriesText)
+    self.onRegistrationButtonChecked(self.activeRegistrationResultButtonId)
+    self.updateTargetTable()
 
   def wasSeriesSkipped(self, series):
     return series in self.skippedIntraopSeries
@@ -1470,6 +1432,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin):
     logic.GetSliceNode().SetFieldOfView(86, 136, 3.5)
 
   def onTrackTargetsButtonClicked(self):
+    self.removeSliceAnnotations()
     if self.currentResult is None or \
        self.registrationResults.getMostRecentApprovedCoverProstateRegistration() is None or \
        self.logic.retryMode or "COVER PROSTATE" in self.intraopSeriesSelector.currentText:

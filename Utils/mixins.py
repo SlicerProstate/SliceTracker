@@ -1,4 +1,8 @@
-import logging, qt, ctk, os, slicer
+import ctk
+import logging
+import os
+import qt
+import slicer
 
 
 class ModuleWidgetMixin(object):
@@ -176,17 +180,3 @@ class ModuleLogicMixin(object):
     node.SetName(name)
     slicer.mrmlScene.AddNode(node)
     return node
-
-
-class ExtendedQMessageBox(qt.QMessageBox):
-
-  def __init__(self, parent= None):
-    super(ExtendedQMessageBox, self).__init__(parent)
-    self.setupUI()
-
-  def setupUI(self):
-    self.checkbox = qt.QCheckBox("Do not notify again")
-    self.layout().addWidget(self.checkbox, 1,2)
-
-  def exec_(self, *args, **kwargs):
-    return qt.QMessageBox.exec_(self, *args, **kwargs), self.checkbox.isChecked()

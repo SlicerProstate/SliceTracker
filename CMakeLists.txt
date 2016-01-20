@@ -21,6 +21,7 @@ set(MODULE_NAME SliceTracker)
 set(MODULE_PYTHON_SCRIPTS
   Utils/__init__.py
   Utils/mixins.py
+  Utils/helpers.py
   Utils/decorators.py
   ${MODULE_NAME}.py
   )
