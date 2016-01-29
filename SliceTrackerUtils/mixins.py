@@ -201,3 +201,4 @@ class ModuleLogicMixin(object):
     displayNode = slicer.vtkMRMLModelDisplayNode()
     slicer.mrmlScene.AddNode(displayNode)
     node.SetAndObserveDisplayNodeID(displayNode.GetID())
+    return displayNode

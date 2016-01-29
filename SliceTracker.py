@@ -803,7 +803,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.updateTargets(bSplineTargets)
     if cursorPosition:
       self.updateCursorTargetDistances(bSplineTargets, cursorPosition)
-    if self.logic.zFrameRegistrationSuccessful:
+    if self.logic.zFrameRegistrationSuccessful and not cursorPosition:
       self.updateZFrameHoleAndDepth(bSplineTargets)
 
   def updateZFrameHoleAndDepth(self, bSplineTargets):
@@ -1749,6 +1749,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.zFrameModelNodeID = ''
     self.loadZFrameModel()
 
+    self.needleModelNode = None
     self.tempModelNode = None
     self.pathModelNode = None
     self.templateConfig = []
@@ -2412,6 +2413,18 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.tempModelNode.SetAndObservePolyData(templateModelAppend.GetOutput())
     self.pathModelNode.SetAndObservePolyData(pathModelAppend.GetOutput())
 
+  def createNeedleModelNode(self, start, end):
+    self.removeNeedleModelNode()
+    self.needleModelNode = self.createModelNode("ComputedNeedlePosition")
+    modelDisplayNode = self.setAndObserveDisplayNode(self.needleModelNode)
+    modelDisplayNode.SetColor(0, 1, 0)
+    pathTubeFilter = self.createTubeFilter(start, end, radius=1.0, numSides=18)
+    self.needleModelNode.SetAndObservePolyData(pathTubeFilter.GetOutput())
+
+  def removeNeedleModelNode(self):
+    if self.needleModelNode:
+      slicer.mrmlScene.RemoveNode(self.needleModelNode)
+
   def extractPointsAndNormalVectors(self, row):
     p1 = numpy.array(row[0:3])
     p2 = numpy.array(row[3:6])
@@ -2448,35 +2461,26 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
                                                          self.updateTemplateVectors)
 
   def applyZFrameTransform(self, transform):
-    if self.pathModelNode:
-      self.pathModelNode.SetAndObserveTransformNodeID(transform.GetID())
-    if self.tempModelNode:
-      self.tempModelNode.SetAndObserveTransformNodeID(transform.GetID())
-    if self.zFrameModelNode:
-      self.zFrameModelNode.SetAndObserveTransformNodeID(transform.GetID())
+    for node in [node for node in [self.pathModelNode, self.tempModelNode, self.zFrameModelNode, self.needleModelNode] if node]:
+      node.SetAndObserveTransformNodeID(transform.GetID())
 
-  def setModelVisibilityByID(self, id, visible):
+  def setModelVisibility(self, node, visible):
+    dnode = node.GetDisplayNode()
+    if dnode is not None:
+      dnode.SetVisibility(visible)
 
-    mnode = slicer.mrmlScene.GetNodeByID(id)
-    if mnode is not None:
-      dnode = mnode.GetDisplayNode()
-      if dnode is not None:
-        dnode.SetVisibility(visible)
-
-  def setModelSliceIntersectionVisibilityByID(self, id, visible):
-
-    mnode = slicer.mrmlScene.GetNodeByID(id)
-    if mnode is not None:
-      dnode = mnode.GetDisplayNode()
-      if dnode is not None:
-        dnode.SetSliceIntersectionVisibility(visible)
+  def setModelSliceIntersectionVisibility(self, node, visible):
+    dnode = node.GetDisplayNode()
+    if dnode is not None:
+      dnode.SetSliceIntersectionVisibility(visible)
 
   def setTemplateVisibility(self, visibility):
-    self.setModelVisibilityByID(self.tempModelNode.GetID(), visibility)
+    self.setModelVisibility(self.tempModelNode, visibility)
 
   def setNeedlePathVisibility(self, visibility):
-    self.setModelVisibilityByID(self.pathModelNode.GetID(), visibility)
-    self.setModelSliceIntersectionVisibilityByID(self.pathModelNode.GetID(), visibility)
+    for node in [node for node in [self.pathModelNode, self.needleModelNode] if node]:
+      self.setModelVisibility(node, visibility)
+      self.setModelSliceIntersectionVisibility(node, visibility)
 
   def updateTemplateVectors(self, observee=None, event=None):
     if self.tempModelNode is None:
@@ -2531,6 +2535,16 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       indexY = self.templateIndex[minIndex][1]
       if 0 < minDepth < self.templateMaxDepth[minIndex]:
         inRange = True
+        p1 = self.pathOrigins[minIndex]
+        v = self.pathVectors[minIndex]
+        nl = numpy.linalg.norm(v)
+        n = v/nl  # normal vector
+        l = self.templateMaxDepth[minIndex]
+        p2 = p1 + l * n
+        self.createNeedleModelNode(p1, p2)
+      else:
+        self.removeNeedleModelNode()
+
     return indexX, indexY, minDepth, inRange
 
 class SliceTrackerTest(ScriptedLoadableModuleTest):
