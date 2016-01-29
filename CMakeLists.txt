@@ -19,11 +19,12 @@ set(MODULE_NAME SliceTracker)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
-  Utils/__init__.py
-  Utils/mixins.py
-  Utils/helpers.py
-  Utils/decorators.py
   ${MODULE_NAME}.py
+  SliceTrackerUtils/__init__.py
+  SliceTrackerUtils/mixins
+  SliceTrackerUtils/helpers
+  SliceTrackerUtils/decorators
+  SliceTrackerUtils/ZFrameRegistration
   )
 
 set(MODULE_PYTHON_RESOURCES
