@@ -261,13 +261,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.setupConnections()
 
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+    self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY)
     self.setAxialOrientation()
 
     self.showAcceptRegistrationWarning = False
 
-    colorFile = os.path.join(self.modulePath,'Resources/Colors/mpReviewColors.csv')
-    self.logic.setupColorTable(colorFile=colorFile)
+    self.logic.setupColorTable(colorFile=os.path.join(self.modulePath,'Resources/Colors/mpReviewColors.csv'))
     self.layout.addStretch()
 
   def settingsArea(self):
@@ -307,12 +306,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.zFrameViewSettingsGroupBox = qt.QGroupBox('Z-Frame options:')
     viewSettingsLayout = qt.QVBoxLayout()
     self.zFrameViewSettingsGroupBox.setLayout(viewSettingsLayout)
-    self.showNeedlePathCheckbox = qt.QCheckBox("Show needle path")
     self.showZFrameModelCheckbox = qt.QCheckBox("Show model")
     self.showZFrameTemplateCheckbox = qt.QCheckBox("Show template")
+    self.showNeedlePathCheckbox = qt.QCheckBox("Show needle path")
+    self.showTemplatePathCheckbox = qt.QCheckBox("Show template path")
+
     self.showZFrameTemplateCheckbox.enabled = self.logic.loadTemplateConfigFile(self.defaultTemplateFile)
-    viewSettingsLayout.addWidget(self.createVLayout([self.showNeedlePathCheckbox,
-                                                     self.showZFrameModelCheckbox, self.showZFrameTemplateCheckbox]))
+    viewSettingsLayout.addWidget(self.createVLayout([self.showZFrameModelCheckbox, self.showZFrameTemplateCheckbox,
+                                                     self.showTemplatePathCheckbox, self.showNeedlePathCheckbox]))
 
   def setupSliceWidgets(self):
     self.setupSliceWidget("Red")
@@ -598,6 +599,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.revealCursorCheckBox.connect('toggled(bool)', self.revealToggled)
       self.showZFrameModelCheckbox.connect('toggled(bool)', self.onShowZFrameModelToggled)
       self.showZFrameTemplateCheckbox.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
+      self.showTemplatePathCheckbox.connect('toggled(bool)', self.onShowTemplatePathToggled)
       self.showNeedlePathCheckbox.connect('toggled(bool)', self.onShowNeedlePathToggled)
 
     def setupOtherConnections():
@@ -618,6 +620,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onShowZFrameTemplateToggled(self, checked):
     self.logic.setTemplateVisibility(checked)
+
+  def onShowTemplatePathToggled(self, checked):
+    self.logic.setTemplatePathVisibility(checked)
 
   def onShowNeedlePathToggled(self, checked):
     self.logic.setNeedlePathVisibility(checked)
@@ -784,7 +789,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     # TODO: if possible combine column 2 and 3 somehow
     self.targetTable.setColumnCount(5)
     self.targetTable.setHorizontalHeaderLabels(['Name', 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]',
-                                                'Hole', 'Depth[mm]'])
+                                                'Hole', 'Depth [mm]'])
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
 
   def updateTargets(self, targets):
@@ -803,7 +808,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.updateTargets(bSplineTargets)
     if cursorPosition:
       self.updateCursorTargetDistances(bSplineTargets, cursorPosition)
-    if self.logic.zFrameRegistrationSuccessful and not cursorPosition:
+    if self.logic.zFrameRegistrationSuccessful:
       self.updateZFrameHoleAndDepth(bSplineTargets)
 
   def updateZFrameHoleAndDepth(self, bSplineTargets):
@@ -811,7 +816,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     number_of_targets = bSplineTargets.GetNumberOfFiducials()
 
     for index in range(number_of_targets):
-      (indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPositions[index])
+      (indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPositions[index],
+                                                                       showTemplatePath=self.showTemplatePathCheckbox.checked,
+                                                                       showNeedlePath=self.showNeedlePathCheckbox.checked)
 
       self.targetTable.setItem(index, 3, qt.QTableWidgetItem('(%s, %s)' % (indexX, indexY)))
       self.targetTable.setItem(index, 4, qt.QTableWidgetItem('%.3f' % depth if inRange else '(%.3f)' % depth))
@@ -1291,8 +1298,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.logic.styleDisplayNode(self.preopTargets.GetDisplayNode())
     self.redCompositeNode.SetLabelOpacity(1)
 
-    # set Layout to redSliceViewOnly
-    self.layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+    self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY)
 
     self.setDefaultFOV(self.redSliceLogic)
 
@@ -2380,6 +2386,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
     self.createTemplateAndNeedlePathModel()
     self.setTemplateVisibility(0)
+    self.setTemplatePathVisibility(0)
     self.setNeedlePathVisibility(0)
     self.updateTemplateVectors()
     return True
@@ -2477,10 +2484,14 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def setTemplateVisibility(self, visibility):
     self.setModelVisibility(self.tempModelNode, visibility)
 
+  def setTemplatePathVisibility(self, visibility):
+    self.setModelVisibility(self.pathModelNode, visibility)
+    self.setModelSliceIntersectionVisibility(self.pathModelNode, visibility)
+
   def setNeedlePathVisibility(self, visibility):
-    for node in [node for node in [self.pathModelNode, self.needleModelNode] if node]:
-      self.setModelVisibility(node, visibility)
-      self.setModelSliceIntersectionVisibility(node, visibility)
+    if self.needleModelNode:
+      self.setModelVisibility(self.needleModelNode, visibility)
+      self.setModelSliceIntersectionVisibility(self.needleModelNode, visibility)
 
   def updateTemplateVectors(self, observee=None, event=None):
     if self.tempModelNode is None:
@@ -2508,7 +2519,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       self.pathVectors.append(numpy.array([tvec[0]-offset[0], tvec[1]-offset[1], tvec[2]-offset[2]]))
       i += 1
 
-  def computeNearestPath(self, pos):
+  def computeNearestPath(self, pos, showTemplatePath=False, showNeedlePath=False):
     minMag2 = numpy.Inf
     minDepth = 0.0
     minIndex = -1
@@ -2544,6 +2555,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         self.createNeedleModelNode(p1, p2)
       else:
         self.removeNeedleModelNode()
+      self.setTemplatePathVisibility(showTemplatePath)
+      self.setNeedlePathVisibility(showNeedlePath)
 
     return indexX, indexY, minDepth, inRange
 
