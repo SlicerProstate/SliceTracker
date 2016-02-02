@@ -12,6 +12,7 @@ import logging
 from subprocess import Popen
 from SliceTrackerUtils.ZFrameRegistration import LineMarkerRegistration
 
+
 class DICOMTAGS:
 
   PATIENT_NAME          = '0010,0010'
@@ -250,18 +251,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.createPatientWatchBox()
     self.createRegistrationWatchBox()
+    self.setupRegistrationStepUIElements()
     self.settingsArea()
 
     self.setupSliceWidgets()
     self.setupZFrameRegistrationUIElements()
     self.setupTargetingStepUIElements()
     self.setupSegmentationUIElements()
-    self.setupRegistrationStepUIElements()
     self.setupEvaluationStepUIElements()
 
     self.setupConnections()
 
-    self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY)
+    self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
     self.setAxialOrientation()
 
     self.showAcceptRegistrationWarning = False
@@ -489,6 +490,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationGroupBoxLayout.addRow("Intraop Label Volume: ", self.intraopLabelSelector)
     self.registrationGroupBoxLayout.addRow("Targets: ", self.fiducialSelector)
     self.registrationGroupBox.hide()
+    self.layout.addWidget(self.registrationGroupBox)
 
   def setupEvaluationStepUIElements(self):
     self.registrationEvaluationGroupBox = qt.QGroupBox()
@@ -498,7 +500,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.setupCollapsibleRegistrationArea()
     self.setupRegistrationValidationButtons()
-    self.registrationEvaluationGroupBoxLayout.addWidget(self.registrationGroupBox, 1, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.segmentationGroupBox, 2, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.collapsibleRegistrationArea, 3, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.evaluationButtonsGroupBox, 5, 0)
@@ -1244,7 +1245,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.logic.styleDisplayNode(self.preopTargets.GetDisplayNode())
     self.redCompositeNode.SetLabelOpacity(1)
 
-    self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY)
+    self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
 
     self.setDefaultFOV(self.redSliceLogic)
 
@@ -2237,7 +2238,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     logging.debug('deleted inputMarkupNode')
 
   def placeFiducials(self):
-
     self.clippingModelNode = slicer.vtkMRMLModelNode()
     self.clippingModelNode.SetName('clipModelNode')
     slicer.mrmlScene.AddNode(self.clippingModelNode)
@@ -2973,14 +2973,13 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
       return None
 
     col = index.column()
-    row = index.row()
 
     targetPosition = [0.0, 0.0, 0.0]
     if col in [1,2,3,4]:
-      self.targetList.GetNthFiducialPosition(row, targetPosition)
+      self.targetList.GetNthFiducialPosition(index.row(), targetPosition)
 
     if col == 0:
-      return self.targetList.GetNthFiducialLabel(row)
+      return self.targetList.GetNthFiducialLabel(index.row())
     elif col == 1 and self.cursorPosition:
       distance2D = self.logic.getNeedleTipTargetDistance2D(targetPosition, self.cursorPosition)
       return 'x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2))
