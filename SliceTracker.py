@@ -409,10 +409,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     return label
 
   def setupTargetsTable(self):
-    self.targetTable = qt.QTableWidget()
+    self.targetTable = qt.QTableView()
+    self.model = CustomTargetTableModel(self.logic)
+    self.targetTable.setModel(self.model)
     self.targetTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+    self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
+    self.targetTable.verticalHeader().hide()
     self.targetTable.maximumHeight = 150
-    self.clearTargetTable()
 
   def setupIntraopSeriesSelector(self):
     self.intraopSeriesSelector = qt.QComboBox()
@@ -782,65 +785,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.resultSelector.addItem(result.name)
     self.registrationResultAlternatives.visible = len(results) > 1
 
-  def clearTargetTable(self):
-    self.targetTable.clear()
-    # TODO: change for needle tip
-    # TODO: maybe add indicator for that this is a target table
-    # TODO: if possible combine column 2 and 3 somehow
-    self.targetTable.setColumnCount(5)
-    self.targetTable.setHorizontalHeaderLabels(['Name', 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]',
-                                                'Hole', 'Depth [mm]'])
-    self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
-
-  def updateTargets(self, targets):
-    self.clearTargetTable()
-    number_of_targets = targets.GetNumberOfFiducials()
-    self.targetTable.setRowCount(number_of_targets)
-    for target in range(number_of_targets):
-      targetText = targets.GetNthFiducialLabel(target)
-      for idx, item in enumerate([qt.QTableWidgetItem(targetText), qt.QTableWidgetItem(""), qt.QTableWidgetItem(""),
-                                  qt.QTableWidgetItem(""), qt.QTableWidgetItem("")]):
-        item.setFlags(qt.Qt.ItemIsSelectable | qt.Qt.ItemIsEnabled)
-        self.targetTable.setItem(target, idx, item)
-
-  def updateTargetTable(self, cursorPosition=None):
-    bSplineTargets = self.currentResult.bSplineTargets
-    self.updateTargets(bSplineTargets)
-    if cursorPosition:
-      self.updateCursorTargetDistances(bSplineTargets, cursorPosition)
-    if self.logic.zFrameRegistrationSuccessful:
-      self.updateZFrameHoleAndDepth(bSplineTargets)
-
-  def updateZFrameHoleAndDepth(self, bSplineTargets):
-    targetPositions = self.logic.getTargetPositions(bSplineTargets)
-    number_of_targets = bSplineTargets.GetNumberOfFiducials()
-
-    for index in range(number_of_targets):
-      (indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPositions[index],
-                                                                       showTemplatePath=self.showTemplatePathCheckbox.checked,
-                                                                       showNeedlePath=self.showNeedlePathCheckbox.checked)
-
-      self.targetTable.setItem(index, 3, qt.QTableWidgetItem('(%s, %s)' % (indexX, indexY)))
-      self.targetTable.setItem(index, 4, qt.QTableWidgetItem('%.3f' % depth if inRange else '(%.3f)' % depth))
-
-  def updateCursorTargetDistances(self, bSplineTargets, cursorPosition):
-    targetPositions = self.logic.getTargetPositions(bSplineTargets)
-    number_of_targets = bSplineTargets.GetNumberOfFiducials()
-
-    for index in range(number_of_targets):
-      distance2D = self.logic.getNeedleTipTargetDistance2D(targetPositions[index], cursorPosition)
-      text_for_2D_column = ('x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2)))
-      item_2D = qt.QTableWidgetItem(text_for_2D_column)
-      self.targetTable.setItem(index, 1, item_2D)
-      logging.debug(str(text_for_2D_column))
-
-      distance3D = self.logic.getNeedleTipTargetDistance3D(targetPositions[index], cursorPosition)
-      text_for_3D_column = str(round(distance3D, 2))
-      item_3D = qt.QTableWidgetItem(text_for_3D_column)
-      item_3D.setFlags(qt.Qt.ItemIsSelectable | qt.Qt.ItemIsEnabled)
-      self.targetTable.setItem(index, 2, item_3D)
-      logging.debug(str(text_for_3D_column))
-
   def removeSliceAnnotations(self):
     for annotation in self.sliceAnnotations:
       annotation.remove()
@@ -1061,7 +1005,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.currentResult = seriesText
     self.showAffineResultButton.setEnabled(self.GUIDANCE_IMAGE not in seriesText)
     self.onRegistrationButtonChecked(self.activeRegistrationResultButtonId)
-    self.updateTargetTable()
 
   def wasSeriesSkipped(self, series):
     return series in self.skippedIntraopSeries
@@ -1080,12 +1023,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onRigidResultClicked(self):
     self.displayRegistrationResults(button=self.showRigidResultButton, registrationType='rigid')
+    self.model.targetList = self.currentResult.rigidTargets
 
   def onAffineResultClicked(self):
     self.displayRegistrationResults(button=self.showAffineResultButton, registrationType='affine')
+    self.model.targetList = self.currentResult.affineTargets
 
   def onBSplineResultClicked(self):
     self.displayRegistrationResults(button=self.showBSplineResultButton, registrationType='bSpline')
+    self.model.targetList = self.currentResult.bSplineTargets
 
   def displayRegistrationResults(self, button, registrationType):
     self.resetShowResultButtons(checkedButton=button)
@@ -1287,7 +1233,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     logging.debug(self.preopTargets)
 
     self.setTargetVisibility(self.preopTargets, show=True)
-    self.updateTargets(self.preopTargets)
+    self.model.targetList = self.preopTargets
 
     # set markups for registration
     self.fiducialSelector.setCurrentNode(self.preopTargets)
@@ -1402,9 +1348,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     insideView = self.crosshairNode.GetCursorPositionRAS(ras)
     sliceNode = self.crosshairNode.GetCursorPositionXYZ(xyz)
     if sliceNode is not self.yellowSliceNode or not insideView:
-       self.updateTargetTable()
+       self.model.cursorPosition = None
     else:
-      self.updateTargetTable(cursorPosition=ras)
+       self.model.cursorPosition = ras
 
   def openTargetingStep(self, ratingResult=None):
     self.zFrameRegistrationGroupBox.hide()
@@ -1754,6 +1700,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.zFrameModelNode = None
     self.zFrameModelNodeID = ''
     self.loadZFrameModel()
+
+    self.showTemplatePath = False
+    self.showNeedlePath = False
 
     self.needleModelNode = None
     self.tempModelNode = None
@@ -2485,10 +2434,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.setModelVisibility(self.tempModelNode, visibility)
 
   def setTemplatePathVisibility(self, visibility):
+    self.showTemplatePath = visibility
     self.setModelVisibility(self.pathModelNode, visibility)
     self.setModelSliceIntersectionVisibility(self.pathModelNode, visibility)
 
   def setNeedlePathVisibility(self, visibility):
+    self.showNeedlePath = visibility
     if self.needleModelNode:
       self.setModelVisibility(self.needleModelNode, visibility)
       self.setModelSliceIntersectionVisibility(self.needleModelNode, visibility)
@@ -2519,7 +2470,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       self.pathVectors.append(numpy.array([tvec[0]-offset[0], tvec[1]-offset[1], tvec[2]-offset[2]]))
       i += 1
 
-  def computeNearestPath(self, pos, showTemplatePath=False, showNeedlePath=False):
+  def computeNearestPath(self, pos):
     minMag2 = numpy.Inf
     minDepth = 0.0
     minIndex = -1
@@ -2555,8 +2506,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         self.createNeedleModelNode(p1, p2)
       else:
         self.removeNeedleModelNode()
-      self.setTemplatePathVisibility(showTemplatePath)
-      self.setNeedlePathVisibility(showNeedlePath)
+      self.setTemplatePathVisibility(self.showTemplatePath)
+      self.setNeedlePathVisibility(self.showNeedlePath)
 
     return indexX, indexY, minDepth, inRange
 
@@ -2969,3 +2920,77 @@ class RatingWindow(qt.QWidget, ModuleWidgetMixin):
     if self.callback:
       self.callback(self.ratingScore)
     self.hide()
+
+
+class CustomTargetTableModel(qt.QAbstractTableModel):
+
+  @property
+  def targetList(self):
+    return self._targetList
+
+  @targetList.setter
+  def targetList(self, targetList):
+    self.reset()
+    self._targetList = targetList
+    self.dataChanged(self.index(0, 3), self.index(self.rowCount(None)-1, 4))
+
+  @property
+  def cursorPosition(self):
+    return self._cursorPosition
+
+  @cursorPosition.setter
+  def cursorPosition(self, cursorPosition):
+    self._cursorPosition = cursorPosition
+    self.dataChanged(self.index(0, 1), self.index(self.rowCount(None)-1, 2))
+
+  def __init__(self, logic, targets=None, parent=None, *args):
+    qt.QAbstractTableModel.__init__(self, parent, *args)
+    self.logic = logic
+    self._cursorPosition = None
+    self._targetList = None
+    self.targetList = targets
+    self.headers = ['Name', 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]', 'Hole', 'Depth [mm]']
+
+  def headerData(self, col, orientation, role):
+    if orientation == qt.Qt.Horizontal and role == qt.Qt.DisplayRole:
+        return self.headers[col]
+    return None
+
+  def rowCount(self, parent):
+    try:
+      number_of_targets = self.targetList.GetNumberOfFiducials()
+      return number_of_targets
+    except AttributeError:
+      return 0
+
+  def columnCount(self, parent):
+    return len(self.headers)
+
+  def data(self, index, role):
+    if not index.isValid():
+      return None
+    elif role != qt.Qt.DisplayRole:
+      return None
+
+    col = index.column()
+    row = index.row()
+
+    targetPosition = [0.0, 0.0, 0.0]
+    if col in [1,2,3,4]:
+      self.targetList.GetNthFiducialPosition(row, targetPosition)
+
+    if col == 0:
+      return self.targetList.GetNthFiducialLabel(row)
+    elif col == 1 and self.cursorPosition:
+      distance2D = self.logic.getNeedleTipTargetDistance2D(targetPosition, self.cursorPosition)
+      return 'x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2))
+    elif col == 2 and self.cursorPosition:
+      distance3D = self.logic.getNeedleTipTargetDistance3D(targetPosition, self.cursorPosition)
+      return str(round(distance3D, 2))
+    elif (col == 3 or col == 4) and self.logic.zFrameRegistrationSuccessful:
+      (indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
+      if col == 3:
+        return '(%s, %s)' % (indexX, indexY)
+      if col == 4:
+        return '%.3f' % depth if inRange else '(%.3f)' % depth
+    return ""
