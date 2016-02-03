@@ -1082,13 +1082,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def setTargetSelected(self, targetNode, selected=False):
     self.markupsLogic.SetAllMarkupsSelected(targetNode, selected)
 
-  def simulateDataIncome(self, imagePath):
-    # TODO: when module ready, remove this method
-    # copy DICOM Files into intraop folder
-    cmd = ('cp -a ' + imagePath + '. ' + self.intraopDataDir)
-    logging.debug(cmd)
-    os.system(cmd)
-
   def configureSliceNodesForPreopData(self):
     for nodeId in ["vtkMRMLSliceNodeRed", "vtkMRMLSliceNodeYellow", "vtkMRMLSliceNodeGreen"]:
       slicer.mrmlScene.GetNodeByID(nodeId).SetUseLabelOutline(True)
@@ -1127,19 +1120,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.preopTargets.SetName('targets-PREOP')
     return success
 
-  def loadMpReviewProcessedData(self):
-    #TODO: should be moved to logic or better use logic from mpReview
-    resourcesDir = os.path.join(self.preopDataDir, 'RESOURCES')
-    self.preopTargetsPath = os.path.join(self.preopDataDir, 'Targets')
+  def loadMpReviewProcessedData(self, preopDir):
+    resourcesDir = os.path.join(preopDir, 'RESOURCES')
+    self.preopTargetsPath = os.path.join(preopDir, 'Targets')
 
     if not os.path.exists(resourcesDir):
       self.confirmDialog("The selected directory does not fit the mpReview directory structure. Make sure that you "
                          "select the study root directory which includes directories RESOURCES")
       return False
 
-    self.seriesMap = {}
+    seriesMap = {}
 
-    self.patientInformationRetrieved = False
+    patientInformationRetrieved = False
 
     for root, subdirs, files in os.walk(resourcesDir):
       logging.debug('Root: ' + root + ', files: ' + str(files))
@@ -1148,45 +1140,43 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       logging.debug('Resource: ' + resourceType)
 
       if resourceType == 'Reconstructions':
-        for f in files:
+        for f in [f for f in files if f.endswith('.xml')]:
           logging.debug('File: ' + f)
-          if f.endswith('.xml'):
-            metaFile = os.path.join(root, f)
-            logging.debug('Ends with xml: ' + metaFile)
-            try:
-              (seriesNumber, seriesName) = self.logic.getSeriesInfoFromXML(metaFile)
-              logging.debug(str(seriesNumber) + ' ' + seriesName)
-            except:
-              logging.debug('Failed to get from XML')
-              continue
+          metaFile = os.path.join(root, f)
+          logging.debug('Ends with xml: ' + metaFile)
+          try:
+            (seriesNumber, seriesName) = self.logic.getSeriesInfoFromXML(metaFile)
+            logging.debug(str(seriesNumber) + ' ' + seriesName)
+          except:
+            logging.debug('Failed to get from XML')
+            continue
 
-            volumePath = os.path.join(root, seriesNumber + '.nrrd')
-            self.seriesMap[seriesNumber] = {'MetaInfo': None, 'NRRDLocation': volumePath, 'LongName': seriesName}
-            self.seriesMap[seriesNumber]['ShortName'] = str(seriesNumber) + ":" + seriesName
-      elif resourceType == 'DICOM' and not self.patientInformationRetrieved:
+          volumePath = os.path.join(root, seriesNumber + '.nrrd')
+          seriesMap[seriesNumber] = {'MetaInfo': None, 'NRRDLocation': volumePath, 'LongName': seriesName}
+          seriesMap[seriesNumber]['ShortName'] = str(seriesNumber) + ":" + seriesName
+      elif resourceType == 'DICOM' and not patientInformationRetrieved:
         self.logic.importStudy(root)
         for f in files:
           self.updateCurrentPatientAndViewBox(os.path.join(root, f))
-          self.patientInformationRetrieved = True
+          patientInformationRetrieved = True
           break
 
-    logging.debug('All series found: ' + str(self.seriesMap.keys()))
-    logging.debug('All series found: ' + str(self.seriesMap.values()))
+    logging.debug('All series found: ' + str(seriesMap.keys()))
+    logging.debug('All series found: ' + str(seriesMap.values()))
 
     logging.debug('******************************************************************************')
 
     self.preopImagePath = ''
     self.preopSegmentationPath = ''
-    self.preopSegmentations = []
 
-    for series in self.seriesMap:
-      seriesName = str(self.seriesMap[series]['LongName'])
+    for series in seriesMap:
+      seriesName = str(seriesMap[series]['LongName'])
       logging.debug('series Number ' + series + ' ' + seriesName)
       if re.search("ax", str(seriesName), re.IGNORECASE) and re.search("t2", str(seriesName), re.IGNORECASE):
         logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
-        logging.debug(' LOCATION OF VOLUME : ' + str(self.seriesMap[series]['NRRDLocation']))
+        logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
 
-        path = os.path.join(self.seriesMap[series]['NRRDLocation'])
+        path = os.path.join(seriesMap[series]['NRRDLocation'])
         logging.debug(' LOCATION OF IMAGE path : ' + str(path))
 
         segmentationPath = os.path.dirname(os.path.dirname(path))
@@ -1197,20 +1187,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
           self.confirmDialog("No segmentations found.\nMake sure that you used mpReview for segmenting the prostate "
                              "first and using its output as the preop data input here.")
           return False
-        self.preopImagePath = self.seriesMap[series]['NRRDLocation']
+        self.preopImagePath = seriesMap[series]['NRRDLocation']
         self.preopSegmentationPath = segmentationPath
-
-        self.preopSegmentations = os.listdir(segmentationPath)
-
-        logging.debug(str(self.preopSegmentations))
-
         break
 
     return True
 
   def loadPreopData(self):
     # TODO: using decorators
-    if not self.loadMpReviewProcessedData():
+    if not self.loadMpReviewProcessedData(self.preopDataDir):
       return
     self.configureSliceNodesForPreopData()
     if not self.loadT2Label() or not self.loadPreopVolume() or not self.loadPreopTargets():
@@ -1236,10 +1221,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setTargetVisibility(self.preopTargets, show=True)
     self.model.targetList = self.preopTargets
 
-    # set markups for registration
     self.fiducialSelector.setCurrentNode(self.preopTargets)
-
-    # jump to first markup slice
     self.markupsLogic.JumpSlicesToNthPointInMarkup(self.preopTargets.GetID(), 0)
 
     self.logic.styleDisplayNode(self.preopTargets.GetDisplayNode())
@@ -1496,7 +1478,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.evaluationModeOn = True
       self.targetingGroupBox.hide()
       self.zFrameRegistrationGroupBox.show()
+      progress = self.makeProgressIndicator(2, 1)
+      progress.labelText = '\nZFrame registration'
       self.logic.runZFrameRegistration(volume)
+      progress.setValue(2)
+      progress.close()
       self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
       self.setDefaultOrientation()
       self.redSliceNode.SetSliceVisible(True)
