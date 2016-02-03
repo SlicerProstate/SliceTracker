@@ -9,6 +9,7 @@ from SliceTrackerUtils.helpers import SliceAnnotation, ExtendedQMessageBox
 from Editor import EditorWidget
 import EditorLib
 import logging
+import datetime
 from subprocess import Popen
 from SliceTrackerUtils.ZFrameRegistration import LineMarkerRegistration
 
@@ -174,7 +175,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def _updateOutputDir(self):
     if self._outputRoot and self.patientID and self.currentStudyDate:
       time = qt.QTime().currentTime().toString().replace(":", "")
-      dirName = self.patientID.text + "-biopsy-" + self.currentStudyDate.text + time
+      dirName = self.patientID.text + "-biopsy-" + str(qt.QDate().currentDate()) + time
       self.logic.outputDir = os.path.join(self._outputRoot, dirName, "MRgBiopsy")
 
   def createPatientWatchBox(self):
@@ -931,39 +932,29 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.patientID.setText(self.currentID)
 
     def updatePreopStudyDate():
-      preopStudyDateDICOM = self.logic.getDICOMValue(currentFile, DICOMTAGS.STUDY_DATE)
-      formattedDate = preopStudyDateDICOM[0:4] + "-" + preopStudyDateDICOM[4:6] + "-" + \
-                      preopStudyDateDICOM[6:8]
-      self.preopStudyDate.setText(formattedDate)
-
-    def updateCurrentStudyDate():
-      currentStudyDate = qt.QDate().currentDate()
-      self.currentStudyDate.setText(str(currentStudyDate))
+      studyDate = self.logic.extractDateFromDICOMFile(currentFile, DICOMTAGS.STUDY_DATE)
+      self.preopStudyDate.setText(studyDate)
 
     def updatePatientBirthDate():
-      currentBirthDateDICOM = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_BIRTH_DATE)
-      if currentBirthDateDICOM is None:
+      dateOfBirth = self.logic.extractDateFromDICOMFile(currentFile, DICOMTAGS.PATIENT_BIRTH_DATE)
+      if dateOfBirth == '':
         self.patientBirthDate.setText('No Date found')
       else:
-        currentBirthDateDICOM = str(currentBirthDateDICOM)
-        self.currentBirthDate = currentBirthDateDICOM[0:4] + "-" + \
-                                currentBirthDateDICOM[4:6] + "-" + \
-                                currentBirthDateDICOM[6:8]
-        self.patientBirthDate.setText(self.currentBirthDate)
+        self.patientBirthDate.setText(dateOfBirth)
 
     def updatePatientName():
-      self.currentPatientName = None
+      currentPatientName = ''
       currentPatientNameDICOM = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)
       if currentPatientNameDICOM:
         splitted = currentPatientNameDICOM.split('^')
         try:
-          self.currentPatientName = splitted[1] + ", " + splitted[0]
+          currentPatientName = splitted[1] + ", " + splitted[0]
         except IndexError:
-          self.currentPatientName = splitted[0]
-      self.patientName.setText(self.currentPatientName)
+          currentPatientName = splitted[0]
+      self.patientName.setText(currentPatientName)
 
     updatePatientBirthDate()
-    updateCurrentStudyDate()
+    self.currentStudyDate.setText("")
     updatePreopStudyDate()
     updatePatientName()
 
@@ -1234,6 +1225,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setDefaultFOV(self.redSliceLogic)
 
   def patientCheckAfterImport(self, fileList):
+    success = True
     for currentFile in fileList:
       currentFile = os.path.join(self.intraopDataDir, currentFile)
       patientID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
@@ -1243,10 +1235,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
                                         'you selected for incoming data.\nDo you still want to continue?',
                                 title="Patients Not Matching"):
           self.intraopSeriesSelector.clear()
-          return
+          return False
         else:
           break
     self.updateSeriesSelectorTable()
+    return success
 
   def onCancelSegmentationButtonClicked(self):
     if self.yesNoDialog("Do you really want to cancel the segmentation process?"):
@@ -1621,7 +1614,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onNewImageDataReceived(self, **kwargs):
     newFileList = kwargs.pop('newList')
-    self.patientCheckAfterImport(newFileList)
+    studyDate = kwargs.pop('studyDate', '')
+    if self.patientCheckAfterImport(newFileList) and self.currentStudyDate.text == '':
+      self.currentStudyDate.setText(studyDate)
     if self.evaluationModeOn is True:
       return
     if self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
@@ -2144,12 +2139,16 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     else:
       newFileList = list(set(self.getFileList(self._intraopDataDir)) - set(self.currentFileList))
 
+    studyDate = ''
+
     for currentFile in newFileList:
       currentFile = os.path.join(self._intraopDataDir, currentFile)
       indexer.addFile(db, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
       if series and series not in self.seriesList and self.isDICOMSeriesEligible(series):
         self.seriesList.append(series)
+      if studyDate == '':
+        studyDate = self.extractDateFromDICOMFile(currentFile, DICOMTAGS.STUDY_DATE)
 
     indexer.addDirectory(db, self._intraopDataDir)
     indexer.waitForImportFinished()
@@ -2158,7 +2157,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
     if self._incomingDataCallback and len(newFileList) > 0 and \
                     len(self.getFileList(self._intraopDataDir)) == currentFileCount:
-      self._incomingDataCallback(newList=newFileList)
+      self._incomingDataCallback(newList=newFileList, studyDate=studyDate)
+
+  def extractDateFromDICOMFile(self, currentFile, tag=DICOMTAGS.STUDY_DATE):
+    extractedDate = self.getDICOMValue(currentFile, tag)
+    if extractedDate:
+      formatted = datetime.date(int(extractedDate[0:4]), int(extractedDate[4:6]), int(extractedDate[6:8]))
+      return formatted.strftime("%Y-%b-%d")
+    else:
+      return ""
 
   def isDICOMSeriesEligible(self, series):
     return SliceTrackerConstants.COVER_PROSTATE in series or SliceTrackerConstants.COVER_TEMPLATE in series or \
