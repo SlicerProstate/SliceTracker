@@ -224,6 +224,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.sideBySideIcon = self.createIcon('icon-side-by-side.png')
     self.threeOverThreeIcon = self.createIcon('icon-three-over-three.png')
     self.crosshairIcon = self.createIcon('icon-crosshair')
+    self.zFrameIcon = self.createIcon('icon-zframe')
+    self.needleIcon = self.createIcon('icon-needle')
+    self.templateIcon = self.createIcon('icon-template')
+    self.pathIcon = self.createIcon('icon-path')
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -307,14 +311,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.zFrameViewSettingsGroupBox = qt.QGroupBox('Z-Frame options:')
     viewSettingsLayout = qt.QVBoxLayout()
     self.zFrameViewSettingsGroupBox.setLayout(viewSettingsLayout)
-    self.showZFrameModelCheckbox = qt.QCheckBox("Show model")
-    self.showZFrameTemplateCheckbox = qt.QCheckBox("Show template")
-    self.showNeedlePathCheckbox = qt.QCheckBox("Show needle path")
-    self.showTemplatePathCheckbox = qt.QCheckBox("Show template path")
+    self.showZFrameModelCheckbox = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zframe model")
+    self.showZFrameTemplateCheckbox = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
+    self.showNeedlePathCheckbox = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
+    self.showTemplatePathCheckbox = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
 
     self.showZFrameTemplateCheckbox.enabled = self.logic.loadTemplateConfigFile(self.defaultTemplateFile)
-    viewSettingsLayout.addWidget(self.createVLayout([self.showZFrameModelCheckbox, self.showZFrameTemplateCheckbox,
-                                                     self.showTemplatePathCheckbox, self.showNeedlePathCheckbox]))
+    viewSettingsLayout.addWidget(self.createHLayout([self.showZFrameModelCheckbox, self.showZFrameTemplateCheckbox]))
+    viewSettingsLayout.addWidget(self.createHLayout([ self.showTemplatePathCheckbox, self.showNeedlePathCheckbox]))
 
   def setupSliceWidgets(self):
     self.setupSliceWidget("Red")
