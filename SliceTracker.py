@@ -105,6 +105,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   @preopDataDir.setter
   def preopDataDir(self, path):
+    self.logic.zFrameRegistrationSuccessful = False
     self.removeSliceAnnotations()
     self.hideAllMarkups()
     self.logic.preopDataDir = path
@@ -122,7 +123,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   @intraopDataDir.setter
   def intraopDataDir(self, path):
-    self.logic.zFrameRegistrationSuccessful = False
     self.skippedIntraopSeries = []
     self.collapsibleDirectoryConfigurationArea.collapsed = True
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
@@ -250,6 +250,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.logic.retryMode = False
     self.logic.zFrameRegistrationSuccessful = False
+
+    self.lastSelectedModelIndex = None
 
     self.notifyUserAboutNewData = True
 
@@ -760,23 +762,37 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def jumpToTarget(self, modelIndex=None):
     if not modelIndex:
-      try:
-        modelIndex = self.targetTable.selectedIndexes()[0]
-      except IndexError:
-        self.targetTable.selectRow(0)
-        modelIndex = self.targetTable.selectedIndexes()[0]
+      modelIndex = self.getOrSelectTargetFromTable()
+    self.lastSelectedModelIndex = modelIndex
     row = modelIndex.row()
     if not self.currentTargets:
       self.currentTargets = self.preopTargets
-    self.markupsLogic.SetAllMarkupsVisibility(self.currentTargets, True)
+
     self.jumpSliceNodeToTarget(self.redSliceNode, self.preopTargets, row)
     self.jumpSliceNodeToTarget(self.slice4SliceNode, self.preopTargets, row)
     self.setTargetSelected(self.preopTargets, selected=False)
     self.preopTargets.SetNthFiducialSelected(row, True)
+
     self.jumpSliceNodeToTarget(self.yellowSliceNode, self.currentTargets, row)
     self.jumpSliceNodeToTarget(self.slice5SliceNode, self.currentTargets, row)
     self.setTargetSelected(self.currentTargets, selected=False)
     self.currentTargets.SetNthFiducialSelected(row, True)
+    if self.evaluationModeOn:
+      try:
+        start, end = self.targetTableModel.needleStartEndPositions[row]
+        self.logic.createNeedleModelNode(start, end)
+      except KeyError:
+        pass
+
+  def getOrSelectTargetFromTable(self):
+    if self.lastSelectedModelIndex:
+      return self.lastSelectedModelIndex
+    try:
+      modelIndex = self.targetTable.selectedIndexes()[0]
+    except IndexError:
+      self.targetTable.selectRow(0)
+      modelIndex = self.targetTable.selectedIndexes()[0]
+    return modelIndex
 
   def jumpSliceNodeToTarget(self, sliceNode, targetNode, n):
     point = [0,0,0,0]
@@ -2399,6 +2415,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     modelDisplayNode.SetColor(0, 1, 0)
     pathTubeFilter = self.createTubeFilter(start, end, radius=1.0, numSides=18)
     self.needleModelNode.SetAndObservePolyData(pathTubeFilter.GetOutput())
+    self.setNeedlePathVisibility(self.showNeedlePath)
 
   def removeNeedleModelNode(self):
     if self.needleModelNode:
@@ -2501,6 +2518,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     minMag2 = numpy.Inf
     minDepth = 0.0
     minIndex = -1
+    needleStart = None
+    needleEnd = None
 
     p = numpy.array(pos)
     for i, orig in enumerate(self.pathOrigins):
@@ -2524,19 +2543,21 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       indexY = self.templateIndex[minIndex][1]
       if 0 < minDepth < self.templateMaxDepth[minIndex]:
         inRange = True
-        p1 = self.pathOrigins[minIndex]
-        v = self.pathVectors[minIndex]
-        nl = numpy.linalg.norm(v)
-        n = v/nl  # normal vector
-        l = self.templateMaxDepth[minIndex]
-        p2 = p1 + l * n
-        self.createNeedleModelNode(p1, p2)
+        needleStart, needleEnd = self.getNeedleStartEndPointFromPathOrigins(minIndex)
       else:
         self.removeNeedleModelNode()
-      self.setTemplatePathVisibility(self.showTemplatePath)
-      self.setNeedlePathVisibility(self.showNeedlePath)
 
-    return indexX, indexY, minDepth, inRange
+    return needleStart, needleEnd, indexX, indexY, minDepth, inRange
+
+  def getNeedleStartEndPointFromPathOrigins(self, index):
+    start = self.pathOrigins[index]
+    v = self.pathVectors[index]
+    nl = numpy.linalg.norm(v)
+    n = v / nl  # normal vector
+    l = self.templateMaxDepth[index]
+    end = start + l * n
+    return start, end
+
 
 class SliceTrackerTest(ScriptedLoadableModuleTest):
   """
@@ -2957,6 +2978,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
 
   @targetList.setter
   def targetList(self, targetList):
+    self.needleStartEndPositions = {}
     self.reset()
     self._targetList = targetList
     self.dataChanged(self.index(0, 3), self.index(self.rowCount(None)-1, 4))
@@ -2975,6 +2997,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     self.logic = logic
     self._cursorPosition = None
     self._targetList = None
+    self.needleStartEndPositions = {}
     self.targetList = targets
     self.headers = ['Name', 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]', 'Hole', 'Depth [mm]']
     self.computeDistancesAndZFrame = False
@@ -3000,14 +3023,15 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     elif role != qt.Qt.DisplayRole:
       return None
 
+    row = index.row()
     col = index.column()
 
     targetPosition = [0.0, 0.0, 0.0]
     if col in [1,2,3,4]:
-      self.targetList.GetNthFiducialPosition(index.row(), targetPosition)
+      self.targetList.GetNthFiducialPosition(row, targetPosition)
 
     if col == 0:
-      return self.targetList.GetNthFiducialLabel(index.row())
+      return self.targetList.GetNthFiducialLabel(row)
     elif (col == 1 or col == 2) and self.cursorPosition and self.computeDistancesAndZFrame:
       if col == 1:
         distance2D = self.logic.getNeedleTipTargetDistance2D(targetPosition, self.cursorPosition)
@@ -3015,7 +3039,8 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
       distance3D = self.logic.getNeedleTipTargetDistance3D(targetPosition, self.cursorPosition)
       return str(round(distance3D, 2))
     elif (col == 3 or col == 4) and self.logic.zFrameRegistrationSuccessful and self.computeDistancesAndZFrame:
-      (indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
+      (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
+      self.needleStartEndPositions[row] = (start, end)
       if col == 3:
         return '(%s, %s)' % (indexX, indexY)
       return '%.3f' % depth if inRange else '(%.3f)' % depth
