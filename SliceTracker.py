@@ -162,7 +162,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onReload(self):
     ScriptedLoadableModuleWidget.onReload(self)
     try:
-      self.logic = SliceTrackerLogic()
       self.removeSliceAnnotations()
       self.uncheckVisualEffects()
     except:
@@ -179,13 +178,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.logic.outputDir = os.path.join(self._outputRoot, dirName, "MRgBiopsy")
 
   def createPatientWatchBox(self):
-    self.patientWatchBox, patientViewBoxLayout = self._createWatchBox(maximumHeight=90)
+    self.patientWatchBox, patientViewBoxLayout = self._createWatchBox(maximumHeight=100)
 
-    self.patientID = qt.QLabel('None')
-    self.patientName = qt.QLabel('None')
-    self.patientBirthDate = qt.QLabel('None')
-    self.preopStudyDate = qt.QLabel('None')
-    self.currentStudyDate = qt.QLabel('None')
+    self.patientID = qt.QLabel('')
+    self.patientName = qt.QLabel('')
+    self.patientBirthDate = qt.QLabel('')
+    self.preopStudyDate = qt.QLabel('')
+    self.currentStudyDate = qt.QLabel('')
 
     patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Patient ID: '), self.patientID], margin=1))
     patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Patient Name: '), self.patientName], margin=1))
@@ -415,8 +414,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def setupTargetsTable(self):
     self.targetTable = qt.QTableView()
-    self.model = CustomTargetTableModel(self.logic)
-    self.targetTable.setModel(self.model)
+    self.targetTableModel = CustomTargetTableModel(self.logic)
+    self.targetTable.setModel(self.targetTableModel)
     self.targetTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
     self.targetTable.verticalHeader().hide()
@@ -624,7 +623,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     setupOtherConnections()
 
   def onShowZFrameModelToggled(self, checked):
-    self.logic.zFrameModelNode.SetDisplayVisibility(checked)
+    self.logic.setZFrameVisibility(checked)
 
   def onShowZFrameTemplateToggled(self, checked):
     self.logic.setTemplateVisibility(checked)
@@ -995,7 +994,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         index = self.intraopSeriesSelector.findText(series)
         self.intraopSeriesSelector.setCurrentIndex(index)
         break
-    self.onIntraopSeriesSelectionChanged()
 
   def resetShowResultButtons(self, checkedButton):
     checked = STYLE.GRAY_BACKGROUND_WHITE_FONT
@@ -1028,15 +1026,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onRigidResultClicked(self):
     self.displayRegistrationResults(button=self.showRigidResultButton, registrationType='rigid')
-    self.model.targetList = self.currentResult.rigidTargets
+    self.targetTableModel.targetList = self.currentResult.rigidTargets
 
   def onAffineResultClicked(self):
     self.displayRegistrationResults(button=self.showAffineResultButton, registrationType='affine')
-    self.model.targetList = self.currentResult.affineTargets
+    self.targetTableModel.targetList = self.currentResult.affineTargets
 
   def onBSplineResultClicked(self):
     self.displayRegistrationResults(button=self.showBSplineResultButton, registrationType='bSpline')
-    self.model.targetList = self.currentResult.bSplineTargets
+    self.targetTableModel.targetList = self.currentResult.bSplineTargets
 
   def displayRegistrationResults(self, button, registrationType):
     self.resetShowResultButtons(checkedButton=button)
@@ -1223,7 +1221,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     logging.debug(self.preopTargets)
 
     self.setTargetVisibility(self.preopTargets, show=True)
-    self.model.targetList = self.preopTargets
+    self.targetTableModel.targetList = self.preopTargets
 
     self.fiducialSelector.setCurrentNode(self.preopTargets)
     self.markupsLogic.JumpSlicesToNthPointInMarkup(self.preopTargets.GetID(), 0)
@@ -1312,7 +1310,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.slice5CompositeNode.SetForegroundOpacity(value)
     self.setOldNewIndicatorAnnotationOpacity(value)
 
-  def openEvaluationStep(self):
+  def activateEvaluationStep(self):
     self.evaluationModeOn = True
     self.currentRegisteredSeries.setText(self.logic.currentIntraopVolume.GetName())
     self.targetingGroupBox.hide()
@@ -1335,12 +1333,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     insideView = self.crosshairNode.GetCursorPositionRAS(ras)
     sliceNode = self.crosshairNode.GetCursorPositionXYZ(xyz)
     if sliceNode is not self.yellowSliceNode or not insideView:
-       self.model.cursorPosition = None
+       self.targetTableModel.cursorPosition = None
     else:
-       self.model.cursorPosition = ras
+       self.targetTableModel.cursorPosition = ras
 
   def openTargetingStep(self, ratingResult=None):
     self.zFrameRegistrationGroupBox.hide()
+    self.logic.removeNeedleModelNode()
+    self.targetTableModel.computeDistancesAndZFrame = False
     self.evaluationModeOn = False
     self.save()
     self.disconnectCrosshairNode()
@@ -1464,6 +1464,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onTrackTargetsButtonClicked(self):
     self.removeSliceAnnotations()
+    self.evaluationModeOn = False
+    self.targetTableModel.computeDistancesAndZFrame = False
     if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
       self.openZFrameRegistrationStep()
       return
@@ -1474,7 +1476,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.initiateOrRetryTracking()
       else:
         self.repeatRegistrationForCurrentSelection()
-      self.openEvaluationStep()
+      self.activateEvaluationStep()
 
   def openZFrameRegistrationStep(self):
     volume = self.logic.loadSeriesIntoSlicer(self.intraopSeriesSelector.currentText, clearOldSeries=True)
@@ -1491,11 +1493,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.setDefaultOrientation()
       self.redSliceNode.SetSliceVisible(True)
       self.showZFrameModelCheckbox.checked = True
+      self.showZFrameTemplateCheckbox.checked = True
+      self.showTemplatePathCheckbox.checked = True
 
   def onApproveZFrameRegistrationButtonClicked(self):
     self.logic.zFrameRegistrationSuccessful = True
     self.redSliceNode.SetSliceVisible(False)
     self.openTargetingStep()
+    self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
+    self.showZFrameModelCheckbox.checked = False
+    self.showZFrameTemplateCheckbox.checked = False
+    self.showTemplatePathCheckbox.checked = False
 
   def initiateOrRetryTracking(self):
     volume = self.logic.loadSeriesIntoSlicer(self.intraopSeriesSelector.currentText, clearOldSeries=True)
@@ -1568,6 +1576,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.onTrackTargetsButtonClicked()
 
   def finalizeRegistrationStep(self):
+    self.targetTableModel.computeDistancesAndZFrame = True
     self.targetTable.enabled = True
     self.addNewTargetsToScene()
     self.activeRegistrationResultButtonId = 3
@@ -1627,6 +1636,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
   ZFRAME_MODEL_PATH = 'Resources/zframe/zframe-model.vtk'
+  ZFRAME_MODEL_NAME = 'ZFrameModel'
+  ZFRAME_TEMPLATE_NAME = 'NeedleGuideTemplate'
+  ZFRAME_TEMPLATE_PATH_NAME = 'NeedleGuideNeedlePath'
 
   @property
   def preopDataDir(self):
@@ -1689,7 +1701,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.retryMode = False
     self.zFrameRegistrationSuccessful = False
     self.zFrameModelNode = None
-    self.zFrameModelNodeID = ''
     self.loadZFrameModel()
 
     self.showTemplatePath = False
@@ -2136,9 +2147,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     for currentFile in newFileList:
       currentFile = os.path.join(self._intraopDataDir, currentFile)
       indexer.addFile(db, currentFile, None)
-      seriesNumberDescription = self.makeSeriesNumberDescription(currentFile)
-      if seriesNumberDescription and seriesNumberDescription not in self.seriesList:
-        self.seriesList.append(seriesNumberDescription)
+      series = self.makeSeriesNumberDescription(currentFile)
+      if series and series not in self.seriesList and self.isDICOMSeriesEligible(series):
+        self.seriesList.append(series)
 
     indexer.addDirectory(db, self._intraopDataDir)
     indexer.waitForImportFinished()
@@ -2148,6 +2159,10 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     if self._incomingDataCallback and len(newFileList) > 0 and \
                     len(self.getFileList(self._intraopDataDir)) == currentFileCount:
       self._incomingDataCallback(newList=newFileList)
+
+  def isDICOMSeriesEligible(self, series):
+    return SliceTrackerConstants.COVER_PROSTATE in series or SliceTrackerConstants.COVER_TEMPLATE in series or \
+           SliceTrackerConstants.GUIDANCE_IMAGE in series
 
   def makeSeriesNumberDescription(self, dicomFile):
     seriesDescription = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_DESCRIPTION)
@@ -2289,14 +2304,20 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     slicer.mrmlScene.AddNode(outputVolume)
 
   def loadZFrameModel(self):
+    self.clearOldNodesByName(self.ZFRAME_MODEL_NAME)
     zFrameModelPath = os.path.join(self.modulePath, self.ZFRAME_MODEL_PATH)
-    self.zFrameModelNode = slicer.mrmlScene.GetNodeByID(self.zFrameModelNodeID)
     if not self.zFrameModelNode:
       _, self.zFrameModelNode = slicer.util.loadModel(zFrameModelPath, returnNode=True)
-      self.zFrameModelNode.SetName('ZFrameModel')
+      self.zFrameModelNode.SetName(self.ZFRAME_MODEL_NAME)
       slicer.mrmlScene.AddNode(self.zFrameModelNode)
-      self.zFrameModelNodeID = self.zFrameModelNode.GetID()
+      modelDisplayNode = self.zFrameModelNode.GetDisplayNode()
+      modelDisplayNode.SetColor(1, 1, 0)
     self.zFrameModelNode.SetDisplayVisibility(False)
+
+  def clearOldNodesByName(self, name):
+    collection = slicer.mrmlScene.GetNodesByName(name)
+    for index in range(collection.GetNumberOfItems()):
+      slicer.mrmlScene.RemoveNode(collection.GetItemAsObject(index))
 
   def runZFrameRegistration(self, inputVolume):
     # TODO: create configfile that chooses the Registration algorithm to use
@@ -2308,6 +2329,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.applyZFrameTransform(self.zFrameTransform)
 
   def loadTemplateConfigFile(self, path):
+    self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
+    self.clearOldNodesByName(self.ZFRAME_TEMPLATE_PATH_NAME)
+
     self.templateIndex = []
     self.templateConfig = []
 
@@ -2357,6 +2381,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       self.templateMaxDepth.append(row[6])
 
     self.tempModelNode.SetAndObservePolyData(templateModelAppend.GetOutput())
+    modelDisplayNode = self.tempModelNode.GetDisplayNode()
+    modelDisplayNode.SetColor(0.5,0,1)
     self.pathModelNode.SetAndObservePolyData(pathModelAppend.GetOutput())
 
   def createNeedleModelNode(self, start, end):
@@ -2396,12 +2422,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
   def checkAndCreatePathModelNode(self):
     if self.pathModelNode is None:
-      self.pathModelNode = self.createModelNode('NeedleGuideNeedlePath')
+      self.pathModelNode = self.createModelNode(self.ZFRAME_TEMPLATE_PATH_NAME)
       self.setAndObserveDisplayNode(self.pathModelNode)
 
   def checkAndCreateTemplateModelNode(self):
     if self.tempModelNode is None:
-      self.tempModelNode = self.createModelNode('NeedleGuideTemplate')
+      self.tempModelNode = self.createModelNode(self.ZFRAME_TEMPLATE_NAME)
       self.setAndObserveDisplayNode(self.tempModelNode)
       self.modelNodeTag = self.tempModelNode.AddObserver(slicer.vtkMRMLTransformableNode.TransformModifiedEvent,
                                                          self.updateTemplateVectors)
@@ -2419,6 +2445,10 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     dnode = node.GetDisplayNode()
     if dnode is not None:
       dnode.SetSliceIntersectionVisibility(visible)
+
+  def setZFrameVisibility(self, visibility):
+    self.setModelVisibility(self.zFrameModelNode, visibility)
+    self.setModelSliceIntersectionVisibility(self.zFrameModelNode, visibility)
 
   def setTemplateVisibility(self, visibility):
     self.setModelVisibility(self.tempModelNode, visibility)
@@ -2940,6 +2970,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     self._targetList = None
     self.targetList = targets
     self.headers = ['Name', 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]', 'Hole', 'Depth [mm]']
+    self.computeDistancesAndZFrame = False
 
   def headerData(self, col, orientation, role):
     if orientation == qt.Qt.Horizontal and role == qt.Qt.DisplayRole:
@@ -2970,16 +3001,15 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
 
     if col == 0:
       return self.targetList.GetNthFiducialLabel(index.row())
-    elif col == 1 and self.cursorPosition:
-      distance2D = self.logic.getNeedleTipTargetDistance2D(targetPosition, self.cursorPosition)
-      return 'x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2))
-    elif col == 2 and self.cursorPosition:
+    elif (col == 1 or col == 2) and self.cursorPosition and self.computeDistancesAndZFrame:
+      if col == 1:
+        distance2D = self.logic.getNeedleTipTargetDistance2D(targetPosition, self.cursorPosition)
+        return 'x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2))
       distance3D = self.logic.getNeedleTipTargetDistance3D(targetPosition, self.cursorPosition)
       return str(round(distance3D, 2))
-    elif (col == 3 or col == 4) and self.logic.zFrameRegistrationSuccessful:
+    elif (col == 3 or col == 4) and self.logic.zFrameRegistrationSuccessful and self.computeDistancesAndZFrame:
       (indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
       if col == 3:
         return '(%s, %s)' % (indexX, indexY)
-      if col == 4:
-        return '%.3f' % depth if inRange else '(%.3f)' % depth
+      return '%.3f' % depth if inRange else '(%.3f)' % depth
     return ""
