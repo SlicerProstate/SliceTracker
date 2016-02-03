@@ -2,24 +2,27 @@ import logging
 from functools import wraps
 
 
-def logmethod(func):
+def logmethod(level=logging.DEBUG):
   """ This decorator can used for logging methods without the need of reimplementing log messages again and again.
 
     Usage:
 
-    @logmethod
+    @logmethod()
+    def sub(x,y, switch=False):
+      return x -y if not switch else y-x
+
+    @logmethod(level=logging.INFO)
     def sub(x,y, switch=False):
       return x -y if not switch else y-x
   """
 
-  logging.basicConfig(level=logging.DEBUG)
-
-  @wraps(func)
-  def wrapper(*args, **kwargs):
-    logging.debug("Called {} with args {} and kwargs {}".format(func.__name__, args, kwargs))
-    return func(*args, **kwargs)
-
-  return wrapper
+  def decorator(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+      logging.log(level, "Called {} with args {} and kwargs {}".format(func.__name__, args, kwargs))
+      return func(*args, **kwargs)
+    return wrapper
+  return decorator
 
 
 def onExceptReturnNone(func):
