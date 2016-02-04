@@ -701,33 +701,41 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       trackingPossible = self.isTrackingPossible(selectedSeries)
       self.trackTargetsButton.setEnabled(trackingPossible)
       self.skipIntraopSeriesButton.setEnabled(trackingPossible)
-      self.configureColorsAndViewersForSelectedIntraopSeries(selectedSeries)
-      self.setIntraopSeriesSelectorColorAndSliceAnnotations(selectedSeries)
+      self.configureViewersForSelectedIntraopSeries(selectedSeries)
+      self.updateIntraopSeriesSelectorColors(selectedSeries)
+      self.updateSliceAnnotations(selectedSeries)
 
   def isTrackingPossible(self, series):
     return self.logic.isTrackingPossible(series) and not self.wasSeriesSkipped(series) and \
-          (self.registrationResults.getMostRecentApprovedCoverProstateRegistration() or
+          ((self.GUIDANCE_IMAGE in series and self.registrationResults.getMostRecentApprovedCoverProstateRegistration()) or
           (self.COVER_PROSTATE in series and self.logic.zFrameRegistrationSuccessful) or
           (self.COVER_TEMPLATE in series and not self.logic.zFrameRegistrationSuccessful))
 
-  def setIntraopSeriesSelectorColorAndSliceAnnotations(self, selectedSeries):
+  def updateIntraopSeriesSelectorColors(self, selectedSeries):
     style = STYLE.YELLOW_BACKGROUND
+    if not self.isTrackingPossible(selectedSeries):
+      if self.registrationResults.registrationResultWasApproved(selectedSeries) or \
+              (self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in selectedSeries):
+        style = STYLE.GREEN_BACKGROUND
+      elif self.registrationResults.registrationResultWasSkipped(selectedSeries) or self.wasSeriesSkipped(selectedSeries):
+        style = STYLE.RED_BACKGROUND
+      elif self.registrationResults.registrationResultWasRejected(selectedSeries):
+        style = STYLE.GRAY_BACKGROUND
+    self.intraopSeriesSelector.setStyleSheet(style)
+
+  def updateSliceAnnotations(self, selectedSeries):
     if not self.isTrackingPossible(selectedSeries):
       annotationText = None
       if self.registrationResults.registrationResultWasApproved(selectedSeries):
-        style = STYLE.GREEN_BACKGROUND
         annotationText = self.APPROVED_RESULT_TEXT_ANNOTATION
       elif self.registrationResults.registrationResultWasSkipped(selectedSeries) or self.wasSeriesSkipped(selectedSeries):
-        style = STYLE.RED_BACKGROUND
         annotationText = self.SKIPPED_RESULT_TEXT_ANNOTATION
       elif self.registrationResults.registrationResultWasRejected(selectedSeries):
-        style = STYLE.GRAY_BACKGROUND
         annotationText = self.REJECTED_RESULT_TEXT_ANNOTATION
       if annotationText:
         self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, annotationText, fontSize=15, yPos=20))
-    self.intraopSeriesSelector.setStyleSheet(style)
 
-  def configureColorsAndViewersForSelectedIntraopSeries(self, selectedSeries):
+  def configureViewersForSelectedIntraopSeries(self, selectedSeries):
     if self.wasSeriesSkipped(selectedSeries):
       return
     if self.registrationResults.registrationResultWasApproved(selectedSeries):
