@@ -1513,11 +1513,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onApproveZFrameRegistrationButtonClicked(self):
     self.logic.zFrameRegistrationSuccessful = True
     self.redSliceNode.SetSliceVisible(False)
-    self.openTargetingStep()
-    self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
     self.showZFrameModelCheckbox.checked = False
     self.showZFrameTemplateCheckbox.checked = False
     self.showTemplatePathCheckbox.checked = False
+    self.openTargetingStep()
+    if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
+      self.onTrackTargetsButtonClicked()
+      return
 
   def initiateOrRetryTracking(self):
     volume = self.logic.loadSeriesIntoSlicer(self.intraopSeriesSelector.currentText, clearOldSeries=True)
@@ -1634,6 +1636,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     displayNode.AddViewNodeID(sliceNode.GetID())
 
   def onNewImageDataReceived(self, **kwargs):
+    # TODO: the dialog should better show up when in evaluation step. Should be asked if he/she wants to approve, retry...
+    # if approved, rating and then tracking targets
     newFileList = kwargs.pop('newList')
     studyDate = kwargs.pop('studyDate', '')
     if self.patientCheckAfterImport(newFileList) and self.currentStudyDate.text == '':
@@ -1641,6 +1645,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if self.evaluationModeOn is True:
       return
     if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
+      self.onTrackTargetsButtonClicked()
+      return
+    if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
       self.onTrackTargetsButtonClicked()
       return
     if self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
