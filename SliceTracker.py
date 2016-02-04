@@ -1640,6 +1640,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.currentStudyDate.setText(studyDate)
     if self.evaluationModeOn is True:
       return
+    if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
+      self.onTrackTargetsButtonClicked()
+      return
     if self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
                                            in [self.COVER_TEMPLATE, self.COVER_PROSTATE, self.GUIDANCE_IMAGE]):
       dialog = IncomingDataMessageBox()
