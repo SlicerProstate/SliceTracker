@@ -694,6 +694,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.backButton.setEnabled(self.logic.inputMarkupNode.GetNumberOfFiducials() > 0)
 
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
+    if self.evaluationModeOn:
+      return
     self.removeSliceAnnotations()
     if selectedSeries:
       trackingPossible = self.isTrackingPossible(selectedSeries)
@@ -990,12 +992,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       elif self.registrationResults.registrationResultWasRejected(series):
         color = COLOR.GRAY
       self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
+    if not self.evaluationModeOn:
+      self.selectMostRecentEligibleSeries()
 
+  def selectMostRecentEligibleSeries(self):
     substring = self.GUIDANCE_IMAGE
     if not self.registrationResults.getMostRecentApprovedCoverProstateRegistration():
       substring = self.COVER_TEMPLATE if not self.logic.zFrameRegistrationSuccessful else self.COVER_PROSTATE
-
-    for item in list(reversed(range(len(seriesList)))):
+    for item in list(reversed(range(len(self.logic.seriesList)))):
       series = self.seriesModel.item(item).text()
       if substring in series:
         index = self.intraopSeriesSelector.findText(series)
@@ -1364,6 +1368,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetingGroupBox.show()
     self.removeSliceAnnotations()
     self.uncheckVisualEffects()
+    self.selectMostRecentEligibleSeries()
 
   def onApproveRegistrationResultButtonClicked(self):
     self.currentResult.approve()
