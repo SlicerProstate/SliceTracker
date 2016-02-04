@@ -36,8 +36,6 @@ class COLOR:
 
 class STYLE:
 
-  GRAY_BACKGROUND_WHITE_FONT  = 'background-color: rgb(130,130,130); ' \
-                                           'color: rgb(255,255,255)'
   WHITE_BACKGROUND            = 'background-color: rgb(255,255,255)'
   LIGHT_GRAY_BACKGROUND       = 'background-color: rgb(230,230,230)'
   ORANGE_BACKGROUND           = 'background-color: rgb(255,102,0)'
@@ -164,7 +162,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     ScriptedLoadableModuleWidget.onReload(self)
     try:
       self.removeSliceAnnotations()
-      self.uncheckVisualEffects()
+      self.resetVisualEffects()
     except:
       pass
 
@@ -196,11 +194,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def createRegistrationWatchBox(self):
     self.registrationWatchBox, registrationWatchBoxLayout = self._createWatchBox(maximumHeight=40)
     self.currentRegisteredSeries = qt.QLabel('None')
-    self.registrationSettingsButton = self.createButton("", icon=self.settingsIcon, styleSheet="border:none;",
-                                                        maximumWidth=16)
-    self.registrationSettingsButton.setCursor(qt.Qt.PointingHandCursor)
+    self.registrationDetailsButton = self.createButton("", icon=self.settingsIcon, styleSheet="border:none;",
+                                                       maximumWidth=16)
+    self.registrationDetailsButton.setCursor(qt.Qt.PointingHandCursor)
     registrationWatchBoxLayout.addWidget(self.createHLayout([qt.QLabel('Current Series:'), self.currentRegisteredSeries,
-                                                             self.registrationSettingsButton], margin=1))
+                                                             self.registrationDetailsButton], margin=1))
     self.registrationWatchBox.hide()
 
   def _createWatchBox(self, maximumHeight):
@@ -525,15 +523,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.collapsibleRegistrationArea.text = "Registration Results"
     self.registrationGroupBoxDisplayLayout = qt.QFormLayout(self.collapsibleRegistrationArea)
 
-    #TODO: selector should be used to show only registrations (retried) of the current series
     self.resultSelector = ctk.ctkComboBox()
     self.resultSelector.setFixedWidth(250)
     self.registrationResultAlternatives = self.createHLayout([qt.QLabel('Alternative Registration Result'), self.resultSelector])
     self.registrationGroupBoxDisplayLayout.addWidget(self.registrationResultAlternatives)
 
-    self.showRigidResultButton = self.createButton('Rigid')
-    self.showAffineResultButton = self.createButton('Affine')
-    self.showBSplineResultButton = self.createButton('BSpline')
+    self.showRigidResultButton = self.createButton('Rigid', checkable=True)
+    self.showAffineResultButton = self.createButton('Affine', checkable=True)
+    self.showBSplineResultButton = self.createButton('BSpline', checkable=True)
 
     self.registrationButtonGroup = qt.QButtonGroup()
     self.registrationButtonGroup.addButton(self.showRigidResultButton, 1)
@@ -547,11 +544,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationGroupBoxDisplayLayout.addWidget(self.visualEffectsGroupBox)
 
   def setupVisualEffectsUIElements(self):
-    self.fadeSlider = ctk.ctkSliderWidget()
-    self.fadeSlider.minimum = 0
-    self.fadeSlider.maximum = 1.0
-    self.fadeSlider.value = 0
-    self.fadeSlider.singleStep = 0.05
+    self.opacitySlider = ctk.ctkSliderWidget()
+    self.opacitySlider.minimum = 0
+    self.opacitySlider.maximum = 1.0
+    self.opacitySlider.value = 0
+    self.opacitySlider.singleStep = 0.05
 
     self.rockCount = 0
     self.rockTimer = qt.QTimer()
@@ -570,7 +567,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.visualEffectsGroupBox = qt.QGroupBox("Visual Evaluation")
     self.visualEffectsGroupBoxLayout = qt.QFormLayout(self.visualEffectsGroupBox)
-    self.visualEffectsGroupBoxLayout.addWidget(self.createHLayout([qt.QLabel('Opacity'), self.fadeSlider,
+    self.visualEffectsGroupBoxLayout.addWidget(self.createHLayout([qt.QLabel('Opacity'), self.opacitySlider,
                                                                    self.animaHolderLayout]))
     self.visualEffectsGroupBoxLayout.addRow("", self.revealCursorCheckBox)
 
@@ -594,7 +591,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.rejectRegistrationResultButton.clicked.connect(self.onRejectRegistrationResultButtonClicked)
       self.retryRegistrationButton.clicked.connect(self.onRetryRegistrationButtonClicked)
       self.caseCompletedButton.clicked.connect(self.onSaveDataButtonClicked)
-      self.registrationSettingsButton.clicked.connect(self.showRegistrationDetails)
+      self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
       self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
       self.crosshairButton.clicked.connect(self.onCrosshairButtonClicked)
       self.approveZFrameRegistrationButton.clicked.connect(self.onApproveZFrameRegistrationButtonClicked)
@@ -606,19 +603,19 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     def setupCheckBoxConnections():
       self.rockCheckBox.connect('toggled(bool)', self.onRockToggled)
       self.flickerCheckBox.connect('toggled(bool)', self.onFlickerToggled)
-      self.revealCursorCheckBox.connect('toggled(bool)', self.revealToggled)
+      self.revealCursorCheckBox.connect('toggled(bool)', self.onRevealToggled)
       self.showZFrameModelCheckbox.connect('toggled(bool)', self.onShowZFrameModelToggled)
       self.showZFrameTemplateCheckbox.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
       self.showTemplatePathCheckbox.connect('toggled(bool)', self.onShowTemplatePathToggled)
       self.showNeedlePathCheckbox.connect('toggled(bool)', self.onShowNeedlePathToggled)
 
     def setupOtherConnections():
-      self.fadeSlider.connect('valueChanged(double)', self.changeOpacity)
+      self.opacitySlider.connect('valueChanged(double)', self.onOpacitySliderChanged)
       self.rockTimer.connect('timeout()', self.onRockToggled)
       self.flickerTimer.connect('timeout()', self.onFlickerToggled)
-      self.targetTable.connect('clicked(QModelIndex)', self.jumpToTarget)
+      self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
       self.layoutsMenu.triggered.connect(self.onLayoutSelectionChanged)
-      self.layoutManager.layoutChanged.connect(self.layoutChanged)
+      self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
 
     setupCheckBoxConnections()
     setupButtonConnections()
@@ -637,7 +634,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onShowNeedlePathToggled(self, checked):
     self.logic.setNeedlePathVisibility(checked)
 
-  def showRegistrationDetails(self):
+  def onShowRegistrationDetails(self):
     if self.registrationGroupBox.visible:
       self.registrationGroupBox.hide()
       self.registrationGroupBox.enabled = True
@@ -645,7 +642,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.registrationGroupBox.show()
       self.registrationGroupBox.enabled = False
 
-  def layoutChanged(self):
+  def onLayoutChanged(self):
     if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
@@ -679,11 +676,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.onRigidResultClicked()
     elif buttonId == 2:
       if not self.currentResult.affineTargets:
-        return self.onRegistrationButtonChecked(3)
+        return self.showBSplineResultButton.click()
       self.onAffineResultClicked()
     elif buttonId == 3:
       self.onBSplineResultClicked()
-    self.activeRegistrationResultButtonId = buttonId
 
   def deactivateUndoRedoButtons(self):
     self.forwardButton.setEnabled(0)
@@ -738,10 +734,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def configureViewersForSelectedIntraopSeries(self, selectedSeries):
     if self.wasSeriesSkipped(selectedSeries):
       return
-    if self.registrationResults.registrationResultWasApproved(selectedSeries):
-      self.showRegistrationResultSideBySideForSelectedSeries()
-    elif self.registrationResults.registrationResultWasSkipped(selectedSeries):
-      self.showRegistrationResultSideBySideForSelectedSeries()
+    if self.registrationResults.registrationResultWasApproved(selectedSeries) or \
+            self.registrationResults.registrationResultWasSkipped(selectedSeries):
+      self.setupSideBySideRegistrationView()
     else:
       try:
         result = self.registrationResults.getResultsBySeries(selectedSeries)[0]
@@ -750,7 +745,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         return
       self.setupScreenForDisplayingSeries(result.fixedVolume.GetID())
 
-  def uncheckVisualEffects(self):
+  def resetVisualEffects(self):
     self.flickerCheckBox.checked = False
     self.rockCheckBox.checked = False
     self.revealCursorCheckBox.checked = False
@@ -762,7 +757,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setDefaultOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
 
-  def showRegistrationResultSideBySideForSelectedSeries(self):
+  def setupSideBySideRegistrationView(self):
     self.targetTable.enabled = True
     for result in self.registrationResults.getResultsBySeries(self.intraopSeriesSelector.currentText):
       if result.approved or result.skipped:
@@ -770,7 +765,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.onRegistrationResultSelected(result.name)
         break
 
-  def jumpToTarget(self, modelIndex=None):
+  def onTargetTableSelectionChanged(self, modelIndex=None):
     if not modelIndex:
       modelIndex = self.getOrSelectTargetFromTable()
     self.lastSelectedModelIndex = modelIndex
@@ -886,7 +881,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.updateUndoRedoButtons()
 
-  def revealToggled(self, checked):
+  def onRevealToggled(self, checked):
     if self.revealCursor:
       self.revealCursor.tearDown()
     if checked:
@@ -902,13 +897,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     def startRocking():
       self.flickerCheckBox.setEnabled(False)
       self.rockTimer.start()
-      self.fadeSlider.value = 0.5 + math.sin(self.rockCount / 10.) / 2.
+      self.opacitySlider.value = 0.5 + math.sin(self.rockCount / 10.) / 2.
       self.rockCount += 1
 
     def stopRocking():
       self.flickerCheckBox.setEnabled(True)
       self.rockTimer.stop()
-      self.fadeSlider.value = 0.0
+      self.opacitySlider.value = 0.0
 
     if self.rockCheckBox.checked:
       startRocking()
@@ -920,12 +915,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     def startFlickering():
       self.rockCheckBox.setEnabled(False)
       self.flickerTimer.start()
-      self.fadeSlider.value = 1.0 if self.fadeSlider.value == 0.0 else 0.0
+      self.opacitySlider.value = 1.0 if self.opacitySlider.value == 0.0 else 0.0
 
     def stopFlickering():
       self.rockCheckBox.setEnabled(True)
       self.flickerTimer.stop()
-      self.fadeSlider.value = 0.0
+      self.opacitySlider.value = 0.0
 
     if self.flickerCheckBox.checked:
       startFlickering()
@@ -1014,19 +1009,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.intraopSeriesSelector.setCurrentIndex(index)
         break
 
-  def resetShowResultButtons(self, checkedButton):
-    checked = STYLE.GRAY_BACKGROUND_WHITE_FONT
-    unchecked = STYLE.WHITE_BACKGROUND
-    for button in self.registrationButtonGroup.buttons():
-      button.setStyleSheet(checked if button is checkedButton else unchecked)
-
   def onRegistrationResultSelected(self, seriesText):
     if not seriesText:
       return
     self.hideAllTargets()
     self.currentResult = seriesText
     self.showAffineResultButton.setEnabled(self.GUIDANCE_IMAGE not in seriesText)
-    self.onRegistrationButtonChecked(self.activeRegistrationResultButtonId)
+    if self.registrationButtonGroup.checkedId() != -1:
+      self.onRegistrationButtonChecked(self.registrationButtonGroup.checkedId())
+    else:
+      self.showBSplineResultButton.click()
 
   def wasSeriesSkipped(self, series):
     return series in self.skippedIntraopSeries
@@ -1044,23 +1036,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setTargetSelected(self.preopTargets)
 
   def onRigidResultClicked(self):
-    self.displayRegistrationResults(button=self.showRigidResultButton, registrationType='rigid')
+    self.displayRegistrationResults(registrationType='rigid')
     self.targetTableModel.targetList = self.currentResult.rigidTargets
 
   def onAffineResultClicked(self):
-    self.displayRegistrationResults(button=self.showAffineResultButton, registrationType='affine')
+    self.displayRegistrationResults(registrationType='affine')
     self.targetTableModel.targetList = self.currentResult.affineTargets
 
   def onBSplineResultClicked(self):
-    self.displayRegistrationResults(button=self.showBSplineResultButton, registrationType='bSpline')
+    self.displayRegistrationResults(registrationType='bSpline')
     self.targetTableModel.targetList = self.currentResult.bSplineTargets
 
-  def displayRegistrationResults(self, button, registrationType):
-    self.resetShowResultButtons(checkedButton=button)
+  def displayRegistrationResults(self, registrationType):
     self.setCurrentRegistrationResultSliceViews(registrationType)
     self.showTargets(registrationType=registrationType)
     self.visualEffectsGroupBox.setEnabled(True)
-    self.jumpToTarget()
+    self.onTargetTableSelectionChanged()
 
   def setDefaultFOV(self, sliceLogic):
     sliceLogic.FitSliceToAll()
@@ -1326,7 +1317,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     interactionNode.SwitchToViewTransformMode()
     interactionNode.SetPlaceModePersistence(0)
 
-  def changeOpacity(self, value):
+  def onOpacitySliderChanged(self, value):
     self.yellowCompositeNode.SetForegroundOpacity(value)
     self.slice5CompositeNode.SetForegroundOpacity(value)
     self.setOldNewIndicatorAnnotationOpacity(value)
@@ -1365,7 +1356,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.evaluationModeOn = False
     self.save()
     self.disconnectCrosshairNode()
-    self.activeRegistrationResultButtonId = 3
     self.hideAllLabels()
     if ratingResult:
       self.currentResult.score = ratingResult
@@ -1375,7 +1365,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetingGroupBoxLayout.addWidget(self.targetTable, 1, 0, 1, 2)
     self.targetingGroupBox.show()
     self.removeSliceAnnotations()
-    self.uncheckVisualEffects()
+    self.resetVisualEffects()
     self.selectMostRecentEligibleSeries()
 
   def onApproveRegistrationResultButtonClicked(self):
@@ -1603,11 +1593,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetTableModel.computeDistancesAndZFrame = True
     self.targetTable.enabled = True
     self.addNewTargetsToScene()
-    self.activeRegistrationResultButtonId = 3
     self.updateRegistrationResultSelector()
     self.setupRegistrationResultView()
-    self.onBSplineResultClicked()
     self.organizeUIAfterRegistration()
+    self.showBSplineResultButton.click()
     self.currentResult.printSummary()
     self.connectCrosshairNode()
 
