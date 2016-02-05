@@ -112,8 +112,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.intraopSeriesSelector.clear()
     self.intraopDirButton.setEnabled(True)
     self.trackTargetsButton.setEnabled(False)
-    self._updateOutputDir()
-    self.preopDirButton.text = self.truncatePath(self.preopDirButton.directory)
+    self.preopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Preop directory"
+    self.preopDirButton.toolTip = path
+    self.updateOutputFolder()
 
   @property
   def intraopDataDir(self):
@@ -126,20 +127,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
     self.setSetting('IntraopLocation', path)
-    self.intraopDirButton.text = self.truncatePath(self.intraopDirButton.directory)
+    self.intraopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Intraop directory"
+    self.intraopDirButton.toolTip = path
+    self.updateOutputFolder()
 
   @property
   def outputDir(self):
-    return self.logic.outputDir
+    return self.outputDirButton.directory
 
   @outputDir.setter
   def outputDir(self, path):
-    if os.path.exists(path):
-      self._outputRoot = path
-      self.setSetting('OutputLocation', path)
-      self._updateOutputDir()
-      self.caseCompletedButton.setEnabled(True)
-      self.outputDirButton.text = self.truncatePath(self.outputDirButton.directory)
+    exists = os.path.exists(path)
+    self.caseCompletedButton.enabled = exists
+    self.setSetting('OutputLocation', path if exists else None)
+    self.outputDirButton.text = self.truncatePath(path) if exists else "Output directory"
+    self.outputDirButton.toolTip = path
+    self.updateOutputFolder()
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -149,7 +152,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     self.defaultTemplateFile = os.path.join(self.modulePath, self.DEFAULT_TEMPLATE_CONFIG_FILE_NAME)
     self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
-    self._outputRoot = None
     self.setupIcons()
 
   def hideAllMarkups(self):
@@ -170,26 +172,30 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     ScriptedLoadableModuleWidget.cleanup(self)
     self.disconnectCrosshairNode()
 
-  def _updateOutputDir(self):
-    if self._outputRoot and self.patientID and self.currentStudyDate:
+  def updateOutputFolder(self):
+    if os.path.exists(self.outputDirButton.directory) and self.patientIDLabel.text != '' \
+            and self.intraopStudyDateLabel.text != '':
       time = qt.QTime().currentTime().toString().replace(":", "")
-      dirName = self.patientID.text + "-biopsy-" + str(qt.QDate().currentDate()) + time
-      self.logic.outputDir = os.path.join(self._outputRoot, dirName, "MRgBiopsy")
+      date = str(qt.QDate().currentDate())
+      finalDirectory = self.patientIDLabel.text + "-biopsy-" + date + "-" + time
+      self.generatedOutputDirectory = os.path.join(self.outputDirButton.directory, finalDirectory, "MRgBiopsy")
+    else:
+      self.generatedOutputDirectory = ""
 
   def createPatientWatchBox(self):
     self.patientWatchBox, patientViewBoxLayout = self._createWatchBox(maximumHeight=100)
 
-    self.patientID = qt.QLabel('')
-    self.patientName = qt.QLabel('')
-    self.patientBirthDate = qt.QLabel('')
-    self.preopStudyDate = qt.QLabel('')
-    self.currentStudyDate = qt.QLabel('')
+    self.patientIDLabel = qt.QLabel()
+    self.patientNameLabel = qt.QLabel()
+    self.patientDOBLabel = qt.QLabel()
+    self.preopStudyDateLabel = qt.QLabel()
+    self.intraopStudyDateLabel = qt.QLabel()
 
-    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Patient ID: '), self.patientID], margin=1))
-    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Patient Name: '), self.patientName], margin=1))
-    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Date of Birth: '), self.patientBirthDate], margin=1))
-    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Preop Study Date: '), self.preopStudyDate], margin=1))
-    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Current Study Date: '), self.currentStudyDate], margin=1))
+    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Patient ID: '), self.patientIDLabel], margin=1))
+    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Patient Name: '), self.patientNameLabel], margin=1))
+    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Date of Birth: '), self.patientDOBLabel], margin=1))
+    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Preop Study Date: '), self.preopStudyDateLabel], margin=1))
+    patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Intraop Study Date: '), self.intraopStudyDateLabel], margin=1))
 
   def createRegistrationWatchBox(self):
     self.registrationWatchBox, registrationWatchBoxLayout = self._createWatchBox(maximumHeight=40)
@@ -266,6 +272,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.setupConnections()
 
+    self.generatedOutputDirectory = ""
+    self.outputDirButton.directory = self.getSetting('OutputLocation')
+
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
     self.setAxialOrientation()
 
@@ -311,7 +320,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.zFrameViewSettingsGroupBox = qt.QGroupBox('Z-Frame options:')
     viewSettingsLayout = qt.QVBoxLayout()
     self.zFrameViewSettingsGroupBox.setLayout(viewSettingsLayout)
-    self.showZFrameModelCheckbox = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zframe model")
+    self.showZFrameModelCheckbox = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zFrame model")
     self.showZFrameTemplateCheckbox = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
     self.showNeedlePathCheckbox = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
     self.showTemplatePathCheckbox = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
@@ -369,20 +378,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetingGroupBoxLayout = qt.QGridLayout()
     self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
 
-    self.preopDirButton = self.createDirectoryButton(text="Preop Directory", caption="Choose Preop Location",
+    self.preopDirButton = self.createDirectoryButton(text="Preop directory", caption="Choose Preop Location",
                                                      directory=self.getSetting('PreopLocation'))
     self.outputDirButton = self.createDirectoryButton(caption="Choose Data Output Location")
-    self.intraopDirButton = self.createDirectoryButton(text="Intraop Directory", caption="Choose Intraop Location",
+    self.intraopDirButton = self.createDirectoryButton(text="Intraop directory", caption="Choose Intraop Location",
                                                        directory=self.getSetting('IntraopLocation'), enabled=False)
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series", enabled=False)
-    self.caseCompletedButton = self.createButton('Case completed', enabled=os.path.exists(self.getSetting('OutputLocation')))
+    self.caseCompletedButton = self.createButton('Case completed', enabled=False)
     self.setupTargetsTable()
     self.setupIntraopSeriesSelector()
-    self.outputDirButton.directory = self.truncatePath(self.getSetting('OutputLocation'))
-    self._outputRoot = self.outputDirButton.directory
-    self.caseCompletedButton.setEnabled(self._outputRoot is not None)
 
     self.collapsibleDirectoryConfigurationArea = ctk.ctkCollapsibleButton()
     self.collapsibleDirectoryConfigurationArea.text = "Directory Settings"
@@ -931,9 +937,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.save(showDialog=True)
 
   def save(self, showDialog=False):
-    message = self.logic.save()
-    if showDialog:
-      self.notificationDialog(message)
+    if not os.path.exists(self.outputDirButton.directory) or self.generatedOutputDirectory == "":
+      self.notificationDialog("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
+                              "sure to select one.")
+    else:
+      message = self.logic.save(self.generatedOutputDirectory)
+      if showDialog:
+        self.notificationDialog(message)
 
   def configureSegmentationMode(self):
     self.referenceVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
@@ -950,18 +960,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def updateCurrentPatientAndViewBox(self, currentFile):
     self.currentID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
-    self.patientID.setText(self.currentID)
+    self.patientIDLabel.setText(self.currentID)
 
     def updatePreopStudyDate():
       studyDate = self.logic.extractDateFromDICOMFile(currentFile, DICOMTAGS.STUDY_DATE)
-      self.preopStudyDate.setText(studyDate)
+      self.preopStudyDateLabel.setText(studyDate)
 
     def updatePatientBirthDate():
       dateOfBirth = self.logic.extractDateFromDICOMFile(currentFile, DICOMTAGS.PATIENT_BIRTH_DATE)
       if dateOfBirth == '':
-        self.patientBirthDate.setText('No Date found')
+        self.patientDOBLabel.setText('No Date found')
       else:
-        self.patientBirthDate.setText(dateOfBirth)
+        self.patientDOBLabel.setText(dateOfBirth)
 
     def updatePatientName():
       currentPatientName = ''
@@ -972,10 +982,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
           currentPatientName = splitted[1] + ", " + splitted[0]
         except IndexError:
           currentPatientName = splitted[0]
-      self.patientName.setText(currentPatientName)
+      self.patientNameLabel.setText(currentPatientName)
 
     updatePatientBirthDate()
-    self.currentStudyDate.setText("")
+    self.intraopStudyDateLabel.setText("")
     updatePreopStudyDate()
     updatePatientName()
 
@@ -1633,12 +1643,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     displayNode.AddViewNodeID(sliceNode.GetID())
 
   def onNewImageDataReceived(self, **kwargs):
-    # TODO: the dialog should better show up when in evaluation step. Should be asked if he/she wants to approve, retry...
     # if approved, rating and then tracking targets
     newFileList = kwargs.pop('newList')
     studyDate = kwargs.pop('studyDate', '')
-    if self.patientCheckAfterImport(newFileList) and self.currentStudyDate.text == '':
-      self.currentStudyDate.setText(studyDate)
+    if self.patientCheckAfterImport(newFileList) and self.intraopStudyDateLabel.text == '':
+      self.intraopStudyDateLabel.setText(studyDate)
     if self.evaluationModeOn is True:
       return
     if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
@@ -1684,14 +1693,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       self.startStoreSCP()
 
   @property
-  def outputDir(self):
-    return self._outputDir
-
-  @outputDir.setter
-  def outputDir(self, path):
-    self._outputDir = path
-
-  @property
   def currentResult(self):
       return self.registrationResults.activeResult
 
@@ -1712,9 +1713,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.currentIntraopVolume = None
     self.registrationResults = RegistrationResults()
 
+    #TODO: delete preop dir?
     self._preopDataDir = ""
     self._intraopDataDir = ""
-    self._outputDir = ""
 
     self._incomingDataCallback = None
 
@@ -1751,9 +1752,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     assert hasattr(func, '__call__')
     self._incomingDataCallback = func
 
-  def save(self):
+  def save(self, outputDir):
     # TODO: if registration was redone: make a sub folder and move all initial results there
-    self.createDirectory(self._outputDir)
+    self.createDirectory(outputDir)
 
     successfullySavedData = ["The following data was successfully saved:\n"]
     failedSaveOfData = ["The following data failed to saved:\n"]
@@ -1762,7 +1763,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       try:
         name = name if name else node.GetName()
         name = replaceUnwantedCharacters(name)
-        filename = os.path.join(self._outputDir, name + extension)
+        filename = os.path.join(outputDir, name + extension)
         success = slicer.util.saveNode(node, filename)
         listToAdd = successfullySavedData if success else failedSaveOfData
         listToAdd.append(node.GetName())
@@ -1805,7 +1806,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     def saveRegistrationCommandLineArguments():
       for result in self.registrationResults.getResultsAsList():
         name = replaceUnwantedCharacters(result.name)
-        filename = os.path.join(self._outputDir, name + "-CMD-PARAMETERS.txt")
+        filename = os.path.join(outputDir, name + "-CMD-PARAMETERS.txt")
         f = open(filename, 'w+')
         f.write(result.cmdArguments)
         f.close()
