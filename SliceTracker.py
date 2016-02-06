@@ -115,6 +115,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.preopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Preop directory"
     self.preopDirButton.toolTip = path
     self.updateOutputFolder()
+    self.logic.resetData()
 
   @property
   def intraopDataDir(self):
@@ -243,7 +244,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
                                 "VolumeClip.", "Missing Extension")
 
     self.ratingWindow = RatingWindow(maximumValue=5)
-    self.seriesItems = []
     self.sliceAnnotations = []
     self.revealCursor = None
     self.currentTargets = None
@@ -696,7 +696,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.backButton.setEnabled(self.logic.inputMarkupNode.GetNumberOfFiducials() > 0)
 
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
-    if self.evaluationModeOn:
+    if self.evaluationModeOn or self.isUpdatingSeriesTable:
       return
     self.removeSliceAnnotations()
     if selectedSeries:
@@ -730,12 +730,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       annotationText = None
       if self.registrationResults.registrationResultWasApproved(selectedSeries):
         annotationText = self.APPROVED_RESULT_TEXT_ANNOTATION
-      elif self.registrationResults.registrationResultWasSkipped(selectedSeries) or self.wasSeriesSkipped(selectedSeries):
+      elif self.registrationResults.registrationResultWasSkipped(selectedSeries):
         annotationText = self.SKIPPED_RESULT_TEXT_ANNOTATION
       elif self.registrationResults.registrationResultWasRejected(selectedSeries):
         annotationText = self.REJECTED_RESULT_TEXT_ANNOTATION
       if annotationText:
         self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, annotationText, fontSize=15, yPos=20))
+      else:
+        if self.wasSeriesSkipped(selectedSeries):
+          self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.SKIPPED_RESULT_TEXT_ANNOTATION,
+                                                       fontSize=15, yPos=20))
 
   def configureViewersForSelectedIntraopSeries(self, selectedSeries):
     if self.wasSeriesSkipped(selectedSeries):
@@ -747,20 +751,26 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       try:
         result = self.registrationResults.getResultsBySeries(selectedSeries)[0]
       except IndexError:
-        self.setupScreenForDisplayingSeries(None)
+        volume = self.logic.alreadyLoadedSeries[selectedSeries]
+        self.setupRedSlicePreview(volume)
         return
-      self.setupScreenForDisplayingSeries(result.fixedVolume.GetID())
+      self.setupRedSlicePreview(result.fixedVolume)
 
   def resetVisualEffects(self):
     self.flickerCheckBox.checked = False
     self.rockCheckBox.checked = False
     self.revealCursorCheckBox.checked = False
 
-  def setupScreenForDisplayingSeries(self, volumeID):
+  def setupFourUpView(self, volume):
     self.disableTargetTable()
     self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
-    self.setBackgroundToVolume(volumeID)
-    self.setDefaultOrientation()
+    self.setBackgroundToVolume(volume.GetID())
+    slicer.app.applicationLogic().FitSliceToAll()
+
+  def setupRedSlicePreview(self, volume):
+    self.disableTargetTable()
+    self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
+    self.setBackgroundToVolume(volume.GetID())
     slicer.app.applicationLogic().FitSliceToAll()
 
   def setupSideBySideRegistrationView(self):
@@ -950,7 +960,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.intraopVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
     self.applyRegistrationButton.setEnabled(False)
     self.quickSegmentationButton.setEnabled(self.referenceVolumeSelector.currentNode() is not None)
-    self.setupScreenForDisplayingSeries(self.logic.currentIntraopVolume.GetID())
+    self.setupFourUpView(self.logic.currentIntraopVolume)
     self.onQuickSegmentationButtonClicked()
 
   def inputsAreSet(self):
@@ -990,12 +1000,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     updatePatientName()
 
   def updateSeriesSelectorTable(self):
-    self.intraopSeriesSelector.clear()
+    self.isUpdatingSeriesTable = True
     seriesList = self.logic.seriesList
     for series in seriesList:
-      sItem = qt.QStandardItem(series)
-      self.seriesItems.append(sItem)
-      self.seriesModel.appendRow(sItem)
+      sItem = self.getOrCreateItem(series)
       color = COLOR.YELLOW
       if self.registrationResults.registrationResultWasApproved(series) or \
         (self.COVER_TEMPLATE in series and self.logic.zFrameRegistrationSuccessful):
@@ -1005,19 +1013,35 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       elif self.registrationResults.registrationResultWasRejected(series):
         color = COLOR.GRAY
       self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
-    if not self.evaluationModeOn:
-      self.selectMostRecentEligibleSeries()
+    self.isUpdatingSeriesTable = False
+
+    self.selectMostRecentEligibleSeries()
+
+  def getOrCreateItem(self, series):
+    index = self.intraopSeriesSelector.findText(series)
+    if index != -1:
+      sItem = self.seriesModel.item(index)
+    else:
+      sItem = qt.QStandardItem(series)
+      self.seriesModel.appendRow(sItem)
+    return sItem
 
   def selectMostRecentEligibleSeries(self):
+    if self.evaluationModeOn:
+      return
     substring = self.GUIDANCE_IMAGE
+    index = -1
+    series = ""
     if not self.registrationResults.getMostRecentApprovedCoverProstateRegistration():
       substring = self.COVER_TEMPLATE if not self.logic.zFrameRegistrationSuccessful else self.COVER_PROSTATE
     for item in list(reversed(range(len(self.logic.seriesList)))):
       series = self.seriesModel.item(item).text()
       if substring in series:
         index = self.intraopSeriesSelector.findText(series)
-        self.intraopSeriesSelector.setCurrentIndex(index)
         break
+    if index != -1:
+      self.intraopSeriesSelector.setCurrentIndex(index)
+      self.onIntraopSeriesSelectionChanged(series)
 
   def onRegistrationResultSelected(self, seriesText):
     if not seriesText:
@@ -1284,6 +1308,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       compositeNode.Reset()
       compositeNode.SetBackgroundVolumeID(volumeID)
     self.setDefaultOrientation()
+    slicer.app.applicationLogic().FitSliceToAll()
 
   def hideAllLabels(self):
     for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
@@ -1501,7 +1526,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.activateEvaluationStep()
 
   def openZFrameRegistrationStep(self):
-    volume = self.logic.loadSeriesIntoSlicer(self.intraopSeriesSelector.currentText, clearOldSeries=True)
+    volume = self.logic.alreadyLoadedSeries[self.intraopSeriesSelector.currentText]
     if volume:
       self.evaluationModeOn = True
       self.targetingGroupBox.hide()
@@ -1511,8 +1536,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.logic.runZFrameRegistration(volume)
       progress.setValue(2)
       progress.close()
-      self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
-      self.setDefaultOrientation()
+      self.setupFourUpView(volume)
       self.redSliceNode.SetSliceVisible(True)
       self.showZFrameModelCheckbox.checked = True
       self.showZFrameTemplateCheckbox.checked = True
@@ -1525,12 +1549,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.showZFrameTemplateCheckbox.checked = False
     self.showTemplatePathCheckbox.checked = False
     self.openTargetingStep()
-    if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
-      self.onTrackTargetsButtonClicked()
-      return
+    # TODO: need to decide if SliceTracker should immediately go into that step
+    # if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
+    #   self.onTrackTargetsButtonClicked()
+    #   return
 
   def initiateOrRetryTracking(self):
-    volume = self.logic.loadSeriesIntoSlicer(self.intraopSeriesSelector.currentText, clearOldSeries=True)
+    volume = self.logic.alreadyLoadedSeries[self.intraopSeriesSelector.currentText]
     if volume:
       self.logic.currentIntraopVolume = volume
     self.disableTargetTable()
@@ -1551,7 +1576,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def repeatRegistrationForCurrentSelection(self):
     logging.debug('Performing Re-Registration')
-    volume = self.logic.loadSeriesIntoSlicer(self.intraopSeriesSelector.currentText)
+    volume = self.logic.alreadyLoadedSeries[self.intraopSeriesSelector.currentText]
     if volume:
       self.logic.currentIntraopVolume = volume
     self.onInvokeRegistration(initial=False)
@@ -1650,12 +1675,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.intraopStudyDateLabel.setText(studyDate)
     if self.evaluationModeOn is True:
       return
-    if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
-      self.onTrackTargetsButtonClicked()
-      return
-    if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
-      self.onTrackTargetsButtonClicked()
-      return
+    # TODO: need to decide if the following commented lines should be used or not
+    # if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
+    #   self.onTrackTargetsButtonClicked()
+    #   return
+    # if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
+    #   self.onTrackTargetsButtonClicked()
+    #   return
     if self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
                                            in [self.COVER_TEMPLATE, self.COVER_PROSTATE, self.GUIDANCE_IMAGE]):
       dialog = IncomingDataMessageBox()
@@ -1741,7 +1767,11 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def __del__(self):
     if self.storeSCPProcess:
       self.storeSCPProcess.kill()
-    del self.registrationResults
+    self.resetData()
+
+  def resetData(self):
+    self.clearAlreadyLoadedSeries()
+    # del self.registrationResults
 
   def isTrackingPossible(self, series):
     return not (self.registrationResults.registrationResultWasApproved(series) or
@@ -2142,8 +2172,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
           self.loadableList[selectedSeries].append(currentFile)
 
   def loadSeriesIntoSlicer(self, selectedSeries, clearOldSeries=False):
-    if clearOldSeries:
-      self.clearAlreadyLoadedSeries()
     self.createLoadableFileListFromSelection(selectedSeries)
 
     if selectedSeries not in self.alreadyLoadedSeries.keys():
@@ -2154,9 +2182,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       volume.SetName(loadables[0].name)
       slicer.mrmlScene.AddNode(volume)
       self.alreadyLoadedSeries[selectedSeries] = volume
-    else:
-      volume = self.alreadyLoadedSeries[selectedSeries]
-    return volume
 
   def importDICOMSeries(self, currentFileCount):
     indexer = ctk.ctkDICOMIndexer()
@@ -2176,6 +2201,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       series = self.makeSeriesNumberDescription(currentFile)
       if series and series not in self.seriesList and self.isDICOMSeriesEligible(series):
         self.seriesList.append(series)
+        self.loadSeriesIntoSlicer(series)
       if studyDate == '':
         studyDate = self.extractDateFromDICOMFile(currentFile, DICOMTAGS.STUDY_DATE)
 
