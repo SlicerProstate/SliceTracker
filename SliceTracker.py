@@ -696,7 +696,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.backButton.setEnabled(self.logic.inputMarkupNode.GetNumberOfFiducials() > 0)
 
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
-    if self.evaluationModeOn or self.isUpdatingSeriesTable:
+    if self.evaluationModeOn:
       return
     self.removeSliceAnnotations()
     if selectedSeries:
@@ -763,8 +763,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def setupFourUpView(self, volume):
     self.disableTargetTable()
-    self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
     self.setBackgroundToVolume(volume.GetID())
+    self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
     slicer.app.applicationLogic().FitSliceToAll()
 
   def setupRedSlicePreview(self, volume):
@@ -999,8 +999,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     updatePreopStudyDate()
     updatePatientName()
 
-  def updateSeriesSelectorTable(self):
-    self.isUpdatingSeriesTable = True
+  def updateIntraopSeriesSelectorTable(self):
+    self.intraopSeriesSelector.blockSignals(True)
     seriesList = self.logic.seriesList
     for series in seriesList:
       sItem = self.getOrCreateItem(series)
@@ -1013,7 +1013,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       elif self.registrationResults.registrationResultWasRejected(series):
         color = COLOR.GRAY
       self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
-    self.isUpdatingSeriesTable = False
+    self.intraopSeriesSelector.setCurrentIndex(-1)
+    self.intraopSeriesSelector.blockSignals(False)
 
     self.selectMostRecentEligibleSeries()
 
@@ -1041,7 +1042,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         break
     if index != -1:
       self.intraopSeriesSelector.setCurrentIndex(index)
-      self.onIntraopSeriesSelectionChanged(series)
 
   def onRegistrationResultSelected(self, seriesText):
     if not seriesText:
@@ -1291,7 +1291,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
           return False
         else:
           break
-    self.updateSeriesSelectorTable()
+    self.updateIntraopSeriesSelectorTable()
     return success
 
   def onCancelSegmentationButtonClicked(self):
@@ -1395,7 +1395,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if ratingResult:
       self.currentResult.score = ratingResult
     self.registrationWatchBox.hide()
-    self.updateSeriesSelectorTable()
+    self.updateIntraopSeriesSelectorTable()
     self.registrationEvaluationGroupBox.hide()
     self.targetingGroupBoxLayout.addWidget(self.targetTable, 1, 0, 1, 2)
     self.targetingGroupBox.show()
@@ -1417,7 +1417,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onSkipIntraopSeriesButtonClicked(self):
     self.skippedIntraopSeries.append(self.intraopSeriesSelector.currentText)
-    self.updateSeriesSelectorTable()
+    self.updateIntraopSeriesSelectorTable()
 
   def onRejectRegistrationResultButtonClicked(self):
     results = self.registrationResults.getResultsBySeriesNumber(self.currentResult.seriesNumber)
