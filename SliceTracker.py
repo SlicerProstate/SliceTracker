@@ -423,7 +423,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetTable = qt.QTableView()
     self.targetTableModel = CustomTargetTableModel(self.logic)
     self.targetTable.setModel(self.targetTableModel)
-    self.targetTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+    self.targetTable.setSelectionBehavior(qt.QTableView.SelectRows)
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
     self.targetTable.verticalHeader().hide()
     self.targetTable.maximumHeight = 150
@@ -783,7 +783,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onTargetTableSelectionChanged(self, modelIndex=None):
     if not modelIndex:
-      modelIndex = self.getOrSelectTargetFromTable()
+      self.getAndSelectTargetFromTable()
+      return
     self.lastSelectedModelIndex = modelIndex
     row = modelIndex.row()
     if not self.currentTargets:
@@ -805,15 +806,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       except KeyError:
         pass
 
-  def getOrSelectTargetFromTable(self):
+  def getAndSelectTargetFromTable(self):
+    modelIndex = None
     if self.lastSelectedModelIndex:
-      return self.lastSelectedModelIndex
-    try:
-      modelIndex = self.targetTable.selectedIndexes()[0]
-    except IndexError:
-      self.targetTable.selectRow(0)
-      modelIndex = self.targetTable.selectedIndexes()[0]
-    return modelIndex
+      modelIndex = self.lastSelectedModelIndex
+    else:
+      if self.targetTableModel.rowCount():
+        modelIndex = self.targetTableModel.index(0,0)
+    if modelIndex:
+      self.targetTable.setCurrentIndex(modelIndex)
 
   def jumpSliceNodeToTarget(self, sliceNode, targetNode, n):
     point = [0,0,0,0]
@@ -1032,7 +1033,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       return
     substring = self.GUIDANCE_IMAGE
     index = -1
-    series = ""
     if not self.registrationResults.getMostRecentApprovedCoverProstateRegistration():
       substring = self.COVER_TEMPLATE if not self.logic.zFrameRegistrationSuccessful else self.COVER_PROSTATE
     for item in list(reversed(range(len(self.logic.seriesList)))):
@@ -1070,22 +1070,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setTargetSelected(self.preopTargets)
 
   def onRigidResultClicked(self):
-    self.displayRegistrationResults(registrationType='rigid')
     self.targetTableModel.targetList = self.currentResult.rigidTargets
+    self.displayRegistrationResults(registrationType='rigid')
 
   def onAffineResultClicked(self):
-    self.displayRegistrationResults(registrationType='affine')
     self.targetTableModel.targetList = self.currentResult.affineTargets
+    self.displayRegistrationResults(registrationType='affine')
 
   def onBSplineResultClicked(self):
-    self.displayRegistrationResults(registrationType='bSpline')
     self.targetTableModel.targetList = self.currentResult.bSplineTargets
+    self.displayRegistrationResults(registrationType='bSpline')
 
   def displayRegistrationResults(self, registrationType):
     self.setCurrentRegistrationResultSliceViews(registrationType)
     self.showTargets(registrationType=registrationType)
     self.visualEffectsGroupBox.setEnabled(True)
-    self.onTargetTableSelectionChanged()
+    self.onTargetTableSelectionChanged(self.lastSelectedModelIndex)
 
   def setDefaultFOV(self, sliceLogic):
     sliceLogic.FitSliceToAll()
@@ -1387,7 +1387,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def openTargetingStep(self, ratingResult=None):
     self.zFrameRegistrationGroupBox.hide()
     self.logic.removeNeedleModelNode()
-    self.targetTableModel.computeDistancesAndZFrame = False
+    self.targetTableModel.computeCursorDistances = False
     self.evaluationModeOn = False
     self.save()
     self.disconnectCrosshairNode()
@@ -1512,7 +1512,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onTrackTargetsButtonClicked(self):
     self.removeSliceAnnotations()
     self.evaluationModeOn = False
-    self.targetTableModel.computeDistancesAndZFrame = False
+    self.targetTableModel.computeCursorDistances = False
     if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
       self.openZFrameRegistrationStep()
       return
@@ -1625,7 +1625,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.onTrackTargetsButtonClicked()
 
   def finalizeRegistrationStep(self):
-    self.targetTableModel.computeDistancesAndZFrame = True
+    self.targetTableModel.computeCursorDistances = True
     self.targetTable.enabled = True
     self.addNewTargetsToScene()
     self.updateRegistrationResultSelector()
@@ -3011,6 +3011,14 @@ class RatingWindow(qt.QWidget, ModuleWidgetMixin):
 
 class CustomTargetTableModel(qt.QAbstractTableModel):
 
+  COLUMN_NAME = 'Name'
+  COLUMN_2D_DISTANCE = 'Needle-tip distance 2D [mm]'
+  COLUMN_3D_DISTANCE = 'Needle-tip distance 3D [mm]'
+  COLUMN_HOLE = 'Hole'
+  COLUMN_DEPTH = 'Depth [mm]'
+
+  headers = [COLUMN_NAME, COLUMN_2D_DISTANCE, COLUMN_3D_DISTANCE, COLUMN_HOLE, COLUMN_DEPTH]
+
   @property
   def targetList(self):
     return self._targetList
@@ -3018,9 +3026,9 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
   @targetList.setter
   def targetList(self, targetList):
     self.needleStartEndPositions = {}
-    self.reset()
     self._targetList = targetList
-    self.dataChanged(self.index(0, 3), self.index(self.rowCount(None)-1, 4))
+    self.computeNewDepthAndHole()
+    self.reset()
 
   @property
   def cursorPosition(self):
@@ -3038,28 +3046,27 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     self._targetList = None
     self.needleStartEndPositions = {}
     self.targetList = targets
-    self.headers = ['Name', 'Needle-tip distance 2D [mm]', 'Needle-tip distance 3D [mm]', 'Hole', 'Depth [mm]']
-    self.computeDistancesAndZFrame = False
+    self.computeCursorDistances = False
+    self.zFrameDepths = {}
+    self.zFrameHole = {}
 
   def headerData(self, col, orientation, role):
     if orientation == qt.Qt.Horizontal and role == qt.Qt.DisplayRole:
         return self.headers[col]
     return None
 
-  def rowCount(self, parent):
+  def rowCount(self, parent=None):
     try:
       number_of_targets = self.targetList.GetNumberOfFiducials()
       return number_of_targets
     except AttributeError:
       return 0
 
-  def columnCount(self, parent):
+  def columnCount(self, parent=None):
     return len(self.headers)
 
   def data(self, index, role):
-    if not index.isValid():
-      return None
-    elif role != qt.Qt.DisplayRole:
+    if not index.isValid() or role != qt.Qt.DisplayRole:
       return None
 
     row = index.row()
@@ -3071,16 +3078,42 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
 
     if col == 0:
       return self.targetList.GetNthFiducialLabel(row)
-    elif (col == 1 or col == 2) and self.cursorPosition and self.computeDistancesAndZFrame:
+    elif (col == 1 or col == 2) and self.cursorPosition and self.computeCursorDistances:
       if col == 1:
         distance2D = self.logic.getNeedleTipTargetDistance2D(targetPosition, self.cursorPosition)
         return 'x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2))
       distance3D = self.logic.getNeedleTipTargetDistance3D(targetPosition, self.cursorPosition)
       return str(round(distance3D, 2))
-    elif (col == 3 or col == 4) and self.logic.zFrameRegistrationSuccessful and self.computeDistancesAndZFrame:
-      (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
-      self.needleStartEndPositions[row] = (start, end)
+
+    elif (col == 3 or col == 4) and self.logic.zFrameRegistrationSuccessful and self.computeCursorDistances:
       if col == 3:
-        return '(%s, %s)' % (indexX, indexY)
-      return '%.3f' % depth if inRange else '(%.3f)' % depth
+        return self.computeZFrameHole(row, targetPosition)
+      else:
+        return self.computeZFrameDepth(row, targetPosition)
     return ""
+
+  def computeZFrameHole(self, index, targetPosition):
+    if index not in self.zFrameHole.keys():
+      (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
+      self.needleStartEndPositions[index] = (start, end)
+      self.zFrameHole[index] = '(%s, %s)' % (indexX, indexY)
+    return self.zFrameHole[index]
+
+  def computeZFrameDepth(self, index, targetPosition):
+    if index not in self.zFrameDepths.keys():
+      (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
+      self.zFrameDepths[index] = '%.3f' % depth if inRange else '(%.3f)' % depth
+    return self.zFrameDepths[index]
+
+  def computeNewDepthAndHole(self):
+    self.zFrameDepths = {}
+    self.zFrameHole = {}
+    if not self.targetList:
+      return
+
+    for index in range(self.targetList.GetNumberOfFiducials()):
+      pos = [0.0, 0.0, 0.0]
+      self.targetList.GetNthFiducialPosition(index, pos)
+      self.computeZFrameHole(index, pos)
+
+    self.dataChanged(self.index(0, 3), self.index(self.rowCount(None)-1, 4))
