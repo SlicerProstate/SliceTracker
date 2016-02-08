@@ -414,7 +414,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def createHelperLabel(self, toolTipText=""):
     helperPixmap = qt.QPixmap(os.path.join(self.iconPath, 'icon-infoBox.png'))
-    helperPixmap = helperPixmap.scaled(qt.QSize(20, 20))
+    helperPixmap = helperPixmap.scaled(qt.QSize(23, 20))
     label = self.createLabel("", pixmap=helperPixmap, toolTip=toolTipText)
     label.setCursor(qt.Qt.PointingHandCursor)
     return label
@@ -670,11 +670,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onCrosshairButtonClicked(self):
     if self.crosshairButton.checked:
-      self.crosshairNode.SetCrosshairMode(self.crosshairNode.ShowSmallBasic)
+      self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
+      self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
       self.crosshairButton.setText("Hide crosshair")
     else:
       self.crosshairButton.setText("Show crosshair")
-      self.crosshairNode.SetCrosshairMode(0)
+      self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.NoCrosshair)
 
   def onRegistrationButtonChecked(self, buttonId):
     self.hideAllTargets()
@@ -912,15 +913,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onRockToggled(self):
 
     def startRocking():
-      self.flickerCheckBox.setEnabled(False)
+      self.flickerCheckBox.enabled = False
+      self.opacitySlider.enabled = False
       self.rockTimer.start()
       self.opacitySlider.value = 0.5 + math.sin(self.rockCount / 10.) / 2.
       self.rockCount += 1
 
     def stopRocking():
-      self.flickerCheckBox.setEnabled(True)
+      self.flickerCheckBox.enabled  = True
+      self.opacitySlider.enabled = True
       self.rockTimer.stop()
-      self.opacitySlider.value = 0.0
 
     if self.rockCheckBox.checked:
       startRocking()
@@ -1505,9 +1507,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     compositeNode.SetLabelVolumeID(label.GetID())
     compositeNode.SetLabelOpacity(1)
     logic = getattr(self, viewName+"SliceLogic")
-    logic.GetSliceNode().RotateToVolumePlane(volume)
-    logic.FitSliceToAll()
-    logic.GetSliceNode().SetFieldOfView(86, 136, 3.5)
+
+    self.setDefaultFOV(logic)
 
   def onTrackTargetsButtonClicked(self):
     self.removeSliceAnnotations()
@@ -1642,7 +1643,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def setupRegistrationResultView(self):
     self.hideAllLabels()
     self.addSliceAnnotations()
-    slicer.app.applicationLogic().FitSliceToAll()
 
     self.refreshViewNodeIDs(self.preopTargets, self.redSliceNode)
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
