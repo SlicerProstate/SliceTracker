@@ -3083,7 +3083,11 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
   @targetList.setter
   def targetList(self, targetList):
     self.needleStartEndPositions = {}
+    if self._targetList and self.observer:
+      self._targetList.RemoveObserver(self.observer)
     self._targetList = targetList
+    if self._targetList:
+      self._targetList.AddObserver(vtk.vtkCommand.ModifiedEvent, self.computeNewDepthAndHole)
     self.computeNewDepthAndHole()
     self.reset()
 
@@ -3106,6 +3110,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     self.computeCursorDistances = False
     self.zFrameDepths = {}
     self.zFrameHole = {}
+    self.observer = None
 
   def headerData(self, col, orientation, role):
     if orientation == qt.Qt.Horizontal and role == qt.Qt.DisplayRole:
@@ -3162,7 +3167,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
       self.zFrameDepths[index] = '%.3f' % depth if inRange else '(%.3f)' % depth
     return self.zFrameDepths[index]
 
-  def computeNewDepthAndHole(self):
+  def computeNewDepthAndHole(self, observer=None, caller=None):
     self.zFrameDepths = {}
     self.zFrameHole = {}
     if not self.targetList:
