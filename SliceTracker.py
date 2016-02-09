@@ -233,6 +233,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.needleIcon = self.createIcon('icon-needle')
     self.templateIcon = self.createIcon('icon-template')
     self.pathIcon = self.createIcon('icon-path')
+    self.revealCursorIcon = self.createIcon('icon-revealCursor')
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -301,10 +302,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.viewSettingsGroupBox = qt.QGroupBox('View options:')
     viewSettingsLayout = qt.QVBoxLayout()
     self.viewSettingsGroupBox.setLayout(viewSettingsLayout)
-    viewSettingsLayout.addWidget(self.createVLayout([self.layoutsMenuButton, self.crosshairButton]))
+    self.useRevealCursorButton = self.createButton("", icon=self.revealCursorIcon, checkable=True,
+                                                   enabled=False, toolTip="Use reveal cursor")
+    viewSettingsLayout.addWidget(self.createVLayout([self.layoutsMenuButton,
+                                                     self.createHLayout([self.crosshairButton,
+                                                                         self.useRevealCursorButton])]))
 
   def setupLayoutsButton(self):
-    self.layoutsMenuButton = self.createButton("Layouts")
+    self.layoutsMenuButton = self.createButton("Layouts", minimumHeight=30)
     self.layoutsMenu = qt.QMenu()
     self.layoutDict = dict()
     self.layoutDict[self.LAYOUT_SIDE_BY_SIDE] = self.layoutsMenu.addAction(self.sideBySideIcon, "side-by-side")
@@ -313,21 +318,21 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.layoutsMenuButton.setMenu(self.layoutsMenu)
 
   def setupCrosshairButton(self):
-    self.crosshairButton = self.createButton("Show crosshair", checkable=True, icon=self.crosshairIcon)
+    self.crosshairButton = self.createButton("", checkable=True, icon=self.crosshairIcon, toolTip="Show crosshair")
     self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
 
   def setupZFrameViewSettingsGroupBox(self):
     self.zFrameViewSettingsGroupBox = qt.QGroupBox('Z-Frame options:')
     viewSettingsLayout = qt.QVBoxLayout()
     self.zFrameViewSettingsGroupBox.setLayout(viewSettingsLayout)
-    self.showZFrameModelCheckbox = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zFrame model")
-    self.showZFrameTemplateCheckbox = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
-    self.showNeedlePathCheckbox = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
-    self.showTemplatePathCheckbox = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
+    self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zFrame model")
+    self.showZFrameTemplateButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
+    self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
+    self.showTemplatePathButton = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
 
-    self.showZFrameTemplateCheckbox.enabled = self.logic.loadTemplateConfigFile(self.defaultTemplateFile)
-    viewSettingsLayout.addWidget(self.createHLayout([self.showZFrameModelCheckbox, self.showZFrameTemplateCheckbox]))
-    viewSettingsLayout.addWidget(self.createHLayout([ self.showTemplatePathCheckbox, self.showNeedlePathCheckbox]))
+    self.showZFrameTemplateButton.enabled = self.logic.loadTemplateConfigFile(self.defaultTemplateFile)
+    viewSettingsLayout.addWidget(self.createHLayout([self.showZFrameModelButton, self.showZFrameTemplateButton]))
+    viewSettingsLayout.addWidget(self.createHLayout([self.showTemplatePathButton, self.showNeedlePathButton]))
 
   def setupSliceWidgets(self):
     self.setupSliceWidget("Red")
@@ -550,11 +555,27 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationGroupBoxDisplayLayout.addWidget(self.visualEffectsGroupBox)
 
   def setupVisualEffectsUIElements(self):
-    self.opacitySlider = ctk.ctkSliderWidget()
+    self.spinBox = qt.QDoubleSpinBox()
+    self.spinBox.minimum = 0
+    self.spinBox.maximum = 1.0
+    self.spinBox.value = 0
+    self.spinBox.singleStep = 0.05
+
+    self.opacitySliderPopup = ctk.ctkPopupWidget(self.spinBox)
+    popupLayout = qt.QHBoxLayout(self.opacitySliderPopup)
+    self.opacitySlider = ctk.ctkDoubleSlider(self.opacitySliderPopup)
+    self.opacitySlider.orientation = qt.Qt.Horizontal
     self.opacitySlider.minimum = 0
     self.opacitySlider.maximum = 1.0
     self.opacitySlider.value = 0
     self.opacitySlider.singleStep = 0.05
+
+    popupLayout.addWidget(self.opacitySlider)
+    self.opacitySliderPopup.verticalDirection = ctk.ctkBasePopupWidget.TopToBottom
+    self.opacitySliderPopup.animationEffect = ctk.ctkBasePopupWidget.FadeEffect
+    self.opacitySliderPopup.orientation = qt.Qt.Horizontal
+    self.opacitySliderPopup.easingCurve = qt.QEasingCurve.OutQuart
+    self.opacitySliderPopup.effectDuration = 100
 
     self.rockCount = 0
     self.rockTimer = qt.QTimer()
@@ -568,14 +589,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.flickerCheckBox.checked = False
 
     self.animaHolderLayout = self.createVLayout([self.rockCheckBox, self.flickerCheckBox])
-    self.revealCursorCheckBox = qt.QCheckBox("Use RevealCursor")
-    self.revealCursorCheckBox.checked = False
-
-    self.visualEffectsGroupBox = qt.QGroupBox("Visual Evaluation")
+    self.visualEffectsGroupBox = qt.QGroupBox("Opacity")
     self.visualEffectsGroupBoxLayout = qt.QFormLayout(self.visualEffectsGroupBox)
-    self.visualEffectsGroupBoxLayout.addWidget(self.createHLayout([qt.QLabel('Opacity'), self.opacitySlider,
-                                                                   self.animaHolderLayout]))
-    self.visualEffectsGroupBoxLayout.addRow("", self.revealCursorCheckBox)
+    self.visualEffectsGroupBoxLayout.addWidget(self.createHLayout([self.spinBox, self.animaHolderLayout]))
 
   def setupConnections(self):
 
@@ -601,6 +617,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
       self.crosshairButton.clicked.connect(self.onCrosshairButtonClicked)
       self.approveZFrameRegistrationButton.clicked.connect(self.onApproveZFrameRegistrationButtonClicked)
+      self.useRevealCursorButton.connect('toggled(bool)', self.onRevealToggled)
+      self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
+      self.showZFrameTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
+      self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
+      self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
 
     def setupSelectorConnections():
       self.resultSelector.connect('currentIndexChanged(QString)', self.onRegistrationResultSelected)
@@ -609,14 +630,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     def setupCheckBoxConnections():
       self.rockCheckBox.connect('toggled(bool)', self.onRockToggled)
       self.flickerCheckBox.connect('toggled(bool)', self.onFlickerToggled)
-      self.revealCursorCheckBox.connect('toggled(bool)', self.onRevealToggled)
-      self.showZFrameModelCheckbox.connect('toggled(bool)', self.onShowZFrameModelToggled)
-      self.showZFrameTemplateCheckbox.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
-      self.showTemplatePathCheckbox.connect('toggled(bool)', self.onShowTemplatePathToggled)
-      self.showNeedlePathCheckbox.connect('toggled(bool)', self.onShowNeedlePathToggled)
 
     def setupOtherConnections():
-      self.opacitySlider.connect('valueChanged(double)', self.onOpacitySliderChanged)
+      self.spinBox.valueChanged.connect(self.onOpacitySpinBoxChanged)
+      self.opacitySlider.valueChanged.connect(self.onOpacitySliderChanged)
       self.rockTimer.connect('timeout()', self.onRockToggled)
       self.flickerTimer.connect('timeout()', self.onFlickerToggled)
       self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
@@ -672,9 +689,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if self.crosshairButton.checked:
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
-      self.crosshairButton.setText("Hide crosshair")
     else:
-      self.crosshairButton.setText("Show crosshair")
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.NoCrosshair)
 
   def onRegistrationButtonChecked(self, buttonId):
@@ -760,7 +775,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def resetVisualEffects(self):
     self.flickerCheckBox.checked = False
     self.rockCheckBox.checked = False
-    self.revealCursorCheckBox.checked = False
+    self.useRevealCursorButton.enabled = False
+    self.useRevealCursorButton.checked = False
 
   def setupFourUpView(self, volume):
     self.disableTargetTable()
@@ -910,18 +926,27 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.rightViewerNewImageAnnotation.opacity = value
     self.rightViewerOldImageAnnotation.opacity = 1.0-value
 
+  def showOpacitySliderPopup(self, show):
+    if show:
+      if not self.opacitySliderPopup.visible:
+        self.opacitySliderPopup.show()
+        self.opacitySliderPopup.autoHide = False
+    else:
+      self.opacitySliderPopup.hide()
+      self.opacitySliderPopup. autoHide = True
+
   def onRockToggled(self):
 
     def startRocking():
+      self.showOpacitySliderPopup(True)
       self.flickerCheckBox.enabled = False
-      self.opacitySlider.enabled = False
       self.rockTimer.start()
-      self.opacitySlider.value = 0.5 + math.sin(self.rockCount / 10.) / 2.
+      self.spinBox.value = 0.5 + math.sin(self.rockCount / 10.) / 2.
       self.rockCount += 1
 
     def stopRocking():
+      self.showOpacitySliderPopup(False)
       self.flickerCheckBox.enabled  = True
-      self.opacitySlider.enabled = True
       self.rockTimer.stop()
 
     if self.rockCheckBox.checked:
@@ -932,14 +957,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onFlickerToggled(self):
 
     def startFlickering():
+      self.showOpacitySliderPopup(True)
       self.rockCheckBox.setEnabled(False)
       self.flickerTimer.start()
-      self.opacitySlider.value = 1.0 if self.opacitySlider.value == 0.0 else 0.0
+      self.spinBox.value = 1.0 if self.spinBox.value == 0.0 else 0.0
 
     def stopFlickering():
+      self.showOpacitySliderPopup(False)
       self.rockCheckBox.setEnabled(True)
       self.flickerTimer.stop()
-      self.opacitySlider.value = 0.0
+      self.spinBox.value = 0.0
 
     if self.flickerCheckBox.checked:
       startFlickering()
@@ -1354,7 +1381,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     interactionNode.SwitchToViewTransformMode()
     interactionNode.SetPlaceModePersistence(0)
 
+  def onOpacitySpinBoxChanged(self, value):
+    if self.opacitySlider.value != value:
+      self.opacitySlider.value = value
+    self.onOpacityChanged(value)
+
   def onOpacitySliderChanged(self, value):
+    if self.spinBox.value != value:
+      self.spinBox.value = value
+
+  def onOpacityChanged(self, value):
     self.yellowCompositeNode.SetForegroundOpacity(value)
     self.slice5CompositeNode.SetForegroundOpacity(value)
     self.setOldNewIndicatorAnnotationOpacity(value)
@@ -1365,6 +1401,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetingGroupBox.hide()
     self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTable, 4, 0)
     self.registrationEvaluationGroupBox.show()
+    self.useRevealCursorButton.enabled = True
 
   def connectCrosshairNode(self):
     if not self.crosshairNodeObserverTag:
@@ -1539,16 +1576,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       progress.close()
       self.setupFourUpView(volume)
       self.redSliceNode.SetSliceVisible(True)
-      self.showZFrameModelCheckbox.checked = True
-      self.showZFrameTemplateCheckbox.checked = True
-      self.showTemplatePathCheckbox.checked = True
+      self.showZFrameModelButton.checked = True
+      self.showZFrameTemplateButton.checked = True
+      self.showTemplatePathButton.checked = True
 
   def onApproveZFrameRegistrationButtonClicked(self):
     self.logic.zFrameRegistrationSuccessful = True
     self.redSliceNode.SetSliceVisible(False)
-    self.showZFrameModelCheckbox.checked = False
-    self.showZFrameTemplateCheckbox.checked = False
-    self.showTemplatePathCheckbox.checked = False
+    self.showZFrameModelButton.checked = False
+    self.showZFrameTemplateButton.checked = False
+    self.showTemplatePathButton.checked = False
     self.openTargetingStep()
     # TODO: need to decide if SliceTracker should immediately go into that step
     # if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
