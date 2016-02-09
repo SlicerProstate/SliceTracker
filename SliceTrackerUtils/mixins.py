@@ -169,14 +169,36 @@ class ModuleLogicMixin(object):
 
   @staticmethod
   def createScalarVolumeNode(name):
-    volume = slicer.vtkMRMLScalarVolumeNode()
-    volume.SetName(name)
-    slicer.mrmlScene.AddNode(volume)
-    return volume
+    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLScalarVolumeNode)
 
   @staticmethod
-  def createTransformNode(name, isBSpline):
-    node = slicer.vtkMRMLBSplineTransformNode() if isBSpline else slicer.vtkMRMLLinearTransformNode()
+  def createBSplineTransformNode(name):
+    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLBSplineTransformNode)
+
+  @staticmethod
+  def createLinearTransformNode(name):
+    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLLinearTransformNode)
+
+  @staticmethod
+  def createModelNode(name):
+    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLModelNode)
+
+  @staticmethod
+  def createNode(name, nodeType):
+    node = nodeType()
     node.SetName(name)
     slicer.mrmlScene.AddNode(node)
     return node
+
+  @staticmethod
+  def applyTransform(transform, node):
+    tfmLogic = slicer.modules.transforms.logic()
+    node.SetAndObserveTransformNodeID(transform.GetID())
+    tfmLogic.hardenTransform(node)
+
+  @staticmethod
+  def setAndObserveDisplayNode(node):
+    displayNode = slicer.vtkMRMLModelDisplayNode()
+    slicer.mrmlScene.AddNode(displayNode)
+    node.SetAndObserveDisplayNodeID(displayNode.GetID())
+    return displayNode
