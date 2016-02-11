@@ -1345,7 +1345,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def setBackgroundToVolume(self, volumeID):
     for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
-      compositeNode.Reset()
+      compositeNode.Reset(None)
       compositeNode.SetBackgroundVolumeID(volumeID)
     self.setDefaultOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
