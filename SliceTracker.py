@@ -416,6 +416,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def setupTargetsTable(self):
     self.targetTable = qt.QTableView()
     self.targetTableModel = CustomTargetTableModel(self.logic)
+    self.targetTableModel.setTargetModifiedCallback(self.updateNeedleModel)
     self.targetTable.setModel(self.targetTableModel)
     self.targetTable.setSelectionBehavior(qt.QTableView.SelectRows)
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
@@ -810,12 +811,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.jumpSliceNodeToTarget(self.yellowSliceNode, self.currentTargets, row)
     self.setTargetSelected(self.currentTargets, selected=False)
     self.currentTargets.SetNthFiducialSelected(row, True)
-    if self.evaluationModeOn:
+    self.updateNeedleModel()
+
+  def updateNeedleModel(self):
+    if self.showNeedlePathButton.checked and self.logic.zFrameRegistrationSuccessful:
+      modelIndex = self.lastSelectedModelIndex
       try:
-        start, end = self.targetTableModel.needleStartEndPositions[row]
+        start, end = self.targetTableModel.needleStartEndPositions[modelIndex.row()]
         self.logic.createNeedleModelNode(start, end)
       except KeyError:
-        pass
+        self.logic.removeNeedleModelNode()
 
   def getAndSelectTargetFromTable(self):
     modelIndex = None
@@ -825,7 +830,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       if self.targetTableModel.rowCount():
         modelIndex = self.targetTableModel.index(0,0)
     if modelIndex:
-      self.targetTable.setCurrentIndex(modelIndex)
+      self.targetTable.clicked(modelIndex)
 
   def jumpSliceNodeToTarget(self, sliceNode, targetNode, n):
     point = [0,0,0,0]
@@ -1108,7 +1113,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setCurrentRegistrationResultSliceViews(registrationType)
     self.showTargets(registrationType=registrationType)
     self.visualEffectsGroupBox.setEnabled(True)
-    self.onTargetTableSelectionChanged(self.lastSelectedModelIndex)
+    if self.lastSelectedModelIndex:
+      self.targetTable.clicked(self.lastSelectedModelIndex)
 
   def setDefaultFOV(self, sliceLogic, volume, factor=0.5):
     sliceLogic.FitSliceToAll()
@@ -1326,7 +1332,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def setBackgroundToVolume(self, volumeID):
     for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
-      compositeNode.Reset()
+      compositeNode.Reset(None)
       compositeNode.SetBackgroundVolumeID(volumeID)
     self.setDefaultOrientation()
     slicer.app.applicationLogic().FitSliceToAll()
@@ -3066,7 +3072,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
       self._targetList.RemoveObserver(self.observer)
     self._targetList = targetList
     if self._targetList:
-      self._targetList.AddObserver(vtk.vtkCommand.ModifiedEvent, self.computeNewDepthAndHole)
+      self.observer = self._targetList.AddObserver(self._targetList.PointEndInteractionEvent, self.computeNewDepthAndHole)
     self.computeNewDepthAndHole()
     self.reset()
 
@@ -3090,6 +3096,11 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     self.zFrameDepths = {}
     self.zFrameHole = {}
     self.observer = None
+    self._targetModifiedCallback = None
+
+  def setTargetModifiedCallback(self, func):
+    assert hasattr(func, '__call__')
+    self._targetModifiedCallback = func
 
   def headerData(self, col, orientation, role):
     if orientation == qt.Qt.Horizontal and role == qt.Qt.DisplayRole:
@@ -3149,7 +3160,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
   def computeNewDepthAndHole(self, observer=None, caller=None):
     self.zFrameDepths = {}
     self.zFrameHole = {}
-    if not self.targetList or (caller and (not self.logic.zFrameRegistrationSuccessful or not self.computeCursorDistances)):
+    if not self.targetList or not self.logic.zFrameRegistrationSuccessful:
       return
 
     for index in range(self.targetList.GetNumberOfFiducials()):
@@ -3158,3 +3169,5 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
       self.computeZFrameHole(index, pos)
 
     self.dataChanged(self.index(0, 3), self.index(self.rowCount(None)-1, 4))
+    if self._targetModifiedCallback:
+      self._targetModifiedCallback()
