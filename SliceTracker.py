@@ -1191,6 +1191,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       success, self.preopTargets = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
       if success:
         self.preopTargets.SetName('targets-PREOP')
+        self.markupsLogic.SetAllMarkupsLocked(self.preopTargets, True)
     return success
 
   def loadMpReviewProcessedData(self, preopDir):
