@@ -4,6 +4,14 @@ import vtk
 
 class SliceAnnotation(object):
 
+  ALIGN_LEFT = "left"
+  ALIGN_CENTER = "center"
+  ALIGN_RIGHT = "right"
+  ALIGN_TOP = "top"
+  ALIGN_BOTTOM = "bottom"
+  POSSIBLE_VERTICAL_ALIGN = [ALIGN_TOP, ALIGN_CENTER, ALIGN_BOTTOM]
+  POSSIBLE_HORIZONTAL_ALIGN = [ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT]
+
   @property
   def fontSize(self):
     return self._fontSize
@@ -54,6 +62,30 @@ class SliceAnnotation(object):
       self.update()
 
   @property
+  def verticalAlign(self):
+    return self._verticalAlign
+
+  @verticalAlign.setter
+  def verticalAlign(self, value):
+    if value not in self.POSSIBLE_VERTICAL_ALIGN:
+      raise ValueError("Value %s is not allowed for vertical alignment. Only the following values are allowed: %s"
+                       % (str(value), str(self.POSSIBLE_VERTICAL_ALIGN)))
+    else:
+      self._verticalAlign = value
+
+  @property
+  def horizontalAlign(self):
+    return self._horizontalAlign
+
+  @horizontalAlign.setter
+  def horizontalAlign(self, value):
+    if value not in self.POSSIBLE_HORIZONTAL_ALIGN:
+      raise ValueError("Value %s is not allowed for horizontal alignment. Only the following values are allowed: %s"
+                       % (str(value), str(self.POSSIBLE_HORIZONTAL_ALIGN)))
+    else:
+      self._horizontalAlign = value
+
+  @property
   def renderer(self):
     return self.sliceView.renderWindow().GetRenderers().GetItemAsObject(0)
 
@@ -77,6 +109,8 @@ class SliceAnnotation(object):
     self.textBold = kwargs.pop('bold', 1)
     self.textShadow = kwargs.pop('shadow', 1)
     self.textOpacity = kwargs.pop('opacity', 1.0)
+    self.verticalAlign = kwargs.pop('verticalAlign', 'center')
+    self.horizontalAlign = kwargs.pop('horizontalAlign', 'center')
 
     self.createTextActor()
 
@@ -121,11 +155,35 @@ class SliceAnnotation(object):
     self._addObserver()
 
   def applyPositioning(self):
-    centerX = int((self.sliceView.width - self.getFontWidth()) / 2)
-    centerY = int((self.sliceView.height - self.getFontHeight()) / 2)
-    xPos = self.xPos if 0 < self.xPos < centerX else centerX
-    yPos = self.yPos if 0 < self.yPos < centerY else centerY
+    xPos = self.applyHorizontalAlign()
+    yPos = self.applyVerticalAlign()
     self.textActor.SetDisplayPosition(xPos, yPos)
+
+  def applyHorizontalAlign(self):
+    centerX = int((self.sliceView.width - self.getFontWidth()) / 2)
+    if self.xPos:
+      xPos = self.xPos if 0 < self.xPos < centerX else centerX
+    else:
+      if self.horizontalAlign == self.ALIGN_LEFT:
+        xPos = 0
+      elif self.horizontalAlign == self.ALIGN_CENTER:
+        xPos = centerX
+      elif self.horizontalAlign == self.ALIGN_RIGHT:
+        xPos = self.sliceView.width - self.getFontWidth()
+    return int(xPos)
+
+  def applyVerticalAlign(self):
+    centerY = int((self.sliceView.height - self.getFontHeight()) / 2)
+    if self.yPos:
+      yPos = self.yPos if 0 < self.yPos < centerY else centerY
+    else:
+      if self.verticalAlign == self.ALIGN_TOP:
+        yPos = self.sliceView.height - self.getFontHeight()
+      elif self.verticalAlign == self.ALIGN_CENTER:
+        yPos = centerY
+      elif self.verticalAlign == self.ALIGN_BOTTOM:
+        yPos = 0
+    return int(yPos)
 
   def modified(self, observee, event):
     if event != "ModifiedEvent":
