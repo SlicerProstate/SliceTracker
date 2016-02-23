@@ -82,8 +82,6 @@ class SliceTracker(ScriptedLoadableModule):
 
 class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceTrackerConstants):
 
-  DEFAULT_TEMPLATE_CONFIG_FILE_NAME = "Resources/zframe/ProstateTemplate.csv"
-
   @property
   def registrationResults(self):
     return self.logic.registrationResults
@@ -98,14 +96,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   @property
   def preopDataDir(self):
-    return self.logic.preopDataDir
+    return self._preopDataDir
 
   @preopDataDir.setter
   def preopDataDir(self, path):
-    self.logic.zFrameRegistrationSuccessful = False
+    slicer.mrmlScene.Clear(0)
+    self.logic.resetAndInitializeData()
+    self.updateViewSettingButtons()
     self.removeSliceAnnotations()
-    self.hideAllMarkups()
-    self.logic.preopDataDir = path
+    self._preopDataDir = path
     self.setSetting('PreopLocation', path)
     self.loadPreopData()
     self.intraopSeriesSelector.clear()
@@ -113,8 +112,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.trackTargetsButton.setEnabled(False)
     self.preopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Preop directory"
     self.preopDirButton.toolTip = path
+    self.intraopDirButton.blockSignals(True)
+    self.intraopDirButton.directory = self.getSetting('IntraopLocation')
+    self.intraopDirButton.text = "Intraop directory"
+    self.intraopDirButton.blockSignals(False)
     self.updateOutputFolder()
-    self.logic.resetData()
+    self.targetTable.enabled = True
 
   @property
   def intraopDataDir(self):
@@ -162,15 +165,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.markupsLogic = slicer.modules.markups.logic()
     self.volumesLogic = slicer.modules.volumes.logic()
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
-    self.defaultTemplateFile = os.path.join(self.modulePath, self.DEFAULT_TEMPLATE_CONFIG_FILE_NAME)
     self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
     self.setupIcons()
-
-  def hideAllMarkups(self):
-    fiducialNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLMarkupsFiducialNode")
-    for itemNum in xrange(fiducialNodes.GetNumberOfItems()):
-      node = fiducialNodes.GetItemAsObject(itemNum)
-      self.markupsLogic.SetAllMarkupsVisibility(node, False)
 
   def onReload(self):
     ScriptedLoadableModuleWidget.onReload(self)
@@ -194,8 +190,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       date = str(qt.QDate().currentDate())
       finalDirectory = self.patientIDLabel.text + "-biopsy-" + date + "-" + time
       self.generatedOutputDirectory = os.path.join(self.outputDirButton.directory, finalDirectory, "MRgBiopsy")
+      self.caseCompletedButton.enabled = True
+      self.collapsibleDirectoryConfigurationArea.collapsed = True
     else:
       self.generatedOutputDirectory = ""
+      self.caseCompletedButton.enabled = False
 
   def createPatientWatchBox(self):
     self.patientWatchBox, patientViewBoxLayout = self._createWatchBox(maximumHeight=100)
@@ -301,7 +300,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.showAcceptRegistrationWarning = False
 
-    self.logic.setupColorTable(colorFile=os.path.join(self.modulePath,'Resources/Colors/mpReviewColors.csv'))
     self.evaluationMode = False
     self.layout.addStretch()
 
@@ -341,13 +339,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     viewSettingsLayout = qt.QVBoxLayout()
     self.zFrameViewSettingsGroupBox.setLayout(viewSettingsLayout)
     self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zFrame model")
-    self.showZFrameTemplateButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
+    self.showTemplateButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
     self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
     self.showTemplatePathButton = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
 
-    self.showZFrameTemplateButton.enabled = self.logic.loadTemplateConfigFile(self.defaultTemplateFile)
+    self.updateViewSettingButtons()
     viewSettingsLayout.addWidget(self.createHLayout([self.layoutsMenuButton, self.showZFrameModelButton, self.showTemplatePathButton]))
-    viewSettingsLayout.addWidget(self.createHLayout([self.crosshairButton, self.showZFrameTemplateButton, self.showNeedlePathButton]))
+    viewSettingsLayout.addWidget(self.createHLayout([self.crosshairButton, self.showTemplateButton, self.showNeedlePathButton]))
+
+  def updateViewSettingButtons(self):
+    self.showTemplateButton.enabled = self.logic.templateSuccessfulLoaded
+    self.showTemplatePathButton.enabled = self.logic.templateSuccessfulLoaded
+    self.showZFrameModelButton.enabled = self.logic.zFrameSuccessfulLoaded
+    self.showTemplateButton.checked = False
+    self.showTemplatePathButton.checked = False
+    self.showZFrameModelButton.checked = False
+    self.showNeedlePathButton.checked = False
 
   def setupSliceWidgets(self):
     self.setupSliceWidget("Red")
@@ -633,7 +640,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.approveZFrameRegistrationButton.clicked.connect(self.onApproveZFrameRegistrationButtonClicked)
       self.useRevealCursorButton.connect('toggled(bool)', self.onRevealToggled)
       self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
-      self.showZFrameTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
+      self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
       self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
       self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
 
@@ -1636,14 +1643,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.setupFourUpView(volume)
       self.redSliceNode.SetSliceVisible(True)
       self.showZFrameModelButton.checked = True
-      self.showZFrameTemplateButton.checked = True
+      self.showTemplateButton.checked = True
       self.showTemplatePathButton.checked = True
 
   def onApproveZFrameRegistrationButtonClicked(self):
     self.logic.zFrameRegistrationSuccessful = True
     self.redSliceNode.SetSliceVisible(False)
     self.showZFrameModelButton.checked = False
-    self.showZFrameTemplateButton.checked = False
+    self.showTemplateButton.checked = False
     self.showTemplatePathButton.checked = False
     self.openTargetingStep()
     self.save()
@@ -1762,7 +1769,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     displayNode.AddViewNodeID(sliceNode.GetID())
 
   def onNewImageDataReceived(self, **kwargs):
-    # if approved, rating and then tracking targets
     newFileList = kwargs.pop('newList')
     studyDate = kwargs.pop('studyDate', '')
     if self.patientCheckAfterImport(newFileList) and self.intraopStudyDateLabel.text == '':
@@ -1772,10 +1778,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       return
     if self.evaluationMode is True:
       return
-    # TODO: need to decide if the following commented lines should be used or not
-    # if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
-    #   self.onTrackTargetsButtonClicked()
-    #   return
     if self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
                                            in [self.COVER_TEMPLATE, self.COVER_PROSTATE, self.GUIDANCE_IMAGE]):
       dialog = IncomingDataMessageBox()
@@ -1788,19 +1790,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
   ZFRAME_MODEL_PATH = 'Resources/zframe/zframe-model.vtk'
+  ZFRAME_TEMPLATE_CONFIG_FILE_NAME = 'Resources/zframe/ProstateTemplate.csv'
   ZFRAME_MODEL_NAME = 'ZFrameModel'
   ZFRAME_TEMPLATE_NAME = 'NeedleGuideTemplate'
   ZFRAME_TEMPLATE_PATH_NAME = 'NeedleGuideNeedlePath'
   COMPUTED_NEEDLE_MODEL_NAME = 'ComputedNeedleModel'
-
-  @property
-  def preopDataDir(self):
-    return self._preopDataDir
-
-  @preopDataDir.setter
-  def preopDataDir(self, path):
-    if os.path.exists(path):
-      self._preopDataDir = path
+  MPREVIEW_COLORS_FILE_NAME = 'Resources/Colors/mpReviewColors.csv'
 
   @property
   def intraopDataDir(self):
@@ -1821,10 +1816,25 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def currentResult(self, series):
     self.registrationResults.activeResult = series
 
+  @property
+  def templateSuccessfulLoaded(self):
+    return self.tempModelNode and self.pathModelNode
+
+  @property
+  def zFrameSuccessfulLoaded(self):
+    return self.zFrameModelNode
+
   def __init__(self, parent=None):
     ScriptedLoadableModuleLogic.__init__(self, parent)
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     self.markupsLogic = slicer.modules.markups.logic()
+    self.volumesLogic = slicer.modules.volumes.logic()
+    self.defaultTemplateFile = os.path.join(self.modulePath, self.ZFRAME_TEMPLATE_CONFIG_FILE_NAME)
+    self.defaultColorFile = os.path.join(self.modulePath, self.MPREVIEW_COLORS_FILE_NAME)
+    self.resetAndInitializeData()
+
+  def resetAndInitializeData(self):
+
     self.inputMarkupNode = None
     self.clippingModelNode = None
     self.seriesList = []
@@ -1832,25 +1842,19 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.alreadyLoadedSeries = {}
     self.storeSCPProcess = None
 
-    self.clearOldNodes()
-
     self.currentIntraopVolume = None
     self.registrationResults = RegistrationResults()
 
-    #TODO: delete preop dir?
-    self._preopDataDir = ""
     self._intraopDataDir = ""
 
     self._incomingDataCallback = None
 
     self.biasCorrectionDone = False
 
-    self.volumesLogic = slicer.modules.volumes.logic()
     self.retryMode = False
     self.zFrameRegistrationSuccessful = False
     self.zFrameModelNode = None
     self.zFrameTransform = None
-    self.loadZFrameModel()
 
     self.showTemplatePath = False
     self.showNeedlePath = False
@@ -1863,20 +1867,16 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.pathOrigins = []  ## Origins of needle paths (after transformation by parent transform node)
     self.pathVectors = []  ## Normal vectors of needle paths (after transformation by parent transform node)
 
+    self.loadColorTable()
+    self.clearOldNodes()
+    self.loadZFrameModel()
+    self.loadTemplateConfigFile()
+
   def clearOldNodes(self):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_PATH_NAME)
     self.clearOldNodesByName(self.ZFRAME_MODEL_NAME)
     self.clearOldNodesByName(self.COMPUTED_NEEDLE_MODEL_NAME)
-
-  def __del__(self):
-    if self.storeSCPProcess:
-      self.storeSCPProcess.kill()
-    self.resetData()
-
-  def resetData(self):
-    self.clearAlreadyLoadedSeries()
-    # del self.registrationResults
 
   def isTrackingPossible(self, series):
     return not (self.registrationResults.registrationResultWasApproved(series) or
@@ -1888,7 +1888,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self._incomingDataCallback = func
 
   def save(self, outputDir):
-    # TODO: if registration was redone: make a sub folder and move all initial results there
     self.createDirectory(outputDir)
 
     successfullySavedData = ["The following data was successfully saved:\n"]
@@ -1937,35 +1936,29 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         saveNodeData(self.zFrameTransform, ".h5")
 
     def saveRegistrationResults():
+      # TODO: this should be handled by the registrationResults classes
+
+      def saveRegistrationCommandLineArguments():
+        for result in self.registrationResults.getResultsAsList():
+          name = replaceUnwantedCharacters(result.name)
+          filename = os.path.join(outputDir, name + "-CMD-PARAMETERS.txt")
+          f = open(filename, 'w+')
+          f.write(result.cmdArguments)
+          f.close()
+
+      def saveOutputTransformations():
+        for result in self.registrationResults.getResultsAsList():
+          for transformNode in [node for node in result.transforms.values() if node]:
+            saveNodeData(transformNode, ".h5")
+
+      def saveTransformedTargets():
+        for result in self.registrationResults.getResultsAsList():
+          for targetNode in [node for node in result.targets.values() if node]:
+            saveNodeData(targetNode, ".fcsv")
+
       saveRegistrationCommandLineArguments()
       saveOutputTransformations()
       saveTransformedTargets()
-      saveTipPosition()
-
-    def saveRegistrationCommandLineArguments():
-      for result in self.registrationResults.getResultsAsList():
-        name = replaceUnwantedCharacters(result.name)
-        filename = os.path.join(outputDir, name + "-CMD-PARAMETERS.txt")
-        f = open(filename, 'w+')
-        f.write(result.cmdArguments)
-        f.close()
-
-    def saveOutputTransformations():
-      for result in self.registrationResults.getResultsAsList():
-        for transformNode in [node for node in result.transforms.values() if node]:
-          saveNodeData(transformNode, ".h5")
-
-    def saveTransformedTargets():
-      for result in self.registrationResults.getResultsAsList():
-        for targetNode in [node for node in result.targets.values() if node]:
-          saveNodeData(targetNode, ".fcsv")
-
-    def saveTipPosition():
-      for result in self.registrationResults.getResultsAsList():
-        if result.tipPosition:
-          # TODO: implement
-          # prefixed with the series number
-          pass
 
     saveIntraopSegmentation()
     saveOriginalTargets()
@@ -2027,14 +2020,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         mostRecent = filename
         storedTimeStamp = timeStamp
     return mostRecent
-
-  def clearAlreadyLoadedSeries(self):
-    for series, volume in self.alreadyLoadedSeries.iteritems():
-      print "removing volume %s of series %s " % (volume.GetName(), series)
-      # TODO: slicer crash when deleting volumes
-      # if slicer.mrmlScene.IsNodePresent(volume):
-      #   slicer.mrmlScene.RemoveNode(volume)
-    self.alreadyLoadedSeries.clear()
 
   def applyBiasCorrection(self, volume, label):
 
@@ -2252,11 +2237,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.startTimer()
 
   def startTimer(self):
-    currentFileCount = len(self.getFileList(self._intraopDataDir))
-    if self.lastFileCount != currentFileCount:
-      qt.QTimer.singleShot(5000, lambda count=currentFileCount: self.importDICOMSeries(count))
-    self.lastFileCount = currentFileCount
-    qt.QTimer.singleShot(500, self.startTimer)
+    if self._intraopDataDir != '':
+      currentFileCount = len(self.getFileList(self._intraopDataDir))
+      if self.lastFileCount != currentFileCount:
+        qt.QTimer.singleShot(5000, lambda count=currentFileCount: self.importDICOMSeries(count))
+      self.lastFileCount = currentFileCount
+      qt.QTimer.singleShot(500, self.startTimer)
 
   def createCurrentFileList(self, directory):
     self.currentFileList = []
@@ -2367,19 +2353,19 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     distance_3D = rulerNode.GetDistanceMeasurement()
     return distance_3D
 
-  def setupColorTable(self, colorFile):
+  def loadColorTable(self):
 
     self.mpReviewColorNode = slicer.vtkMRMLColorTableNode()
     colorNode = self.mpReviewColorNode
     colorNode.SetName('mpReview')
     slicer.mrmlScene.AddNode(colorNode)
     colorNode.SetTypeToUser()
-    with open(colorFile) as f:
+    with open(self.defaultColorFile) as f:
       n = sum(1 for line in f)
     colorNode.SetNumberOfColors(n - 1)
     import csv
     self.structureNames = []
-    with open(colorFile, 'rb') as csvfile:
+    with open(self.defaultColorFile, 'rb') as csvfile:
       reader = csv.DictReader(csvfile, delimiter=',')
       for index, row in enumerate(reader):
         colorNode.SetColor(index, row['Label'], float(row['R']) / 255,
@@ -2477,7 +2463,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     slicer.mrmlScene.AddNode(outputVolume)
 
   def loadZFrameModel(self):
-    self.clearOldNodesByName(self.ZFRAME_MODEL_NAME)
     zFrameModelPath = os.path.join(self.modulePath, self.ZFRAME_MODEL_PATH)
     if not self.zFrameModelNode:
       _, self.zFrameModelNode = slicer.util.loadModel(zFrameModelPath, returnNode=True)
@@ -2501,14 +2486,11 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     slicer.mrmlScene.AddNode(registration.getOutputVolume())
     self.applyZFrameTransform(self.zFrameTransform)
 
-  def loadTemplateConfigFile(self, path):
-    self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
-    self.clearOldNodesByName(self.ZFRAME_TEMPLATE_PATH_NAME)
-
+  def loadTemplateConfigFile(self):
     self.templateIndex = []
     self.templateConfig = []
 
-    reader = csv.reader(open(path, 'rb'))
+    reader = csv.reader(open(self.defaultTemplateFile, 'rb'))
     try:
       next(reader)
       for row in reader:
@@ -2517,15 +2499,14 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
                                     float(row[5]), float(row[6]), float(row[7]),
                                     float(row[8])])
     except csv.Error as e:
-      print('file %s, line %d: %s' % (path, reader.line_num, e))
-      return False
+      print('file %s, line %d: %s' % (self.defaultTemplateFile, reader.line_num, e))
+      return
 
     self.createTemplateAndNeedlePathModel()
     self.setTemplateVisibility(0)
     self.setTemplatePathVisibility(0)
     self.setNeedlePathVisibility(0)
     self.updateTemplateVectors()
-    return True
 
   def createTemplateAndNeedlePathModel(self):
 
