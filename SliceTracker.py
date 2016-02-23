@@ -1501,12 +1501,26 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.openTargetingStep()
 
   def onSkipIntraopSeriesButtonClicked(self):
-    volume = self.logic.alreadyLoadedSeries[self.intraopSeriesSelector.currentText]
+    self.skipSeries(self.intraopSeriesSelector.currentText)
+    self.updateIntraopSeriesSelectorTable()
+
+  def skipAllUnregisteredPreviousSeries(self, selectedSeries):
+    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+    for series in self.logic.seriesList:
+      currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
+      if currentSeriesNumber < selectedSeriesNumber:
+        results = self.registrationResults.getResultsBySeriesNumber(currentSeriesNumber)
+        if len(results) == 0:
+          self.skipSeries(series)
+      else:
+        break
+
+  def skipSeries(self, seriesText):
+    volume = self.logic.alreadyLoadedSeries[seriesText]
     name, suffix = self.logic.getRegistrationResultNameAndGeneratedSuffix(volume.GetName())
     result = self.registrationResults.createResult(name+suffix)
     result.fixedVolume = volume
     result.skip()
-    self.updateIntraopSeriesSelectorTable()
 
   def onRejectRegistrationResultButtonClicked(self):
     results = self.registrationResults.getResultsBySeriesNumber(self.currentResult.seriesNumber)
@@ -1657,7 +1671,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def repeatRegistrationForCurrentSelection(self):
     logging.debug('Performing Re-Registration')
-    volume = self.logic.alreadyLoadedSeries[self.intraopSeriesSelector.currentText]
+    selectedSeries = self.intraopSeriesSelector.currentText
+    self.skipAllUnregisteredPreviousSeries(selectedSeries)
+    volume = self.logic.alreadyLoadedSeries[selectedSeries]
     if volume:
       self.logic.currentIntraopVolume = volume
     self.onInvokeRegistration(initial=False)
