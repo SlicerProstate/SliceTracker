@@ -732,6 +732,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if selectedSeries:
       trackingPossible = self.isTrackingPossible(selectedSeries)
       self.trackTargetsButton.setEnabled(trackingPossible)
+      self.showTemplatePathButton.checked = trackingPossible and self.COVER_PROSTATE in selectedSeries
       self.skipIntraopSeriesButton.setEnabled(trackingPossible)
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
       self.updateIntraopSeriesSelectorColors(selectedSeries)
