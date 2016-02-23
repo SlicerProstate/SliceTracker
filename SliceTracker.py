@@ -1040,6 +1040,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.notificationDialog(message)
 
   def configureSegmentationMode(self):
+    if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
+      self.showTemplatePathButton.checked = False
     self.referenceVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
     self.intraopVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
     self.applyRegistrationButton.setEnabled(False)
@@ -1653,12 +1655,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     volume = self.logic.alreadyLoadedSeries[self.intraopSeriesSelector.currentText]
     if volume:
       self.logic.currentIntraopVolume = volume
-    self.disableTargetTable()
-    self.segmentationGroupBox.show()
-    self.editorWidgetButton.setEnabled(False)
-    self.activateRegistrationResultsArea(collapsed=True, enabled=False)
-    self.registrationWatchBox.hide()
-    self.configureSegmentationMode()
+      self.disableTargetTable()
+      self.segmentationGroupBox.show()
+      self.editorWidgetButton.setEnabled(False)
+      self.activateRegistrationResultsArea(collapsed=True, enabled=False)
+      self.registrationWatchBox.hide()
+      self.configureSegmentationMode()
 
   def activateRegistrationResultsArea(self, collapsed, enabled):
     self.collapsibleRegistrationArea.collapsed = collapsed
