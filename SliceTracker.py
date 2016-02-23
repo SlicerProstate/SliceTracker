@@ -1646,10 +1646,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.showZFrameTemplateButton.checked = False
     self.showTemplatePathButton.checked = False
     self.openTargetingStep()
-    # TODO: need to decide if SliceTracker should immediately go into that step
-    # if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
-    #   self.onTrackTargetsButtonClicked()
-    #   return
+    self.save()
 
   def initiateOrRetryTracking(self):
     volume = self.logic.alreadyLoadedSeries[self.intraopSeriesSelector.currentText]
@@ -1852,6 +1849,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.retryMode = False
     self.zFrameRegistrationSuccessful = False
     self.zFrameModelNode = None
+    self.zFrameTransform = None
     self.loadZFrameModel()
 
     self.showTemplatePath = False
@@ -1934,6 +1932,10 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         if biasCorrectedResult:
           saveNodeData(biasCorrectedResult, '.nrrd')
 
+    def saveZFrameTransformation():
+      if self.zFrameTransform:
+        saveNodeData(self.zFrameTransform, ".h5")
+
     def saveRegistrationResults():
       saveRegistrationCommandLineArguments()
       saveOutputTransformations()
@@ -1968,6 +1970,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     saveIntraopSegmentation()
     saveOriginalTargets()
     saveBiasCorrectionResult()
+    saveZFrameTransformation()
     saveRegistrationResults()
 
     messageOutput = ""
