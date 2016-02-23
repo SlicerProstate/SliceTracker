@@ -2250,14 +2250,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
   def createLoadableFileListFromSelection(self, selectedSeries):
 
+    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
     if os.path.exists(self._intraopDataDir):
       self.loadableList = dict()
       self.loadableList[selectedSeries] = []
 
       for dcm in self.getFileList(self._intraopDataDir):
         currentFile = os.path.join(self._intraopDataDir, dcm)
-        seriesNumberDescription = self.makeSeriesNumberDescription(currentFile)
-        if seriesNumberDescription and seriesNumberDescription in selectedSeries:
+        currentSeriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
+        if currentSeriesNumber and currentSeriesNumber == selectedSeriesNumber:
           self.loadableList[selectedSeries].append(currentFile)
 
   def loadSeriesIntoSlicer(self, selectedSeries, clearOldSeries=False):
