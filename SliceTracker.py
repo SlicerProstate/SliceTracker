@@ -169,12 +169,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setupIcons()
 
   def onReload(self):
-    ScriptedLoadableModuleWidget.onReload(self)
     try:
+      self.logic.stopWatching()
       self.removeSliceAnnotations()
       self.resetVisualEffects()
     except:
       pass
+    ScriptedLoadableModuleWidget.onReload(self)
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -784,7 +785,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       try:
         result = self.registrationResults.getResultsBySeries(selectedSeries)[0]
       except IndexError:
-        volume = self.logic.alreadyLoadedSeries[selectedSeries]
+        volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
         self.setupRedSlicePreview(volume)
         return
       self.setupRedSlicePreview(result.fixedVolume)
@@ -1108,7 +1109,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
     self.intraopSeriesSelector.setCurrentIndex(-1)
     self.intraopSeriesSelector.blockSignals(False)
-
     self.selectMostRecentEligibleSeries()
 
   def getOrCreateItem(self, series):
@@ -1122,7 +1122,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def selectMostRecentEligibleSeries(self):
     if self.evaluationMode:
-      return
+      self.intraopSeriesSelector.blockSignals(True)
     substring = self.GUIDANCE_IMAGE
     index = -1
     if not self.registrationResults.getMostRecentApprovedCoverProstateRegistration():
@@ -1134,6 +1134,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         break
     if index != -1:
       self.intraopSeriesSelector.setCurrentIndex(index)
+    self.intraopSeriesSelector.blockSignals(False)
 
   def onRegistrationResultSelected(self, seriesText):
     if not seriesText:
@@ -1222,7 +1223,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.redSliceNode.SetOrientationToAxial()
 
   def loadT2Label(self):
-    mostRecentFilename = self.logic.getMostRecentWholeGlantSegmentation(self.preopSegmentationPath)
+    mostRecentFilename = self.logic.getMostRecentWholeGlandSegmentation(self.preopSegmentationPath)
     success = False
     if mostRecentFilename:
       filename = os.path.join(self.preopSegmentationPath, mostRecentFilename)
@@ -1301,8 +1302,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     logging.debug('******************************************************************************')
 
-    self.preopImagePath = ''
-    self.preopSegmentationPath = ''
+    self.preopImagePath = None
+    self.preopSegmentationPath = None
 
     for series in seriesMap:
       seriesName = str(seriesMap[series]['LongName'])
@@ -1318,14 +1319,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         segmentationPath = os.path.join(segmentationPath, 'Segmentations')
         logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
 
-        if not os.path.exists(segmentationPath):
-          self.confirmDialog("No segmentations found.\nMake sure that you used mpReview for segmenting the prostate "
-                             "first and using its output as the preop data input here.")
-          return False
-        self.preopImagePath = seriesMap[series]['NRRDLocation']
-        self.preopSegmentationPath = segmentationPath
-        break
+        if not self.preopSegmentationPath and os.path.exists(segmentationPath) and os.listdir(segmentationPath):
+          self.preopImagePath = seriesMap[series]['NRRDLocation']
+          self.preopSegmentationPath = segmentationPath
 
+    if self.preopSegmentationPath is None:
+      self.confirmDialog("No segmentations found.\nMake sure that you used mpReview for segmenting the prostate "
+                         "first and using its output as the preop data input here.")
+      return False
     return True
 
   def loadPreopData(self):
@@ -1366,22 +1367,31 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.setDefaultFOV(self.redSliceLogic, self.preopVolume)
 
-  def patientCheckAfterImport(self, fileList):
-    success = True
+  def checkForPatientIdSimilarityAndGetSeriesNumbers(self, fileList):
+    newSeries = {}
     for currentFile in fileList:
       currentFile = os.path.join(self.intraopDataDir, currentFile)
-      patientID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
-      if patientID != self.currentID and patientID is not None:
+      seriesNumber = int(self.logic.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
+      if seriesNumber not in newSeries.keys():
+        patientID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
+        studyDate = self.logic.extractDateFromDICOMFile(currentFile, DICOMTAGS.STUDY_DATE)
+        newSeries[seriesNumber] = [patientID, studyDate]
+
+    acceptedSeriesNumbers = []
+    for seriesNumber, values in newSeries.iteritems():
+      patientID, studyDate = values
+      if patientID is not None and patientID != self.currentID:
         if not self.yesNoDialog(message='WARNING: Preop data of Patient ID ' + self.currentID + ' was selected, but '
                                         ' data of patient with ID ' + patientID + ' just arrived in the folder, which '
-                                        'you selected for incoming data.\nDo you still want to continue?',
-                                title="Patients Not Matching"):
-          self.intraopSeriesSelector.clear()
-          return False
-        else:
-          break
-    self.updateIntraopSeriesSelectorTable()
-    return success
+                                        'you selected for incoming data.\nDo you want to keep this series?',
+                                title="PatientsID Not Matching"):
+          self.logic.deleteSeriesFromSeriesList(seriesNumber)
+          continue
+      if self.intraopStudyDateLabel.text == '':
+        self.intraopStudyDateLabel.setText(studyDate)
+      acceptedSeriesNumbers.append(seriesNumber)
+    acceptedSeriesNumbers.sort()
+    return acceptedSeriesNumbers
 
   def onCancelSegmentationButtonClicked(self):
     if self.yesNoDialog("Do you really want to cancel the segmentation process?"):
@@ -1499,7 +1509,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetingGroupBox.show()
     self.removeSliceAnnotations()
     self.resetVisualEffects()
-    self.selectMostRecentEligibleSeries()
 
   def onApproveRegistrationResultButtonClicked(self):
     self.currentResult.approve()
@@ -1511,7 +1520,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onSkipIntraopSeriesButtonClicked(self):
     self.skipSeries(self.intraopSeriesSelector.currentText)
-    self.updateIntraopSeriesSelectorTable()
+    self.openTargetingStep()
 
   def skipAllUnregisteredPreviousSeries(self, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
@@ -1525,7 +1534,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         break
 
   def skipSeries(self, seriesText):
-    volume = self.logic.alreadyLoadedSeries[seriesText]
+    volume = self.logic.getOrCreateVolumeForSeries(seriesText)
     name, suffix = self.logic.getRegistrationResultNameAndGeneratedSuffix(volume.GetName())
     result = self.registrationResults.createResult(name+suffix)
     result.fixedVolume = volume
@@ -1630,7 +1639,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.activateEvaluationStep()
 
   def openZFrameRegistrationStep(self):
-    volume = self.logic.alreadyLoadedSeries[self.intraopSeriesSelector.currentText]
+    volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
     if volume:
       self.evaluationMode = True
       self.targetingGroupBox.hide()
@@ -1656,7 +1665,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.save()
 
   def initiateOrRetryTracking(self):
-    volume = self.logic.alreadyLoadedSeries[self.intraopSeriesSelector.currentText]
+    volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
     if volume:
       self.logic.currentIntraopVolume = volume
       self.disableTargetTable()
@@ -1679,7 +1688,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     logging.debug('Performing Re-Registration')
     selectedSeries = self.intraopSeriesSelector.currentText
     self.skipAllUnregisteredPreviousSeries(selectedSeries)
-    volume = self.logic.alreadyLoadedSeries[selectedSeries]
+    volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
     if volume:
       self.logic.currentIntraopVolume = volume
     self.onInvokeRegistration(initial=False)
@@ -1770,16 +1779,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onNewImageDataReceived(self, **kwargs):
     newFileList = kwargs.pop('newList')
-    studyDate = kwargs.pop('studyDate', '')
-    if self.patientCheckAfterImport(newFileList) and self.intraopStudyDateLabel.text == '':
-      self.intraopStudyDateLabel.setText(studyDate)
-    if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
+    newSeriesNumbers = self.checkForPatientIdSimilarityAndGetSeriesNumbers(newFileList)
+    self.updateIntraopSeriesSelectorTable()
+    selectedSeries = self.intraopSeriesSelector.currentText
+    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+    if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in selectedSeries and \
+                    selectedSeriesNumber in newSeriesNumbers:
       self.onTrackTargetsButtonClicked()
       return
-    if self.evaluationMode is True:
-      return
-    if self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
-                                           in [self.COVER_TEMPLATE, self.COVER_PROSTATE, self.GUIDANCE_IMAGE]):
+
+    if not self.evaluationMode and \
+            self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
+                                                in [self.COVER_TEMPLATE, self.COVER_PROSTATE, self.GUIDANCE_IMAGE]):
       dialog = IncomingDataMessageBox()
       answer, checked = dialog.exec_()
       self.notifyUserAboutNewData = not checked
@@ -1829,11 +1840,17 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     self.markupsLogic = slicer.modules.markups.logic()
     self.volumesLogic = slicer.modules.volumes.logic()
+    self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.defaultTemplateFile = os.path.join(self.modulePath, self.ZFRAME_TEMPLATE_CONFIG_FILE_NAME)
     self.defaultColorFile = os.path.join(self.modulePath, self.MPREVIEW_COLORS_FILE_NAME)
+    self.configureTimers()
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
+
+    self.stopWatching()
+
+    self.currentFileCount = 0
 
     self.inputMarkupNode = None
     self.clippingModelNode = None
@@ -1871,6 +1888,17 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.clearOldNodes()
     self.loadZFrameModel()
     self.loadTemplateConfigFile()
+
+  def configureTimers(self):
+    self.importTimer = qt.QTimer()
+    self.importTimer.setInterval(5000)
+    self.importTimer.timeout.connect(self.importDICOMSeries)
+    self.importTimer.setSingleShot(True)
+
+    self.watchTimer = qt.QTimer()
+    self.watchTimer.setInterval(500)
+    self.watchTimer.timeout.connect(self.startWatchingIntraop)
+    self.watchTimer.setSingleShot(True)
 
   def clearOldNodes(self):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
@@ -1998,7 +2026,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       if e.getAttribute('name') == name:
         return e.childNodes[0].nodeValue
 
-  def getMostRecentWholeGlantSegmentation(self, path):
+  def getMostRecentWholeGlandSegmentation(self, path):
     return self.getMostRecentFile(path, "nrrd", filter="WholeGland")
 
   def getMostRecentTargetsFile(self, path):
@@ -2231,66 +2259,51 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     mask.SetAndObserveImageData(dilateErode.GetOutput())
 
   def startIntraopDirListener(self):
-    numberOfFiles = len(self.getFileList(self._intraopDataDir))
-    self.lastFileCount = numberOfFiles
-    self.createCurrentFileList(self._intraopDataDir)
-    self.startTimer()
-
-  def startTimer(self):
-    if self._intraopDataDir != '':
-      currentFileCount = len(self.getFileList(self._intraopDataDir))
-      if self.lastFileCount != currentFileCount:
-        qt.QTimer.singleShot(5000, lambda count=currentFileCount: self.importDICOMSeries(count))
-      self.lastFileCount = currentFileCount
-      qt.QTimer.singleShot(500, self.startTimer)
-
-  def createCurrentFileList(self, directory):
     self.currentFileList = []
-    for item in self.getFileList(directory):
-      self.currentFileList.append(item)
+    self.lastFileCount = len(self.getFileList(self._intraopDataDir))
+    self.currentFileCount = self.lastFileCount
+    self.importDICOMSeries()
+    self.stopWatching()
+    self.startWatchingIntraop()
 
-    if len(self.currentFileList) > 1:
-      self.thereAreFilesInTheFolderFlag = 1
-      self.importDICOMSeries(len(self.currentFileList))
-    else:
-      self.thereAreFilesInTheFolderFlag = 0
+  def stopWatching(self):
+    self.importTimer.stop()
+    self.watchTimer.stop()
 
-  def createLoadableFileListFromSelection(self, selectedSeries):
+  def startWatchingIntraop(self):
+    self.currentFileCount = len(self.getFileList(self._intraopDataDir))
+    if self.lastFileCount != self.currentFileCount:
+      self.importTimer.start()
+    self.lastFileCount = self.currentFileCount
+    self.watchTimer.start()
 
+  def createLoadableFileListForSeries(self, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-    if os.path.exists(self._intraopDataDir):
-      self.loadableList = dict()
-      self.loadableList[selectedSeries] = []
+    self.loadableList[selectedSeries] = []
+    for dcm in self.getFileList(self._intraopDataDir):
+      currentFile = os.path.join(self._intraopDataDir, dcm)
+      currentSeriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
+      if currentSeriesNumber and currentSeriesNumber == selectedSeriesNumber:
+        self.loadableList[selectedSeries].append(currentFile)
 
-      for dcm in self.getFileList(self._intraopDataDir):
-        currentFile = os.path.join(self._intraopDataDir, dcm)
-        currentSeriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
-        if currentSeriesNumber and currentSeriesNumber == selectedSeriesNumber:
-          self.loadableList[selectedSeries].append(currentFile)
-
-  def loadSeriesIntoSlicer(self, selectedSeries, clearOldSeries=False):
-    self.createLoadableFileListFromSelection(selectedSeries)
-
-    if selectedSeries not in self.alreadyLoadedSeries.keys():
-      files = self.loadableList[selectedSeries]
-      scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
-      loadables = scalarVolumePlugin.examine([files])
-      volume = scalarVolumePlugin.load(loadables[0])
+  def getOrCreateVolumeForSeries(self, series):
+    try:
+      volume = self.alreadyLoadedSeries[series]
+    except KeyError:
+      files = self.loadableList[series]
+      loadables = self.scalarVolumePlugin.examine([files])
+      volume = self.scalarVolumePlugin.load(loadables[0])
       volume.SetName(loadables[0].name)
-      slicer.mrmlScene.AddNode(volume)
-      self.alreadyLoadedSeries[selectedSeries] = volume
+      self.alreadyLoadedSeries[series] = volume
+    return volume
 
-  def importDICOMSeries(self, currentFileCount):
+  def importDICOMSeries(self):
     indexer = ctk.ctkDICOMIndexer()
     db = slicer.dicomDatabase
 
-    if self.thereAreFilesInTheFolderFlag == 1:
-      newFileList = self.currentFileList
-      self.thereAreFilesInTheFolderFlag = 0
-    else:
-      newFileList = list(set(self.getFileList(self._intraopDataDir)) - set(self.currentFileList))
+    fileList = self.getFileList(self._intraopDataDir)
 
-    studyDate = ''
+    newFileList = list(set(fileList) - set(self.currentFileList))
 
     for currentFile in newFileList:
       currentFile = os.path.join(self._intraopDataDir, currentFile)
@@ -2298,9 +2311,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       series = self.makeSeriesNumberDescription(currentFile)
       if series and series not in self.seriesList and self.isDICOMSeriesEligible(series):
         self.seriesList.append(series)
-        self.loadSeriesIntoSlicer(series)
-      if studyDate == '':
-        studyDate = self.extractDateFromDICOMFile(currentFile, DICOMTAGS.STUDY_DATE)
+        self.createLoadableFileListForSeries(series)
 
     indexer.addDirectory(db, self._intraopDataDir)
     indexer.waitForImportFinished()
@@ -2308,8 +2319,16 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.seriesList = sorted(self.seriesList, key=lambda series: RegistrationResult.getSeriesNumberFromString(series))
 
     if self._incomingDataCallback and len(newFileList) > 0 and \
-                    len(self.getFileList(self._intraopDataDir)) == currentFileCount:
-      self._incomingDataCallback(newList=newFileList, studyDate=studyDate)
+                    len(self.getFileList(self._intraopDataDir)) == self.currentFileCount:
+      self._incomingDataCallback(newList=newFileList)
+
+    self.currentFileList = fileList
+
+  def deleteSeriesFromSeriesList(self, seriesNumber):
+    for series in self.seriesList:
+      currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
+      if currentSeriesNumber == seriesNumber:
+        self.seriesList.remove(series)
 
   def extractDateFromDICOMFile(self, currentFile, tag=DICOMTAGS.STUDY_DATE):
     extractedDate = self.getDICOMValue(currentFile, tag)
