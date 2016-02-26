@@ -715,6 +715,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.NoCrosshair)
 
   def onRegistrationButtonChecked(self, buttonId):
+    self.disableTargetMovingMode()
     self.hideAllTargets()
     if buttonId == 1:
       self.onRigidResultClicked()
@@ -841,10 +842,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onMoveTargetRequest(self, modelIndex):
     if self.moveTargetMode:
       self.disableTargetMovingMode()
+      if self.currentlyMovedTargetIdx != modelIndex:
+        self.onMoveTargetRequest(modelIndex)
       self.currentlyMovedTargetIdx = None
     else:
-      self.enableTargetMovingMode()
       self.currentlyMovedTargetIdx = modelIndex.row()
+      self.enableTargetMovingMode()
 
   def enableTargetMovingMode(self):
     for sliceView in [self.yellowSliceView]: # TODO: just in case to add other viewers here
@@ -853,8 +856,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       sliceView.setCursor(qt.Qt.CrossCursor)
       self.mouseReleaseEventObservers[sliceView] = observer
     self.moveTargetMode = True
-    self.yellowViewTargetMovementAnnotation = SliceAnnotation(self.yellowWidget, "Target Movement Mode", opacity=0.5,
-                                                              verticalAlign="top", horizontalAlign="right")
+    targetName = self.targetTableModel.targetList.GetNthFiducialLabel(self.currentlyMovedTargetIdx)
+    self.yellowViewTargetMovementAnnotation = SliceAnnotation(self.yellowWidget, "Target Movement Mode (%s)" % targetName,
+                                                              opacity=0.5, verticalAlign="top", horizontalAlign="center")
 
   def disableTargetMovingMode(self):
     for sliceView, observer in self.mouseReleaseEventObservers.iteritems():
@@ -871,6 +875,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     posXY = observee.GetEventPosition()
     posRAS = self.xyToRAS(self.yellowSliceLogic, posXY)
     if self.currentlyMovedTargetIdx is not None:
+      self.currentResult.isGoingToBeMoved(self.targetTableModel.targetList, self.currentlyMovedTargetIdx)
       self.targetTableModel.targetList.SetNthFiducialPositionFromArray(self.currentlyMovedTargetIdx, posRAS)
     self.disableTargetMovingMode()
 
@@ -1140,6 +1145,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.intraopSeriesSelector.blockSignals(False)
 
   def onRegistrationResultSelected(self, seriesText, registrationType=None):
+    self.disableTargetMovingMode()
     if not seriesText:
       return
     self.hideAllTargets()
@@ -1632,6 +1638,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setDefaultFOV(logic, volume)
 
   def onTrackTargetsButtonClicked(self):
+    self.disableTargetMovingMode()
     self.removeSliceAnnotations()
     self.targetTableModel.computeCursorDistances = False
     if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
@@ -2948,6 +2955,15 @@ class RegistrationResult(ModuleLogicMixin):
     self.score = None
 
     self.modifiedTargets = {}
+
+  def isGoingToBeMoved(self, targetList, index):
+    assert targetList in self.targets.values()
+    if not self.modifiedTargets.has_key(targetList):
+      self.modifiedTargets[targetList] = {}
+    if not self.modifiedTargets[targetList].has_key(index):
+      originalPosition = [0.0, 0.0, 0.0]
+      targetList.GetNthFiducialPosition(index, originalPosition)
+      self.modifiedTargets[targetList][index] = originalPosition
 
   def _initLabels(self):
     self.movingLabel = None
