@@ -555,9 +555,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationResultAlternatives = self.createHLayout([qt.QLabel('Alternative Registration Result'), self.resultSelector])
     self.registrationGroupBoxDisplayLayout.addWidget(self.registrationResultAlternatives)
 
-    self.showRigidResultButton = self.createButton('Rigid', checkable=True)
-    self.showAffineResultButton = self.createButton('Affine', checkable=True)
-    self.showBSplineResultButton = self.createButton('BSpline', checkable=True)
+    self.showRigidResultButton = self.createButton('Rigid', checkable=True, name='rigid')
+    self.showAffineResultButton = self.createButton('Affine', checkable=True, name='affine')
+    self.showBSplineResultButton = self.createButton('BSpline', checkable=True, name='bSpline')
 
     self.registrationButtonGroup = qt.QButtonGroup()
     self.registrationButtonGroup.addButton(self.showRigidResultButton, 1)
@@ -814,7 +814,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     for result in self.registrationResults.getResultsBySeries(self.intraopSeriesSelector.currentText):
       if result.approved or result.rejected:
         self.setupRegistrationResultView()
-        self.onRegistrationResultSelected(result.name)
+        if result.rejected:
+          self.onRegistrationResultSelected(result.name, registrationType='bSpline')
+        elif result.approved:
+          self.onRegistrationResultSelected(result.name, registrationType=result.approvedRegistrationType)
         break
 
   def onTargetTableSelectionChanged(self, modelIndex=None):
@@ -1136,13 +1139,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.intraopSeriesSelector.setCurrentIndex(index)
     self.intraopSeriesSelector.blockSignals(False)
 
-  def onRegistrationResultSelected(self, seriesText):
+  def onRegistrationResultSelected(self, seriesText, registrationType=None):
     if not seriesText:
       return
     self.hideAllTargets()
     self.currentResult = seriesText
     self.showAffineResultButton.setEnabled(self.GUIDANCE_IMAGE not in seriesText)
-    if self.registrationButtonGroup.checkedId() != -1:
+    if registrationType:
+      for button in self.registrationButtonGroup.buttons():
+        if button.name == registrationType:
+          button.click()
+          break
+    elif self.registrationButtonGroup.checkedId() != -1:
       self.onRegistrationButtonChecked(self.registrationButtonGroup.checkedId())
     else:
       self.showBSplineResultButton.click()
@@ -1511,7 +1519,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.resetVisualEffects()
 
   def onApproveRegistrationResultButtonClicked(self):
-    self.currentResult.approve()
+    self.currentResult.approve(registrationType=self.registrationButtonGroup.checkedButton().name)
 
     if self.ratingWindow.isRatingEnabled():
       self.ratingWindow.show(disableWidget=self.parent, callback=self.openTargetingStep)
@@ -1782,20 +1790,21 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     newSeriesNumbers = self.checkForPatientIdSimilarityAndGetSeriesNumbers(newFileList)
     self.updateIntraopSeriesSelectorTable()
     selectedSeries = self.intraopSeriesSelector.currentText
-    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-    if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in selectedSeries and \
-                    selectedSeriesNumber in newSeriesNumbers:
-      self.onTrackTargetsButtonClicked()
-      return
-
-    if not self.evaluationMode and \
-            self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
-                                                in [self.COVER_TEMPLATE, self.COVER_PROSTATE, self.GUIDANCE_IMAGE]):
-      dialog = IncomingDataMessageBox()
-      answer, checked = dialog.exec_()
-      self.notifyUserAboutNewData = not checked
-      if answer == qt.QMessageBox.AcceptRole:
+    if selectedSeries != "":
+      selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+      if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in selectedSeries and \
+                      selectedSeriesNumber in newSeriesNumbers:
         self.onTrackTargetsButtonClicked()
+        return
+
+      if not self.evaluationMode and \
+              self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
+                                                  in [self.COVER_TEMPLATE, self.COVER_PROSTATE, self.GUIDANCE_IMAGE]):
+        dialog = IncomingDataMessageBox()
+        answer, checked = dialog.exec_()
+        self.notifyUserAboutNewData = not checked
+        if answer == qt.QMessageBox.AcceptRole:
+          self.onTrackTargetsButtonClicked()
 
 
 class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
@@ -2109,7 +2118,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
     self.progressCallback = progressCallback
 
-    # TODO: think about retried segmentations
+    # TODO: think about retried segmentations that actually changed the mask which should be used for further registrations
     coverProstateRegResult = self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
 
     # take the 'intraop label map', which is always fixed label in the very first preop-intraop registration
@@ -2120,7 +2129,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     result.fixedVolume = self.currentIntraopVolume
     result.fixedLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.currentIntraopVolume,
                                                                   self.currentIntraopVolume.GetName() + '-label')
-    result.originalTargets = coverProstateRegResult.bSplineTargets
+    result.originalTargets = coverProstateRegResult.approvedTargets
     sourceVolume = coverProstateRegResult.fixedVolume
     result.movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolume, 'movingVolumeReReg')
 
@@ -2557,6 +2566,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     modelDisplayNode = self.tempModelNode.GetDisplayNode()
     modelDisplayNode.SetColor(0.5,0,1)
     self.pathModelNode.SetAndObservePolyData(pathModelAppend.GetOutput())
+    modelDisplayNode = self.pathModelNode.GetDisplayNode()
+    modelDisplayNode.SetColor(0.8,0.5,1)
 
   def createNeedleModelNode(self, start, end):
     self.removeNeedleModelNode()
@@ -2781,16 +2792,16 @@ class RegistrationResults(object):
     if not type(series) is int:
       series = RegistrationResult.getSeriesNumberFromString(series)
     results = self.getResultsBySeriesNumber(series)
-    return any(getattr(result, status) is True for result in results) if len(results) else False
+    return any(result.status == status for result in results) if len(results) else False
 
   def registrationResultWasApproved(self, series):
-    return self._registrationResultHasStatus(series, "approved")
+    return self._registrationResultHasStatus(series, RegistrationResult.APPROVED_STATUS)
 
   def registrationResultWasSkipped(self, series):
-    return self._registrationResultHasStatus(series, "skipped")
+    return self._registrationResultHasStatus(series, RegistrationResult.SKIPPED_STATUS)
 
   def registrationResultWasRejected(self, series):
-    return self._registrationResultHasStatus(series, "rejected")
+    return self._registrationResultHasStatus(series, RegistrationResult.REJECTED_STATUS)
 
   def getResultsAsList(self):
     return self._registrationResults.values()
@@ -2798,7 +2809,7 @@ class RegistrationResults(object):
   def getMostRecentApprovedCoverProstateRegistration(self):
     mostRecent = None
     for result in self._registrationResults.values():
-      if SliceTrackerConstants.COVER_PROSTATE in result.name and result.approved and not result.skipped:
+      if SliceTrackerConstants.COVER_PROSTATE in result.name and result.approved:
         mostRecent = result
     return mostRecent
 
@@ -2875,22 +2886,15 @@ class RegistrationResults(object):
   def getMostRecentTargets(self):
     return self.getMostRecentResult().targets
 
-  # def deleteRegistrationResult(self, series):
-  #   result = self._registrationResults[series]
-  #   # TODO: deleting targets causes total crash of Slicer
-  #   nodesToDelete = ['fixedLabel', 'movingLabel', 'outputVolumeRigid', 'outputVolumeAffine', 'outputVolumeBSpline',
-  #                    'outputTransformRigid', 'outputTransformAffine', 'outputTransformBSpline']
-  #   # 'outputTargetsRigid', 'outputTargetAffine', 'outputTargetsBSpline']
-  #   for node in [result[key] for key in nodesToDelete if key in result.keys()]:
-  #     if node:
-  #       slicer.mrmlScene.RemoveNodeReferences(node)
-  #       slicer.mrmlScene.RemoveNode(node)
-  #   del self._registrationResults[series]
-
 
 class RegistrationResult(object):
 
   REGISTRATION_TYPE_NAMES = ['rigid', 'affine', 'bSpline']
+
+  SKIPPED_STATUS = 'skipped'
+  APPROVED_STATUS = 'approved'
+  REJECTED_STATUS = 'rejected'
+  POSSIBLE_STATES = [SKIPPED_STATUS, APPROVED_STATUS, REJECTED_STATUS]
 
   @staticmethod
   def getSeriesNumberFromString(text):
@@ -2907,6 +2911,28 @@ class RegistrationResult(object):
   @property
   def targets(self):
     return {'rigid': self.rigidTargets, 'affine': self.affineTargets, 'bSpline': self.bSplineTargets}
+
+  @property
+  @onExceptReturnNone
+  def approvedTargets(self):
+    return self.targets[self.approvedRegistrationType]
+
+  @property
+  @onExceptReturnNone
+  def approvedVolume(self):
+    return self.volumes[self.approvedRegistrationType]
+
+  @property
+  def approved(self):
+    return self.status == self.APPROVED_STATUS
+
+  @property
+  def skipped(self):
+    return self.status == self.SKIPPED_STATUS
+
+  @property
+  def rejected(self):
+    return self.status == self.REJECTED_STATUS
 
   @property
   def name(self):
@@ -2928,36 +2954,47 @@ class RegistrationResult(object):
   def seriesDescription(self):
     return self._seriesDescription
 
+  @property
+  def targetsWereModified(self):
+    return len(self.modifiedTargets) > 0
+
   def __init__(self, series):
     self.name = series
-    self.approved = False
-    self.skipped = False
-    self.rejected = False
-    self.rigidVolume = None
-    self.affineVolume = None
-    self.bSplineVolume = None
-    self.rigidTransform = None
-    self.affineTransform = None
-    self.bSplineTransform = None
+
+    self.status = None
+    self.approvedRegistrationType = None
+
+    self._initVolumes()
+    self._initTransforms()
+    self._initTargets()
+    self._initLabels()
+
+    self.cmdArguments = ""
+    self.score = None
+
+    self.modifiedTargets = {}
+
+  def _initLabels(self):
+    self.movingLabel = None
+    self.fixedLabel = None
+
+  def _initTargets(self):
     self.rigidTargets = None
     self.affineTargets = None
     self.bSplineTargets = None
     self.originalTargets = None
 
-    self.movingVolume = None
-    self.movingLabel = None
+  def _initTransforms(self):
+    self.rigidTransform = None
+    self.affineTransform = None
+    self.bSplineTransform = None
+
+  def _initVolumes(self):
     self.fixedVolume = None
-    self.fixedLabel = None
-
-    self.tipPosition = None
-
-    self.cmdArguments = ""
-
-    self.score = None
-
-  def __del__(self):
-    # TODO: should it also delete the volumes etc.?
-    pass
+    self.movingVolume = None
+    self.rigidVolume = None
+    self.affineVolume = None
+    self.bSplineVolume = None
 
   def setVolume(self, regType, volume):
     self._setRegAttribute(regType, "Volume", volume)
@@ -2985,20 +3022,16 @@ class RegistrationResult(object):
     assert regType in self.REGISTRATION_TYPE_NAMES
     return getattr(self, regType+attributeType)
 
-  def approve(self):
-    self.approved = True
-    self.skipped = False
-    self.rejected = False
+  def approve(self, registrationType):
+    assert registrationType in self.REGISTRATION_TYPE_NAMES
+    self.approvedRegistrationType = registrationType
+    self.status = self.APPROVED_STATUS
 
   def skip(self):
-    self.skipped = True
-    self.approved = False
-    self.rejected = False
+    self.status = self.SKIPPED_STATUS
 
   def reject(self):
-    self.rejected = True
-    self.skipped = False
-    self.approved = False
+    self.status = self.REJECTED_STATUS
 
   def printSummary(self):
     logging.debug('# ___________________________  registration output  ________________________________')
