@@ -25,7 +25,7 @@ def logmethod(level=logging.DEBUG):
   return decorator
 
 
-def onExceptReturnNone(func):
+def onExceptionReturnNone(func):
 
   @wraps(func)
   def wrapper(*args, **kwargs):

@@ -1930,78 +1930,44 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     successfullySavedData = ["The following data was successfully saved:\n"]
     failedSaveOfData = ["The following data failed to saved:\n"]
 
-    def saveNodeData(node, extension, name=None):
-      try:
-        name = name if name else node.GetName()
-        name = replaceUnwantedCharacters(name)
-        filename = os.path.join(outputDir, name + extension)
-        success = slicer.util.saveNode(node, filename)
-        listToAdd = successfullySavedData if success else failedSaveOfData
-        listToAdd.append(node.GetName())
-      except AttributeError:
-        failedSaveOfData.append(name)
-
-    def replaceUnwantedCharacters(string, characters=None, replaceWith="-"):
-      if not characters:
-        characters = [": ", " ", ":", "/"]
-      for character in characters:
-        string = string.replace(character, replaceWith)
-      return string
-
     def saveIntraopSegmentation():
       intraopLabel = self.registrationResults.intraopLabel
       if intraopLabel:
         intraopLabelName = intraopLabel.GetName().replace("label", "LABEL")
-        saveNodeData(intraopLabel, '.nrrd', name=intraopLabelName)
+        success, name = self.saveNodeData(intraopLabel, outputDir, '.nrrd', name=intraopLabelName)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+
         modelName = intraopLabel.GetName().replace("label", "MODEL")
         if self.clippingModelNode:
-          saveNodeData(self.clippingModelNode, '.vtk', name=modelName)
+          success, name = self.saveNodeData(self.clippingModelNode, outputDir, '.vtk', name=modelName)
+          self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     def saveOriginalTargets():
       originalTargets = self.registrationResults.originalTargets
       if originalTargets:
-        saveNodeData(originalTargets, '.fcsv', name="PreopTargets")
+        success, name = self.saveNodeData(originalTargets, outputDir, '.fcsv', name="PreopTargets")
+        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     def saveBiasCorrectionResult():
       if self.biasCorrectionDone:
         biasCorrectedResult = self.registrationResults.biasCorrectedResult
         if biasCorrectedResult:
-          saveNodeData(biasCorrectedResult, '.nrrd')
+          success, name = self.saveNodeData(biasCorrectedResult, outputDir, '.nrrd')
+          self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     def saveZFrameTransformation():
       if self.zFrameTransform:
-        saveNodeData(self.zFrameTransform, ".h5")
-
-    def saveRegistrationResults():
-      # TODO: this should be handled by the registrationResults classes
-
-      def saveRegistrationCommandLineArguments():
-        for result in self.registrationResults.getResultsAsList():
-          name = replaceUnwantedCharacters(result.name)
-          filename = os.path.join(outputDir, name + "-CMD-PARAMETERS.txt")
-          f = open(filename, 'w+')
-          f.write(result.cmdArguments)
-          f.close()
-
-      def saveOutputTransformations():
-        for result in self.registrationResults.getResultsAsList():
-          for transformNode in [node for node in result.transforms.values() if node]:
-            saveNodeData(transformNode, ".h5")
-
-      def saveTransformedTargets():
-        for result in self.registrationResults.getResultsAsList():
-          for targetNode in [node for node in result.targets.values() if node]:
-            saveNodeData(targetNode, ".fcsv")
-
-      saveRegistrationCommandLineArguments()
-      saveOutputTransformations()
-      saveTransformedTargets()
+        success, name = self.saveNodeData(self.zFrameTransform, outputDir, '.h5')
+        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     saveIntraopSegmentation()
     saveOriginalTargets()
     saveBiasCorrectionResult()
     saveZFrameTransformation()
-    saveRegistrationResults()
+
+    savedSuccessfully, failedToSave = self.registrationResults.save(outputDir)
+    successfullySavedData += savedSuccessfully
+    failedSaveOfData += failedToSave
 
     messageOutput = ""
     for messageList in [successfullySavedData, failedSaveOfData] :
@@ -2118,10 +2084,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
     self.progressCallback = progressCallback
 
-    # TODO: think about retried segmentations that actually changed the mask which should be used for further registrations
     coverProstateRegResult = self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
 
-    # take the 'intraop label map', which is always fixed label in the very first preop-intraop registration
     lastRigidTfm = self.registrationResults.getLastApprovedRigidTransformation()
 
     name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(self.currentIntraopVolume.GetName())
@@ -2754,7 +2718,7 @@ class SliceTrackerTest(ScriptedLoadableModuleTest):
 
 
 from collections import OrderedDict
-from SliceTrackerUtils.decorators import onExceptReturnNone
+from SliceTrackerUtils.decorators import onExceptionReturnNone
 
 
 class RegistrationResults(object):
@@ -2769,17 +2733,17 @@ class RegistrationResults(object):
     self._activeResult = series
 
   @property
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def originalTargets(self):
     return self.getMostRecentApprovedCoverProstateRegistration().originalTargets
 
   @property
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def intraopLabel(self):
     return self.getMostRecentApprovedCoverProstateRegistration().fixedLabel
 
   @property
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def biasCorrectedResult(self):
     return self.getMostRecentApprovedCoverProstateRegistration().movingVolume
 
@@ -2787,6 +2751,17 @@ class RegistrationResults(object):
     self._registrationResults = OrderedDict()
     self._activeResult = None
     self.preopTargets = None
+
+  def save(self, outputDir):
+    savedSuccessfully = []
+    failedToSave = []
+
+    for result in self._registrationResults.values():
+      successfulList, failedList = result.save(outputDir)
+      savedSuccessfully += successfulList
+      failedToSave += failedList
+
+    return savedSuccessfully, failedToSave
 
   def _registrationResultHasStatus(self, series, status):
     if not type(series) is int:
@@ -2838,7 +2813,7 @@ class RegistrationResults(object):
     self.activeResult = series
     return self._registrationResults[series]
 
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def getResult(self, series):
     return self._registrationResults[series]
 
@@ -2858,36 +2833,36 @@ class RegistrationResults(object):
   def exists(self, series):
     return series in self._registrationResults.keys()
 
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def _getActiveResult(self):
     return self._registrationResults[self._activeResult]
 
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def getMostRecentResult(self):
     lastKey = self._registrationResults.keys()[-1]
     return self._registrationResults[lastKey]
 
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def getMostRecentApprovedResult(self):
     for result in reversed(self._registrationResults.values()):
       if result.approved:
         return result
     return None
 
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def getMostRecentVolumes(self):
     return self.getMostRecentResult().volumes
 
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def getMostRecentTransforms(self):
     return self.getMostRecentResult().transforms
 
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def getMostRecentTargets(self):
     return self.getMostRecentResult().targets
 
 
-class RegistrationResult(object):
+class RegistrationResult(ModuleLogicMixin):
 
   REGISTRATION_TYPE_NAMES = ['rigid', 'affine', 'bSpline']
 
@@ -2913,12 +2888,12 @@ class RegistrationResult(object):
     return {'rigid': self.rigidTargets, 'affine': self.affineTargets, 'bSpline': self.bSplineTargets}
 
   @property
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def approvedTargets(self):
     return self.targets[self.approvedRegistrationType]
 
   @property
-  @onExceptReturnNone
+  @onExceptionReturnNone
   def approvedVolume(self):
     return self.volumes[self.approvedRegistrationType]
 
@@ -3037,6 +3012,41 @@ class RegistrationResult(object):
     logging.debug('# ___________________________  registration output  ________________________________')
     logging.debug(self.__dict__)
     logging.debug('# __________________________________________________________________________________')
+
+  def save(self, outputDir):
+    savedSuccessfully = []
+    failedToSave = []
+
+    def saveCMDParameters():
+      name = self.replaceUnwantedCharacters(self.name)
+      filename = os.path.join(outputDir, name + "-CMD-PARAMETERS.txt")
+      f = open(filename, 'w+')
+      f.write(self.cmdArguments)
+      f.close()
+
+    def saveTransformations():
+      for transformNode in [node for node in self.transforms.values() if node]:
+        success, name = self.saveNodeData(transformNode, outputDir, ".h5")
+        self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+
+    def saveTargets():
+      for targetNode in [node for node in self.targets.values() if node]:
+        success, name = self.saveNodeData(targetNode, outputDir, ".fcsv")
+        self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+
+    def saveApprovedTargets():
+      if not self.approved:
+        return
+      fileName = self.approvedTargets.GetName().replace("-TARGETS-", "-APPROVED-TARGETS-")
+      success, name = self.saveNodeData(self.approvedTargets, outputDir, ".fcsv", name=fileName)
+      self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+
+    saveCMDParameters()
+    saveTransformations()
+    saveTargets()
+    saveApprovedTargets()
+
+    return savedSuccessfully, failedToSave
 
 
 class IncomingDataMessageBox(ExtendedQMessageBox):

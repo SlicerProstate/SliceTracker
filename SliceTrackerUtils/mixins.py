@@ -191,6 +191,27 @@ class ModuleLogicMixin(object):
     return node
 
   @staticmethod
+  def saveNodeData(node, outputDir, extension, replaceUnwantedCharacters=True, name=None):
+    name = name if name else node.GetName()
+    if replaceUnwantedCharacters:
+      name = ModuleLogicMixin.replaceUnwantedCharacters(name)
+    filename = os.path.join(outputDir, name + extension)
+    return slicer.util.saveNode(node, filename), name
+
+  @staticmethod
+  def replaceUnwantedCharacters(string, characters=None, replaceWith="-"):
+    if not characters:
+      characters = [": ", " ", ":", "/"]
+    for character in characters:
+      string = string.replace(character, replaceWith)
+    return string
+
+  @staticmethod
+  def handleSaveNodeDataReturn(success, name, successfulList, failedList):
+    listToAdd = successfulList if success else failedList
+    listToAdd.append(name)
+
+  @staticmethod
   def applyTransform(transform, node):
     tfmLogic = slicer.modules.transforms.logic()
     node.SetAndObserveTransformNodeID(transform.GetID())
