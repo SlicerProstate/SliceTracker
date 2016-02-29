@@ -268,7 +268,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.revealCursor = None
     self.currentTargets = None
     self.moveTargetMode = False
-    self.movingTargetIndex = -1
+    self.currentlyMovedTargetModelIndex = None
 
     self.crosshairNode = None
     self.crosshairNodeObserverTag = None
@@ -825,6 +825,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if not modelIndex:
       self.getAndSelectTargetFromTable()
       return
+    if self.moveTargetMode is True and modelIndex != self.currentlyMovedTargetModelIndex:
+      self.disableTargetMovingMode()
     self.lastSelectedModelIndex = modelIndex
     row = modelIndex.row()
     if not self.currentTargets:
@@ -842,11 +844,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onMoveTargetRequest(self, modelIndex):
     if self.moveTargetMode:
       self.disableTargetMovingMode()
-      if self.currentlyMovedTargetIdx != modelIndex:
+      if self.currentlyMovedTargetModelIndex != modelIndex:
         self.onMoveTargetRequest(modelIndex)
-      self.currentlyMovedTargetIdx = None
+      self.currentlyMovedTargetModelIndex = None
     else:
-      self.currentlyMovedTargetIdx = modelIndex.row()
+      self.currentlyMovedTargetModelIndex = modelIndex
       self.enableTargetMovingMode()
 
   def enableTargetMovingMode(self):
@@ -856,7 +858,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       sliceView.setCursor(qt.Qt.CrossCursor)
       self.mouseReleaseEventObservers[sliceView] = observer
     self.moveTargetMode = True
-    targetName = self.targetTableModel.targetList.GetNthFiducialLabel(self.currentlyMovedTargetIdx)
+    targetName = self.targetTableModel.targetList.GetNthFiducialLabel(self.currentlyMovedTargetModelIndex.row())
     self.yellowViewTargetMovementAnnotation = SliceAnnotation(self.yellowWidget, "Target Movement Mode (%s)" % targetName,
                                                               opacity=0.5, verticalAlign="top", horizontalAlign="center")
 
@@ -874,9 +876,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onViewerClickEvent(self, observee=None, event=None):
     posXY = observee.GetEventPosition()
     posRAS = self.xyToRAS(self.yellowSliceLogic, posXY)
-    if self.currentlyMovedTargetIdx is not None:
-      self.currentResult.isGoingToBeMoved(self.targetTableModel.targetList, self.currentlyMovedTargetIdx)
-      self.targetTableModel.targetList.SetNthFiducialPositionFromArray(self.currentlyMovedTargetIdx, posRAS)
+    if self.currentlyMovedTargetModelIndex is not None:
+      self.currentResult.isGoingToBeMoved(self.targetTableModel.targetList, self.currentlyMovedTargetModelIndex.row())
+      self.targetTableModel.targetList.SetNthFiducialPositionFromArray(self.currentlyMovedTargetModelIndex.row(), posRAS)
     self.disableTargetMovingMode()
 
   def xyToRAS(self, sliceLogic, xyPoint):
