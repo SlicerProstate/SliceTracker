@@ -154,6 +154,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def evaluationMode(self, value):
     self._evaluationMode = value
     if value is False:
+      self.registrationAssessmentMode = False
       self.disableTargetMovingMode()
       self.targetTable.disconnect('doubleClicked(QModelIndex)', self.onMoveTargetRequest)
     else:
@@ -172,6 +173,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     try:
       self.logic.stopWatching()
       self.removeSliceAnnotations()
+      self.clearTargetMovementObserverAndAnnotations()
       self.resetVisualEffects()
     except:
       pass
@@ -180,8 +182,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
     self.removeSliceAnnotations()
-    if self.yellowViewTargetMovementAnnotation:
-      self.yellowViewTargetMovementAnnotation.remove()
+    self.clearTargetMovementObserverAndAnnotations()
     self.disconnectCrosshairNode()
 
   def updateOutputFolder(self):
@@ -264,7 +265,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.ratingWindow = RatingWindow(maximumValue=5)
     self.sliceAnnotations = []
     self.mouseReleaseEventObservers = {}
-    self.yellowViewTargetMovementAnnotation = None
+    self.targetMovementAnnotations = []
     self.revealCursor = None
     self.currentTargets = None
     self.moveTargetMode = False
@@ -301,6 +302,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.showAcceptRegistrationWarning = False
 
+    self.registrationAssessmentMode = False
     self.evaluationMode = False
     self.layout.addStretch()
 
@@ -691,6 +693,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
+      if self.registrationAssessmentMode:
+        self.disableTargetMovingMode()
+        self.setupRegistrationResultView()
+        self.onRegistrationResultSelected(self.currentResult.name)
     else:
       self.layoutsMenuButton.setIcon(qt.QIcon())
       self.layoutsMenuButton.setText("Layouts")
@@ -814,7 +820,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetTable.enabled = True
     for result in self.registrationResults.getResultsBySeries(self.intraopSeriesSelector.currentText):
       if result.approved or result.rejected:
-        self.setupRegistrationResultView()
+        self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
+        self.setupRegistrationResultSideBySideView()
         if result.rejected:
           self.onRegistrationResultSelected(result.name, registrationType='bSpline')
         elif result.approved:
@@ -831,15 +838,21 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     row = modelIndex.row()
     if not self.currentTargets:
       self.currentTargets = self.preopTargets
-
-    self.jumpSliceNodeToTarget(self.redSliceNode, self.preopTargets, row)
-    self.setTargetSelected(self.preopTargets, selected=False)
-    self.preopTargets.SetNthFiducialSelected(row, True)
-
-    self.jumpSliceNodeToTarget(self.yellowSliceNode, self.currentTargets, row)
-    self.setTargetSelected(self.currentTargets, selected=False)
-    self.currentTargets.SetNthFiducialSelected(row, True)
+    self.jumpSliceNodesToNthTarget(row)
     self.updateNeedleModel()
+
+  def jumpSliceNodesToNthTarget(self, targetIndex):
+    currentTargetsSliceNodes = [self.yellowSliceNode]
+    if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
+      self.jumpSliceNodeToTarget(self.redSliceNode, self.preopTargets, targetIndex)
+      self.setTargetSelected(self.preopTargets, selected=False)
+      self.preopTargets.SetNthFiducialSelected(targetIndex, True)
+    else:
+      currentTargetsSliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+    for sliceNode in currentTargetsSliceNodes:
+      self.jumpSliceNodeToTarget(sliceNode, self.currentTargets, targetIndex)
+    self.setTargetSelected(self.currentTargets, selected=False)
+    self.currentTargets.SetNthFiducialSelected(targetIndex, True)
 
   def onMoveTargetRequest(self, modelIndex):
     if self.moveTargetMode:
@@ -852,34 +865,50 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.enableTargetMovingMode()
 
   def enableTargetMovingMode(self):
-    for sliceView in [self.yellowSliceView]: # TODO: just in case to add other viewers here
+    self.clearTargetMovementObserverAndAnnotations()
+    targetName = self.targetTableModel.targetList.GetNthFiducialLabel(self.currentlyMovedTargetModelIndex.row())
+
+    widgets = [self.yellowWidget] if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE else \
+                 [self.redWidget, self.yellowWidget, self.greenWidget]
+    for widget in widgets:
+      sliceView = widget.sliceView()
       interactor = sliceView.interactorStyle().GetInteractor()
       observer = interactor.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent, self.onViewerClickEvent)
       sliceView.setCursor(qt.Qt.CrossCursor)
-      self.mouseReleaseEventObservers[sliceView] = observer
+      annotation = SliceAnnotation(widget, "Target Movement Mode (%s)" % targetName, opacity=0.5,
+                                   verticalAlign="top", horizontalAlign="center")
+      self.mouseReleaseEventObservers[widget] = (observer, annotation)
     self.moveTargetMode = True
-    targetName = self.targetTableModel.targetList.GetNthFiducialLabel(self.currentlyMovedTargetModelIndex.row())
-    self.yellowViewTargetMovementAnnotation = SliceAnnotation(self.yellowWidget, "Target Movement Mode (%s)" % targetName,
-                                                              opacity=0.5, verticalAlign="top", horizontalAlign="center")
 
   def disableTargetMovingMode(self):
-    for sliceView, observer in self.mouseReleaseEventObservers.iteritems():
+    self.clearTargetMovementObserverAndAnnotations()
+    self.mouseReleaseEventObservers = {}
+    self.moveTargetMode = False
+
+  def clearTargetMovementObserverAndAnnotations(self):
+    for widget, (observer, annotation) in self.mouseReleaseEventObservers.iteritems():
+      sliceView = widget.sliceView()
       interactor = sliceView.interactorStyle().GetInteractor()
       interactor.RemoveObserver(observer)
       sliceView.setCursor(qt.Qt.ArrowCursor)
-    self.mouseReleaseEventObservers = {}
-    self.moveTargetMode = False
-    if self.yellowViewTargetMovementAnnotation:
-      self.yellowViewTargetMovementAnnotation.remove()
-      self.yellowViewTargetMovementAnnotation = None
+      annotation.remove()
 
   def onViewerClickEvent(self, observee=None, event=None):
     posXY = observee.GetEventPosition()
-    posRAS = self.xyToRAS(self.yellowSliceLogic, posXY)
+    widget = self.getWidgetForInteractor(observee)
+    posRAS = self.xyToRAS(widget.sliceLogic(), posXY)
     if self.currentlyMovedTargetModelIndex is not None:
       self.currentResult.isGoingToBeMoved(self.targetTableModel.targetList, self.currentlyMovedTargetModelIndex.row())
       self.targetTableModel.targetList.SetNthFiducialPositionFromArray(self.currentlyMovedTargetModelIndex.row(), posRAS)
     self.disableTargetMovingMode()
+
+  def getWidgetForInteractor(self, observee):
+    for widget in self.mouseReleaseEventObservers.keys():
+      sliceView = widget.sliceView()
+      interactor = sliceView.interactorStyle().GetInteractor()
+      if interactor is observee:
+        return widget
+    return None
 
   def xyToRAS(self, sliceLogic, xyPoint):
     sliceNode = sliceLogic.GetSliceNode()
@@ -928,14 +957,27 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
                                                  yPos=55))
     self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=55,
                                                  fontSize=30))
-    self.yellowViewNewImageAnnotation = SliceAnnotation(self.yellowWidget,
-                                                        self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, yPos=35,
-                                                        opacity=0.0, color=(0,0.5,0))
-    self.sliceAnnotations.append(self.yellowViewNewImageAnnotation)
-    self.yellowViewOldImageAnnotation = SliceAnnotation(self.yellowWidget,
-                                                        self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, yPos=35)
-    self.sliceAnnotations.append(self.yellowViewOldImageAnnotation)
-    self.rightViewerRegistrationResultStatusAnnotation = None
+    self.registrationResultNewImageAnnotation = SliceAnnotation(self.yellowWidget,
+                                                                self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, yPos=35,
+                                                                opacity=0.0, color=(0,0.5,0))
+    self.sliceAnnotations.append(self.registrationResultNewImageAnnotation)
+    self.registrationResultOldImageAnnotation = SliceAnnotation(self.yellowWidget,
+                                                                self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, yPos=35)
+    self.sliceAnnotations.append(self.registrationResultOldImageAnnotation)
+    self.registrationResultStatusAnnotation = None
+
+  def addFourUpSliceAnnotations(self):
+    self.removeSliceAnnotations()
+    for widget in (self.redWidget, self.yellowWidget, self.greenWidget):
+      self.sliceAnnotations.append(SliceAnnotation(widget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=55, fontSize=30))
+    self.registrationResultNewImageAnnotation = SliceAnnotation(self.redWidget,
+                                                                self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, yPos=35,
+                                                                opacity=0.0, color=(0,0.5,0))
+    self.sliceAnnotations.append(self.registrationResultNewImageAnnotation)
+    self.registrationResultOldImageAnnotation = SliceAnnotation(self.redWidget,
+                                                                self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, yPos=35)
+    self.sliceAnnotations.append(self.registrationResultOldImageAnnotation)
+    self.registrationResultStatusAnnotation = None
 
   def onForwardButtonClicked(self):
     numberOfDeletedTargets = self.deletedMarkups.GetNumberOfFiducials()
@@ -991,8 +1033,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.revealCursor = CompareVolumes.LayerReveal()
 
   def setOldNewIndicatorAnnotationOpacity(self, value):
-    self.yellowViewNewImageAnnotation.opacity = value
-    self.yellowViewOldImageAnnotation.opacity = 1.0 - value
+    self.registrationResultNewImageAnnotation.opacity = value
+    self.registrationResultOldImageAnnotation.opacity = 1.0 - value
 
   def showOpacitySliderPopup(self, show):
     if show:
@@ -1169,12 +1211,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.setTargetVisibility(targetNode, show=False)
     self.setTargetVisibility(self.preopTargets, show=False)
 
-  def deselectAllTargets(self):
-    for result in self.registrationResults.getResultsAsList():
-      for targetNode in [targets for targets in result.targets.values() if targets]:
-        self.setTargetSelected(targetNode)
-    self.setTargetSelected(self.preopTargets)
-
   def onRigidResultClicked(self):
     self.targetTableModel.targetList = self.currentResult.rigidTargets
     self.displayRegistrationResults(registrationType='rigid')
@@ -1207,17 +1243,21 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     sliceNode.UpdateMatrices()
 
   def setCurrentRegistrationResultSliceViews(self, registrationType):
-    self.redCompositeNode.SetBackgroundVolumeID(self.preopVolume.GetID())
-    self.redCompositeNode.SetForegroundVolumeID(None)
+    compositeNodes = [self.yellowCompositeNode]
+    if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
+      self.redCompositeNode.SetForegroundVolumeID(None)
+      self.redCompositeNode.SetBackgroundVolumeID(self.preopVolume.GetID())
+    else:
+      compositeNodes = [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]
 
-    self.yellowCompositeNode.SetForegroundVolumeID(self.currentResult.fixedVolume.GetID())
-    self.yellowCompositeNode.SetBackgroundVolumeID(self.currentResult.getVolume(registrationType).GetID())
+    for compositeNode in compositeNodes:
+      compositeNode.SetForegroundVolumeID(self.currentResult.fixedVolume.GetID())
+      compositeNode.SetBackgroundVolumeID(self.currentResult.getVolume(registrationType).GetID())
 
-    self.greenCompositeNode.SetLabelOpacity(0)
-    self.greenCompositeNode.SetForegroundVolumeID(None)
-    self.greenCompositeNode.SetBackgroundVolumeID(None)
-    self.setDefaultFOV(self.redSliceLogic, self.preopVolume)
+    self.setDefaultFOV(self.redSliceLogic, self.preopVolume if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE
+                                                            else self.currentResult.getVolume(registrationType))
     self.setDefaultFOV(self.yellowSliceLogic, self.currentResult.getVolume(registrationType))
+    self.setDefaultFOV(self.greenSliceLogic, self.currentResult.getVolume(registrationType))
 
   def showTargets(self, registrationType):
     self.setTargetVisibility(self.currentResult.rigidTargets, show=registrationType == 'rigid')
@@ -1477,6 +1517,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.opacitySpinBox.value = value
 
   def onOpacityChanged(self, value):
+    if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+      self.redCompositeNode.SetForegroundOpacity(value)
+      self.greenCompositeNode.SetForegroundOpacity(value)
     self.yellowCompositeNode.SetForegroundOpacity(value)
     self.setOldNewIndicatorAnnotationOpacity(value)
 
@@ -1503,10 +1546,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     xyz = [0.0,0.0,0.0]
     insideView = self.crosshairNode.GetCursorPositionRAS(ras)
     sliceNode = self.crosshairNode.GetCursorPositionXYZ(xyz)
-    if sliceNode is not self.yellowSliceNode or not insideView:
-       self.targetTableModel.cursorPosition = None
-    else:
-       self.targetTableModel.cursorPosition = ras
+
+    if not insideView or sliceNode not in [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]:
+      self.targetTableModel.cursorPosition = None
+      return
+
+    if (self.registrationAssessmentMode and (self.layoutManager.layout == self.LAYOUT_FOUR_UP or
+       (self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE and sliceNode is self.yellowSliceNode))) or \
+      (not self.registrationAssessmentMode and sliceNode is self.yellowSliceNode):
+      self.targetTableModel.cursorPosition = ras
 
   def openTargetingStep(self, ratingResult=None):
     self.zFrameRegistrationGroupBox.hide()
@@ -1526,6 +1574,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.removeSliceAnnotations()
     self.resetVisualEffects()
 
+  def onRetryRegistrationButtonClicked(self):
+    self.registrationAssessmentMode = False
+    self.logic.retryMode = True
+    self.evaluationButtonsGroupBox.enabled = False
+    self.onTrackTargetsButtonClicked()
+
   def onApproveRegistrationResultButtonClicked(self):
     self.currentResult.approve(registrationType=self.registrationButtonGroup.checkedButton().name)
 
@@ -1533,6 +1587,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.ratingWindow.show(disableWidget=self.parent, callback=self.openTargetingStep)
     else:
       self.openTargetingStep()
+
+  def onRejectRegistrationResultButtonClicked(self):
+    results = self.registrationResults.getResultsBySeriesNumber(self.currentResult.seriesNumber)
+    for result in results:
+      result.reject()
+    self.openTargetingStep()
 
   def onSkipIntraopSeriesButtonClicked(self):
     self.skipSeries(self.intraopSeriesSelector.currentText)
@@ -1555,12 +1615,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     result = self.registrationResults.createResult(name+suffix)
     result.fixedVolume = volume
     result.skip()
-
-  def onRejectRegistrationResultButtonClicked(self):
-    results = self.registrationResults.getResultsBySeriesNumber(self.currentResult.seriesNumber)
-    for result in results:
-      result.reject()
-    self.openTargetingStep()
 
   def onApplySegmentationButtonClicked(self):
     self.setAxialOrientation()
@@ -1748,16 +1802,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         if hasattr(self.progress, key):
           setattr(self.progress, key, value)
 
-  def onRetryRegistrationButtonClicked(self):
-    self.logic.retryMode = True
-    self.evaluationButtonsGroupBox.enabled = False
-    self.onTrackTargetsButtonClicked()
-
   def finalizeRegistrationStep(self):
     self.targetTableModel.computeCursorDistances = True
     self.targetTable.enabled = True
     self.addNewTargetsToScene()
-    self.openRegistrationEvaluationStep()
+    self.openRegistrationResultAssessmentStep()
     self.showBSplineResultButton.click()
     self.currentResult.printSummary()
     self.connectCrosshairNode()
@@ -1767,32 +1816,44 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       slicer.mrmlScene.AddNode(targetNode)
 
   def setupRegistrationResultView(self):
+    if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+      self.setupRegistrationResultFourUpView()
+    else:
+      self.setupRegistrationResultSideBySideView()
+
+  def setupRegistrationResultSideBySideView(self):
     self.hideAllLabels()
     self.addSideBySideSliceAnnotations()
 
-    self.refreshViewNodeIDs(self.preopTargets, self.redSliceNode)
+    self.refreshViewNodeIDs(self.preopTargets, [self.redSliceNode])
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
-      self.refreshViewNodeIDs(targetNode, self.yellowSliceNode)
-      # TODO: here add as well other sliceNodes
-
-    self.resetToRegularViewMode()
-
-    self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
-
+      self.refreshViewNodeIDs(targetNode, [self.yellowSliceNode])
     self.setAxialOrientation()
 
-  def openRegistrationEvaluationStep(self):
+  def setupRegistrationResultFourUpView(self):
+    self.hideAllLabels()
+    self.addFourUpSliceAnnotations()
+
+    for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
+      self.refreshViewNodeIDs(targetNode, [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode])
+    self.setDefaultOrientation()
+
+  def openRegistrationResultAssessmentStep(self):
+    self.registrationAssessmentMode = True
     self.updateRegistrationResultSelector()
+    self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
     self.setupRegistrationResultView()
     self.registrationWatchBox.show()
     self.segmentationGroupBox.hide()
     self.activateRegistrationResultsArea(collapsed=False, enabled=True)
     self.evaluationButtonsGroupBox.enabled = True
 
-  def refreshViewNodeIDs(self, targets, sliceNode):
+  def refreshViewNodeIDs(self, targets, sliceNodes):
     displayNode = targets.GetDisplayNode()
-    displayNode.RemoveAllViewNodeIDs()
-    displayNode.AddViewNodeID(sliceNode.GetID())
+    if displayNode:
+      displayNode.RemoveAllViewNodeIDs()
+      for sliceNode in sliceNodes:
+        displayNode.AddViewNodeID(sliceNode.GetID())
 
   def onNewImageDataReceived(self, **kwargs):
     newFileList = kwargs.pop('newList')
