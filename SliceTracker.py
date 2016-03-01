@@ -1250,12 +1250,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     else:
       compositeNodes = [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]
 
+    bgVolume = self.currentResult.getVolume(registrationType)
+    bgVolume = bgVolume if self.logic.isVolumeExtentValid(bgVolume) else self.currentResult.fixedVolume
+
     for compositeNode in compositeNodes:
       compositeNode.SetForegroundVolumeID(self.currentResult.fixedVolume.GetID())
-      compositeNode.SetBackgroundVolumeID(self.currentResult.getVolume(registrationType).GetID())
+      compositeNode.SetBackgroundVolumeID(bgVolume.GetID())
 
     self.setDefaultFOV(self.redSliceLogic, self.preopVolume if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE
-                                                            else self.currentResult.getVolume(registrationType))
+                                                            else bgVolume)
     self.setDefaultFOV(self.yellowSliceLogic, self.currentResult.getVolume(registrationType))
     self.setDefaultFOV(self.greenSliceLogic, self.currentResult.getVolume(registrationType))
 
@@ -1810,6 +1813,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.showBSplineResultButton.click()
     self.currentResult.printSummary()
     self.connectCrosshairNode()
+    if not self.logic.isVolumeExtentValid(self.currentResult.bSplineVolume):
+      self.notificationDialog("One or more empty volume were created during registration process. You have three options:\n"
+                              "1. Skip the registration result \n"
+                              "2. Retry with creating a new segmentation \n"
+                              "3. Set targets to your preferred position (in Four-Up layout)",
+                              title="Action needed: Registration created empty volume(s)")
 
   def addNewTargetsToScene(self):
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:

@@ -223,3 +223,12 @@ class ModuleLogicMixin(object):
     slicer.mrmlScene.AddNode(displayNode)
     node.SetAndObserveDisplayNodeID(displayNode.GetID())
     return displayNode
+
+  @staticmethod
+  def isVolumeExtentValid(volume):
+    imageData = volume.GetImageData()
+    try:
+      extent = imageData.GetExtent()
+      return extent[1] > 0 and extent[3] > 0 and extent[5] > 0
+    except AttributeError:
+      return False
