@@ -448,9 +448,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetTableModel.setTargetModifiedCallback(self.updateNeedleModel)
     self.targetTable.setModel(self.targetTableModel)
     self.targetTable.setSelectionBehavior(qt.QTableView.SelectRows)
-    self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
+    self.setTargetTableSizeConstraints()
     self.targetTable.verticalHeader().hide()
     self.targetTable.maximumHeight = 150
+
+  def setTargetTableSizeConstraints(self):
+    self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
+    self.targetTable.horizontalHeader().setResizeMode(0, qt.QHeaderView.Fixed)
+    self.targetTable.horizontalHeader().setResizeMode(3, qt.QHeaderView.ResizeToContents)
+    self.targetTable.horizontalHeader().setResizeMode(4, qt.QHeaderView.ResizeToContents)
 
   def setupIntraopSeriesSelector(self):
     self.intraopSeriesSelector = qt.QComboBox()
@@ -3255,8 +3261,8 @@ class RatingWindow(qt.QWidget, ModuleWidgetMixin):
 class CustomTargetTableModel(qt.QAbstractTableModel):
 
   COLUMN_NAME = 'Name'
-  COLUMN_2D_DISTANCE = 'Cursor distance 2D[mm]'
-  COLUMN_3D_DISTANCE = 'Cursor distance 3D[mm]'
+  COLUMN_2D_DISTANCE = 'Distance 2D[mm]'
+  COLUMN_3D_DISTANCE = 'Distance 3D[mm]'
   COLUMN_HOLE = 'Hole'
   COLUMN_DEPTH = 'Depth [mm]'
 
@@ -3304,7 +3310,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     self._targetModifiedCallback = func
 
   def headerData(self, col, orientation, role):
-    if orientation == qt.Qt.Horizontal and role == qt.Qt.DisplayRole:
+    if orientation == qt.Qt.Horizontal and role in [qt.Qt.DisplayRole, qt.Qt.ToolTipRole]:
         return self.headers[col]
     return None
 
@@ -3319,7 +3325,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     return len(self.headers)
 
   def data(self, index, role):
-    if not index.isValid() or role != qt.Qt.DisplayRole:
+    if not index.isValid() or role not in [qt.Qt.DisplayRole, qt.Qt.ToolTipRole]:
       return None
 
     row = index.row()
