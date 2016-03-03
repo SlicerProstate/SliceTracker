@@ -283,7 +283,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.createPatientWatchBox()
     self.createRegistrationWatchBox()
-    self.setupRegistrationStepUIElements()
+    self.setupRegistrationWatchBox()
     self.settingsArea()
 
     self.setupSliceWidgets()
@@ -304,7 +304,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.registrationAssessmentMode = False
     self.evaluationMode = False
-    self.layout.addStretch()
 
   def settingsArea(self):
     self.collapsibleSettingsArea = ctk.ctkCollapsibleButton()
@@ -393,7 +392,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.approveZFrameRegistrationButton = self.createButton("Confirm registration accuracy")
 
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.approveZFrameRegistrationButton)
+    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.approveZFrameRegistrationButton, 0, 0)
+    self.zFrameRegistrationGroupBoxGroupBoxLayout.setRowStretch(1,1)
     self.layout.addWidget(self.zFrameRegistrationGroupBox)
 
   def setupTargetingStepUIElements(self):
@@ -433,6 +433,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetingGroupBoxLayout.addWidget(self.skipIntraopSeriesButton, 2, 1)
     self.targetingGroupBoxLayout.addWidget(self.trackTargetsButton, 3, 0, 1, 2)
     self.targetingGroupBoxLayout.addWidget(self.caseCompletedButton, 4, 0, 1, 2)
+    self.targetingGroupBoxLayout.setRowStretch(5,1)
+
     self.layout.addWidget(self.targetingGroupBox)
 
   def createHelperLabel(self, toolTipText=""):
@@ -450,7 +452,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetTable.setSelectionBehavior(qt.QTableView.SelectRows)
     self.setTargetTableSizeConstraints()
     self.targetTable.verticalHeader().hide()
-    self.targetTable.maximumHeight = 150
+    self.targetTable.minimumHeight = 150
 
   def setTargetTableSizeConstraints(self):
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
@@ -490,11 +492,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setupEditorWidget()
 
     self.segmentationGroupBox = qt.QGroupBox()
-    self.segmentationGroupBoxLayout = qt.QFormLayout()
+    self.segmentationGroupBoxLayout = qt.QGridLayout()
     self.segmentationGroupBox.setLayout(self.segmentationGroupBoxLayout)
-    self.segmentationGroupBoxLayout.addWidget(segmentationButtons)
-    self.segmentationGroupBoxLayout.addRow(self.editorWidgetParent)
-    self.segmentationGroupBoxLayout.addRow(self.applyRegistrationButton)
+    self.segmentationGroupBoxLayout.addWidget(segmentationButtons, 0, 0)
+    self.segmentationGroupBoxLayout.addWidget(self.editorWidgetParent, 1, 0)
+    self.segmentationGroupBoxLayout.addWidget(self.applyRegistrationButton, 2, 0)
+    self.segmentationGroupBoxLayout.setRowStretch(3, 1)
     self.segmentationGroupBox.hide()
     self.editorWidgetParent.hide()
 
@@ -507,7 +510,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.editorWidget.setup()
     self.editorParameterNode = self.editUtil.getParameterNode()
 
-  def setupRegistrationStepUIElements(self):
+  def setupRegistrationWatchBox(self):
     self.registrationGroupBox = qt.QGroupBox()
     self.registrationGroupBoxLayout = qt.QFormLayout()
     self.registrationGroupBox.setLayout(self.registrationGroupBoxLayout)
@@ -543,6 +546,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationEvaluationGroupBoxLayout.addWidget(self.segmentationGroupBox, 2, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.collapsibleRegistrationArea, 3, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.evaluationButtonsGroupBox, 5, 0)
+    self.registrationEvaluationGroupBoxLayout.setRowStretch(6, 1)
     self.layout.addWidget(self.registrationEvaluationGroupBox)
 
   def setupRegistrationValidationButtons(self):
