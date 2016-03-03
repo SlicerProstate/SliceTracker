@@ -110,7 +110,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.intraopSeriesSelector.clear()
     self.intraopDirButton.setEnabled(True)
     self.trackTargetsButton.setEnabled(False)
-    self.preopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Preop directory"
+    self.preopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Choose preop directory"
     self.preopDirButton.toolTip = path
     self.intraopDirButton.blockSignals(True)
     self.intraopDirButton.directory = self.getSetting('IntraopLocation')
@@ -129,7 +129,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
     self.setSetting('IntraopLocation', path)
-    self.intraopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Intraop directory"
+    self.intraopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Choose intraop directory"
     self.intraopDirButton.toolTip = path
     self.updateOutputFolder()
 
@@ -142,7 +142,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     exists = os.path.exists(path)
     self.caseCompletedButton.enabled = exists
     self.setSetting('OutputLocation', path if exists else None)
-    self.outputDirButton.text = self.truncatePath(path) if exists else "Output directory"
+    self.outputDirButton.text = self.truncatePath(path) if exists else "Choose output directory"
     self.outputDirButton.toolTip = path
     self.updateOutputFolder()
 
@@ -401,10 +401,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetingGroupBoxLayout = qt.QGridLayout()
     self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
 
-    self.preopDirButton = self.createDirectoryButton(text="Preop directory", caption="Choose Preop Location",
+    self.preopDirButton = self.createDirectoryButton(text="Choose preop directory", caption="Choose Preop Location",
                                                      directory=self.getSetting('PreopLocation'))
     self.outputDirButton = self.createDirectoryButton(caption="Choose Data Output Location")
-    self.intraopDirButton = self.createDirectoryButton(text="Intraop directory", caption="Choose Intraop Location",
+    self.intraopDirButton = self.createDirectoryButton(text="Choose intraop directory", caption="Choose Intraop Location",
                                                        directory=self.getSetting('IntraopLocation'), enabled=False)
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
