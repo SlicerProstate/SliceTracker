@@ -168,25 +168,26 @@ class ModuleLogicMixin(object):
     indexer.waitForImportFinished()
 
   @staticmethod
-  def createScalarVolumeNode(name):
-    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLScalarVolumeNode)
+  def createScalarVolumeNode(name=None):
+    return ModuleLogicMixin.createNode(slicer.vtkMRMLScalarVolumeNode, name=name)
 
   @staticmethod
-  def createBSplineTransformNode(name):
-    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLBSplineTransformNode)
+  def createBSplineTransformNode(name=None):
+    return ModuleLogicMixin.createNode(slicer.vtkMRMLBSplineTransformNode, name=name)
 
   @staticmethod
-  def createLinearTransformNode(name):
-    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLLinearTransformNode)
+  def createLinearTransformNode(name=None):
+    return ModuleLogicMixin.createNode(slicer.vtkMRMLLinearTransformNode, name=name)
 
   @staticmethod
-  def createModelNode(name):
-    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLModelNode)
+  def createModelNode(name=None):
+    return ModuleLogicMixin.createNode(slicer.vtkMRMLModelNode, name=name)
 
   @staticmethod
-  def createNode(name, nodeType):
+  def createNode(nodeType, name=None):
     node = nodeType()
-    node.SetName(name)
+    if name:
+      node.SetName(name)
     slicer.mrmlScene.AddNode(node)
     return node
 

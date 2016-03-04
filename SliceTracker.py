@@ -1,68 +1,26 @@
-import os
-import csv
-import numpy
-import math, re, sys
-import vtk, qt, ctk, slicer
-from slicer.ScriptedLoadableModule import *
-from SliceTrackerUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
-from SliceTrackerUtils.helpers import SliceAnnotation, ExtendedQMessageBox
-from Editor import EditorWidget
-import EditorLib
-import logging
 import datetime
-from subprocess import Popen
+import math
+import sys
+
+import numpy
+
+import EditorLib
+import csv
+import ctk
+import logging
+import os
+import qt
+import re
+import slicer
+import vtk
+from Editor import EditorWidget
+from SliceTrackerUtils.Constants import DICOMTAGS, COLOR, STYLE, SliceTrackerConstants
+from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
 from SliceTrackerUtils.ZFrameRegistration import LineMarkerRegistration
-
-
-class DICOMTAGS:
-
-  PATIENT_NAME          = '0010,0010'
-  PATIENT_ID            = '0010,0020'
-  PATIENT_BIRTH_DATE    = '0010,0030'
-  SERIES_DESCRIPTION    = '0008,103E'
-  SERIES_NUMBER         = '0020,0011'
-  STUDY_DATE            = '0008,0020'
-  STUDY_TIME            = '0008,0030'
-  ACQUISITION_TIME      = '0008,0032'
-
-
-class COLOR:
-
-  RED = qt.QColor(qt.Qt.red)
-  YELLOW = qt.QColor(qt.Qt.yellow)
-  GREEN = qt.QColor(qt.Qt.darkGreen)
-  GRAY = qt.QColor(qt.Qt.gray)
-
-
-class STYLE:
-
-  WHITE_BACKGROUND            = 'background-color: rgb(255,255,255)'
-  LIGHT_GRAY_BACKGROUND       = 'background-color: rgb(230,230,230)'
-  ORANGE_BACKGROUND           = 'background-color: rgb(255,102,0)'
-  YELLOW_BACKGROUND           = 'background-color: yellow;'
-  GREEN_BACKGROUND            = 'background-color: green;'
-  GRAY_BACKGROUND             = 'background-color: gray;'
-  RED_BACKGROUND              = 'background-color: red;'
-
-
-class SliceTrackerConstants(object):
-
-  LEFT_VIEWER_SLICE_ANNOTATION_TEXT = 'BIOPSY PLAN'
-  RIGHT_VIEWER_SLICE_ANNOTATION_TEXT = 'TRACKED TARGETS'
-  RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT = 'OLD'
-  RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT = 'NEW'
-  APPROVED_RESULT_TEXT_ANNOTATION = "approved"
-  REJECTED_RESULT_TEXT_ANNOTATION = "rejected"
-  SKIPPED_RESULT_TEXT_ANNOTATION = "skipped"
-
-  LAYOUT_RED_SLICE_ONLY = slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView
-  LAYOUT_FOUR_UP = slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView
-  LAYOUT_SIDE_BY_SIDE = slicer.vtkMRMLLayoutNode.SlicerLayoutSideBySideView
-  ALLOWED_LAYOUTS = [LAYOUT_SIDE_BY_SIDE, LAYOUT_FOUR_UP]
-
-  COVER_PROSTATE = "COVER PROSTATE"
-  COVER_TEMPLATE = "COVER TEMPLATE"
-  GUIDANCE_IMAGE = "GUIDANCE"
+from SliceTrackerUtils.helpers import SliceAnnotation, ExtendedQMessageBox
+from SliceTrackerUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from slicer.ScriptedLoadableModule import *
+from subprocess import Popen
 
 
 class SliceTracker(ScriptedLoadableModule):
@@ -1796,7 +1754,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.progress = self.makeProgressIndicator(4, 1)
     if initial:
       self.logic.applyInitialRegistration(fixedVolume=self.intraopVolumeSelector.currentNode(),
-                                          sourceVolume=self.preopVolumeSelector.currentNode(),
+                                          movingVolume=self.preopVolumeSelector.currentNode(),
                                           fixedLabel=self.intraopLabelSelector.currentNode(),
                                           movingLabel=self.preopLabelSelector.currentNode(),
                                           targets=self.fiducialSelector.currentNode(),
@@ -1805,6 +1763,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.logic.applyRegistration(progressCallback=self.updateProgressBar)
     self.progress.close()
     self.progress = None
+    for targets in self.currentResult.targets.values():
+      if targets:
+        targets.SetAndObserveDisplayNodeID(self.logic.displayNode.GetID())
     self.finalizeRegistrationStep()
     self.registrationGroupBox.hide()
     logging.debug('Re-Registration is done')
@@ -1896,6 +1857,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
           self.onTrackTargetsButtonClicked()
 
 
+from SliceTrackerRegistration import SliceTrackerRegistrationLogic
+
+
 class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
   ZFRAME_MODEL_PATH = 'Resources/zframe/zframe-model.vtk'
@@ -1938,6 +1902,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     self.markupsLogic = slicer.modules.markups.logic()
     self.volumesLogic = slicer.modules.volumes.logic()
+    self.registrationLogic = SliceTrackerRegistrationLogic()
     self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.defaultTemplateFile = os.path.join(self.modulePath, self.ZFRAME_TEMPLATE_CONFIG_FILE_NAME)
     self.defaultColorFile = os.path.join(self.modulePath, self.MPREVIEW_COLORS_FILE_NAME)
@@ -2135,69 +2100,36 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         else self.createLinearTransformNode(transformName)
       self.currentResult.setTransform(regType, transform)
 
-  def transformTargets(self, registrations, targets, prefix):
-    if targets:
-      for registration in registrations:
-        name = prefix + '-TARGETS-' + registration
-        clone = self.cloneFiducialAndTransform(name, targets, self.currentResult.getTransform(registration))
-        self.markupsLogic.SetAllMarkupsLocked(clone, True)
-        self.currentResult.setTargets(registration, clone)
+  def applyInitialRegistration(self, fixedVolume, movingVolume, fixedLabel, movingLabel, targets, progressCallback=None):
 
-  def applyInitialRegistration(self, fixedVolume, sourceVolume, fixedLabel, movingLabel, targets, progressCallback=None):
-
-    self.progressCallback = progressCallback
     if not self.retryMode:
       self.registrationResults = RegistrationResults()
-    name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(fixedVolume.GetName())
-    result = self.registrationResults.createResult(name+suffix)
-    result.fixedVolume = fixedVolume
-    result.fixedLabel = fixedLabel
-    result.movingLabel = movingLabel
-    result.originalTargets = targets
-    result.movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolume, 'movingVolume-PREOP-INTRAOP')
-
-    self.createVolumeAndTransformNodes(['rigid', 'affine', 'bSpline'], prefix=str(result.seriesNumber), suffix=suffix)
-
-    self.doRigidRegistration(movingBinaryVolume=self.currentResult.movingLabel, initializeTransformMode="useCenterOfROIAlign")
-    self.doAffineRegistration()
-    self.doBSplineRegistration(initialTransform=self.currentResult.affineTransform, useScaleVersor3D=False,
-                               useScaleSkewVersor3D=True,
-                               movingBinaryVolume=self.currentResult.movingLabel, useAffine=False, samplingPercentage="0.002",
-                               maskInferiorCutOffFromCenter="1000", numberOfHistogramBins="50",
-                               numberOfMatchPoints="10", metricSamplingStrategy="Random", costMetric="MMI")
-    self.transformTargets(['rigid', 'affine', 'bSpline'], result.originalTargets, str(result.seriesNumber))
-    result.movingVolume = sourceVolume
     self.retryMode = False
+
+    self.generateNameAndCreateRegistrationResult(fixedVolume)
+    self.registrationLogic.runRegistration(fixedVolume=fixedVolume, movingVolume=movingVolume,
+                                           fixedLabel=fixedLabel, movingLabel=movingLabel, targets=targets,
+                                           progressCallback=progressCallback)
+
+  def generateNameAndCreateRegistrationResult(self, fixedVolume):
+    name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(fixedVolume.GetName())
+    result = self.registrationResults.createResult(name + suffix)
+    result.suffix = suffix
+    self.registrationLogic.registrationResult = result
 
   def applyRegistration(self, progressCallback=None):
 
-    self.progressCallback = progressCallback
-
     coverProstateRegResult = self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
-
     lastRigidTfm = self.registrationResults.getLastApprovedRigidTransformation()
 
-    name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(self.currentIntraopVolume.GetName())
-    result = self.registrationResults.createResult(name+suffix)
-    result.fixedVolume = self.currentIntraopVolume
-    result.fixedLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.currentIntraopVolume,
-                                                                  self.currentIntraopVolume.GetName() + '-label')
-    result.originalTargets = coverProstateRegResult.approvedTargets
-    sourceVolume = coverProstateRegResult.fixedVolume
-    result.movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, sourceVolume, 'movingVolumeReReg')
-
-    self.runBRAINSResample(inputVolume=coverProstateRegResult.fixedLabel, referenceVolume=self.currentIntraopVolume,
-                           outputVolume=result.fixedLabel, warpTransform=lastRigidTfm)
-
-    self.createVolumeAndTransformNodes(['rigid', 'bSpline'], prefix=str(result.seriesNumber), suffix=suffix)
-
-    self.doRigidRegistration(initialTransform=lastRigidTfm)
-    self.dilateMask(result.fixedLabel)
-    self.doBSplineRegistration(initialTransform=self.currentResult.rigidTransform, useScaleVersor3D=True,
-                               useScaleSkewVersor3D=True, useAffine=True)
-
-    self.transformTargets(['rigid', 'bSpline'], result.originalTargets, str(result.seriesNumber))
-    result.movingVolume = sourceVolume
+    self.generateNameAndCreateRegistrationResult(self.currentIntraopVolume)
+    self.registrationLogic.runReRegistration(fixedVolume=self.currentIntraopVolume,
+                                             movingVolume=coverProstateRegResult.fixedVolume,
+                                             fixedLabel=coverProstateRegResult.fixedLabel,
+                                             movingLabel=coverProstateRegResult.fixedLabel,
+                                             targets=coverProstateRegResult.approvedTargets,
+                                             initialTransform=lastRigidTfm,
+                                             progressCallback=progressCallback)
 
   def getRegistrationResultNameAndGeneratedSuffix(self, name):
     nOccurences = sum([1 for result in self.registrationResults.getResultsAsList() if name in result.name])
@@ -2205,120 +2137,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     if nOccurences:
       suffix = "_Retry_" + str(nOccurences)
     return name, suffix
-
-  def updateProgress(self, **kwargs):
-    if self.progressCallback:
-      self.progressCallback(**kwargs)
-
-  def doBSplineRegistration(self, initialTransform, useScaleVersor3D, useScaleSkewVersor3D, **kwargs):
-    self.updateProgress(labelText='\nBSpline registration', value=3)
-    paramsBSpline = {'fixedVolume': self.currentResult.fixedVolume,
-                     'movingVolume': self.currentResult.movingVolume,
-                     'outputVolume': self.currentResult.bSplineVolume.GetID(),
-                     'bsplineTransform': self.currentResult.bSplineTransform.GetID(),
-                     'fixedBinaryVolume': self.currentResult.fixedLabel,
-                     'useRigid': False,
-                     'useROIBSpline': True,
-                     'useBSpline': True,
-                     'useScaleVersor3D': useScaleVersor3D,
-                     'useScaleSkewVersor3D': useScaleSkewVersor3D,
-                     'splineGridSize': "3,3,3",
-                     'numberOfIterations': "1500",
-                     'maskProcessing': "ROI",
-                     'outputVolumePixelType': "float",
-                     'backgroundFillValue': "0",
-                     'interpolationMode': "Linear",
-                     'minimumStepLength': "0.005",
-                     'translationScale': "1000",
-                     'reproportionScale': "1",
-                     'skewScale': "1",
-                     'fixedVolumeTimeIndex': "0",
-                     'movingVolumeTimeIndex': "0",
-                     'medianFilterSize': "0,0,0",
-                     'ROIAutoDilateSize': "0",
-                     'relaxationFactor': "0.5",
-                     'maximumStepLength': "0.2",
-                     'failureExitCode': "-1",
-                     'numberOfThreads': "-1",
-                     'debugLevel': "0",
-                     'costFunctionConvergenceFactor': "1.00E+09",
-                     'projectedGradientTolerance': "1.00E-05",
-                     'maxBSplineDisplacement': "0",
-                     'maximumNumberOfEvaluations': "900",
-                     'maximumNumberOfCorrections': "25",
-                     'removeIntensityOutliers': "0",
-                     'ROIAutoClosingSize': "9",
-                     'maskProcessingMode': "ROI",
-                     'initialTransform': initialTransform}
-    for key, value in kwargs.iteritems():
-      paramsBSpline[key] = value
-
-    slicer.cli.run(slicer.modules.brainsfit, None, paramsBSpline, wait_for_completion=True)
-    self.currentResult.cmdArguments += "BSpline Registration Parameters: %s" % str(paramsBSpline) + "\n\n"
-
-    self.updateProgress(labelText='\nCompleted registration', value=4)
-
-  def doAffineRegistration(self):
-    self.updateProgress(labelText='\nAffine registration', value=2)
-    paramsAffine = {'fixedVolume': self.currentResult.fixedVolume,
-                    'movingVolume': self.currentResult.movingVolume,
-                    'fixedBinaryVolume': self.currentResult.fixedLabel,
-                    'movingBinaryVolume': self.currentResult.movingLabel,
-                    'outputTransform': self.currentResult.affineTransform.GetID(),
-                    'outputVolume': self.currentResult.affineVolume.GetID(),
-                    'maskProcessingMode': "ROI",
-                    'useAffine': True,
-                    'initialTransform': self.currentResult.rigidTransform}
-    slicer.cli.run(slicer.modules.brainsfit, None, paramsAffine, wait_for_completion=True)
-    self.currentResult.cmdArguments += "Affine Registration Parameters: %s" % str(paramsAffine) + "\n\n"
-
-  def doRigidRegistration(self, **kwargs):
-    self.updateProgress(labelText='\nRigid registration', value=2)
-    paramsRigid = {'fixedVolume': self.currentResult.fixedVolume,
-                   'movingVolume': self.currentResult.movingVolume,
-                   'fixedBinaryVolume': self.currentResult.fixedLabel,
-                   'outputTransform': self.currentResult.rigidTransform.GetID(),
-                   'outputVolume': self.currentResult.rigidVolume.GetID(),
-                   'maskProcessingMode': "ROI",
-                   'useRigid': True,
-                   'useAffine': False,
-                   'useBSpline': False,
-                   'useScaleVersor3D': False,
-                   'useScaleSkewVersor3D': False,
-                   'useROIBSpline': False}
-    for key, value in kwargs.iteritems():
-      paramsRigid[key] = value
-    slicer.cli.run(slicer.modules.brainsfit, None, paramsRigid, wait_for_completion=True)
-    self.currentResult.cmdArguments += "Rigid Registration Parameters: %s" % str(paramsRigid) + "\n\n"
-
-  def cloneFiducialAndTransform(self, cloneName, originalTargets, transformNode):
-    tfmLogic = slicer.modules.transforms.logic()
-    clonedTargets = self.cloneFiducials(originalTargets, cloneName)
-    clonedTargets.SetAndObserveTransformNodeID(transformNode.GetID())
-    clonedTargets.SetAndObserveDisplayNodeID(self.displayNode.GetID())
-    tfmLogic.hardenTransform(clonedTargets)
-    return clonedTargets
-
-  def cloneFiducials(self, original, cloneName):
-    nodeId = self.markupsLogic.AddNewFiducialNode(cloneName, slicer.mrmlScene)
-    clone = slicer.mrmlScene.GetNodeByID(nodeId)
-    for i in range(original.GetNumberOfFiducials()):
-      pos = [0.0, 0.0, 0.0]
-      original.GetNthFiducialPosition(i, pos)
-      name = original.GetNthFiducialLabel(i)
-      clone.AddFiducial(pos[0], pos[1], pos[2])
-      clone.SetNthFiducialLabel(i, name)
-    return clone
-
-  def dilateMask(self, mask):
-    imagedata = mask.GetImageData()
-    dilateErode = vtk.vtkImageDilateErode3D()
-    dilateErode.SetInputData(imagedata)
-    dilateErode.SetDilateValue(1.0)
-    dilateErode.SetErodeValue(0.0)
-    dilateErode.SetKernelSize(12,12,1)
-    dilateErode.Update()
-    mask.SetAndObserveImageData(dilateErode.GetOutput())
 
   def startIntraopDirListener(self):
     self.currentFileList = []
@@ -2531,17 +2349,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(outputLabelMap)
 
     return outputLabelMap
-
-  def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
-
-    params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
-              'warpTransform': warpTransform, 'interpolationMode': 'NearestNeighbor'}
-
-    logging.debug('about to run BRAINSResample CLI with those params: ')
-    logging.debug(params)
-    slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
-    logging.debug('resample labelmap through')
-    slicer.mrmlScene.AddNode(outputVolume)
 
   def loadZFrameModel(self):
     zFrameModelPath = os.path.join(self.modulePath, self.ZFRAME_MODEL_PATH)
@@ -2804,347 +2611,6 @@ class SliceTrackerTest(ScriptedLoadableModuleTest):
     your test should break so they know that the feature is needed.
     """
     logging.debug(' ___ performing selfTest ___ ')
-
-
-from collections import OrderedDict
-from SliceTrackerUtils.decorators import onExceptionReturnNone
-
-
-class RegistrationResults(object):
-
-  @property
-  def activeResult(self):
-    return self._getActiveResult()
-
-  @activeResult.setter
-  def activeResult(self, series):
-    assert series in self._registrationResults.keys()
-    self._activeResult = series
-
-  @property
-  @onExceptionReturnNone
-  def originalTargets(self):
-    return self.getMostRecentApprovedCoverProstateRegistration().originalTargets
-
-  @property
-  @onExceptionReturnNone
-  def intraopLabel(self):
-    return self.getMostRecentApprovedCoverProstateRegistration().fixedLabel
-
-  @property
-  @onExceptionReturnNone
-  def biasCorrectedResult(self):
-    return self.getMostRecentApprovedCoverProstateRegistration().movingVolume
-
-  def __init__(self):
-    self._registrationResults = OrderedDict()
-    self._activeResult = None
-    self.preopTargets = None
-
-  def save(self, outputDir):
-    savedSuccessfully = []
-    failedToSave = []
-
-    for result in self._registrationResults.values():
-      successfulList, failedList = result.save(outputDir)
-      savedSuccessfully += successfulList
-      failedToSave += failedList
-
-    return savedSuccessfully, failedToSave
-
-  def _registrationResultHasStatus(self, series, status):
-    if not type(series) is int:
-      series = RegistrationResult.getSeriesNumberFromString(series)
-    results = self.getResultsBySeriesNumber(series)
-    return any(result.status == status for result in results) if len(results) else False
-
-  def registrationResultWasApproved(self, series):
-    return self._registrationResultHasStatus(series, RegistrationResult.APPROVED_STATUS)
-
-  def registrationResultWasSkipped(self, series):
-    return self._registrationResultHasStatus(series, RegistrationResult.SKIPPED_STATUS)
-
-  def registrationResultWasRejected(self, series):
-    return self._registrationResultHasStatus(series, RegistrationResult.REJECTED_STATUS)
-
-  def getResultsAsList(self):
-    return self._registrationResults.values()
-
-  def getMostRecentApprovedCoverProstateRegistration(self):
-    mostRecent = None
-    for result in self._registrationResults.values():
-      if SliceTrackerConstants.COVER_PROSTATE in result.name and result.approved:
-        mostRecent = result
-    return mostRecent
-
-  def getLastApprovedRigidTransformation(self):
-    nApprovedRegistrations = sum([1 for result in self._registrationResults.values() if result.approved])
-    if nApprovedRegistrations == 1:
-      logging.debug('Resampling label with same mask')
-      # last registration was preop-intraop, take the same mask
-      # this is an identity transform:
-      lastRigidTfm = vtk.vtkGeneralTransform()
-      lastRigidTfm.Identity()
-    else:
-      try:
-        lastRigidTfm = self.getMostRecentApprovedResult().rigidTransform
-      except AttributeError:
-        lastRigidTfm = None
-    return lastRigidTfm
-
-  def getOrCreateResult(self, series):
-    result = self.getResult(series)
-    return result if result is not None else self.createResult(series)
-
-  def createResult(self, series):
-    assert series not in self._registrationResults.keys()
-    self._registrationResults[series] = RegistrationResult(series)
-    self.activeResult = series
-    return self._registrationResults[series]
-
-  @onExceptionReturnNone
-  def getResult(self, series):
-    return self._registrationResults[series]
-
-  def getResultsBySeries(self, series):
-    seriesNumber = RegistrationResult.getSeriesNumberFromString(series)
-    return self.getResultsBySeriesNumber(seriesNumber)
-
-  def getResultsBySeriesNumber(self, seriesNumber):
-    return [result for result in self.getResultsAsList() if seriesNumber == result.seriesNumber]
-
-  def removeResult(self, series):
-    try:
-      del self._registrationResults[series]
-    except KeyError:
-      pass
-
-  def exists(self, series):
-    return series in self._registrationResults.keys()
-
-  @onExceptionReturnNone
-  def _getActiveResult(self):
-    return self._registrationResults[self._activeResult]
-
-  @onExceptionReturnNone
-  def getMostRecentResult(self):
-    lastKey = self._registrationResults.keys()[-1]
-    return self._registrationResults[lastKey]
-
-  @onExceptionReturnNone
-  def getMostRecentApprovedResult(self):
-    for result in reversed(self._registrationResults.values()):
-      if result.approved:
-        return result
-    return None
-
-  @onExceptionReturnNone
-  def getMostRecentVolumes(self):
-    return self.getMostRecentResult().volumes
-
-  @onExceptionReturnNone
-  def getMostRecentTransforms(self):
-    return self.getMostRecentResult().transforms
-
-  @onExceptionReturnNone
-  def getMostRecentTargets(self):
-    return self.getMostRecentResult().targets
-
-
-class RegistrationResult(ModuleLogicMixin):
-
-  REGISTRATION_TYPE_NAMES = ['rigid', 'affine', 'bSpline']
-
-  SKIPPED_STATUS = 'skipped'
-  APPROVED_STATUS = 'approved'
-  REJECTED_STATUS = 'rejected'
-  POSSIBLE_STATES = [SKIPPED_STATUS, APPROVED_STATUS, REJECTED_STATUS]
-
-  @staticmethod
-  def getSeriesNumberFromString(text):
-    return int(text.split(": ")[0])
-
-  @property
-  def volumes(self):
-    return {'rigid': self.rigidVolume, 'affine': self.affineVolume, 'bSpline': self.bSplineVolume}
-
-  @property
-  def transforms(self):
-    return {'rigid': self.rigidTransform, 'affine': self.affineTransform, 'bSpline': self.bSplineTransform}
-
-  @property
-  def targets(self):
-    return {'rigid': self.rigidTargets, 'affine': self.affineTargets, 'bSpline': self.bSplineTargets}
-
-  @property
-  @onExceptionReturnNone
-  def approvedTargets(self):
-    return self.targets[self.approvedRegistrationType]
-
-  @property
-  @onExceptionReturnNone
-  def approvedVolume(self):
-    return self.volumes[self.approvedRegistrationType]
-
-  @property
-  def approved(self):
-    return self.status == self.APPROVED_STATUS
-
-  @property
-  def skipped(self):
-    return self.status == self.SKIPPED_STATUS
-
-  @property
-  def rejected(self):
-    return self.status == self.REJECTED_STATUS
-
-  @property
-  def name(self):
-    return self._name
-
-  @name.setter
-  def name(self, name):
-    splitted = name.split(': ')
-    assert len(splitted) == 2
-    self._name = name
-    self._seriesNumber = int(splitted[0])
-    self._seriesDescription = splitted[1]
-
-  @property
-  def seriesNumber(self):
-    return self._seriesNumber
-
-  @property
-  def seriesDescription(self):
-    return self._seriesDescription
-
-  @property
-  def targetsWereModified(self):
-    return len(self.modifiedTargets) > 0
-
-  def __init__(self, series):
-    self.name = series
-
-    self.status = None
-    self.approvedRegistrationType = None
-
-    self._initVolumes()
-    self._initTransforms()
-    self._initTargets()
-    self._initLabels()
-
-    self.cmdArguments = ""
-    self.score = None
-
-    self.modifiedTargets = {}
-
-  def isGoingToBeMoved(self, targetList, index):
-    assert targetList in self.targets.values()
-    if not self.modifiedTargets.has_key(targetList):
-      self.modifiedTargets[targetList] = {}
-    if not self.modifiedTargets[targetList].has_key(index):
-      originalPosition = [0.0, 0.0, 0.0]
-      targetList.GetNthFiducialPosition(index, originalPosition)
-      self.modifiedTargets[targetList][index] = originalPosition
-
-  def _initLabels(self):
-    self.movingLabel = None
-    self.fixedLabel = None
-
-  def _initTargets(self):
-    self.rigidTargets = None
-    self.affineTargets = None
-    self.bSplineTargets = None
-    self.originalTargets = None
-
-  def _initTransforms(self):
-    self.rigidTransform = None
-    self.affineTransform = None
-    self.bSplineTransform = None
-
-  def _initVolumes(self):
-    self.fixedVolume = None
-    self.movingVolume = None
-    self.rigidVolume = None
-    self.affineVolume = None
-    self.bSplineVolume = None
-
-  def setVolume(self, regType, volume):
-    self._setRegAttribute(regType, "Volume", volume)
-
-  def getVolume(self, regType):
-    return self._getRegAttribute(regType, "Volume")
-
-  def setTransform(self, regType, transform):
-    self._setRegAttribute(regType, "Transform", transform)
-
-  def getTransform(self, regType):
-    return self._getRegAttribute(regType, "Transform")
-
-  def setTargets(self, regType, targets):
-    self._setRegAttribute(regType, "Targets", targets)
-
-  def getTargets(self, regType):
-    return self._getRegAttribute(regType, "Targets")
-
-  def _setRegAttribute(self, regType, attributeType, value):
-    assert regType in self.REGISTRATION_TYPE_NAMES
-    setattr(self, regType+attributeType, value)
-
-  def _getRegAttribute(self, regType, attributeType):
-    assert regType in self.REGISTRATION_TYPE_NAMES
-    return getattr(self, regType+attributeType)
-
-  def approve(self, registrationType):
-    assert registrationType in self.REGISTRATION_TYPE_NAMES
-    self.approvedRegistrationType = registrationType
-    self.status = self.APPROVED_STATUS
-
-  def skip(self):
-    self.status = self.SKIPPED_STATUS
-
-  def reject(self):
-    self.status = self.REJECTED_STATUS
-
-  def printSummary(self):
-    logging.debug('# ___________________________  registration output  ________________________________')
-    logging.debug(self.__dict__)
-    logging.debug('# __________________________________________________________________________________')
-
-  def save(self, outputDir):
-    savedSuccessfully = []
-    failedToSave = []
-
-    def saveCMDParameters():
-      name = self.replaceUnwantedCharacters(self.name)
-      filename = os.path.join(outputDir, name + "-CMD-PARAMETERS.txt")
-      f = open(filename, 'w+')
-      f.write(self.cmdArguments)
-      f.close()
-
-    def saveTransformations():
-      for transformNode in [node for node in self.transforms.values() if node]:
-        success, name = self.saveNodeData(transformNode, outputDir, ".h5")
-        self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
-
-    def saveTargets():
-      for targetNode in [node for node in self.targets.values() if node]:
-        success, name = self.saveNodeData(targetNode, outputDir, ".fcsv")
-        self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
-
-    def saveApprovedTargets():
-      if not self.approved:
-        return
-      fileName = self.approvedTargets.GetName().replace("-TARGETS-", "-APPROVED-TARGETS-")
-      success, name = self.saveNodeData(self.approvedTargets, outputDir, ".fcsv", name=fileName)
-      self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
-
-    saveCMDParameters()
-    saveTransformations()
-    saveTargets()
-    saveApprovedTargets()
-
-    return savedSuccessfully, failedToSave
 
 
 class IncomingDataMessageBox(ExtendedQMessageBox):
