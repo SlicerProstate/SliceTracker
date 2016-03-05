@@ -2107,9 +2107,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.retryMode = False
 
     self.generateNameAndCreateRegistrationResult(fixedVolume)
-    self.registrationLogic.runRegistration(fixedVolume=fixedVolume, movingVolume=movingVolume,
-                                           fixedLabel=fixedLabel, movingLabel=movingLabel, targets=targets,
-                                           progressCallback=progressCallback)
+
+    parameterNode = slicer.vtkMRMLScriptedModuleNode()
+    parameterNode.SetAttribute('FixedImageNodeID', fixedVolume.GetID())
+    parameterNode.SetAttribute('FixedLabelNodeID', fixedLabel.GetID())
+    parameterNode.SetAttribute('MovingImageNodeID', movingVolume.GetID())
+    parameterNode.SetAttribute('MovingLabelNodeID', movingLabel.GetID())
+    parameterNode.SetAttribute('TargetsNodeID', targets.GetID())
+
+    self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
 
   def generateNameAndCreateRegistrationResult(self, fixedVolume):
     name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(fixedVolume.GetName())
@@ -2123,13 +2129,16 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     lastRigidTfm = self.registrationResults.getLastApprovedRigidTransformation()
 
     self.generateNameAndCreateRegistrationResult(self.currentIntraopVolume)
-    self.registrationLogic.runReRegistration(fixedVolume=self.currentIntraopVolume,
-                                             movingVolume=coverProstateRegResult.fixedVolume,
-                                             fixedLabel=coverProstateRegResult.fixedLabel,
-                                             movingLabel=coverProstateRegResult.fixedLabel,
-                                             targets=coverProstateRegResult.approvedTargets,
-                                             initialTransform=lastRigidTfm,
-                                             progressCallback=progressCallback)
+    parameterNode = slicer.vtkMRMLScriptedModuleNode()
+    parameterNode.SetAttribute('FixedImageNodeID', self.currentIntraopVolume.GetID())
+    parameterNode.SetAttribute('FixedLabelNodeID', coverProstateRegResult.fixedLabel.GetID())
+    parameterNode.SetAttribute('MovingImageNodeID', coverProstateRegResult.fixedVolume.GetID())
+    parameterNode.SetAttribute('MovingLabelNodeID', coverProstateRegResult.fixedLabel.GetID())
+    parameterNode.SetAttribute('TargetsNodeID', coverProstateRegResult.approvedTargets.GetID())
+    if lastRigidTfm:
+      parameterNode.SetAttribute('InitialTransformNodeID', lastRigidTfm.GetID())
+
+    self.registrationLogic.runReRegistration(parameterNode, progressCallback=progressCallback)
 
   def getRegistrationResultNameAndGeneratedSuffix(self, name):
     nOccurences = sum([1 for result in self.registrationResults.getResultsAsList() if name in result.name])
