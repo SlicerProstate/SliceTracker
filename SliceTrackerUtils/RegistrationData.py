@@ -28,11 +28,6 @@ class RegistrationResults(object):
   def intraopLabel(self):
     return self.getMostRecentApprovedCoverProstateRegistration().fixedLabel
 
-  @property
-  @onExceptionReturnNone
-  def biasCorrectedResult(self):
-    return self.getMostRecentApprovedCoverProstateRegistration().movingVolume
-
   def __init__(self):
     self._registrationResults = OrderedDict()
     self._activeResult = None
@@ -313,11 +308,11 @@ class RegistrationResult(ModuleLogicMixin):
     failedToSave = []
 
     def saveCMDParameters():
-      name = self.replaceUnwantedCharacters(self.name)
-      filename = os.path.join(outputDir, name + "-CMD-PARAMETERS.txt")
-      f = open(filename, 'w+')
-      f.write(self.cmdArguments)
-      f.close()
+      if self.cmdArguments != "":
+        filename = os.path.join(outputDir, str(self.seriesNumber) + "-CMD-PARAMETERS" + self.suffix + ".txt")
+        f = open(filename, 'w+')
+        f.write(self.cmdArguments)
+        f.close()
 
     def saveTransformations():
       for transformNode in [node for node in self.transforms.values() if node]:
@@ -330,11 +325,10 @@ class RegistrationResult(ModuleLogicMixin):
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     def saveApprovedTargets():
-      if not self.approved:
-        return
-      fileName = self.approvedTargets.GetName().replace("-TARGETS-", "-APPROVED-TARGETS-")
-      success, name = self.saveNodeData(self.approvedTargets, outputDir, ".fcsv", name=fileName)
-      self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+      if self.approved:
+        fileName = self.approvedTargets.GetName().replace("-TARGETS-", "-APPROVED-TARGETS-")
+        success, name = self.saveNodeData(self.approvedTargets, outputDir, ".fcsv", name=fileName)
+        self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     def saveVolumes():
       for volumeNode in [node for node in self.volumes.values() if node]:

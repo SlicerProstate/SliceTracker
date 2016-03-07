@@ -426,8 +426,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def setupSegmentationUIElements(self):
     iconSize = qt.QSize(24, 24)
 
-    self.referenceVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled=True,
-                                                       selectNodeUponCreation=True, showChildNodeTypes=False)
     self.quickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=iconSize,
                                                      styleSheet=STYLE.WHITE_BACKGROUND)
     self.applySegmentationButton = self.createButton("", icon=self.greenCheckIcon, iconSize=iconSize,
@@ -472,23 +470,23 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationGroupBox = qt.QGroupBox()
     self.registrationGroupBoxLayout = qt.QFormLayout()
     self.registrationGroupBox.setLayout(self.registrationGroupBoxLayout)
-    self.preopVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], showChildNodeTypes=False,
-                                                   selectNodeUponCreation=True, toolTip="Pick algorithm input.")
-    self.preopLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""], showChildNodeTypes=False,
-                                                  selectNodeUponCreation=False, toolTip="Pick algorithm input.")
-    self.intraopVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled=True,
-                                                     showChildNodeTypes=False, selectNodeUponCreation=True,
-                                                     toolTip="Pick algorithm input.")
-    self.intraopLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""],
-                                                    showChildNodeTypes=False,
+    self.movingVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], showChildNodeTypes=False,
                                                     selectNodeUponCreation=True, toolTip="Pick algorithm input.")
+    self.movingLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""], showChildNodeTypes=False,
+                                                   selectNodeUponCreation=False, toolTip="Pick algorithm input.")
+    self.fixedVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled=True,
+                                                   showChildNodeTypes=False, selectNodeUponCreation=True,
+                                                   toolTip="Pick algorithm input.")
+    self.fixedLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""],
+                                                  showChildNodeTypes=False,
+                                                  selectNodeUponCreation=True, toolTip="Pick algorithm input.")
     self.fiducialSelector = self.createComboBox(nodeTypes=["vtkMRMLMarkupsFiducialNode", ""], noneEnabled=True,
                                                 showChildNodeTypes=False, selectNodeUponCreation=False,
                                                 toolTip="Select the Targets")
-    self.registrationGroupBoxLayout.addRow("Preop Image Volume: ", self.preopVolumeSelector)
-    self.registrationGroupBoxLayout.addRow("Preop Label Volume: ", self.preopLabelSelector)
-    self.registrationGroupBoxLayout.addRow("Intraop Image Volume: ", self.intraopVolumeSelector)
-    self.registrationGroupBoxLayout.addRow("Intraop Label Volume: ", self.intraopLabelSelector)
+    self.registrationGroupBoxLayout.addRow("Moving Image Volume: ", self.movingVolumeSelector)
+    self.registrationGroupBoxLayout.addRow("Moving Label Volume: ", self.movingLabelSelector)
+    self.registrationGroupBoxLayout.addRow("Fixed Image Volume: ", self.fixedVolumeSelector)
+    self.registrationGroupBoxLayout.addRow("Fixed Label Volume: ", self.fixedLabelSelector)
     self.registrationGroupBoxLayout.addRow("Targets: ", self.fiducialSelector)
     self.registrationGroupBox.hide()
     self.layout.addWidget(self.registrationGroupBox)
@@ -805,16 +803,16 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.lastSelectedModelIndex = modelIndex
     row = modelIndex.row()
     if not self.currentTargets:
-      self.currentTargets = self.preopTargets
+      self.currentTargets = self.logic.preopTargets
     self.jumpSliceNodesToNthTarget(row)
     self.updateNeedleModel()
 
   def jumpSliceNodesToNthTarget(self, targetIndex):
     currentTargetsSliceNodes = [self.yellowSliceNode]
     if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
-      self.jumpSliceNodeToTarget(self.redSliceNode, self.preopTargets, targetIndex)
-      self.setTargetSelected(self.preopTargets, selected=False)
-      self.preopTargets.SetNthFiducialSelected(targetIndex, True)
+      self.jumpSliceNodeToTarget(self.redSliceNode, self.logic.preopTargets, targetIndex)
+      self.setTargetSelected(self.logic.preopTargets, selected=False)
+      self.logic.preopTargets.SetNthFiducialSelected(targetIndex, True)
     else:
       currentTargetsSliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
     for sliceNode in currentTargetsSliceNodes:
@@ -961,8 +959,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       logging.debug('pos was 0,0,0 -> go on')
     else:
       self.logic.inputMarkupNode.AddFiducialFromArray(pos)
-
-      # delete it in deletedMarkups
       self.deletedMarkups.RemoveMarkup(numberOfDeletedTargets - 1)
 
     self.updateUndoRedoButtons()
@@ -1070,16 +1066,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def configureSegmentationMode(self):
     if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
       self.showTemplatePathButton.checked = False
-    self.referenceVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
-    self.intraopVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
+    self.fixedVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
     self.applyRegistrationButton.setEnabled(False)
-    self.quickSegmentationButton.setEnabled(self.referenceVolumeSelector.currentNode() is not None)
+    self.quickSegmentationButton.setEnabled(self.logic.currentIntraopVolume is not None)
     self.setupFourUpView(self.logic.currentIntraopVolume)
     self.onQuickSegmentationButtonClicked()
 
   def inputsAreSet(self):
-    return not (self.preopVolumeSelector.currentNode() is None and self.intraopVolumeSelector.currentNode() is None and
-                self.preopLabelSelector.currentNode() is None and self.intraopLabelSelector.currentNode() is None and
+    return not (self.movingVolumeSelector.currentNode() is None and self.fixedVolumeSelector.currentNode() is None and
+                self.movingLabelSelector.currentNode() is None and self.fixedLabelSelector.currentNode() is None and
                 self.fiducialSelector.currentNode() is None)
 
   def updateCurrentPatientAndViewBox(self, currentFile):
@@ -1177,7 +1172,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     for result in self.registrationResults.getResultsAsList():
       for targetNode in [targets for targets in result.targets.values() if targets]:
         self.setTargetVisibility(targetNode, show=False)
-    self.setTargetVisibility(self.preopTargets, show=False)
+    self.setTargetVisibility(self.logic.preopTargets, show=False)
 
   def onRigidResultClicked(self):
     self.targetTableModel.targetList = self.currentResult.rigidTargets
@@ -1214,7 +1209,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     compositeNodes = [self.yellowCompositeNode]
     if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
       self.redCompositeNode.SetForegroundVolumeID(None)
-      self.redCompositeNode.SetBackgroundVolumeID(self.preopVolume.GetID())
+      self.redCompositeNode.SetBackgroundVolumeID(self.logic.preopVolume.GetID())
     else:
       compositeNodes = [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]
 
@@ -1225,7 +1220,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       compositeNode.SetForegroundVolumeID(self.currentResult.fixedVolume.GetID())
       compositeNode.SetBackgroundVolumeID(bgVolume.GetID())
 
-    self.setDefaultFOV(self.redSliceLogic, self.preopVolume if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE
+    self.setDefaultFOV(self.redSliceLogic, self.logic.preopVolume if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE
                                                             else bgVolume)
     self.setDefaultFOV(self.yellowSliceLogic, self.currentResult.getVolume(registrationType))
     self.setDefaultFOV(self.greenSliceLogic, self.currentResult.getVolume(registrationType))
@@ -1236,7 +1231,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if self.currentResult.affineTargets:
       self.setTargetVisibility(self.currentResult.affineTargets, show=registrationType == 'affine')
     self.currentTargets = getattr(self.currentResult, registrationType+'Targets')
-    self.setTargetVisibility(self.preopTargets)
+    self.setTargetVisibility(self.logic.preopTargets)
 
   def setTargetVisibility(self, targetNode, show=True):
     self.markupsLogic.SetAllMarkupsVisibility(targetNode, show)
@@ -1244,155 +1239,52 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def setTargetSelected(self, targetNode, selected=False):
     self.markupsLogic.SetAllMarkupsSelected(targetNode, selected)
 
-  def configureSliceNodesForPreopData(self):
-    for nodeId in ["vtkMRMLSliceNodeRed", "vtkMRMLSliceNodeYellow", "vtkMRMLSliceNodeGreen"]:
-      slicer.mrmlScene.GetNodeByID(nodeId).SetUseLabelOutline(True)
-    self.redSliceNode.SetOrientationToAxial()
-
-  def loadT2Label(self):
-    mostRecentFilename = self.logic.getMostRecentWholeGlandSegmentation(self.preopSegmentationPath)
-    success = False
-    if mostRecentFilename:
-      filename = os.path.join(self.preopSegmentationPath, mostRecentFilename)
-      (success, self.preopLabel) = slicer.util.loadLabelVolume(filename, returnNode=True)
-      if success:
-        self.preopLabel.SetName('t2-label')
-        displayNode = self.preopLabel.GetDisplayNode()
-        displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
-        # rotate volume to plane
-        for nodeId in ["vtkMRMLSliceNodeRed", "vtkMRMLSliceNodeYellow", "vtkMRMLSliceNodeGreen"]:
-          slicer.mrmlScene.GetNodeByID(nodeId).RotateToVolumePlane(self.preopLabel)
-        self.preopLabelSelector.setCurrentNode(self.preopLabel)
-    return success
-
-  def loadPreopVolume(self):
-    success, self.preopVolume = slicer.util.loadVolume(self.preopImagePath, returnNode=True)
-    if success:
-      self.preopVolume.SetName('volume-PREOP')
-      self.preopVolumeSelector.setCurrentNode(self.preopVolume)
-    return success
-
-  def loadPreopTargets(self):
-    mostRecentTargets = self.logic.getMostRecentTargetsFile(self.preopTargetsPath)
-    success = False
-    if mostRecentTargets:
-      filename = os.path.join(self.preopTargetsPath, mostRecentTargets)
-      success, self.preopTargets = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
-      if success:
-        self.preopTargets.SetName('targets-PREOP')
-        self.markupsLogic.SetAllMarkupsLocked(self.preopTargets, True)
-    return success
-
-  def loadMpReviewProcessedData(self, preopDir):
-    resourcesDir = os.path.join(preopDir, 'RESOURCES')
-    self.preopTargetsPath = os.path.join(preopDir, 'Targets')
-
-    if not os.path.exists(resourcesDir):
-      self.confirmDialog("The selected directory does not fit the mpReview directory structure. Make sure that you "
-                         "select the study root directory which includes directories RESOURCES")
-      return False
-
-    seriesMap = {}
-
-    patientInformationRetrieved = False
-
-    for root, subdirs, files in os.walk(resourcesDir):
-      logging.debug('Root: ' + root + ', files: ' + str(files))
-      resourceType = os.path.split(root)[1]
-
-      logging.debug('Resource: ' + resourceType)
-
-      if resourceType == 'Reconstructions':
-        for f in [f for f in files if f.endswith('.xml')]:
-          logging.debug('File: ' + f)
-          metaFile = os.path.join(root, f)
-          logging.debug('Ends with xml: ' + metaFile)
-          try:
-            (seriesNumber, seriesName) = self.logic.getSeriesInfoFromXML(metaFile)
-            logging.debug(str(seriesNumber) + ' ' + seriesName)
-          except:
-            logging.debug('Failed to get from XML')
-            continue
-
-          volumePath = os.path.join(root, seriesNumber + '.nrrd')
-          seriesMap[seriesNumber] = {'MetaInfo': None, 'NRRDLocation': volumePath, 'LongName': seriesName}
-          seriesMap[seriesNumber]['ShortName'] = str(seriesNumber) + ":" + seriesName
-      elif resourceType == 'DICOM' and not patientInformationRetrieved:
-        self.logic.importStudy(root)
-        for f in files:
-          self.updateCurrentPatientAndViewBox(os.path.join(root, f))
-          patientInformationRetrieved = True
-          break
-
-    logging.debug('All series found: ' + str(seriesMap.keys()))
-    logging.debug('All series found: ' + str(seriesMap.values()))
-
-    logging.debug('******************************************************************************')
-
-    self.preopImagePath = None
-    self.preopSegmentationPath = None
-
-    for series in seriesMap:
-      seriesName = str(seriesMap[series]['LongName'])
-      logging.debug('series Number ' + series + ' ' + seriesName)
-      if re.search("ax", str(seriesName), re.IGNORECASE) and re.search("t2", str(seriesName), re.IGNORECASE):
-        logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
-        logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
-
-        path = os.path.join(seriesMap[series]['NRRDLocation'])
-        logging.debug(' LOCATION OF IMAGE path : ' + str(path))
-
-        segmentationPath = os.path.dirname(os.path.dirname(path))
-        segmentationPath = os.path.join(segmentationPath, 'Segmentations')
-        logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
-
-        if not self.preopSegmentationPath and os.path.exists(segmentationPath) and os.listdir(segmentationPath):
-          self.preopImagePath = seriesMap[series]['NRRDLocation']
-          self.preopSegmentationPath = segmentationPath
-
-    if self.preopSegmentationPath is None:
-      self.confirmDialog("No segmentations found.\nMake sure that you used mpReview for segmenting the prostate "
-                         "first and using its output as the preop data input here.")
-      return False
-    return True
-
   def loadPreopData(self):
-    # TODO: using decorators
-    if not self.loadMpReviewProcessedData(self.preopDataDir):
+    message = self.logic.loadMpReviewProcessedData(self.preopDataDir,
+                                                   updatePatientInformationCallback=self.updateCurrentPatientAndViewBox)
+    if message:
+      self.confirmDialog(message)
       return
-    self.configureSliceNodesForPreopData()
-    if not self.loadT2Label() or not self.loadPreopVolume() or not self.loadPreopTargets():
+
+    success = self.logic.loadT2Label() and self.logic.loadPreopVolume() and self.logic.loadPreopTargets()
+    self.intraopDirButton.setEnabled(success)
+    if not success:
       self.warningDialog("Loading preop data failed.\nMake sure that the correct directory structure like mpReview "
                          "explains is used. SliceTracker expects a volume, label and target")
-      self.intraopDirButton.setEnabled(False)
       return
-    else:
-      self.intraopDirButton.setEnabled(True)
+
+    self.movingLabelSelector.setCurrentNode(self.logic.preopLabel)
+    self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+
+    self.configureRedSliceNodeForPreopData()
+    self.promptUserAndApplyBiasCorrectionIfNeeded()
+
+    self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
+    self.setDefaultFOV(self.redSliceLogic, self.logic.preopVolume)
+    self.setupPreopLoadedTargets()
+
+  def configureRedSliceNodeForPreopData(self):
+    self.redSliceNode.RotateToVolumePlane(self.logic.preopLabel)
+    self.redSliceNode.SetUseLabelOutline(True)
+    self.redSliceNode.SetOrientationToAxial()
+    self.redCompositeNode.SetLabelOpacity(1)
+
+  def setupPreopLoadedTargets(self):
+    self.setTargetVisibility(self.logic.preopTargets, show=True)
+    self.targetTableModel.targetList = self.logic.preopTargets
+    self.fiducialSelector.setCurrentNode(self.logic.preopTargets)
+    self.logic.styleDisplayNode(self.logic.preopTargets.GetDisplayNode())
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.logic.preopTargets.GetID(), 0)
+    self.targetTable.selectRow(0)
+
+  def promptUserAndApplyBiasCorrectionIfNeeded(self):
     if self.yesNoDialog("Was an endorectal coil used for preop image acquisition?"):
       progress = self.makeProgressIndicator(2, 1)
       progress.labelText = '\nBias Correction'
-      self.preopVolume = self.logic.applyBiasCorrection(self.preopVolume, self.preopLabel)
+      self.logic.applyBiasCorrection()
       progress.setValue(2)
       progress.close()
-      self.preopVolumeSelector.setCurrentNode(self.preopVolume)
-      self.logic.biasCorrectionDone = True
-    else:
-      self.logic.biasCorrectionDone = False
-    logging.debug('TARGETS PREOP')
-    logging.debug(self.preopTargets)
-
-    self.setTargetVisibility(self.preopTargets, show=True)
-    self.targetTableModel.targetList = self.preopTargets
-
-    self.fiducialSelector.setCurrentNode(self.preopTargets)
-    self.markupsLogic.JumpSlicesToNthPointInMarkup(self.preopTargets.GetID(), 0)
-
-    self.logic.styleDisplayNode(self.preopTargets.GetDisplayNode())
-    self.redCompositeNode.SetLabelOpacity(1)
-
-    self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
-
-    self.setDefaultFOV(self.redSliceLogic, self.preopVolume)
+    self.movingVolumeSelector.setCurrentNode(self.logic.preopVolume)
 
   def checkForPatientIdSimilarityAndGetSeriesNumbers(self, fileList):
     newSeries = {}
@@ -1426,7 +1318,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onQuickSegmentationButtonClicked(self):
     self.hideAllLabels()
-    self.setBackgroundToVolume(self.referenceVolumeSelector.currentNode().GetID())
+    self.setBackgroundToVolume(self.logic.currentIntraopVolume.GetID())
     self.setQuickSegmentationModeON()
 
   def setBackgroundToVolume(self, volumeID):
@@ -1592,18 +1484,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.onQuickSegmentationFinished()
 
   def onQuickSegmentationFinished(self):
-    inputVolume = self.referenceVolumeSelector.currentNode()
     continueSegmentation = False
     if self.logic.inputMarkupNode.GetNumberOfFiducials() > 3 and self.validPointsForQuickModeSet():
 
-      self.currentIntraopLabel = self.logic.labelMapFromClippingModel(inputVolume)
-      labelName = self.referenceVolumeSelector.currentNode().GetName() + '-label'
+      self.currentIntraopLabel = self.logic.labelMapFromClippingModel(self.logic.currentIntraopVolume)
+      labelName = self.logic.currentIntraopVolume.GetName() + '-label'
       self.currentIntraopLabel.SetName(labelName)
 
       displayNode = self.currentIntraopLabel.GetDisplayNode()
       displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
-      self.intraopLabelSelector.setCurrentNode(self.currentIntraopLabel)
+      self.fixedLabelSelector.setCurrentNode(self.currentIntraopLabel)
 
       self.setTargetVisibility(self.logic.inputMarkupNode, show=False)
       self.logic.clippingModelNode.SetDisplayVisibility(False)
@@ -1641,17 +1532,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if self.logic.retryMode:
       coverProstateRegResult = self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
       if coverProstateRegResult:
-        self.preopVolumeSelector.setCurrentNode(coverProstateRegResult.fixedVolume)
-        self.preopLabelSelector.setCurrentNode(coverProstateRegResult.fixedLabel)
+        self.movingVolumeSelector.setCurrentNode(coverProstateRegResult.fixedVolume)
+        self.movingLabelSelector.setCurrentNode(coverProstateRegResult.fixedLabel)
         self.fiducialSelector.setCurrentNode(coverProstateRegResult.bSplineTargets)
 
-    preopVolume = self.preopVolumeSelector.currentNode()
-    preopLabel = self.preopLabelSelector.currentNode()
-    intraopVolume = self.intraopVolumeSelector.currentNode()
-    intraopLabel = self.intraopLabelSelector.currentNode()
-
-    self.setupScreenForSegmentationComparison("red", preopVolume, preopLabel)
-    self.setupScreenForSegmentationComparison("yellow", intraopVolume, intraopLabel)
+    self.setupScreenForSegmentationComparison("red", self.movingVolumeSelector.currentNode(),
+                                              self.movingLabelSelector.currentNode())
+    self.setupScreenForSegmentationComparison("yellow", self.fixedVolumeSelector.currentNode(),
+                                              self.fixedLabelSelector.currentNode())
     self.applyRegistrationButton.setEnabled(1 if self.inputsAreSet() else 0)
     self.editorWidgetButton.setEnabled(True)
     self.registrationWatchBox.show()
@@ -1753,10 +1641,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.applyRegistrationButton.setEnabled(False)
     self.progress = self.makeProgressIndicator(4, 1)
     if initial:
-      self.logic.applyInitialRegistration(fixedVolume=self.intraopVolumeSelector.currentNode(),
-                                          movingVolume=self.preopVolumeSelector.currentNode(),
-                                          fixedLabel=self.intraopLabelSelector.currentNode(),
-                                          movingLabel=self.preopLabelSelector.currentNode(),
+      self.logic.applyInitialRegistration(fixedVolume=self.fixedVolumeSelector.currentNode(),
+                                          movingVolume=self.movingVolumeSelector.currentNode(),
+                                          fixedLabel=self.fixedLabelSelector.currentNode(),
+                                          movingLabel=self.movingLabelSelector.currentNode(),
                                           targets=self.fiducialSelector.currentNode(),
                                           progressCallback=self.updateProgressBar)
     else:
@@ -1805,7 +1693,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.hideAllLabels()
     self.addSideBySideSliceAnnotations()
 
-    self.refreshViewNodeIDs(self.preopTargets, [self.redSliceNode])
+    self.refreshViewNodeIDs(self.logic.preopTargets, [self.redSliceNode])
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
       self.refreshViewNodeIDs(targetNode, [self.yellowSliceNode])
     self.setAxialOrientation()
@@ -1923,13 +1811,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.storeSCPProcess = None
 
     self.currentIntraopVolume = None
+    self.preopVolume = None
+    self.biasCorrectionDone = False
+    self.preopLabel = None
+    self.preopTargets = None
     self.registrationResults = RegistrationResults()
 
     self._intraopDataDir = ""
 
     self._incomingDataCallback = None
-
-    self.biasCorrectionDone = False
 
     self.retryMode = False
     self.zFrameRegistrationSuccessful = False
@@ -1978,6 +1868,108 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     assert hasattr(func, '__call__')
     self._incomingDataCallback = func
 
+  def loadMpReviewProcessedData(self, preopDir, updatePatientInformationCallback=None):
+    resourcesDir = os.path.join(preopDir, 'RESOURCES')
+    self.preopTargetsPath = os.path.join(preopDir, 'Targets')
+
+    if not os.path.exists(resourcesDir):
+      message = "The selected directory does not fit the mpReview directory structure. Make sure that you select the " \
+                "study root directory which includes directories RESOURCES"
+      return message
+
+    seriesMap = {}
+
+    patientInformationRetrieved = False
+
+    for root, subdirs, files in os.walk(resourcesDir):
+      logging.debug('Root: ' + root + ', files: ' + str(files))
+      resourceType = os.path.split(root)[1]
+
+      logging.debug('Resource: ' + resourceType)
+
+      if resourceType == 'Reconstructions':
+        for f in [f for f in files if f.endswith('.xml')]:
+          logging.debug('File: ' + f)
+          metaFile = os.path.join(root, f)
+          logging.debug('Ends with xml: ' + metaFile)
+          try:
+            (seriesNumber, seriesName) = self.getSeriesInfoFromXML(metaFile)
+            logging.debug(str(seriesNumber) + ' ' + seriesName)
+          except:
+            logging.debug('Failed to get from XML')
+            continue
+
+          volumePath = os.path.join(root, seriesNumber + '.nrrd')
+          seriesMap[seriesNumber] = {'MetaInfo': None, 'NRRDLocation': volumePath, 'LongName': seriesName}
+          seriesMap[seriesNumber]['ShortName'] = str(seriesNumber) + ":" + seriesName
+      elif resourceType == 'DICOM' and not patientInformationRetrieved and updatePatientInformationCallback:
+        self.importStudy(root)
+        for f in files:
+          updatePatientInformationCallback(os.path.join(root, f))
+          patientInformationRetrieved = True
+          break
+
+    logging.debug('All series found: ' + str(seriesMap.keys()))
+    logging.debug('All series found: ' + str(seriesMap.values()))
+
+    logging.debug('******************************************************************************')
+
+    self.loadPreopImageAndSegmentation(seriesMap)
+
+    if self.preopSegmentationPath is None:
+      message = "No segmentations found.\nMake sure that you used mpReview for segmenting the prostate first and using " \
+                "its output as the preop data input here."
+      return message
+    return None
+
+  def loadPreopImageAndSegmentation(self, seriesMap):
+    self.preopImagePath = None
+    self.preopSegmentationPath = None
+    for series in seriesMap:
+      seriesName = str(seriesMap[series]['LongName'])
+      logging.debug('series Number ' + series + ' ' + seriesName)
+      if re.search("ax", str(seriesName), re.IGNORECASE) and re.search("t2", str(seriesName), re.IGNORECASE):
+        logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
+        logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
+
+        path = os.path.join(seriesMap[series]['NRRDLocation'])
+        logging.debug(' LOCATION OF IMAGE path : ' + str(path))
+
+        segmentationPath = os.path.dirname(os.path.dirname(path))
+        segmentationPath = os.path.join(segmentationPath, 'Segmentations')
+        logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
+
+        if not self.preopSegmentationPath and os.path.exists(segmentationPath) and os.listdir(segmentationPath):
+          self.preopImagePath = seriesMap[series]['NRRDLocation']
+          self.preopSegmentationPath = segmentationPath
+
+  def loadT2Label(self):
+    mostRecentFilename = self.getMostRecentWholeGlandSegmentation(self.preopSegmentationPath)
+    success = False
+    if mostRecentFilename:
+      filename = os.path.join(self.preopSegmentationPath, mostRecentFilename)
+      success, self.preopLabel = slicer.util.loadLabelVolume(filename, returnNode=True)
+      if success:
+        self.preopLabel.SetName('t2-label')
+    return success
+
+  def loadPreopVolume(self):
+    success, self.preopVolume = slicer.util.loadVolume(self.preopImagePath, returnNode=True)
+    if success:
+      self.preopVolume.SetName('VOLUME-PREOP')
+    return success
+
+  def loadPreopTargets(self):
+    mostRecentTargets = self.getMostRecentTargetsFile(self.preopTargetsPath)
+    success = False
+    if mostRecentTargets:
+      filename = os.path.join(self.preopTargetsPath, mostRecentTargets)
+      success, self.preopTargets = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
+      if success:
+        self.preopTargets.SetName('targets-PREOP')
+        self.markupsLogic.SetAllMarkupsLocked(self.preopTargets, True)
+    return success
+
   def save(self, outputDir):
     self.createDirectory(outputDir)
 
@@ -1987,13 +1979,17 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     def saveIntraopSegmentation():
       intraopLabel = self.registrationResults.intraopLabel
       if intraopLabel:
-        intraopLabelName = intraopLabel.GetName().replace("label", "LABEL")
-        success, name = self.saveNodeData(intraopLabel, outputDir, '.nrrd', name=intraopLabelName)
+        seriesNumber = intraopLabel.GetName().split(":")[0]
+        success, name = self.saveNodeData(intraopLabel, outputDir, '.nrrd', name=seriesNumber+"-LABEL")
         self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
-        modelName = intraopLabel.GetName().replace("label", "MODEL")
         if self.clippingModelNode:
-          success, name = self.saveNodeData(self.clippingModelNode, outputDir, '.vtk', name=modelName)
+          success, name = self.saveNodeData(self.clippingModelNode, outputDir, '.vtk', name=seriesNumber+"-MODEL")
+          self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+
+        if self.inputMarkupNode:
+          success, name = self.saveNodeData(self.inputMarkupNode, outputDir, '.fcsv',
+                                            name=seriesNumber+"-VolumeClip_points")
           self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     def saveOriginalTargets():
@@ -2004,10 +2000,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
     def saveBiasCorrectionResult():
       if self.biasCorrectionDone:
-        biasCorrectedResult = self.registrationResults.biasCorrectedResult
-        if biasCorrectedResult:
-          success, name = self.saveNodeData(biasCorrectedResult, outputDir, '.nrrd')
-          self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+        success, name = self.saveNodeData(self.preopVolume, outputDir, '.nrrd')
+        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     def saveZFrameTransformation():
       if self.zFrameTransform:
@@ -2078,27 +2072,18 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         storedTimeStamp = timeStamp
     return mostRecent
 
-  def applyBiasCorrection(self, volume, label):
-
+  def applyBiasCorrection(self):
     outputVolume = slicer.vtkMRMLScalarVolumeNode()
-    outputVolume.SetName('volume-PREOP-N4')
+    outputVolume.SetName('VOLUME-PREOP-N4')
     slicer.mrmlScene.AddNode(outputVolume)
-    params = {'inputImageName': volume.GetID(),
-              'maskImageName': label.GetID(),
+    params = {'inputImageName': self.preopVolume.GetID(),
+              'maskImageName': self.preopLabel.GetID(),
               'outputImageName': outputVolume.GetID(),
               'numberOfIterations': '500,400,300'}
 
     slicer.cli.run(slicer.modules.n4itkbiasfieldcorrection, None, params, wait_for_completion=True)
-
-    return outputVolume
-
-  def createVolumeAndTransformNodes(self, registrationTypes, prefix, suffix=""):
-    for regType in registrationTypes:
-      self.currentResult.setVolume(regType, self.createScalarVolumeNode(prefix + '-VOLUME-' + regType + suffix))
-      transformName = prefix + '-TRANSFORM-' + regType + suffix
-      transform = self.createBSplineTransformNode(transformName) if regType == 'bSpline' \
-        else self.createLinearTransformNode(transformName)
-      self.currentResult.setTransform(regType, transform)
+    self.preopVolume = outputVolume
+    self.biasCorrectionDone = True
 
   def applyInitialRegistration(self, fixedVolume, movingVolume, fixedLabel, movingLabel, targets, progressCallback=None):
 
