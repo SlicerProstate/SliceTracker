@@ -168,27 +168,49 @@ class ModuleLogicMixin(object):
     indexer.waitForImportFinished()
 
   @staticmethod
-  def createScalarVolumeNode(name):
-    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLScalarVolumeNode)
+  def createScalarVolumeNode(name=None):
+    return ModuleLogicMixin.createNode(slicer.vtkMRMLScalarVolumeNode, name=name)
 
   @staticmethod
-  def createBSplineTransformNode(name):
-    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLBSplineTransformNode)
+  def createBSplineTransformNode(name=None):
+    return ModuleLogicMixin.createNode(slicer.vtkMRMLBSplineTransformNode, name=name)
 
   @staticmethod
-  def createLinearTransformNode(name):
-    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLLinearTransformNode)
+  def createLinearTransformNode(name=None):
+    return ModuleLogicMixin.createNode(slicer.vtkMRMLLinearTransformNode, name=name)
 
   @staticmethod
-  def createModelNode(name):
-    return ModuleLogicMixin.createNode(name, slicer.vtkMRMLModelNode)
+  def createModelNode(name=None):
+    return ModuleLogicMixin.createNode(slicer.vtkMRMLModelNode, name=name)
 
   @staticmethod
-  def createNode(name, nodeType):
+  def createNode(nodeType, name=None):
     node = nodeType()
-    node.SetName(name)
+    if name:
+      node.SetName(name)
     slicer.mrmlScene.AddNode(node)
     return node
+
+  @staticmethod
+  def saveNodeData(node, outputDir, extension, replaceUnwantedCharacters=True, name=None):
+    name = name if name else node.GetName()
+    if replaceUnwantedCharacters:
+      name = ModuleLogicMixin.replaceUnwantedCharacters(name)
+    filename = os.path.join(outputDir, name + extension)
+    return slicer.util.saveNode(node, filename), name
+
+  @staticmethod
+  def replaceUnwantedCharacters(string, characters=None, replaceWith="-"):
+    if not characters:
+      characters = [": ", " ", ":", "/"]
+    for character in characters:
+      string = string.replace(character, replaceWith)
+    return string
+
+  @staticmethod
+  def handleSaveNodeDataReturn(success, name, successfulList, failedList):
+    listToAdd = successfulList if success else failedList
+    listToAdd.append(name)
 
   @staticmethod
   def applyTransform(transform, node):
@@ -202,3 +224,12 @@ class ModuleLogicMixin(object):
     slicer.mrmlScene.AddNode(displayNode)
     node.SetAndObserveDisplayNodeID(displayNode.GetID())
     return displayNode
+
+  @staticmethod
+  def isVolumeExtentValid(volume):
+    imageData = volume.GetImageData()
+    try:
+      extent = imageData.GetExtent()
+      return extent[1] > 0 and extent[3] > 0 and extent[5] > 0
+    except AttributeError:
+      return False

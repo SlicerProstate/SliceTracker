@@ -5,7 +5,6 @@ class ZFrameRegistrationBase(ModuleLogicMixin):
 
   ZFRAME_TRANSFORM_NAME = "ZFrameTransform"
 
-
   def __init__(self, inputVolume):
     self.inputVolume = inputVolume
     self.outputTransform = None
@@ -31,7 +30,8 @@ class LineMarkerRegistration(ZFrameRegistrationBase):
     volumesLogic = slicer.modules.volumes.logic()
     self.outputVolume = volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.inputVolume,
                                                              self.inputVolume.GetName() + '-label')
-    self.outputTransform = self.createLinearTransformNode(self.ZFRAME_TRANSFORM_NAME)
+    seriesNumber = self.inputVolume.GetName().split(":")[0]
+    self.outputTransform = self.createLinearTransformNode(seriesNumber + "-" + self.ZFRAME_TRANSFORM_NAME)
 
     params = {'inputVolume': self.inputVolume, 'markerConfigFile': self.markerConfigPath,
               'outputVolume': self.outputVolume, 'markerTransform': self.outputTransform}
