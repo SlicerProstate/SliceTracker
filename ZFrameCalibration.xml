@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Examples</category>
+  <title>ZFrameCalibration</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>http://www.example.com/Slicer/Modules/ZFrameCalibration</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+  <parameters>
+  </parameters>
+</executable>
