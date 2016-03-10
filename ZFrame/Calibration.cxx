@@ -23,6 +23,9 @@
 #define M_PI 3.14159
 #endif
 
+#define DEBUG_ZFRAME_REGISTRATION 1
+
+
 namespace zf {
 
 
@@ -203,6 +206,10 @@ int Calibration::Register(int range[2], float Zposition[3], float Zorientation[4
   int xsize = this->InputImageDim[0];
   int ysize = this->InputImageDim[1];
   int zsize = this->InputImageDim[2];
+    
+#ifdef DEBUG_ZFRAME_REGISTRATION
+    std::cerr << "=== Image Size (x,y,z): " << xsize << ", " << ysize << ", " << zsize << "===" << std::endl;
+#endif
 
   // Image matrix
   float tx = this->InputImageTrans[0][0];
@@ -266,6 +273,11 @@ int Calibration::Register(int range[2], float Zposition[3], float Zorientation[4
 
   for (int slindex = range[0]; slindex < range[1]; slindex ++)
     {
+    
+#ifdef DEBUG_ZFRAME_REGISTRATION
+    std::cerr << "=== Current Slice Index: " << slindex << "===" << std::endl;
+#endif
+        
     // Shift the center
     // NOTE: The center of the image should be shifted due to different
     // definitions of image origin between VTK (Slicer) and OpenIGTLink;
@@ -394,7 +406,7 @@ int Calibration::Register(int range[2], float Zposition[3], float Zorientation[4
   eigenvalues(T, D, V);
 
 #ifdef DEBUG_ZFRAME_REGISTRATION
-  for (i = 0; i < 4; i ++)
+  for (int i = 0; i < 4; i ++)
     {
     std::cerr << "T[" << i << ", 0] = ("
               <<  T.element(i, 0) << ", "
@@ -403,13 +415,13 @@ int Calibration::Register(int range[2], float Zposition[3], float Zorientation[4
               <<  T.element(i, 3) << ")" << std::endl;
     }
 
-  std::cerr << "D[" << i << ", 0] = ("
-            <<  D.element(0) << ", "
-            <<  D.element(1) << ", "
-            <<  D.element(2) << ", "
-            <<  D.element(3) << ")" << std::endl;
+//  std::cerr << "D[" << i << ", 0] = ("
+//            <<  D.element(0) << ", "
+//            <<  D.element(1) << ", "
+//            <<  D.element(2) << ", "
+//            <<  D.element(3) << ")" << std::endl;
 
-  for (i = 0; i < 4; i ++)
+  for (int i = 0; i < 4; i ++)
     {
     std::cerr << "V[" << i << ", 0] = ("
               <<  V.element(i, 0) << ", "

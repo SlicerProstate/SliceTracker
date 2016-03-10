@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 2.8.7)
 
+#set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/../CMake)
+
 #-----------------------------------------------------------------------------
 # See http://cmake.org/cmake/help/cmake-2-8-docs.html#section_Policies for details
 #-----------------------------------------------------------------------------
@@ -21,8 +23,14 @@ set(EXTENSION_DESCRIPTION " ")
 set(EXTENSION_ICONURL "http://www.example.com/Slicer/Extensions/Registration.png")
 set(EXTENSION_SCREENSHOTURLS "http://www.example.com/Slicer/Extensions/Registration/Screenshots/1.png")
 
-find_package(SlicerExecutionModel REQUIRED)
-include(${SlicerExecutionModel_USE_FILE})
+#-----------------------------------------------------------------------------
+if(NOT Slicer_SOURCE_DIR)
+  find_package(Slicer REQUIRED)
+  include(${Slicer_USE_FILE})
+endif()
+
+#find_package(SlicerExecutionModel REQUIRED)
+#include(${SlicerExecutionModel_USE_FILE})
 
 #-----------------------------------------------------------------------------
 set(MODULE_NAME ZFrameCalibration)
@@ -68,7 +76,6 @@ set(Newmat_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/newmat/newmat8.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/newmat/ZLinAlg.cxx
   )
-
 
 set(MODULE_TARGET_LIBRARIES
   ${DCMTK_LIBRARIES}
