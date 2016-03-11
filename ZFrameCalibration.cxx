@@ -43,7 +43,7 @@ template<class T> int DoIt( int argc, char * argv[], T )
 
     const unsigned int Dimension = 3;
 
-    typedef float PixelType;
+    typedef short PixelType;
 
     typedef itk::Image<PixelType, Dimension> ImageType;
     typedef itk::ImageFileReader<ImageType> ReaderType;
@@ -53,12 +53,6 @@ template<class T> int DoIt( int argc, char * argv[], T )
 
     reader->SetFileName(inputVolume.c_str());
     reader->Update();
-
-    typedef itk::Image<short, Dimension>  ShortImageType;
-    typedef itk::CastImageFilter<ImageType, ShortImageType> CastFilterType;
-    CastFilterType::Pointer castFilter = CastFilterType::New();
-    castFilter->SetInput(reader->GetOutput());
-    castFilter->Update();
 
     ImageType::Pointer image = reader->GetOutput();
 
@@ -143,9 +137,6 @@ template<class T> int DoIt( int argc, char * argv[], T )
     range[0] = startSlice;
     range[1] = endSlice;
 
-    ShortImageType::Pointer shortImage = castFilter->GetOutput();
-    short* inputImage = (short*)shortImage.GetPointer();
-
     float Zposition[3];
     float Zorientation[4];
 
@@ -158,7 +149,7 @@ template<class T> int DoIt( int argc, char * argv[], T )
     dim[1] = dimensions[1];
     dim[2] = dimensions[2];
 
-    calibration->SetInputImage(inputImage, dim, imageTransform);
+    calibration->SetInputImage(image->GetBufferPointer(), dim, imageTransform);
     calibration->SetOrientationBase(ZquaternionBase);
     int r = calibration->Register(range, Zposition, Zorientation);
 
@@ -281,3 +272,39 @@ int main( int argc, char * argv[] )
     }
     return EXIT_SUCCESS;
 }
+
+#if 0
+//----------------------------------------------------------------------------
+bool ConvertItkImageToVtkImageData(typename itk::Image<T, 3>::Pointer inItkImage, vtkImageData* outVtkImageData, int vtkType)
+{
+  if ( outVtkImageData == NULL )
+  {
+    std::cerr << "SlicerRtCommon::ConvertItkImageToVtkImageData: Output VTK image data is NULL!" << std::endl;
+    return false;
+  }
+
+  if ( inItkImage.IsNull() )
+  {
+    vtkErrorWithObjectMacro(outVtkImageData, "ConvertItkImageToVtkImageData: Input ITK image is invalid!");
+    return false;
+  }
+
+  typename itk::Image<T, 3>::RegionType region = inItkImage->GetBufferedRegion();
+  typename itk::Image<T, 3>::SizeType imageSize = region.GetSize();
+  int extent[6]={0, (int) imageSize[0]-1, 0, (int) imageSize[1]-1, 0, (int) imageSize[2]-1};
+  outVtkImageData->SetExtent(extent);
+  outVtkImageData->AllocateScalars(vtkType, 1);
+
+  T* outVtkImageDataPtr = (T*)outVtkImageData->GetScalarPointer();
+  typename itk::ImageRegionIteratorWithIndex< itk::Image<T, 3> > itInItkImage(
+    inItkImage, inItkImage->GetLargestPossibleRegion() );
+  for ( itInItkImage.GoToBegin(); !itInItkImage.IsAtEnd(); ++itInItkImage )
+  {
+    typename itk::Image<T, 3>::IndexType i = itInItkImage.GetIndex();
+    (*outVtkImageDataPtr) = inItkImage->GetPixel(i);
+    outVtkImageDataPtr++;
+  }
+
+  return true;
+}
+#endif
