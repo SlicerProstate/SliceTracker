@@ -36,48 +36,49 @@ using namespace std;
 
 namespace {
 
-    
+
 template<class T> int DoIt( int argc, char * argv[], T )
 {
     PARSE_ARGS;
-    
+
     const unsigned int Dimension = 3;
-    
+
     typedef float PixelType;
 
     typedef itk::Image<PixelType, Dimension> ImageType;
     typedef itk::ImageFileReader<ImageType> ReaderType;
     typename ReaderType::Pointer reader = ReaderType::New();
-    
+
     typedef itk::Matrix<double, 4, 4> MatrixType;
 
     reader->SetFileName(inputVolume.c_str());
     reader->Update();
-    
+
     typedef itk::Image<short, Dimension>  ShortImageType;
     typedef itk::CastImageFilter<ImageType, ShortImageType> CastFilterType;
     CastFilterType::Pointer castFilter = CastFilterType::New();
     castFilter->SetInput(reader->GetOutput());
+    castFilter->Update();
 
     ImageType::Pointer image = reader->GetOutput();
-    
+
     typedef ImageType::SizeType Size3D;
     Size3D dimensions = image->GetLargestPossibleRegion().GetSize();
-    
+
     ImageType::DirectionType itkDirections = image->GetDirection();
     ImageType::PointType itkOrigin = image->GetOrigin();
     ImageType::SpacingType itkSpacing = image->GetSpacing();
-    
+
     double origin[3] = {itkOrigin[0], itkOrigin[1], itkOrigin[2]};
     double spacing[3] = {itkSpacing[0], itkSpacing[1], itkSpacing[2]};
     double directions[3][3] = {{1.0,0.0,0.0},{0.0,1.0,0.0},{0.0,0.0,1.0}};
     for (unsigned int col=0; col<3; col++)
         for (unsigned int row=0; row<3; row++)
             directions[row][col] = itkDirections[row][col];
-    
+
     MatrixType rtimgTransform;
     rtimgTransform.SetIdentity();
-    
+
     int row, col;
     for(row=0; row<3; row++)
     {
@@ -85,7 +86,7 @@ template<class T> int DoIt( int argc, char * argv[], T )
             rtimgTransform[row][col] = spacing[col] * directions[row][col];
         rtimgTransform[row][3] = origin[row];
     }
-    
+
     //  LPS (ITK)to RAS (Slicer) transform matrix
     MatrixType lps2RasTransformMatrix;
     lps2RasTransformMatrix.SetIdentity();
@@ -93,7 +94,7 @@ template<class T> int DoIt( int argc, char * argv[], T )
     lps2RasTransformMatrix[1][1] = -1.0;
     lps2RasTransformMatrix[2][2] =  1.0;
     lps2RasTransformMatrix[3][3] =  1.0;
-    
+
     MatrixType imageToWorldTransform;
     imageToWorldTransform.SetIdentity();
     imageToWorldTransform = imageToWorldTransform * lps2RasTransformMatrix;
@@ -113,8 +114,8 @@ template<class T> int DoIt( int argc, char * argv[], T )
     imageTransform[0][3] = imageToWorldTransform[0][3];
     imageTransform[1][3] = imageToWorldTransform[1][3];
     imageTransform[2][3] = imageToWorldTransform[2][3];
-    
-    
+
+
     MatrixType ZFrameBaseOrientation;
     ZFrameBaseOrientation.SetIdentity();
 
@@ -136,35 +137,35 @@ template<class T> int DoIt( int argc, char * argv[], T )
     // Convert Base Matrix to quaternion
     float ZquaternionBase[4];
     zf::MatrixToQuaternion(ZmatrixBase, ZquaternionBase);
-    
+
     // Set slice range
     int range[2];
     range[0] = startSlice;
     range[1] = endSlice;
-    
+
     ShortImageType::Pointer shortImage = castFilter->GetOutput();
     short* inputImage = (short*)shortImage.GetPointer();
-    
+
     float Zposition[3];
     float Zorientation[4];
-    
+
     // Call Z-frame registration
     zf::Calibration * calibration;
     calibration = new zf::Calibration();
-    
+
     int dim[3];
     dim[0] = dimensions[0];
     dim[1] = dimensions[1];
     dim[2] = dimensions[2];
-    
+
     calibration->SetInputImage(inputImage, dim, imageTransform);
     calibration->SetOrientationBase(ZquaternionBase);
     int r = calibration->Register(range, Zposition, Zorientation);
-    
+
     delete calibration;
-    
+
     cout << r << endl;
-    
+
     if (r)
     {
         // Convert quaternion to matrix
@@ -173,18 +174,18 @@ template<class T> int DoIt( int argc, char * argv[], T )
         matrix[0][3] = Zposition[0];
         matrix[1][3] = Zposition[1];
         matrix[2][3] = Zposition[2];
-        
+
         std::cerr << "Result matrix:" << std::endl;
         zf::PrintMatrix(matrix);
 
         MatrixType zMatrix;
         zMatrix.SetIdentity();
-        
+
         //        1 0 0 6
         //        0 1 0 11
         //        0 0 1 -108
         //        0 0 0 1
-        
+
         zMatrix[0][0] = matrix[0][0];
         zMatrix[1][0] = matrix[1][0];
         zMatrix[2][0] = matrix[2][0];
@@ -197,10 +198,10 @@ template<class T> int DoIt( int argc, char * argv[], T )
         zMatrix[0][3] = matrix[0][3];
         zMatrix[1][3] = matrix[1][3];
         zMatrix[2][3] = matrix[2][3];
-        
+
         cout << zMatrix << endl;
-        
-//        
+
+//
 //        if (this->RobotToImageTransform != NULL)
 //        {
 //            vtkMatrix4x4* transformToParent = this->RobotToImageTransform->GetMatrixTransformToParent();
@@ -209,28 +210,28 @@ template<class T> int DoIt( int argc, char * argv[], T )
 //            this->RobotToImageTransform->Modified();
 //            return 1;
 //        }
-        
+
     } else
         return 0;
-    
 
-    
+
+
     return EXIT_SUCCESS;
 }
-    
+
 }
 
 int main( int argc, char * argv[] )
 {
     PARSE_ARGS;
-    
+
     itk::ImageIOBase::IOPixelType pixelType;
     itk::ImageIOBase::IOComponentType componentType;
-    
+
     try
     {
         itk::GetImageType (inputVolume, pixelType, componentType);
-        
+
         // This filter handles all types on input, but only produces
         // signed types
         switch (componentType)
@@ -271,7 +272,7 @@ int main( int argc, char * argv[] )
                 break;
         }
     }
-    
+
     catch( itk::ExceptionObject &excep)
     {
         std::cerr << argv[0] << ": exception caught !" << std::endl;
