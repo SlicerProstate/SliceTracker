@@ -46,7 +46,7 @@ template<class T> int DoIt( int argc, char * argv[], T )
     ImageType::PointType itkOrigin = image->GetOrigin();
     ImageType::SpacingType itkSpacing = image->GetSpacing();
     
-    double origin[3] = {itkOrigin[0] * -1, itkOrigin[1] * -1, itkOrigin[2]};
+    double origin[3] = {itkOrigin[0], itkOrigin[1], itkOrigin[2]};
     double spacing[3] = {itkSpacing[0], itkSpacing[1], itkSpacing[2]};
     double directions[3][3] = {{1.0,0.0,0.0},{0.0,1.0,0.0},{0.0,0.0,1.0}};
     for (unsigned int col=0; col<3; col++)
@@ -56,38 +56,45 @@ template<class T> int DoIt( int argc, char * argv[], T )
     MatrixType rtimgTransform;
     rtimgTransform.SetIdentity();
     
-    for(int row=0; row<3; row++)
+    int row, col;
+    for(row=0; row<3; row++)
     {
-        for(int col=0; col<3; col++)
-            if (row == col and col < 2)
-                rtimgTransform[row][col] = spacing[col] * directions[row][col] * -1 ;
-            else
-                rtimgTransform[row][col] = spacing[col] * directions[row][col];
+        for(col=0; col<3; col++)
+            rtimgTransform[row][col] = spacing[col] * directions[row][col];
         rtimgTransform[row][3] = origin[row];
     }
+    
+    //  LPS (ITK)to RAS (Slicer) transform matrix
+    MatrixType lps2RasTransformMatrix;
+    lps2RasTransformMatrix.SetIdentity();
+    lps2RasTransformMatrix[0][0] = -1.0;
+    lps2RasTransformMatrix[1][1] = -1.0;
+    lps2RasTransformMatrix[2][2] =  1.0;
+    lps2RasTransformMatrix[3][3] =  1.0;
+    
+    MatrixType imageToWorldTransform;
+    imageToWorldTransform.SetIdentity();
+    imageToWorldTransform = imageToWorldTransform * lps2RasTransformMatrix;
+    imageToWorldTransform = imageToWorldTransform * rtimgTransform;
 
     // Convert image positiona and orientation to zf::Matrix4x4
     zf::Matrix4x4 imageTransform;
-    imageTransform[0][0] = rtimgTransform[0][0];
-    imageTransform[1][0] = rtimgTransform[1][0];
-    imageTransform[2][0] = rtimgTransform[2][0];
-    imageTransform[0][1] = rtimgTransform[0][1];
-    imageTransform[1][1] = rtimgTransform[1][1];
-    imageTransform[2][1] = rtimgTransform[2][1];
-    imageTransform[0][2] = rtimgTransform[0][2];
-    imageTransform[1][2] = rtimgTransform[1][2];
-    imageTransform[2][2] = rtimgTransform[2][2];
-    imageTransform[0][3] = rtimgTransform[0][3];
-    imageTransform[1][3] = rtimgTransform[1][3];
-    imageTransform[2][3] = rtimgTransform[2][3];
+    imageTransform[0][0] = imageToWorldTransform[0][0];
+    imageTransform[1][0] = imageToWorldTransform[1][0];
+    imageTransform[2][0] = imageToWorldTransform[2][0];
+    imageTransform[0][1] = imageToWorldTransform[0][1];
+    imageTransform[1][1] = imageToWorldTransform[1][1];
+    imageTransform[2][1] = imageToWorldTransform[2][1];
+    imageTransform[0][2] = imageToWorldTransform[0][2];
+    imageTransform[1][2] = imageToWorldTransform[1][2];
+    imageTransform[2][2] = imageToWorldTransform[2][2];
+    imageTransform[0][3] = imageToWorldTransform[0][3];
+    imageTransform[1][3] = imageToWorldTransform[1][3];
+    imageTransform[2][3] = imageToWorldTransform[2][3];
     
     
     MatrixType ZFrameBaseOrientation;
     ZFrameBaseOrientation.SetIdentity();
-    
-    ZFrameBaseOrientation[0][0] = -1.0;
-    ZFrameBaseOrientation[1][1] = -1.0;
-    ZFrameBaseOrientation[2][2] =  1.0;
 
     // ZFrame base orientation
     zf::Matrix4x4 ZmatrixBase;
@@ -144,6 +151,9 @@ template<class T> int DoIt( int argc, char * argv[], T )
         matrix[0][3] = Zposition[0];
         matrix[1][3] = Zposition[1];
         matrix[2][3] = Zposition[2];
+        
+        std::cerr << "Result matrix:" << std::endl;
+        zf::PrintMatrix(matrix);
 
         MatrixType zMatrix;
         zMatrix.SetIdentity();
