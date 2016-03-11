@@ -220,7 +220,7 @@ class ExtendedQMessageBox(qt.QMessageBox):
     self.setupUI()
 
   def setupUI(self):
-    self.checkbox = qt.QCheckBox("Do not notify again")
+    self.checkbox = qt.QCheckBox("Remember the selection and do not notify again")
     self.layout().addWidget(self.checkbox, 1,2)
 
   def exec_(self, *args, **kwargs):
