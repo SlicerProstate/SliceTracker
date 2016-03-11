@@ -1380,6 +1380,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.opacitySpinBox.value = value
 
   def onOpacityChanged(self, value):
+    #TODO: Seems like having a delay here in all views.
     if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.redCompositeNode.SetForegroundOpacity(value)
       self.greenCompositeNode.SetForegroundOpacity(value)
@@ -1735,13 +1736,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.onTrackTargetsButtonClicked()
         return
 
-      if not self.evaluationMode and \
-              self.notifyUserAboutNewData and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
+      if not self.evaluationMode and any(seriesText in self.intraopSeriesSelector.currentText for seriesText
                                                   in [self.COVER_TEMPLATE, self.COVER_PROSTATE, self.GUIDANCE_IMAGE]):
-        dialog = IncomingDataMessageBox()
-        answer, checked = dialog.exec_()
-        self.notifyUserAboutNewData = not checked
-        if answer == qt.QMessageBox.AcceptRole:
+        if self.notifyUserAboutNewData:
+          dialog = IncomingDataMessageBox()
+          self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
+          self.notifyUserAboutNewData = not checked
+        if self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
           self.onTrackTargetsButtonClicked()
 
 
