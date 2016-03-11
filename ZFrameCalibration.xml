@@ -21,14 +21,14 @@
       <longflag>--startSlice</longflag>
       <label>Start Slice</label>
       <description>Slice where labeling started.</description>
-      <default>0</default>
+      <default>6</default>
     </integer>
     <integer>
       <name>endSlice</name>
       <longflag>-endSlice</longflag>
       <label>End Slice</label>
       <description>Slice where labeling ended.</description>
-      <default>1</default>
+      <default>11</default>
     </integer>
     <transform type="linear">
       <name>outputTransform</name>

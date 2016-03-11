@@ -1,9 +1,31 @@
 
+#include "itkHessianRecursiveGaussianImageFilter.h"
+#include "itkSmoothingRecursiveGaussianImageFilter.h"
+#include "itkSymmetricSecondRankTensor.h"
+
+#include "itkConnectedComponentImageFilter.h"
+#include "itkRelabelComponentImageFilter.h"
+#include "itkMinimumMaximumImageFilter.h"
 #include "itkTransformFileWriter.h"
+#include "itkHessian3DToVesselnessMeasureImageFilter.h"
+#include "itkMultiScaleHessianBasedMeasureImageFilter.h"
+#include "itkRescaleIntensityImageFilter.h"
+#include "itkChangeLabelImageFilter.h"
+
+#include "itkAffineTransform.h"
 
 #include "itkImage.h"
 #include "itkImageFileReader.h"
+#include "itkImageFileWriter.h"
 #include "itkCastImageFilter.h"
+#include "itkBinaryThresholdImageFilter.h"
+
+#include "itkEuler3DTransform.h"
+#include "itkRigid3DTransform.h"
+#include "itkTranslationTransform.h"
+#include "itkLevenbergMarquardtOptimizer.h"
+#include "itkPointSetToPointSetRegistrationMethod.h"
+
 #include "itkPluginUtilities.h"
 
 #include "Calibration.h"
@@ -158,6 +180,11 @@ template<class T> int DoIt( int argc, char * argv[], T )
         MatrixType zMatrix;
         zMatrix.SetIdentity();
         
+        //        1 0 0 6
+        //        0 1 0 11
+        //        0 0 1 -108
+        //        0 0 0 1
+        
         zMatrix[0][0] = matrix[0][0];
         zMatrix[1][0] = matrix[1][0];
         zMatrix[2][0] = matrix[2][0];
@@ -171,7 +198,22 @@ template<class T> int DoIt( int argc, char * argv[], T )
         zMatrix[1][3] = matrix[1][3];
         zMatrix[2][3] = matrix[2][3];
         
-    }
+        cout << zMatrix << endl;
+        
+//        
+//        if (this->RobotToImageTransform != NULL)
+//        {
+//            vtkMatrix4x4* transformToParent = this->RobotToImageTransform->GetMatrixTransformToParent();
+//            transformToParent->DeepCopy(zMatrix);
+//            zMatrix->Delete();
+//            this->RobotToImageTransform->Modified();
+//            return 1;
+//        }
+        
+    } else
+        return 0;
+    
+
     
     return EXIT_SUCCESS;
 }
