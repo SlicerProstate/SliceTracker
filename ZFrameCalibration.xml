@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <executable>
-  <category>Examples</category>
+  <category>SlicerProstate</category>
   <title>ZFrameCalibration</title>
   <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
   <version>0.0.1</version>
-  <documentation-url>http://www.example.com/Slicer/Modules/ZFrameCalibration</documentation-url>
+  <documentation-url>https://github.com/SlicerProstate/ZFrameCalibration</documentation-url>
   <license>Slicer</license>
-  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <contributor>Christian Herz (SPL), Andriy Fedorov (SPL)</contributor>
   <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
   <parameters>
     <image>
@@ -30,7 +30,7 @@
       <description>Slice where labeling ended.</description>
       <default>11</default>
     </integer>
-    <transform type="linear">
+    <transform fileExtensions=".h5,.hdf5,.mat,.txt" type="linear">
       <name>outputTransform</name>
       <longflag>--outputTransform</longflag>
       <description>Output transformation result of ZFrame registration></description>

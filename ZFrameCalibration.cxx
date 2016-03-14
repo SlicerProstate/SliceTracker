@@ -1,30 +1,7 @@
-
-#include "itkHessianRecursiveGaussianImageFilter.h"
-#include "itkSmoothingRecursiveGaussianImageFilter.h"
-#include "itkSymmetricSecondRankTensor.h"
-
-#include "itkConnectedComponentImageFilter.h"
-#include "itkRelabelComponentImageFilter.h"
-#include "itkMinimumMaximumImageFilter.h"
-#include "itkTransformFileWriter.h"
-#include "itkHessian3DToVesselnessMeasureImageFilter.h"
-#include "itkMultiScaleHessianBasedMeasureImageFilter.h"
-#include "itkRescaleIntensityImageFilter.h"
-#include "itkChangeLabelImageFilter.h"
-
-#include "itkAffineTransform.h"
-
 #include "itkImage.h"
 #include "itkImageFileReader.h"
-#include "itkImageFileWriter.h"
-#include "itkCastImageFilter.h"
-#include "itkBinaryThresholdImageFilter.h"
-
-#include "itkEuler3DTransform.h"
-#include "itkRigid3DTransform.h"
-#include "itkTranslationTransform.h"
-#include "itkLevenbergMarquardtOptimizer.h"
-#include "itkPointSetToPointSetRegistrationMethod.h"
+#include "itkTransformFileWriter.h"
+#include "itkAffineTransform.h"
 
 #include "itkPluginUtilities.h"
 
@@ -34,45 +11,42 @@
 
 using namespace std;
 
-namespace {
-
-
-template<class T> int DoIt( int argc, char * argv[], T )
+int main( int argc, char * argv[] )
 {
     PARSE_ARGS;
-
+    
     const unsigned int Dimension = 3;
-
+    
     typedef short PixelType;
 
     typedef itk::Image<PixelType, Dimension> ImageType;
     typedef itk::ImageFileReader<ImageType> ReaderType;
     typename ReaderType::Pointer reader = ReaderType::New();
-
+    
     typedef itk::Matrix<double, 4, 4> MatrixType;
-
+    
     reader->SetFileName(inputVolume.c_str());
     reader->Update();
-
+    
     ImageType::Pointer image = reader->GetOutput();
-
+    
     typedef ImageType::SizeType Size3D;
     Size3D dimensions = image->GetLargestPossibleRegion().GetSize();
-
+    
     ImageType::DirectionType itkDirections = image->GetDirection();
     ImageType::PointType itkOrigin = image->GetOrigin();
     ImageType::SpacingType itkSpacing = image->GetSpacing();
-
+    
     double origin[3] = {itkOrigin[0], itkOrigin[1], itkOrigin[2]};
     double spacing[3] = {itkSpacing[0], itkSpacing[1], itkSpacing[2]};
     double directions[3][3] = {{1.0,0.0,0.0},{0.0,1.0,0.0},{0.0,0.0,1.0}};
     for (unsigned int col=0; col<3; col++)
         for (unsigned int row=0; row<3; row++)
             directions[row][col] = itkDirections[row][col];
-
+    
     MatrixType rtimgTransform;
     rtimgTransform.SetIdentity();
-
+    
     int row, col;
     for(row=0; row<3; row++)
     {
@@ -80,7 +54,7 @@ template<class T> int DoIt( int argc, char * argv[], T )
             rtimgTransform[row][col] = spacing[col] * directions[row][col];
         rtimgTransform[row][3] = origin[row];
     }
-
+    
     //  LPS (ITK)to RAS (Slicer) transform matrix
     MatrixType lps2RasTransformMatrix;
     lps2RasTransformMatrix.SetIdentity();
@@ -88,12 +62,10 @@ template<class T> int DoIt( int argc, char * argv[], T )
     lps2RasTransformMatrix[1][1] = -1.0;
     lps2RasTransformMatrix[2][2] =  1.0;
     lps2RasTransformMatrix[3][3] =  1.0;
-
+    
     MatrixType imageToWorldTransform;
-    imageToWorldTransform.SetIdentity();
-    imageToWorldTransform = imageToWorldTransform * lps2RasTransformMatrix;
-    imageToWorldTransform = imageToWorldTransform * rtimgTransform;
-
+    imageToWorldTransform = lps2RasTransformMatrix * rtimgTransform;
+    
     // Convert image positiona and orientation to zf::Matrix4x4
     zf::Matrix4x4 imageTransform;
     imageTransform[0][0] = imageToWorldTransform[0][0];
@@ -112,7 +84,7 @@ template<class T> int DoIt( int argc, char * argv[], T )
 
     MatrixType ZFrameBaseOrientation;
     ZFrameBaseOrientation.SetIdentity();
-
+    
     // ZFrame base orientation
     zf::Matrix4x4 ZmatrixBase;
     ZmatrixBase[0][0] = (float) ZFrameBaseOrientation[0][0];
@@ -127,56 +99,44 @@ template<class T> int DoIt( int argc, char * argv[], T )
     ZmatrixBase[0][3] = (float) ZFrameBaseOrientation[0][3];
     ZmatrixBase[1][3] = (float) ZFrameBaseOrientation[1][3];
     ZmatrixBase[2][3] = (float) ZFrameBaseOrientation[2][3];
-
+    
     // Convert Base Matrix to quaternion
     float ZquaternionBase[4];
     zf::MatrixToQuaternion(ZmatrixBase, ZquaternionBase);
-
+    
     // Set slice range
     int range[2];
     range[0] = startSlice;
     range[1] = endSlice;
-
+    
     float Zposition[3];
     float Zorientation[4];
-
+    
     // Call Z-frame registration
     zf::Calibration * calibration;
     calibration = new zf::Calibration();
-
+    
     int dim[3];
     dim[0] = dimensions[0];
     dim[1] = dimensions[1];
     dim[2] = dimensions[2];
-
+    
     calibration->SetInputImage(image->GetBufferPointer(), dim, imageTransform);
     calibration->SetOrientationBase(ZquaternionBase);
     int r = calibration->Register(range, Zposition, Zorientation);
-
+    
     delete calibration;
-
+    
     cout << r << endl;
-
+    
     if (r)
     {
         // Convert quaternion to matrix
         zf::Matrix4x4 matrix;
         zf::QuaternionToMatrix(Zorientation, matrix);
-        matrix[0][3] = Zposition[0];
-        matrix[1][3] = Zposition[1];
-        matrix[2][3] = Zposition[2];
-
-        std::cerr << "Result matrix:" << std::endl;
-        zf::PrintMatrix(matrix);
 
         MatrixType zMatrix;
         zMatrix.SetIdentity();
-
-        //        1 0 0 6
-        //        0 1 0 11
-        //        0 0 1 -108
-        //        0 0 0 1
-
         zMatrix[0][0] = matrix[0][0];
         zMatrix[1][0] = matrix[1][0];
         zMatrix[2][0] = matrix[2][0];
@@ -186,92 +146,62 @@ template<class T> int DoIt( int argc, char * argv[], T )
         zMatrix[0][2] = matrix[0][2];
         zMatrix[1][2] = matrix[1][2];
         zMatrix[2][2] = matrix[2][2];
-        zMatrix[0][3] = matrix[0][3];
-        zMatrix[1][3] = matrix[1][3];
-        zMatrix[2][3] = matrix[2][3];
+        zMatrix[0][3] = Zposition[0];
+        zMatrix[1][3] = Zposition[1];
+        zMatrix[2][3] = Zposition[2];
 
+        cout << "RAS Transformation Matrix:" << endl;
         cout << zMatrix << endl;
+        
+        zMatrix = zMatrix * lps2RasTransformMatrix;
+        zMatrix = (MatrixType)zMatrix.GetInverse() * lps2RasTransformMatrix;
 
-//
-//        if (this->RobotToImageTransform != NULL)
-//        {
-//            vtkMatrix4x4* transformToParent = this->RobotToImageTransform->GetMatrixTransformToParent();
-//            transformToParent->DeepCopy(zMatrix);
-//            zMatrix->Delete();
-//            this->RobotToImageTransform->Modified();
-//            return 1;
-//        }
-
-    } else
-        return 0;
-
-
-
-    return EXIT_SUCCESS;
-}
-
-}
-
-int main( int argc, char * argv[] )
-{
-    PARSE_ARGS;
-
-    itk::ImageIOBase::IOPixelType pixelType;
-    itk::ImageIOBase::IOComponentType componentType;
-
-    try
-    {
-        itk::GetImageType (inputVolume, pixelType, componentType);
-
-        // This filter handles all types on input, but only produces
-        // signed types
-        switch (componentType)
+        
+        typedef itk::Matrix<double, 3, 3> TransformMatrixType;
+        TransformMatrixType lpsTransformMatrix;
+        lpsTransformMatrix.SetIdentity();
+        lpsTransformMatrix[0][0] = zMatrix[0][0];
+        lpsTransformMatrix[1][0] = zMatrix[1][0];
+        lpsTransformMatrix[2][0] = zMatrix[2][0];
+        lpsTransformMatrix[0][1] = zMatrix[0][1];
+        lpsTransformMatrix[1][1] = zMatrix[1][1];
+        lpsTransformMatrix[2][1] = zMatrix[2][1];
+        lpsTransformMatrix[0][2] = zMatrix[0][2];
+        lpsTransformMatrix[1][2] = zMatrix[1][2];
+        lpsTransformMatrix[2][2] = zMatrix[2][2];
+        
+        typedef itk::AffineTransform<double> RegistrationTransformType;
+        RegistrationTransformType::OutputVectorType translation;
+        translation[0] = zMatrix[0][3];
+        translation[1] = zMatrix[1][3];
+        translation[2] = zMatrix[2][3];
+        
+        typedef itk::AffineTransform<double, 3> TransformType;
+        TransformType::Pointer transform = TransformType::New();
+        transform->SetMatrix(lpsTransformMatrix);
+        transform->SetTranslation(translation);
+        
+        if (outputTransform != "")
         {
-            case itk::ImageIOBase::UCHAR:
-                return DoIt( argc, argv, static_cast<unsigned char>(0));
-                break;
-            case itk::ImageIOBase::CHAR:
-                return DoIt( argc, argv, static_cast<char>(0));
-                break;
-            case itk::ImageIOBase::USHORT:
-                return DoIt( argc, argv, static_cast<unsigned short>(0));
-                break;
-            case itk::ImageIOBase::SHORT:
-                return DoIt( argc, argv, static_cast<short>(0));
-                break;
-            case itk::ImageIOBase::UINT:
-                return DoIt( argc, argv, static_cast<unsigned int>(0));
-                break;
-            case itk::ImageIOBase::INT:
-                return DoIt( argc, argv, static_cast<int>(0));
-                break;
-            case itk::ImageIOBase::ULONG:
-                return DoIt( argc, argv, static_cast<unsigned long>(0));
-                break;
-            case itk::ImageIOBase::LONG:
-                return DoIt( argc, argv, static_cast<long>(0));
-                break;
-            case itk::ImageIOBase::FLOAT:
-                return DoIt( argc, argv, static_cast<float>(0));
-                break;
-            case itk::ImageIOBase::DOUBLE:
-                return DoIt( argc, argv, static_cast<double>(0));
-                break;
-            case itk::ImageIOBase::UNKNOWNCOMPONENTTYPE:
-            default:
-                std::cout << "unknown component type" << std::endl;
-                break;
+            itk::TransformFileWriter::Pointer markerTransformWriter = itk::TransformFileWriter::New();
+            markerTransformWriter->SetInput(transform);
+            markerTransformWriter->SetFileName(outputTransform.c_str());
+            try
+            {
+                markerTransformWriter->Update();
+            }
+            catch (itk::ExceptionObject &err)
+            {
+                std::cerr << err << std::endl;
+                return EXIT_FAILURE ;
+            }
+            
         }
     }
-
-    catch( itk::ExceptionObject &excep)
-    {
-        std::cerr << argv[0] << ": exception caught !" << std::endl;
-        std::cerr << excep << std::endl;
-        return EXIT_FAILURE;
-    }
+    
     return EXIT_SUCCESS;
 }
+
 
 #if 0
 //----------------------------------------------------------------------------
