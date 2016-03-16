@@ -16,7 +16,7 @@ import vtk
 from Editor import EditorWidget
 from SliceTrackerUtils.Constants import DICOMTAGS, COLOR, STYLE, SliceTrackerConstants
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
-from SliceTrackerUtils.ZFrameRegistration import LineMarkerRegistration
+from SliceTrackerUtils.ZFrameRegistration import ZFrameRegistration
 from SliceTrackerUtils.helpers import SliceAnnotation, ExtendedQMessageBox
 from SliceTrackerUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from slicer.ScriptedLoadableModule import *
@@ -123,6 +123,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.logic = SliceTrackerLogic()
     self.markupsLogic = slicer.modules.markups.logic()
     self.volumesLogic = slicer.modules.volumes.logic()
+    self.annotationLogic = slicer.modules.annotations.logic()
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
     self.setupIcons()
@@ -263,6 +264,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationAssessmentMode = False
     self.evaluationMode = False
 
+    self.roiObserverTag = None
+    self.coverTemplateROI = None
+    self.zFrameCroppedVolume = None
+    self.zFrameLabelVolume = None
+    self.zFrameMaskedVolume = None
+
   def settingsArea(self):
     self.collapsibleSettingsArea = ctk.ctkCollapsibleButton()
     self.collapsibleSettingsArea.text = "Settings"
@@ -348,10 +355,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.zFrameRegistrationGroupBox.setLayout(self.zFrameRegistrationGroupBoxGroupBoxLayout)
     self.zFrameRegistrationGroupBox.hide()
 
-    self.approveZFrameRegistrationButton = self.createButton("Confirm registration accuracy")
+    self.applyZFrameRegistrationButton = self.createButton("Run ZFrame Registration", enabled=False)
+    self.approveZFrameRegistrationButton = self.createButton("Confirm registration accuracy", enabled=False)
+    self.retryZFrameRegistrationButton = self.createButton("Retry", enabled=False)
 
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.approveZFrameRegistrationButton, 0, 0)
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.setRowStretch(1,1)
+    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.applyZFrameRegistrationButton, 0, 0)
+    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.createHLayout([self.retryZFrameRegistrationButton,
+                                                                                self.approveZFrameRegistrationButton])
+                                                            , 1, 0)
+    self.zFrameRegistrationGroupBoxGroupBoxLayout.setRowStretch(2,1)
     self.layout.addWidget(self.zFrameRegistrationGroupBox)
 
   def setupTargetingStepUIElements(self):
@@ -606,7 +618,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
       self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
       self.crosshairButton.clicked.connect(self.onCrosshairButtonClicked)
+      self.retryZFrameRegistrationButton.clicked.connect(self.onRetryZFrameRegistrationButtonClicked)
       self.approveZFrameRegistrationButton.clicked.connect(self.onApproveZFrameRegistrationButtonClicked)
+      self.applyZFrameRegistrationButton.clicked.connect(self.onApplyZFrameRegistrationButtonClicked)
       self.useRevealCursorButton.connect('toggled(bool)', self.onRevealToggled)
       self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
       self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
@@ -1570,21 +1584,95 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.activateEvaluationStep()
 
   def openZFrameRegistrationStep(self):
+    self.resetZFrameRegistration()
     volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
     if volume:
       self.evaluationMode = True
       self.targetingGroupBox.hide()
       self.zFrameRegistrationGroupBox.show()
-      progress = self.makeProgressIndicator(2, 1)
-      progress.labelText = '\nZFrame registration'
-      self.logic.runZFrameRegistration(volume)
-      progress.setValue(2)
-      progress.close()
       self.setupFourUpView(volume)
       self.redSliceNode.SetSliceVisible(True)
       self.showZFrameModelButton.checked = True
       self.showTemplateButton.checked = True
       self.showTemplatePathButton.checked = True
+      self.addROIObserver()
+      self.activateCreateROIMode()
+
+  def resetZFrameRegistration(self):
+    self.applyZFrameRegistrationButton.enabled = False
+    self.approveZFrameRegistrationButton.enabled = False
+    self.retryZFrameRegistrationButton.enabled = False
+    self.removeNodeFromMRMLScene(self.coverTemplateROI)
+    self.removeNodeFromMRMLScene(self.zFrameCroppedVolume)
+    self.removeNodeFromMRMLScene(self.zFrameLabelVolume)
+    self.removeNodeFromMRMLScene(self.zFrameMaskedVolume)
+    self.removeNodeFromMRMLScene(self.logic.zFrameTransform)
+
+  def removeNodeFromMRMLScene(self, node):
+    if node:
+      slicer.mrmlScene.RemoveNode(node)
+      node = None
+
+  def removeROIObserver(self):
+    if self.roiObserverTag:
+      self.roiObserverTag = slicer.mrmlScene.RemoveObserver(self.roiObserverTag)
+
+  def addROIObserver(self):
+
+    @vtk.calldata_type(vtk.VTK_OBJECT)
+    def onNodeAdded(caller, event, calldata):
+      node = calldata
+      if isinstance(node, slicer.vtkMRMLAnnotationROINode):
+        self.removeROIObserver()
+        self.coverTemplateROI = node
+        self.applyZFrameRegistrationButton.enabled = self.isRegistrationPossible()
+
+    if self.roiObserverTag:
+      self.removeROIObserver()
+    self.roiObserverTag = slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.NodeAddedEvent, onNodeAdded)
+
+  def isRegistrationPossible(self):
+    return self.coverTemplateROI is not None
+
+  def onApplyZFrameRegistrationButtonClicked(self):
+    progress = self.makeProgressIndicator(2, 1)
+    progress.labelText = '\nZFrame registration'
+    self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
+    zFrameTemplateVolume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
+    self.zFrameCroppedVolume = self.logic.createCroppedVolume(zFrameTemplateVolume, self.coverTemplateROI)
+    self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume)
+    self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume)
+
+    def roundInt(value):
+      try:
+        return int(round(value))
+      except ValueError:
+        return 0
+
+    layerLogic = self.redSliceLogic.GetBackgroundLayer()
+    p = [0.0,0.0,0.0]
+    self.coverTemplateROI.GetXYZ(p)
+    xyz = self.redSliceView.convertRASToXYZ(p)
+    xyToIJK = layerLogic.GetXYToIJKTransform()
+    ijkFloat = xyToIJK.TransformDoublePoint(xyz)
+    ijk = [roundInt(value) for value in ijkFloat]
+    self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName()+"-label")
+    self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=ijk[2]-4, endSlice=ijk[2]+4)
+    self.approveZFrameRegistrationButton.enabled = True
+    self.retryZFrameRegistrationButton.enabled = True
+    self.applyZFrameRegistrationButton.enabled = False
+    progress.setValue(2)
+    progress.close()
+
+  def activateCreateROIMode(self):
+    mrmlScene = self.annotationLogic.GetMRMLScene()
+    selectionNode = mrmlScene.GetNthNodeByClass(0, "vtkMRMLSelectionNode")
+    selectionNode.SetReferenceActivePlaceNodeClassName("vtkMRMLAnnotationROINode")
+    self.annotationLogic.StartPlaceMode(False)
+
+  def onRetryZFrameRegistrationButtonClicked(self):
+    self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
+    self.openZFrameRegistrationStep()
 
   def onApproveZFrameRegistrationButtonClicked(self):
     self.logic.zFrameRegistrationSuccessful = True
@@ -1592,6 +1680,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.showZFrameModelButton.checked = False
     self.showTemplateButton.checked = False
     self.showTemplatePathButton.checked = False
+    self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
     self.openTargetingStep()
     self.save()
 
@@ -1791,6 +1880,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     self.markupsLogic = slicer.modules.markups.logic()
     self.volumesLogic = slicer.modules.volumes.logic()
+    self.cropVolumeLogic = slicer.modules.cropvolume.logic()
     self.registrationLogic = SliceTrackerRegistrationLogic()
     self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.defaultTemplateFile = os.path.join(self.modulePath, self.ZFRAME_TEMPLATE_CONFIG_FILE_NAME)
@@ -2360,13 +2450,39 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     for index in range(collection.GetNumberOfItems()):
       slicer.mrmlScene.RemoveNode(collection.GetItemAsObject(index))
 
-  def runZFrameRegistration(self, inputVolume):
+  def createLabelMapFromCroppedVolume(self, volume):
+    labelVolume = self.volumesLogic.CreateAndAddLabelVolume(volume, "labelmap")
+    imagedata = labelVolume.GetImageData()
+    imageThreshold = vtk.vtkImageThreshold()
+    imageThreshold.SetInputData(imagedata)
+    imageThreshold.ThresholdBetween(0, 2000)
+    imageThreshold.SetInValue(1)
+    imageThreshold.Update()
+    labelVolume.SetAndObserveImageData(imageThreshold.GetOutput())
+    return labelVolume
+
+  def createCroppedVolume(self, inputVolume, roi):
+    cropVolumeParameterNode = slicer.vtkMRMLCropVolumeParametersNode()
+    cropVolumeParameterNode.SetROINodeID(roi.GetID())
+    cropVolumeParameterNode.SetInputVolumeNodeID(inputVolume.GetID())
+    cropVolumeParameterNode.SetVoxelBased(True)
+    self.cropVolumeLogic.Apply(cropVolumeParameterNode)
+    croppedVolume = slicer.mrmlScene.GetNodeByID(cropVolumeParameterNode.GetOutputVolumeNodeID())
+    return croppedVolume
+
+  def createMaskedVolume(self, inputVolume, labelVolume):
+    maskedVolume = slicer.vtkMRMLScalarVolumeNode()
+    maskedVolume.SetName("maskedTemplateVolume")
+    slicer.mrmlScene.AddNode(maskedVolume)
+    params = {'InputVolume': inputVolume, 'MaskVolume': labelVolume, 'OutputVolume': maskedVolume}
+    slicer.cli.run(slicer.modules.maskscalarvolume, None, params, wait_for_completion=True)
+    return maskedVolume
+
+  def runZFrameRegistration(self, inputVolume, startSlice, endSlice):
     # TODO: create configfile that chooses the Registration algorithm to use
-    configFilePath = os.path.join(self.modulePath, 'Resources/zframe', 'zframe-config.csv')
-    registration = LineMarkerRegistration(inputVolume, configFilePath)
-    registration.runRegistration()
+    registration = ZFrameRegistration(inputVolume)
+    registration.runRegistration(start=startSlice, end=endSlice)
     self.zFrameTransform = registration.getOutputTransformation()
-    slicer.mrmlScene.AddNode(registration.getOutputVolume())
     self.applyZFrameTransform(self.zFrameTransform)
 
   def loadTemplateConfigFile(self):
