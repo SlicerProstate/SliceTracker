@@ -224,7 +224,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.ratingWindow = RatingWindow(maximumValue=5)
     self.sliceAnnotations = []
     self.mouseReleaseEventObservers = {}
-    self.targetMovementAnnotations = []
     self.revealCursor = None
     self.currentTargets = None
     self.moveTargetMode = False
@@ -269,6 +268,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.zFrameCroppedVolume = None
     self.zFrameLabelVolume = None
     self.zFrameMaskedVolume = None
+
+    self.zFrameClickObserver = None
+    self.zFrameInstructionAnnotation = None
 
   def settingsArea(self):
     self.collapsibleSettingsArea = ctk.ctkCollapsibleButton()
@@ -334,6 +336,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     setattr(self, name.lower()+"Widget", widget)
     setattr(self, name.lower()+"CompositeNode", widget.mrmlSliceCompositeNode())
     setattr(self, name.lower()+"SliceView", widget.sliceView())
+    setattr(self, name.lower()+"SliceViewInteractor", widget.sliceView().interactorStyle().GetInteractor())
     logic = widget.sliceLogic()
     setattr(self, name.lower()+"SliceLogic", logic)
     setattr(self, name.lower()+"SliceNode", logic.GetSliceNode())
@@ -930,6 +933,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     for annotation in self.sliceAnnotations:
       annotation.remove()
     self.sliceAnnotations = []
+    self.removeZFrameInstructionAnnotation()
 
   def addSideBySideSliceAnnotations(self):
     self.removeSliceAnnotations()
@@ -1354,7 +1358,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setupQuickModeHistory()
     self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
     self.logic.runQuickSegmentationMode()
-    # TODO: remove Observer after segmentation finised
+    # TODO: remove Observer after segmentation finished
     self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateUndoRedoButtons)
 
   def disableEditorWidgetAndResetEditorTool(self, enabledButton=False):
@@ -1597,6 +1601,29 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.showTemplatePathButton.checked = True
       self.addROIObserver()
       self.activateCreateROIMode()
+      self.addZFrameInstructions()
+
+  def addZFrameInstructions(self, step=1):
+    self.zFrameInstructionAnnotation = SliceAnnotation(self.redWidget,
+                                                       self.ZFrame_INSTRUCTION_STEPS[step], yPos=55, horizontalAlign="center",
+                                                       opacity=0.6, color=(0,0.6,0))
+    self.zFrameStep = step
+    self.zFrameClickObserver = self.redSliceViewInteractor.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent,
+                                                      self.onZFrameStepAccomplished)
+
+  def onZFrameStepAccomplished(self, observee, event):
+    self.removeZFrameInstructionAnnotation()
+    nextStep = self.zFrameStep + 1
+    if nextStep in self.ZFrame_INSTRUCTION_STEPS.keys():
+      self.addZFrameInstructions(nextStep)
+
+  def removeZFrameInstructionAnnotation(self):
+    if self.zFrameInstructionAnnotation:
+      self.zFrameInstructionAnnotation.remove()
+      self.zFrameInstructionAnnotation = None
+    if self.zFrameClickObserver :
+      self.redSliceViewInteractor.RemoveObserver(self.zFrameClickObserver)
+      self.zFrameClickObserver = None
 
   def resetZFrameRegistration(self):
     self.applyZFrameRegistrationButton.enabled = False
