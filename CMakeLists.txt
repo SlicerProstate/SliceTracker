@@ -29,9 +29,6 @@ if(NOT Slicer_SOURCE_DIR)
   include(${Slicer_USE_FILE})
 endif()
 
-#find_package(SlicerExecutionModel REQUIRED)
-#include(${SlicerExecutionModel_USE_FILE})
-
 #-----------------------------------------------------------------------------
 set(MODULE_NAME ZFrameCalibration)
 
@@ -78,7 +75,6 @@ set(Newmat_SRCS
   )
 
 set(MODULE_TARGET_LIBRARIES
-  ${DCMTK_LIBRARIES}
   ${ITK_LIBRARIES}
   )
 
