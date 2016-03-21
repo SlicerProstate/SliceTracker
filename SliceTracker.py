@@ -1,18 +1,8 @@
-import datetime
-import math
-import sys
+import EditorLib, DICOMLib
+import csv, re, numpy
+import os, sys, shutil, datetime, logging
+import slicer, ctk, vtk, qt
 
-import numpy
-
-import EditorLib
-import csv
-import ctk
-import logging
-import os
-import qt
-import re
-import slicer
-import vtk
 from Editor import EditorWidget
 from SliceTrackerUtils.Constants import DICOMTAGS, COLOR, STYLE, SliceTrackerConstants
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
@@ -20,7 +10,6 @@ from SliceTrackerUtils.ZFrameRegistration import ZFrameRegistration
 from SliceTrackerUtils.helpers import SliceAnnotation, ExtendedQMessageBox
 from SliceTrackerUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from slicer.ScriptedLoadableModule import *
-from subprocess import Popen
 
 
 class SliceTracker(ScriptedLoadableModule):
@@ -86,6 +75,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.collapsibleDirectoryConfigurationArea.collapsed = True
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
+    self.logic.startStoreSCP(slicer.util.warningDisplay)
     self.setSetting('IntraopLocation', path)
     self.intraopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Choose intraop directory"
     self.intraopDirButton.toolTip = path
@@ -131,6 +121,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onReload(self):
     try:
       self.logic.stopWatching()
+      self.logic.stopStoreSCP()
       self.removeSliceAnnotations()
       self.clearTargetMovementObserverAndAnnotations()
       self.resetVisualEffects()
@@ -1037,7 +1028,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.showOpacitySliderPopup(True)
       self.flickerCheckBox.enabled = False
       self.rockTimer.start()
-      self.opacitySpinBox.value = 0.5 + math.sin(self.rockCount / 10.) / 2.
+      self.opacitySpinBox.value = 0.5 + numpy.sin(self.rockCount / 10.) / 2.
       self.rockCount += 1
 
     def stopRocking():
@@ -1604,10 +1595,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.addZFrameInstructions()
 
   def addZFrameInstructions(self, step=1):
-    self.zFrameInstructionAnnotation = SliceAnnotation(self.redWidget,
-                                                       self.ZFrame_INSTRUCTION_STEPS[step], yPos=55, horizontalAlign="center",
-                                                       opacity=0.6, color=(0,0.6,0))
     self.zFrameStep = step
+    text = self.ZFrame_INSTRUCTION_STEPS[self.zFrameStep]
+    self.zFrameInstructionAnnotation = SliceAnnotation(self.redWidget, text, yPos=55, horizontalAlign="center",
+                                                       opacity=0.6, color=(0,0.6,0))
     self.zFrameClickObserver = self.redSliceViewInteractor.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent,
                                                       self.onZFrameStepAccomplished)
 
@@ -1884,7 +1875,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     if os.path.exists(path):
       self._intraopDataDir = path
       self.startIntraopDirListener()
-      self.startStoreSCP()
 
   @property
   def currentResult(self):
@@ -2142,14 +2132,41 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
           messageOutput += message + "\n"
     return messageOutput if messageOutput != "" else "There is nothing to be saved yet."
 
-  def startStoreSCP(self):
-    if self.storeSCPProcess:
-      self.storeSCPProcess.kill()
-    # command : $ sudo storescp -v -p 104 -od intraopDir
-    pathToExe = os.path.join(slicer.app.slicerHome, 'bin', 'storescp')
-    self.storeSCPProcess = Popen(["sudo", pathToExe, "-v", "-p", "104", "-od", self._intraopDataDir])
-    if not self.storeSCPProcess:
-      logging.error("storescp process could not be started. View log messages for further information.")
+  def stopStoreSCP(self):
+    if hasattr(slicer, 'dicomListener'):
+      if slicer.dicomListener.process:
+        slicer.dicomListener.process.disconnect('stateChanged(QProcess::ProcessState)', self.onDICOMListenerStateChanged)
+      slicer.dicomListener.stop()
+      del slicer.dicomListener
+
+  def startStoreSCP(self, callback=None):
+    self.storeSCPCallback = callback
+    self.stopStoreSCP()
+    try:
+      dicomListener = DICOMLib.DICOMListener(database=slicer.dicomDatabase)
+      dicomListener.start()
+      if dicomListener.process:
+        self.onDICOMListenerStateChanged(dicomListener.process.state())
+        dicomListener.process.connect('stateChanged(QProcess::ProcessState)', self.onDICOMListenerStateChanged)
+        dicomListener.fileAddedCallback = self.onDICOMFileAdded
+        slicer.dicomListener = dicomListener
+    except UserWarning as message:
+      self.storeSCPCallback("Could not start listener:\n %s" % message, windowTitle="DICOM")
+
+  def onDICOMListenerStateChanged(self, newState):
+    if newState == 0:
+      slicer.util.showStatusMessage("DICOM Listener not running")
+      del slicer.dicomListener
+    if newState == 1:
+      slicer.util.showStatusMessage("DICOM Listener starting")
+    if newState == 2:
+      slicer.util.showStatusMessage("DICOM Listener running")
+
+  def onDICOMFileAdded(self):
+    newFile = slicer.dicomListener.lastFileAdded
+    if newFile:
+      slicer.util.showStatusMessage("Loaded: %s" % newFile, 1000)
+      shutil.copy2(newFile, self.intraopDataDir)
 
   def getSeriesInfoFromXML(self, f):
     import xml.dom.minidom
