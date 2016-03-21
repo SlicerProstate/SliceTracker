@@ -2154,13 +2154,10 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       self.storeSCPCallback("Could not start listener:\n %s" % message, windowTitle="DICOM")
 
   def onDICOMListenerStateChanged(self, newState):
+    messageCodes = {0:"DICOM Listener not running", 1:"DICOM Listener starting", 2:"DICOM Listener running"}
     if newState == 0:
-      slicer.util.showStatusMessage("DICOM Listener not running")
       del slicer.dicomListener
-    if newState == 1:
-      slicer.util.showStatusMessage("DICOM Listener starting")
-    if newState == 2:
-      slicer.util.showStatusMessage("DICOM Listener running")
+    slicer.util.showStatusMessage(messageCodes[newState] if newState in messageCodes.keys() else "")
 
   def onDICOMFileAdded(self):
     newFile = slicer.dicomListener.lastFileAdded
@@ -2280,6 +2277,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.watchTimer.stop()
 
   def startWatchingIntraop(self):
+    # TODO: should rather start watching DICOM database and check if there are new series that can be loaded
     self.currentFileCount = len(self.getFileList(self._intraopDataDir))
     if self.lastFileCount != self.currentFileCount:
       self.importTimer.start()
