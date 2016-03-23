@@ -3,9 +3,24 @@
 
 ### Intro
 
-SliceTracker is a 3D Slicer (see http://slicer.org) module that facilitates registration of pre- and intraprocedural MR prostate volumes. 
+SliceTracker is a 3D Slicer (see http://slicer.org) extension designed to support in-bore MRI-guided targeted prostate biopsy, as further elaborated in the following sections:
+
+* planning of the procedure
+* calibration of the intra-procedural image frame of reference with the biopsy template
+* re-identification of the pre-procedurally defined targets in the intra-procedural images
+* automated segmentation of the prostate gland to facilitate image registration
+* automated, continuous tracking of the identified targets during the course of the procedure by means of deformable intensity-based registration
+* consistent collection of the relevant data during the course of the procedure (images, results of segmentation and registration, target tracking)
+* visualization of the intra-procedural images and support of specialized hanging protocols to facilitate needle tracking, biopsy template and calibration device visualization, assessment of the image registration results, etc.
+* ...
+
+Video demonstration of the extension capabilities will be linked from here shortly.
+
+This module is a work in progress and is not currently released as a 3D Slicer extension, and thus is not available in the 3D Slicer ExtensionManager.
 
 ### Functionality
+
+The content below is outdated and will be updated at the time of the official release of the extension ...
 
 The module guides the user through a workflow that consists of the following steps:
 
@@ -25,7 +40,7 @@ The module guides the user through a workflow that consists of the following ste
 
   Showing the result of all three registration stages enables quick troubleshooting in a very comprehensible way. The user can   switch between the results and compare the registered pre-procedural image with the intra-procedural. There are four          different tools and different visualization modes provided to compare the resulting image volume and target. Furthermore, a   needle tip can be set to measure the distance between each registered target and the needle tip. 
 
-### Data conventions and testing
+### Prerequisites, conventions and testing
 
 If you want to test the module, please follow these steps:
 
@@ -40,7 +55,7 @@ If you want to test the module, please follow these steps:
 
 ### Contact
 
-Please feel free to contact us for questions, feedback, suggestions, bugs.. :
+Please feel free to contact us for questions, feedback, suggestions, bugs, or you can create issues in the issue tracker: https://github.com/SlicerProstate/SliceTracker/issues
 
 * [Andrey Fedorov](https://github.com/fedorov) fedorov@bwh.harvard.edu
 
