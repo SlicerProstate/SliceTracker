@@ -42,7 +42,7 @@ If you want to test the module, please follow these steps:
 
 Please feel free to contact us for questions, feedback, suggestions, bugs.. :
 
-* [Andrey Fedorov](https://github.com/fedorov] fedorov@bwh.harvard.edu
+* [Andrey Fedorov](https://github.com/fedorov) fedorov@bwh.harvard.edu
 
 * Christian Herz cherz@bwh.harvard.edu
 
