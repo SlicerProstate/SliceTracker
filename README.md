@@ -42,13 +42,22 @@ If you want to test the module, please follow these steps:
 
 Please feel free to contact us for questions, feedback, suggestions, bugs.. :
 
-* Andriy Fedorov fedorov@bwh.harvard.edu
+* [Andrey Fedorov](https://github.com/fedorov] fedorov@bwh.harvard.edu
 
 * Christian Herz cherz@bwh.harvard.edu
 
 * Peter Behringer peterbehringer@gmx.de
 
+### Acknowledgments
+
+This work is supported in part by NIH grants 
+
+* P41 EB015898 National Center for Image Guided Therapy (NCIGT), http://ncigt.org
+* U24 CA180918 Quantitative Image Informatics for Cancer Research (QIICR), http://qiicr.org
+
 
 ### Literature
 
 [1] Fedorov A, Tuncali K, Fennessy FM, et al. Image Registration for Targeted MRI-guided Transperineal Prostate Biopsy. Journal of magnetic resonance imaging : JMRI. 2012;36(4):987-992. doi:10.1002/jmri.23688.
+[2] Behringer PA, Herz C, Penzkofer T, Tuncali K, Tempany CM, Fedorov A. Open-­source Platform for Prostate Motion Tracking during in­-bore Targeted MRI­-guided Biopsy. Int Conf Med Image Comput Comput Assist Interv. 2015 Oct;18(WS). Workshop on Clinical Image-based Procedures: Translational Research in Medical Imaging.
+[3] http://slicerprostate.github.io/ProstateMotionStudy/
