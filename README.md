@@ -58,6 +58,6 @@ This work is supported in part by NIH grants
 
 ### Literature
 
-[1] Fedorov A, Tuncali K, Fennessy FM, et al. Image Registration for Targeted MRI-guided Transperineal Prostate Biopsy. Journal of magnetic resonance imaging : JMRI. 2012;36(4):987-992. doi:10.1002/jmri.23688.
-[2] Behringer PA, Herz C, Penzkofer T, Tuncali K, Tempany CM, Fedorov A. Open-­source Platform for Prostate Motion Tracking during in­-bore Targeted MRI­-guided Biopsy. Int Conf Med Image Comput Comput Assist Interv. 2015 Oct;18(WS). Workshop on Clinical Image-based Procedures: Translational Research in Medical Imaging.
-[3] http://slicerprostate.github.io/ProstateMotionStudy/
+1. Fedorov A, Tuncali K, Fennessy FM, et al. Image Registration for Targeted MRI-guided Transperineal Prostate Biopsy. Journal of magnetic resonance imaging : JMRI. 2012;36(4):987-992. doi:10.1002/jmri.23688.
+2. Behringer PA, Herz C, Penzkofer T, Tuncali K, Tempany CM, Fedorov A. Open-­source Platform for Prostate Motion Tracking during in­-bore Targeted MRI­-guided Biopsy. Int Conf Med Image Comput Comput Assist Interv. 2015 Oct;18(WS). Workshop on Clinical Image-based Procedures: Translational Research in Medical Imaging.
+3. http://slicerprostate.github.io/ProstateMotionStudy/
