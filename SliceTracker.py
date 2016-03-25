@@ -18,7 +18,7 @@ class SliceTracker(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker"
     self.parent.categories = ["Radiology"]
-    self.parent.dependencies = []
+    self.parent.dependencies = ["mpReview", "mpReviewPreprocessor"]
     self.parent.contributors = ["Peter Behringer (SPL), Christian Herz (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy. """
     self.parent.acknowledgementText = """Surgical Planning Laboratory, Brigham and Women's Hospital, Harvard
@@ -42,12 +42,25 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationResults.activeResult = series
 
   @property
+  def caseRootDir(self):
+    return self.casesRootDirectoryButton.directory
+
+  @caseRootDir.setter
+  def caseRootDir(self, path):
+    exists = os.path.exists(path)
+    self.createNewCaseButton.enabled = exists
+    self.openCaseButton.enabled = exists
+    self.setSetting('CasesRootLocation', path if exists else None)
+    self.casesRootDirectoryButton.text = self.truncatePath(path) if exists else "Choose output directory"
+    self.casesRootDirectoryButton.toolTip = path
+
+  @property
   def preopDataDir(self):
     return self._preopDataDir
 
   @preopDataDir.setter
   def preopDataDir(self, path):
-    slicer.mrmlScene.Clear(0)
+    # slicer.mrmlScene.Clear(0)
     self.logic.resetAndInitializeData()
     self.updateViewSettingButtons()
     self.removeSliceAnnotations()
@@ -55,14 +68,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setSetting('PreopLocation', path)
     self.loadPreopData()
     self.intraopSeriesSelector.clear()
-    self.intraopDirButton.setEnabled(True)
     self.trackTargetsButton.setEnabled(False)
-    self.preopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Choose preop directory"
-    self.preopDirButton.toolTip = path
-    self.intraopDirButton.blockSignals(True)
-    self.intraopDirButton.directory = self.getSetting('IntraopLocation')
-    self.intraopDirButton.text = "Intraop directory"
-    self.intraopDirButton.blockSignals(False)
+    # TODO: add watchbox for current Case
+    # self.preopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Choose preop directory"
+    # self.preopDirButton.toolTip = path
     self.updateOutputFolder()
     self.targetTable.enabled = True
 
@@ -72,26 +81,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   @intraopDataDir.setter
   def intraopDataDir(self, path):
-    self.collapsibleDirectoryConfigurationArea.collapsed = True
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
     self.logic.startStoreSCP(slicer.util.warningDisplay)
-    self.setSetting('IntraopLocation', path)
-    self.intraopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Choose intraop directory"
-    self.intraopDirButton.toolTip = path
-    self.updateOutputFolder()
-
-  @property
-  def outputDir(self):
-    return self.outputDirButton.directory
-
-  @outputDir.setter
-  def outputDir(self, path):
-    exists = os.path.exists(path)
-    self.caseCompletedButton.enabled = exists
-    self.setSetting('OutputLocation', path if exists else None)
-    self.outputDirButton.text = self.truncatePath(path) if exists else "Choose output directory"
-    self.outputDirButton.toolTip = path
+    # TODO: add watchbox for current Case
+    # self.intraopDirButton.text = self.truncatePath(path) if os.path.exists(path) else "Choose intraop directory"
+    # self.intraopDirButton.toolTip = path
     self.updateOutputFolder()
 
   @property
@@ -108,6 +103,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     else:
       self.targetTable.connect('doubleClicked(QModelIndex)', self.onMoveTargetRequest)
 
+  @property
+  def mpReviewPreprocessedOutput(self):
+    return os.path.join(self.currentCaseDirectory, "mpReviewPreprocessed") if self.currentCaseDirectory else None
+
+  @property
+  def preopDICOMDataDirectory(self):
+    return os.path.join(self.currentCaseDirectory, "DICOM", "Preop") if self.currentCaseDirectory else None
+
+  @property
+  def outputDir(self):
+    return os.path.join(self.currentCaseDirectory, "SliceTrackerOutputs")
+
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
     self.logic = SliceTrackerLogic()
@@ -120,8 +127,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onReload(self):
     try:
-      self.logic.stopWatching()
-      self.logic.stopStoreSCP()
+      if self.currentCaseDirectory:
+        self.closeCase()
       self.removeSliceAnnotations()
       self.clearTargetMovementObserverAndAnnotations()
       self.resetVisualEffects()
@@ -136,12 +143,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.disconnectCrosshairNode()
 
   def updateOutputFolder(self):
-    if os.path.exists(self.outputDirButton.directory) and self.patientIDLabel.text != '' \
+    if self.outputDir and not os.path.exists(self.outputDir):
+      self.logic.createDirectory(self.outputDir)
+    if os.path.exists(self.outputDir) and self.patientIDLabel.text != '' \
             and self.intraopStudyDateLabel.text != '':
       time = qt.QTime().currentTime().toString().replace(":", "")
       date = str(qt.QDate().currentDate())
       finalDirectory = self.patientIDLabel.text + "-biopsy-" + date + "-" + time
-      self.generatedOutputDirectory = os.path.join(self.outputDirButton.directory, finalDirectory, "MRgBiopsy")
+      self.generatedOutputDirectory = os.path.join(self.outputDir, finalDirectory, "MRgBiopsy")
       self.caseCompletedButton.enabled = True
       self.collapsibleDirectoryConfigurationArea.collapsed = True
     else:
@@ -162,6 +171,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Date of Birth: '), self.patientDOBLabel], margin=1))
     patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Preop Study Date: '), self.preopStudyDateLabel], margin=1))
     patientViewBoxLayout.addWidget(self.createHLayout([qt.QLabel('Intraop Study Date: '), self.intraopStudyDateLabel], margin=1))
+
+  def resetPatientWatchBox(self):
+    self.patientIDLabel.text = ""
+    self.patientNameLabel.text = ""
+    self.patientDOBLabel.text = ""
+    self.preopStudyDateLabel.text = ""
+    self.intraopStudyDateLabel.text = ""
 
   def createRegistrationWatchBox(self):
     self.registrationWatchBox, registrationWatchBoxLayout = self._createWatchBox(maximumHeight=40)
@@ -244,7 +260,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setupConnections()
 
     self.generatedOutputDirectory = ""
-    self.outputDirButton.directory = self.getSetting('OutputLocation')
+    self.casesRootDirectoryButton.directory = self.getSetting('CasesRootLocation')
+    self.currentCaseDirectory = None
 
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
     self.setAxialOrientation()
@@ -365,12 +382,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetingGroupBoxLayout = qt.QGridLayout()
     self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
 
-    self.preopDirButton = self.createDirectoryButton(text="Choose preop directory", caption="Choose Preop Location",
-                                                     directory=self.getSetting('PreopLocation'))
-    self.outputDirButton = self.createDirectoryButton(caption="Choose Data Output Location")
-    self.intraopDirButton = self.createDirectoryButton(text="Choose intraop directory", caption="Choose Intraop Location",
-                                                       directory=self.getSetting('IntraopLocation'), enabled=False)
-
+    self.casesRootDirectoryButton = self.createDirectoryButton(text="Choose cases root location",
+                                                               caption="Choose cases root location")
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series", enabled=False)
     self.caseCompletedButton = self.createButton('Case completed', enabled=False)
@@ -378,27 +391,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setupIntraopSeriesSelector()
 
     self.collapsibleDirectoryConfigurationArea = ctk.ctkCollapsibleButton()
+    self.collapsibleDirectoryConfigurationArea.collapsed = True
     self.collapsibleDirectoryConfigurationArea.text = "Directory Settings"
     self.directoryConfigurationLayout = qt.QGridLayout(self.collapsibleDirectoryConfigurationArea)
-    self.directoryConfigurationLayout.addWidget(self.preopDirButton, 1, 0, 1, qt.QSizePolicy.ExpandFlag)
-    self.directoryConfigurationLayout.addWidget(self.createHelperLabel("Please select the mpReview preprocessed preop "
-                                                                       "data here."), 1, 1, 1, 1, qt.Qt.AlignRight)
-    self.directoryConfigurationLayout.addWidget(self.outputDirButton, 2, 0, 1, qt.QSizePolicy.ExpandFlag)
-    self.directoryConfigurationLayout.addWidget(self.createHelperLabel("Please select the output directory where all "
-                                                                       "data will be saved"), 2, 1, 1, 1, qt.Qt.AlignRight)
-    self.directoryConfigurationLayout.addWidget(self.intraopDirButton, 3, 0, 1, qt.QSizePolicy.ExpandFlag)
-    self.directoryConfigurationLayout.addWidget(self.createHelperLabel("Please select the intraop directory where new "
-                                                                       "DICOM data will be arriving during the biopsy")
-                                                , 3, 1, 1, 1, qt.Qt.AlignRight)
+    self.directoryConfigurationLayout.addWidget(self.casesRootDirectoryButton, 1, 0, 1, qt.QSizePolicy.ExpandFlag)
+    self.createNewCaseButton = self.createButton("New case")
+    self.openCaseButton = self.createDirectoryButton(text="Open case", caption="Open Case")
 
     self.targetingGroupBoxLayout.addWidget(self.collapsibleDirectoryConfigurationArea, 0, 0, 1, 2)
-    self.targetingGroupBoxLayout.addWidget(self.targetTable, 1, 0, 1, 2)
-    self.targetingGroupBoxLayout.addWidget(self.intraopSeriesSelector, 2, 0)
-    self.targetingGroupBoxLayout.addWidget(self.skipIntraopSeriesButton, 2, 1)
-    self.targetingGroupBoxLayout.addWidget(self.trackTargetsButton, 3, 0, 1, 2)
-    self.targetingGroupBoxLayout.addWidget(self.caseCompletedButton, 4, 0, 1, 2)
+    self.targetingGroupBoxLayout.addWidget(self.createNewCaseButton, 1, 0)
+    self.targetingGroupBoxLayout.addWidget(self.openCaseButton, 1, 1)
+    self.targetingGroupBoxLayout.addWidget(self.targetTable, 2, 0, 1, 2)
+    self.targetingGroupBoxLayout.addWidget(self.intraopSeriesSelector, 3, 0)
+    self.targetingGroupBoxLayout.addWidget(self.skipIntraopSeriesButton, 3, 1)
+    self.targetingGroupBoxLayout.addWidget(self.trackTargetsButton, 4, 0, 1, 2)
+    self.targetingGroupBoxLayout.addWidget(self.caseCompletedButton, 5, 0, 1, 2)
     self.targetingGroupBoxLayout.setRowStretch(5,1)
-
     self.layout.addWidget(self.targetingGroupBox)
 
   def createHelperLabel(self, toolTipText=""):
@@ -593,9 +601,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def setupConnections(self):
 
     def setupButtonConnections():
-      self.preopDirButton.directorySelected.connect(lambda: setattr(self, "preopDataDir", self.preopDirButton.directory))
-      self.outputDirButton.directorySelected.connect(lambda: setattr(self, "outputDir", self.outputDirButton.directory))
-      self.intraopDirButton.directorySelected.connect(lambda: setattr(self, "intraopDataDir", self.intraopDirButton.directory))
+      self.createNewCaseButton.clicked.connect(self.onCreateNewCaseButtonClicked)
+      self.openCaseButton.directorySelected.connect(self.onOpenCaseButtonClicked)
+      self.casesRootDirectoryButton.directoryChanged.connect(lambda: setattr(self, "caseRootDir",
+                                                                              self.casesRootDirectoryButton.directory))
       self.forwardButton.clicked.connect(self.onForwardButtonClicked)
       self.backButton.clicked.connect(self.onBackButtonClicked)
       self.editorWidgetButton.clicked.connect(self.onEditorGearIconClicked)
@@ -608,7 +617,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
       self.rejectRegistrationResultButton.clicked.connect(self.onRejectRegistrationResultButtonClicked)
       self.retryRegistrationButton.clicked.connect(self.onRetryRegistrationButtonClicked)
-      self.caseCompletedButton.clicked.connect(self.onSaveDataButtonClicked)
+      self.caseCompletedButton.clicked.connect(self.onCaseCompletedButtonClicked)
       self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
       self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
       self.crosshairButton.clicked.connect(self.onCrosshairButtonClicked)
@@ -642,6 +651,74 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     setupButtonConnections()
     setupSelectorConnections()
     setupOtherConnections()
+
+  def onCreateNewCaseButtonClicked(self):
+    if self.currentCaseDirectory is not None:
+      self.closeCase()
+    self.createNewCaseButton.enabled = False
+    self.openCaseButton.enabled = False
+    self.currentCaseDirectory = self.logic.createNewCase(self.caseRootDir)
+    self.preopDicomReceiver = SmartDICOMReceiver(incomingDataDirectory=self.preopDICOMDataDirectory,
+                                                 receiveFinishedCallback=self.onPreopDataReceived)
+    self.preopDicomReceiver.start()
+    # TODO: stop whenever needs to be stopped
+
+  def onPreopDataReceived(self):
+    print "Preop Data receive complete"
+    self.preopDicomReceiver.stop()
+    success = self.invokePreProcessing()
+    if success:
+      self.setSetting('InputLocation', None, moduleName="mpReview")
+      slicer.modules.mpreview.widgetRepresentation()
+      mpReview = slicer.modules.mpReviewWidget
+      self.setSetting('InputLocation', self.mpReviewPreprocessedOutput, moduleName="mpReview")
+      mpReview.onReload()
+      slicer.modules.mpReviewWidget.saveButton.clicked.connect(self.onReturnFromMpReview)
+      self.layoutManager.selectModule(mpReview.moduleName)
+    else:
+      self.notificationDialog("No DICOM data could be processed. Please select another directory.")
+
+  def onReturnFromMpReview(self):
+    # TODO: unload mpReview
+    slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(self.onReturnFromMpReview)
+    self.layoutManager.selectModule(self.moduleName)
+    self.preopDataDir = self.logic.getFirstStudyFromMpReviewPreprocessed(self.mpReviewPreprocessedOutput)
+    self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
+
+  def invokePreProcessing(self):
+    from mpReviewPreprocessor import mpReviewPreprocessorLogic
+    slicer.modules.mpreviewpreprocessor.widgetRepresentation()
+    self.mpReviewPreprocessorLogic = mpReviewPreprocessorLogic()
+    self.progress = slicer.util.createProgressDialog()
+    self.progress.canceled.connect(lambda : self.mpReviewPreprocessorLogic.cancelProcess())
+    self.mpReviewPreprocessorLogic.importStudy(self.preopDICOMDataDirectory, progressCallback=self.updateProgressBar)
+    success = False
+    if self.mpReviewPreprocessorLogic.patientFound():
+      success = True
+      self.mpReviewPreprocessorLogic.convertData(outputDir=self.mpReviewPreprocessedOutput, copyDICOM=False,
+                                                 progressCallback=self.updateProgressBar)
+    self.progress.canceled.disconnect(lambda : self.mpReviewPreprocessorLogic.cancelProcess())
+    self.progress.close()
+    return success
+
+  def onOpenCaseButtonClicked(self):
+    # self.createNewCaseButton.enabled = False
+    # self.openCaseButton.enabled = False
+    self.currentCaseDirectory = self.openCaseButton.directory
+    logging.debug("selected case directory %s" % self.currentCaseDirectory)
+    if not self.logic.isCaseDirectoryValid(self.currentCaseDirectory):
+      slicer.util.warningDisplay("The selected case directory seems not to be valid", windowTitle="SliceTracker")
+      self.closeCase()
+      return
+
+    from mpReview import mpReviewLogic
+
+    if self.logic.hasCaseBeenCompleted(self.currentCaseDirectory):
+      # TODO: reconstruct results from SliceTrackerOutputs if available or continue case
+      pass
+    elif mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
+      self.preopDataDir = self.logic.getFirstStudyFromMpReviewPreprocessed(self.mpReviewPreprocessedOutput)
+      self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
 
   def onShowZFrameModelToggled(self, checked):
     self.logic.setZFrameVisibility(checked)
@@ -1060,11 +1137,24 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     else:
       stopFlickering()
 
-  def onSaveDataButtonClicked(self):
+  def closeCase(self):
+    # TODO: think about what else to release
+    self.logic.closeCase(self.currentCaseDirectory)
+    self.caseCompletedButton.enabled = False
+    self.resetPatientWatchBox()
+    self.logic.stopWatching()
+    self.logic.stopStoreSCP()
+    self.createNewCaseButton.enabled = True
+    self.openCaseButton.enabled = True
+    self.currentCaseDirectory = None
+
+  def onCaseCompletedButtonClicked(self):
     self.save(showDialog=True)
+    self.logic.completeCase(self.currentCaseDirectory)
+    self.closeCase()
 
   def save(self, showDialog=False):
-    if not os.path.exists(self.outputDirButton.directory) or self.generatedOutputDirectory == "":
+    if not os.path.exists(self.outputDir) or self.generatedOutputDirectory == "":
       self.notificationDialog("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
                               "sure to select one.")
     else:
@@ -1249,18 +1339,20 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.markupsLogic.SetAllMarkupsSelected(targetNode, selected)
 
   def loadPreopData(self):
-    message = self.logic.loadMpReviewProcessedData(self.preopDataDir,
-                                                   updatePatientInformationCallback=self.updateCurrentPatientAndViewBox)
+    dicomFileName = self.logic.getFileList(self.preopDICOMDataDirectory)[0]
+    self.updateCurrentPatientAndViewBox(os.path.join(self.preopDICOMDataDirectory, dicomFileName))
+    message = self.loadMpReviewProcessedData()
     if message:
       self.confirmDialog(message)
       return
 
     success = self.logic.loadT2Label() and self.logic.loadPreopVolume() and self.logic.loadPreopTargets()
-    self.intraopDirButton.setEnabled(success)
     if not success:
       self.warningDialog("Loading preop data failed.\nMake sure that the correct directory structure like mpReview "
                          "explains is used. SliceTracker expects a volume, label and target")
       return
+
+    #TODO: set intraop here
 
     self.movingLabelSelector.setCurrentNode(self.logic.preopLabel)
     self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
@@ -1271,6 +1363,31 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
     self.setDefaultFOV(self.redSliceLogic, self.logic.preopVolume)
     self.setupPreopLoadedTargets()
+
+  def loadMpReviewProcessedData(self):
+    from mpReview import mpReviewLogic
+    resourcesDir = os.path.join(self.preopDataDir, 'RESOURCES')\
+
+    if not os.path.exists(resourcesDir):
+      message = "The selected directory does not fit the mpReview directory structure. Make sure that you select the " \
+                "study root directory which includes directories RESOURCES"
+      return message
+
+    self.progress = slicer.util.createProgressDialog(maxiumu=len(os.listdir(resourcesDir)))
+    seriesMap, metaFile = mpReviewLogic.loadMpReviewProcessedData(resourcesDir,
+                                                                  updateProgressCallback=self.updateProgressBar)
+    self.progress.delete()
+
+    # TODO: targets shall be reference image specific in mpReview
+    self.logic.preopTargetsPath = os.path.join(self.preopDataDir, 'Targets')
+
+    self.logic.loadPreopImageAndSegmentation(seriesMap)
+
+    if self.logic.preopSegmentationPath is None:
+      message = "No segmentations found.\nMake sure that you used mpReview for segmenting the prostate first and using " \
+                "its output as the preop data input here."
+      return message
+    return None
 
   def configureRedSliceNodeForPreopData(self):
     self.redSliceNode.RotateToVolumePlane(self.logic.preopLabel)
@@ -1288,7 +1405,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def promptUserAndApplyBiasCorrectionIfNeeded(self):
     if self.yesNoDialog("Was an endorectal coil used for preop image acquisition?"):
-      progress = self.makeProgressIndicator(2, 1)
+      progress = slicer.util.createProgressDialog(maximum=2, value=1)
       progress.labelText = '\nBias Correction'
       self.logic.applyBiasCorrection()
       progress.setValue(2)
@@ -1442,7 +1559,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationWatchBox.hide()
     self.updateIntraopSeriesSelectorTable()
     self.registrationEvaluationGroupBox.hide()
-    self.targetingGroupBoxLayout.addWidget(self.targetTable, 1, 0, 1, 2)
+    self.targetingGroupBoxLayout.addWidget(self.targetTable, 2, 0, 1, 2)
     self.targetingGroupBox.show()
     self.removeSliceAnnotations()
     self.resetVisualEffects()
@@ -1653,7 +1770,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     return self.coverTemplateROI is not None
 
   def onApplyZFrameRegistrationButtonClicked(self):
-    progress = self.makeProgressIndicator(2, 1)
+    progress = slicer.util.createProgressDialog(maximum=2, value=1)
     progress.labelText = '\nZFrame registration'
     self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
     zFrameTemplateVolume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
@@ -1747,7 +1864,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onInvokeRegistration(self, initial=True):
     self.disableEditorWidgetAndResetEditorTool()
     self.applyRegistrationButton.setEnabled(False)
-    self.progress = self.makeProgressIndicator(4, 1)
+    self.progress = slicer.util.createProgressDialog(maximum=4, value=1)
     if initial:
       self.logic.applyInitialRegistration(fixedVolume=self.fixedVolumeSelector.currentNode(),
                                           movingVolume=self.movingVolumeSelector.currentNode(),
@@ -1945,7 +2062,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.pathOrigins = []  ## Origins of needle paths (after transformation by parent transform node)
     self.pathVectors = []  ## Normal vectors of needle paths (after transformation by parent transform node)
 
-    self.loadColorTable()
+    # TODO: do we need to load the color table?
+    from mpReview import mpReviewLogic
+    self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.defaultColorFile)
     self.clearOldNodes()
     self.loadZFrameModel()
     self.loadTemplateConfigFile()
@@ -1976,59 +2095,52 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     assert hasattr(func, '__call__')
     self._incomingDataCallback = func
 
-  def loadMpReviewProcessedData(self, preopDir, updatePatientInformationCallback=None):
-    resourcesDir = os.path.join(preopDir, 'RESOURCES')
-    self.preopTargetsPath = os.path.join(preopDir, 'Targets')
+  def createNewCase(self, destinationDir):
+    newCaseDirectoryName = "Case"+self.getNextCaseNumber(destinationDir)+datetime.date.today().strftime("-%Y%m%d")
+    newCaseDirectory = os.path.join(destinationDir, newCaseDirectoryName)
+    os.mkdir(newCaseDirectory)
+    os.mkdir(os.path.join(newCaseDirectory, "DICOM"))
+    os.mkdir(os.path.join(newCaseDirectory, "DICOM", "Preop"))
+    os.mkdir(os.path.join(newCaseDirectory, "DICOM", "Intraop"))
+    os.mkdir(os.path.join(newCaseDirectory, "mpReviewPreprocessed"))
+    os.mkdir(os.path.join(newCaseDirectory, "SliceTrackerOutputs"))
+    return newCaseDirectory
 
-    if not os.path.exists(resourcesDir):
-      message = "The selected directory does not fit the mpReview directory structure. Make sure that you select the " \
-                "study root directory which includes directories RESOURCES"
-      return message
+  def isCaseDirectoryValid(self, directory):
+    return os.path.exists(os.path.join(directory, "DICOM")) and os.path.exists(os.path.join(directory, "DICOM", "Preop")) \
+           and os.path.exists(os.path.join(directory, "DICOM", "Intraop")) \
+               and os.path.exists(os.path.join(directory, "mpReviewPreprocessed"))
 
-    seriesMap = {}
+  def hasCaseBeenCompleted(self, directory):
+    return ".completed" in os.listdir(directory)
 
-    patientInformationRetrieved = False
+  def getNextCaseNumber(self, destinationDir):
+    caseNumber = 0
+    for dirname in [dirname for dirname in os.listdir(destinationDir)
+                     if os.path.isdir(os.path.join(destinationDir, dirname)) and dirname.startswith("Case")]:
+      number = int(dirname.split("-")[0].replace("Case",""))
+      caseNumber = caseNumber if caseNumber > number else number
+    caseNumber = str(caseNumber+1)
+    while len(caseNumber) < 3 :
+      caseNumber = "0" + caseNumber
+    return caseNumber
 
-    for root, subdirs, files in os.walk(resourcesDir):
-      logging.debug('Root: ' + root + ', files: ' + str(files))
-      resourceType = os.path.split(root)[1]
+  def completeCase(self, directory):
+    self.storeSCPProcess()
+    if os.path.exists(directory):
+      if self.getDirectorySize(directory) > 0:
+        open(os.path.join(directory, ".completed"), 'a').close()
 
-      logging.debug('Resource: ' + resourceType)
+  def closeCase(self, directory):
+    if os.path.exists(directory):
+      if self.getDirectorySize(directory) == 0:
+        shutil.rmtree(directory)
 
-      if resourceType == 'Reconstructions':
-        for f in [f for f in files if f.endswith('.xml')]:
-          logging.debug('File: ' + f)
-          metaFile = os.path.join(root, f)
-          logging.debug('Ends with xml: ' + metaFile)
-          try:
-            (seriesNumber, seriesName) = self.getSeriesInfoFromXML(metaFile)
-            logging.debug(str(seriesNumber) + ' ' + seriesName)
-          except:
-            logging.debug('Failed to get from XML')
-            continue
-
-          volumePath = os.path.join(root, seriesNumber + '.nrrd')
-          seriesMap[seriesNumber] = {'MetaInfo': None, 'NRRDLocation': volumePath, 'LongName': seriesName}
-          seriesMap[seriesNumber]['ShortName'] = str(seriesNumber) + ":" + seriesName
-      elif resourceType == 'DICOM' and not patientInformationRetrieved and updatePatientInformationCallback:
-        self.importStudy(root)
-        for f in files:
-          updatePatientInformationCallback(os.path.join(root, f))
-          patientInformationRetrieved = True
-          break
-
-    logging.debug('All series found: ' + str(seriesMap.keys()))
-    logging.debug('All series found: ' + str(seriesMap.values()))
-
-    logging.debug('******************************************************************************')
-
-    self.loadPreopImageAndSegmentation(seriesMap)
-
-    if self.preopSegmentationPath is None:
-      message = "No segmentations found.\nMake sure that you used mpReview for segmenting the prostate first and using " \
-                "its output as the preop data input here."
-      return message
-    return None
+  def getFirstStudyFromMpReviewPreprocessed(self, directory):
+    # TODO: if several studies are available provide a dropdown or anything similar for choosing
+    directoryNames = [x[0] for x in os.walk(directory)]
+    assert len(directoryNames) > 1
+    return directoryNames[1]
 
   def loadPreopImageAndSegmentation(self, seriesMap):
     self.preopImagePath = None
@@ -2133,37 +2245,26 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     return messageOutput if messageOutput != "" else "There is nothing to be saved yet."
 
   def stopStoreSCP(self):
-    if hasattr(slicer, 'dicomListener'):
-      if slicer.dicomListener.process:
-        slicer.dicomListener.process.disconnect('stateChanged(QProcess::ProcessState)', self.onDICOMListenerStateChanged)
-      slicer.dicomListener.stop()
-      del slicer.dicomListener
+    if self.storeSCPProcess:
+      self.storeSCPProcess.stop()
 
   def startStoreSCP(self, callback=None):
     self.storeSCPCallback = callback
     self.stopStoreSCP()
     try:
-      dicomListener = DICOMLib.DICOMListener(database=slicer.dicomDatabase)
-      dicomListener.start()
-      if dicomListener.process:
-        self.onDICOMListenerStateChanged(dicomListener.process.state())
-        dicomListener.process.connect('stateChanged(QProcess::ProcessState)', self.onDICOMListenerStateChanged)
-        dicomListener.fileAddedCallback = self.onDICOMFileAdded
-        slicer.dicomListener = dicomListener
+      self.storeSCPProcess = DICOMLib.DICOMStoreSCPProcess(incomingDataDir=self.intraopDataDir)
+      self.storeSCPProcess.start()
+      if self.storeSCPProcess.process:
+        self.onDICOMStoreSCPProcessStateChanged(self.storeSCPProcess.process.state())
+        self.storeSCPProcess.process.connect('stateChanged(QProcess::ProcessState)', self.onDICOMStoreSCPProcessStateChanged)
     except UserWarning as message:
       self.storeSCPCallback("Could not start listener:\n %s" % message, windowTitle="DICOM")
 
-  def onDICOMListenerStateChanged(self, newState):
-    messageCodes = {0:"DICOM Listener not running", 1:"DICOM Listener starting", 2:"DICOM Listener running"}
+  def onDICOMStoreSCPProcessStateChanged(self, newState):
+    messageCodes = {0:"DICOM StoreSCP not running", 1:"DICOM StoreSCP starting", 2:"DICOM StoreSCP running"}
     if newState == 0:
       del slicer.dicomListener
     slicer.util.showStatusMessage(messageCodes[newState] if newState in messageCodes.keys() else "")
-
-  def onDICOMFileAdded(self):
-    newFile = slicer.dicomListener.lastFileAdded
-    if newFile:
-      slicer.util.showStatusMessage("Loaded: %s" % newFile, 1000)
-      shutil.copy2(newFile, self.intraopDataDir)
 
   def getSeriesInfoFromXML(self, f):
     import xml.dom.minidom
@@ -2378,25 +2479,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     rulerNode.SetPosition2(needleTip_position)
     distance_3D = rulerNode.GetDistanceMeasurement()
     return distance_3D
-
-  def loadColorTable(self):
-
-    self.mpReviewColorNode = slicer.vtkMRMLColorTableNode()
-    colorNode = self.mpReviewColorNode
-    colorNode.SetName('mpReview')
-    slicer.mrmlScene.AddNode(colorNode)
-    colorNode.SetTypeToUser()
-    with open(self.defaultColorFile) as f:
-      n = sum(1 for line in f)
-    colorNode.SetNumberOfColors(n - 1)
-    import csv
-    self.structureNames = []
-    with open(self.defaultColorFile, 'rb') as csvfile:
-      reader = csv.DictReader(csvfile, delimiter=',')
-      for index, row in enumerate(reader):
-        colorNode.SetColor(index, row['Label'], float(row['R']) / 255,
-                           float(row['G']) / 255, float(row['B']) / 255, float(row['A']))
-        self.structureNames.append(row['Label'])
 
   def run(self):
     return True
@@ -3001,3 +3083,74 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     self.dataChanged(self.index(0, 3), self.index(self.rowCount(None)-1, 4))
     if self._targetModifiedCallback:
       self._targetModifiedCallback()
+
+
+class SmartDICOMReceiver(ModuleLogicMixin):
+
+  def __init__(self, incomingDataDirectory, receiveFinishedCallback):
+    self.incomingDataDirectory = incomingDataDirectory
+    self.receiveFinishedCallback = receiveFinishedCallback
+    self.storeSCPProcess = None
+    self.setupTimers()
+    self.timerIterations = 0
+
+  def setupTimers(self):
+    self.dataReceivedTimer = qt.QTimer()
+    self.dataReceivedTimer.setInterval(5000)
+    self.dataReceivedTimer.timeout.connect(self.checkIfStillSameFileCount)
+    self.dataReceivedTimer.setSingleShot(True)
+
+    self.watchTimer = qt.QTimer()
+    self.watchTimer.setInterval(1000)
+    self.watchTimer.timeout.connect(self.startWatching)
+    self.watchTimer.setSingleShot(True)
+
+  def start(self):
+    self.stop()
+
+    self.dataHasBeenReceived = False
+    self.lastFileCount = len(self.getFileList(self.incomingDataDirectory))
+
+    self.storeSCPProcess = DICOMLib.DICOMStoreSCPProcess(incomingDataDir=self.incomingDataDirectory)
+    self.startWatching()
+    self.storeSCPProcess.start()
+    slicer.util.showStatusMessage("Waiting for incoming DICOM data")
+
+  def stop(self):
+    self.stopWatching()
+    if self.storeSCPProcess:
+      self.storeSCPProcess.stop()
+
+  def startWatching(self):
+    self.currentFileCount = len(self.getFileList(self.incomingDataDirectory))
+    if self.lastFileCount != self.currentFileCount:
+      slicer.util.showStatusMessage(self.getReceivingStatusMessage())
+      self.dataHasBeenReceived = True
+      self.lastFileCount = self.currentFileCount
+      self.watchTimer.start()
+    elif self.dataHasBeenReceived:
+      self.lastFileCount = self.currentFileCount
+      slicer.util.showStatusMessage("DICOM data receive completed.")
+      self.dataReceivedTimer.start()
+    else:
+      self.watchTimer.start()
+
+  def getReceivingStatusMessage(self):
+    if self.timerIterations == 4:
+      self.timerIterations = 0
+    dots = ""
+    for iteration in range(self.timerIterations):
+      dots += "."
+    self.timerIterations += 1
+    return "Receiving DICOM data %s" % dots
+
+  def stopWatching(self):
+    self.dataReceivedTimer.stop()
+    self.watchTimer.stop()
+
+  def checkIfStillSameFileCount(self):
+    self.currentFileCount = len(self.getFileList(self.incomingDataDirectory))
+    if self.lastFileCount == self.currentFileCount:
+      self.receiveFinishedCallback()
+    else:
+      self.watchTimer.start()

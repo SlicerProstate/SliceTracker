@@ -1,5 +1,4 @@
-import qt
-import vtk
+import vtk, ctk, qt
 
 
 class SliceAnnotation(object):

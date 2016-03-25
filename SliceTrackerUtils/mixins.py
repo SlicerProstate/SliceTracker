@@ -16,18 +16,6 @@ class ModuleWidgetMixin(object):
     return slicer.dicomDatabase
 
   @staticmethod
-  def makeProgressIndicator(maxVal, initialValue=0):
-    progressIndicator = qt.QProgressDialog()
-    progressIndicator.minimumDuration = 0
-    progressIndicator.modal = True
-    progressIndicator.setMaximum(maxVal)
-    progressIndicator.setValue(initialValue)
-    progressIndicator.setWindowTitle("Processing...")
-    progressIndicator.show()
-    progressIndicator.autoClose = False
-    return progressIndicator
-
-  @staticmethod
   def confirmDialog(message, title='SliceTracker'):
     result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
                                      qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
@@ -56,13 +44,15 @@ class ModuleWidgetMixin(object):
       pass
     return path
 
-  def getSetting(self, setting):
+  def getSetting(self, setting, moduleName=None):
+    moduleName = moduleName if moduleName else self.moduleName
     settings = qt.QSettings()
-    return str(settings.value(self.moduleName + '/' + setting))
+    return str(settings.value(moduleName + '/' + setting))
 
-  def setSetting(self, setting, value):
+  def setSetting(self, setting, value, moduleName=None):
+    moduleName = moduleName if moduleName else self.moduleName
     settings = qt.QSettings()
-    settings.setValue(self.moduleName + '/' + setting, value)
+    settings.setValue(moduleName + '/' + setting, value)
 
   def createHLayout(self, elements, **kwargs):
     return self._createLayout(qt.QHBoxLayout, elements, **kwargs)
@@ -137,6 +127,14 @@ class ModuleWidgetMixin(object):
 
 
 class ModuleLogicMixin(object):
+
+  @staticmethod
+  def getDirectorySize(directory):
+    size = 0
+    for path, dirs, files in os.walk(directory):
+      for currentFile in files:
+        size += os.path.getsize(os.path.join(path, currentFile))
+    return size
 
   @staticmethod
   def createDirectory(directory, message=None):
