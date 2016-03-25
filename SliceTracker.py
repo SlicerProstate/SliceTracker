@@ -225,7 +225,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     try:
       import VolumeClipWithModel
     except ImportError:
-      return self.warningDialog("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and install "
+      return slicer.util.warningDisplay("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and install "
                                 "VolumeClip.", "Missing Extension")
 
     self.ratingWindow = RatingWindow(maximumValue=5)
@@ -676,7 +676,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       slicer.modules.mpReviewWidget.saveButton.clicked.connect(self.onReturnFromMpReview)
       self.layoutManager.selectModule(mpReview.moduleName)
     else:
-      self.notificationDialog("No DICOM data could be processed. Please select another directory.")
+      slicer.util.infoDisplay("No DICOM data could be processed. Please select another directory.",
+                              windowTitle="SliceTracker")
 
   def onReturnFromMpReview(self):
     # TODO: unload mpReview
@@ -1155,12 +1156,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def save(self, showDialog=False):
     if not os.path.exists(self.outputDir) or self.generatedOutputDirectory == "":
-      self.notificationDialog("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
-                              "sure to select one.")
+      slicer.util.infoDisplay("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
+                              "sure to select one.", windowTitle="SliceTracker")
     else:
       message = self.logic.save(self.generatedOutputDirectory)
       if showDialog:
-        self.notificationDialog(message)
+        slicer.util.infoDisplay(message, windowTitle="SliceTracker")
 
   def configureSegmentationMode(self):
     if self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
@@ -1343,13 +1344,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.updateCurrentPatientAndViewBox(os.path.join(self.preopDICOMDataDirectory, dicomFileName))
     message = self.loadMpReviewProcessedData()
     if message:
-      self.confirmDialog(message)
+      slicer.util.warningDisplay(message, winowTitle="SliceTracker")
       return
 
     success = self.logic.loadT2Label() and self.logic.loadPreopVolume() and self.logic.loadPreopTargets()
     if not success:
-      self.warningDialog("Loading preop data failed.\nMake sure that the correct directory structure like mpReview "
-                         "explains is used. SliceTracker expects a volume, label and target")
+      slicer.util.warningDisplay("Loading preop data failed.\nMake sure that the correct directory structure like mpReview "
+                                 "explains is used. SliceTracker expects a volume, label and target")
       return
 
     #TODO: set intraop here
@@ -1404,7 +1405,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetTable.selectRow(0)
 
   def promptUserAndApplyBiasCorrectionIfNeeded(self):
-    if self.yesNoDialog("Was an endorectal coil used for preop image acquisition?"):
+    if slicer.util.confirmYesNoDisplay("Was an endorectal coil used for preop image acquisition?",
+                                       windowTitle="SliceTracker"):
       progress = slicer.util.createProgressDialog(maximum=2, value=1)
       progress.labelText = '\nBias Correction'
       self.logic.applyBiasCorrection()
@@ -1426,10 +1428,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     for seriesNumber, values in newSeries.iteritems():
       patientID, studyDate = values
       if patientID is not None and patientID != self.currentID:
-        if not self.yesNoDialog(message='WARNING: Preop data of Patient ID ' + self.currentID + ' was selected, but '
+        if not slicer.util.confirmYesNoDisplay(message='WARNING: Preop data of Patient ID ' + self.currentID + ' was selected, but '
                                         ' data of patient with ID ' + patientID + ' just arrived in the folder, which '
                                         'you selected for incoming data.\nDo you want to keep this series?',
-                                title="PatientsID Not Matching"):
+                                               title="PatientsID Not Matching", windowTitle="SliceTracker"):
           self.logic.deleteSeriesFromSeriesList(seriesNumber)
           continue
       if self.intraopStudyDateLabel.text == '':
@@ -1439,7 +1441,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     return acceptedSeriesNumbers
 
   def onCancelSegmentationButtonClicked(self):
-    if self.yesNoDialog("Do you really want to cancel the segmentation process?"):
+    if slicer.util.confirmYesNoDisplay("Do you really want to cancel the segmentation process?",
+                                       windowTitle="SliceTracker"):
       self.setQuickSegmentationModeOFF()
 
   def onQuickSegmentationButtonClicked(self):
@@ -1627,9 +1630,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.logic.clippingModelNode.SetDisplayVisibility(False)
       self.setupScreenAfterSegmentation()
     else:
-      if self.yesNoDialog("You need to set at least three points with an additional one situated on a distinct slice "
+      if slicer.util.confirmYesNoDisplay("You need to set at least three points with an additional one situated on a distinct slice "
                           "as the algorithm input in order to be able to create a proper segmentation. This step is "
-                          "essential for an efficient registration. Do you want to continue using the quick mode?"):
+                          "essential for an efficient registration. Do you want to continue using the quick mode?",
+                                         windowTitle="SliceTracker"):
         continueSegmentation = True
       else:
         self.logic.deleteClippingData()
@@ -1888,6 +1892,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       for key, value in kwargs.iteritems():
         if hasattr(self.progress, key):
           setattr(self.progress, key, value)
+    slicer.app.processEvents()
 
   def finalizeRegistrationStep(self):
     self.targetTableModel.computeCursorDistances = True
@@ -1898,11 +1903,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.currentResult.printSummary()
     self.connectCrosshairNode()
     if not self.logic.isVolumeExtentValid(self.currentResult.bSplineVolume):
-      self.notificationDialog("One or more empty volume were created during registration process. You have three options:\n"
+      slicer.util.infoDisplay("One or more empty volume were created during registration process. You have three options:\n"
                               "1. Skip the registration result \n"
                               "2. Retry with creating a new segmentation \n"
                               "3. Set targets to your preferred position (in Four-Up layout)",
-                              title="Action needed: Registration created empty volume(s)")
+                              title="Action needed: Registration created empty volume(s)", windowTitle="SliceTracker")
 
   def addNewTargetsToScene(self):
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:

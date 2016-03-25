@@ -16,26 +16,6 @@ class ModuleWidgetMixin(object):
     return slicer.dicomDatabase
 
   @staticmethod
-  def confirmDialog(message, title='SliceTracker'):
-    result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
-                                     qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
-    return result == qt.QMessageBox.Ok
-
-  @staticmethod
-  def notificationDialog(message, title='SliceTracker'):
-    return qt.QMessageBox.information(slicer.util.mainWindow(), title, message)
-
-  @staticmethod
-  def yesNoDialog(message, title='SliceTracker'):
-    result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
-                                     qt.QMessageBox.Yes | qt.QMessageBox.No)
-    return result == qt.QMessageBox.Yes
-
-  @staticmethod
-  def warningDialog(message, title='SliceTracker'):
-    return qt.QMessageBox.warning(slicer.util.mainWindow(), title, message)
-
-  @staticmethod
   def truncatePath(path):
     try:
       split = path.split('/')
