@@ -215,9 +215,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.pathIcon = self.createIcon('icon-path')
     self.revealCursorIcon = self.createIcon('icon-revealCursor')
     self.skipIcon = self.createIcon('icon-skip')
-    self.retryIcon = self.createIcon('icon-retry')
-    self.approveIcon = self.createIcon('icon-approve')
-    self.rejectIcon = self.createIcon('icon-reject')
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -520,9 +517,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.layout.addWidget(self.registrationEvaluationGroupBox)
 
   def setupRegistrationValidationButtons(self):
-    self.approveRegistrationResultButton = self.createButton("", toolTip="Approve", icon=self.approveIcon)
-    self.retryRegistrationButton = self.createButton("", toolTip="Retry", icon=self.retryIcon)
-    self.rejectRegistrationResultButton = self.createButton("", toolTip="Reject", icon=self.rejectIcon)
+    self.approveRegistrationResultButton = self.createButton("Approve", toolTip="Approve")
+    self.retryRegistrationButton = self.createButton("Retry", toolTip="Retry")
+    self.rejectRegistrationResultButton = self.createButton("Reject", toolTip="Reject")
     self.evaluationButtonsGroupBox = self.createHLayout([self.retryRegistrationButton,
                                                          self.approveRegistrationResultButton, self.rejectRegistrationResultButton])
     self.evaluationButtonsGroupBox.enabled = False
