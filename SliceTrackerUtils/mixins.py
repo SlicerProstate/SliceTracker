@@ -131,7 +131,7 @@ class ModuleLogicMixin(object):
     try:
       value = db.fileValue(currentFile, tag)
     except RuntimeError:
-      logging.info("There are problems with accessing DICOM values from file %s" % currentFile)
+      logging.info("There are problems with accessing DICOM value %s from file %s" % (tag, currentFile))
       value = fallback
     return value
 

@@ -1,4 +1,7 @@
 import vtk, ctk, qt
+import xml.dom.minidom, datetime
+from Constants import DICOMTAGS
+from mixins import ModuleLogicMixin
 
 
 class SliceAnnotation(object):
@@ -224,3 +227,109 @@ class ExtendedQMessageBox(qt.QMessageBox):
 
   def exec_(self, *args, **kwargs):
     return qt.QMessageBox.exec_(self, *args, **kwargs), self.checkbox.isChecked()
+
+
+class BasicInformationWatchBox(qt.QGroupBox):
+
+  DEFAULT_STYLE = 'background-color: rgb(230,230,230)'
+  DEFAULT_ATTRIBUTE_PREFIX = "_attribute"
+
+  def __init__(self, labelsAttributeNames, title="", parent=None):
+    super(BasicInformationWatchBox, self).__init__(title, parent)
+    self.labelsAttributeNames = labelsAttributeNames
+    self.setup()
+
+  def reset(self):
+    for tagName in self.labelsAttributeNames.values():
+      label = getattr(self, self.DEFAULT_ATTRIBUTE_PREFIX + tagName)
+      label.text = ""
+      label.toolTip = ""
+
+  def setup(self):
+    self.setStyleSheet(self.DEFAULT_STYLE)
+    layout = qt.QGridLayout()
+    self.setLayout(layout)
+
+    for index, (label, tagValue) in enumerate(self.labelsAttributeNames.iteritems()):
+      setattr(self, self.DEFAULT_ATTRIBUTE_PREFIX+tagValue, qt.QLabel())
+      layout.addWidget(qt.QLabel(label), index, 0, 1, 1, qt.Qt.AlignLeft)
+      layout.addWidget(getattr(self, self.DEFAULT_ATTRIBUTE_PREFIX+tagValue), index, 1, 1, 2)
+
+  def setInformation(self, tagName, value, toolTip=None):
+    label = getattr(self, self.DEFAULT_ATTRIBUTE_PREFIX+tagName)
+    if label:
+      if tagName in [DICOMTAGS.STUDY_DATE, DICOMTAGS.PATIENT_BIRTH_DATE]:
+        value = self.formatDate(value)
+      elif tagName == DICOMTAGS.PATIENT_NAME:
+        value = self.formatPatientName(value)
+      label.text = value if not "date" in tagName.lower() else self.formatDate(value)
+      if toolTip:
+        label.toolTip = toolTip
+
+  def getInformation(self, tagName):
+    label = getattr(self, self.DEFAULT_ATTRIBUTE_PREFIX+tagName)
+    if label:
+      return label.text
+    return ""
+
+  def formatDate(self, dateToFormat, format="%Y-%b-%d"):
+    if dateToFormat and dateToFormat != "":
+      formatted = datetime.date(int(dateToFormat[0:4]), int(dateToFormat[4:6]), int(dateToFormat[6:8]))
+      return formatted.strftime(format)
+    return "No Date found"
+
+  def formatPatientName(self, name):
+    if name != "":
+      splitted = name.split('^')
+      try:
+        name = splitted[1] + ", " + splitted[0]
+      except IndexError:
+        name = splitted[0]
+    return name
+
+
+class SourceFileInformationWatchBox(BasicInformationWatchBox):
+
+  @property
+  def sourceFile(self):
+    return self._sourceFile
+
+  @sourceFile.setter
+  def sourceFile(self, filePath):
+    self._sourceFile = filePath
+    if filePath:
+      self.updateInformation()
+    else:
+      self.reset()
+
+  def __init__(self, labelsAttributeNames, title="", sourceFile=None, parent=None):
+    super(SourceFileInformationWatchBox, self).__init__(labelsAttributeNames, title, parent)
+    if sourceFile:
+      self.sourceFile = sourceFile
+
+  def updateInformation(self):
+    if self.sourceFile.endswith('.xml'):
+      self.updateInformationFromXML()
+    else:
+      self.updateInformationFromDICOM()
+
+  def updateInformationFromXML(self):
+    dom = xml.dom.minidom.parse(self._sourceFile)
+
+    def findElement(name):
+      els = dom.getElementsByTagName('element')
+      for e in els:
+        if e.getAttribute('name') == name:
+          try:
+            return e.childNodes[0].nodeValue
+          except IndexError:
+            return ""
+
+    for tagName in self.labelsAttributeNames.values():
+      value = findElement(tagName)
+      self.setInformation(tagName, value, toolTip=value)
+
+  def updateInformationFromDICOM(self):
+    for tagName in self.labelsAttributeNames.values():
+      value = ModuleLogicMixin.getDICOMValue(self.sourceFile, tagName, "")
+      self.setInformation(tagName, value, toolTip=value)
