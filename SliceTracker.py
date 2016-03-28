@@ -1397,7 +1397,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setTargetVisibility(self.logic.preopTargets, show=True)
     self.targetTableModel.targetList = self.logic.preopTargets
     self.fiducialSelector.setCurrentNode(self.logic.preopTargets)
-    self.logic.styleDisplayNode(self.logic.preopTargets.GetDisplayNode())
+    self.logic.preopTargets.SetAndObserveDisplayNodeID(self.logic.preopTargetDisplayNode.GetID())
     self.markupsLogic.JumpSlicesToNthPointInMarkup(self.logic.preopTargets.GetID(), 0)
     self.targetTable.selectRow(0)
 
@@ -1879,7 +1879,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.progress = None
     for targets in self.currentResult.targets.values():
       if targets:
-        targets.SetAndObserveDisplayNodeID(self.logic.displayNode.GetID())
+        targets.SetAndObserveDisplayNodeID(self.logic.intraopTargetDisplayNode.GetID())
     self.finalizeRegistrationStep()
     self.registrationGroupBox.hide()
     logging.debug('Re-Registration is done')
@@ -2064,12 +2064,14 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.pathOrigins = []  ## Origins of needle paths (after transformation by parent transform node)
     self.pathVectors = []  ## Normal vectors of needle paths (after transformation by parent transform node)
 
-    # TODO: do we need to load the color table?
     from mpReview import mpReviewLogic
     self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.defaultColorFile)
     self.clearOldNodes()
     self.loadZFrameModel()
     self.loadTemplateConfigFile()
+    self.intraopTargetDisplayNode = self.setupDisplayNode(starBurst=True)
+    self.preopTargetDisplayNode = self.setupDisplayNode(starBurst=True)
+    self.volumeClipPointsDisplayNode = self.setupDisplayNode()
 
   def configureTimers(self):
     self.importTimer = qt.QTimer()
@@ -2087,6 +2089,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_PATH_NAME)
     self.clearOldNodesByName(self.ZFRAME_MODEL_NAME)
     self.clearOldNodesByName(self.COMPUTED_NEEDLE_MODEL_NAME)
+
+  def setupDisplayNode(self, starBurst=False):
+    displayNode = slicer.vtkMRMLMarkupsDisplayNode()
+    slicer.mrmlScene.AddNode(displayNode)
+    displayNode.SetTextScale(0)
+    displayNode.SetGlyphScale(2.0)
+    if starBurst:
+      displayNode.SetGlyphType(slicer.vtkMRMLAnnotationPointDisplayNode.StarBurst2D)
+    return displayNode
 
   def isTrackingPossible(self, series):
     return not (self.registrationResults.registrationResultWasApproved(series) or
@@ -2265,7 +2276,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def onDICOMStoreSCPProcessStateChanged(self, newState):
     messageCodes = {0:"DICOM StoreSCP not running", 1:"DICOM StoreSCP starting", 2:"DICOM StoreSCP running"}
     if newState == 0:
-      del slicer.dicomListener
+      del self.storeSCPProcess
     slicer.util.showStatusMessage(messageCodes[newState] if newState in messageCodes.keys() else "")
 
   def getSeriesInfoFromXML(self, f):
@@ -2515,23 +2526,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.clippingModelNode = slicer.vtkMRMLModelNode()
     self.clippingModelNode.SetName('clipModelNode')
     slicer.mrmlScene.AddNode(self.clippingModelNode)
-
     self.createClippingModelDisplayNode()
     self.createMarkupAndDisplayNodeForFiducials()
     self.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateModel)
+    self.inputMarkupNode.SetAndObserveDisplayNodeID(self.volumeClipPointsDisplayNode.GetID())
 
   def createMarkupAndDisplayNodeForFiducials(self):
-    self.displayNode = slicer.vtkMRMLMarkupsDisplayNode()
-    slicer.mrmlScene.AddNode(self.displayNode)
     self.inputMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
     self.inputMarkupNode.SetName('inputMarkupNode')
     slicer.mrmlScene.AddNode(self.inputMarkupNode)
-    self.inputMarkupNode.SetAndObserveDisplayNodeID(self.displayNode.GetID())
-    self.styleDisplayNode(self.displayNode)
-
-  def styleDisplayNode(self, displayNode):
-    displayNode.SetTextScale(0)
-    displayNode.SetGlyphScale(2.0)
 
   def createClippingModelDisplayNode(self):
     clippingModelDisplayNode = slicer.vtkMRMLModelDisplayNode()
