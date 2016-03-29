@@ -2,13 +2,13 @@ import EditorLib, DICOMLib
 import csv, re, numpy
 import os, sys, shutil, datetime, logging
 import slicer, ctk, vtk, qt
-from collections import OrderedDict
 
 from Editor import EditorWidget
 from SliceTrackerUtils.Constants import DICOMTAGS, COLOR, STYLE, SliceTrackerConstants
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
 from SliceTrackerUtils.ZFrameRegistration import ZFrameRegistration
-from SliceTrackerUtils.helpers import SliceAnnotation, ExtendedQMessageBox, SourceFileInformationWatchBox
+from SliceTrackerUtils.helpers import SliceAnnotation, ExtendedQMessageBox
+from SliceTrackerUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SliceTrackerUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from slicer.ScriptedLoadableModule import *
 
@@ -78,7 +78,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   @intraopDataDir.setter
   def intraopDataDir(self, path):
-    self.patientWatchBox.setInformation("IntraopStudyDate", "")
+    self.intraopWatchBox.sourceFile = None
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
     self.logic.startStoreSCP(slicer.util.warningDisplay)
@@ -139,11 +139,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def updateOutputFolder(self):
     if self.outputDir and not os.path.exists(self.outputDir):
       self.logic.createDirectory(self.outputDir)
-    if os.path.exists(self.outputDir) and self.patientWatchBox.getInformaton(DICOMTAGS.PATIENT_ID) != '' \
-            and self.patientWatchBox.getInformaton("IntraopStudyDate") != '':
+    if os.path.exists(self.outputDir) and self.patientWatchBox.getInformation("PatientID") != '' \
+            and self.intraopWatchBox.getInformation("StudyDate") != '':
       time = qt.QTime().currentTime().toString().replace(":", "")
       date = str(qt.QDate().currentDate())
-      finalDirectory = self.patientWatchBox.getInformaton(DICOMTAGS.PATIENT_ID) + "-biopsy-" + date + "-" + time
+      finalDirectory = self.patientWatchBox.getInformation("PatientID") + "-biopsy-" + date + "-" + time
       self.generatedOutputDirectory = os.path.join(self.outputDir, finalDirectory, "MRgBiopsy")
       self.caseCompletedButton.enabled = True
       self.collapsibleDirectoryConfigurationArea.collapsed = True
@@ -152,13 +152,20 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.caseCompletedButton.enabled = False
 
   def createPatientWatchBox(self):
-    watchBoxInformation = OrderedDict([('Patient ID: ', DICOMTAGS.PATIENT_ID),
-                                       ('Patient Name: ', DICOMTAGS.PATIENT_NAME),
-                                       ('Date of Birth: ', DICOMTAGS.PATIENT_BIRTH_DATE),
-                                       ('Preop Study Date: ', DICOMTAGS.STUDY_DATE),
-                                       ('Intraop Study Date: ', "IntraopStudyDate")])
-    self.patientWatchBox = SourceFileInformationWatchBox(watchBoxInformation)
+    watchBoxInformation = [WatchBoxAttribute('PatientID', 'Patient ID: ', DICOMTAGS.PATIENT_ID),
+                           WatchBoxAttribute('PatientName', 'Patient Name: ', DICOMTAGS.PATIENT_NAME),
+                           WatchBoxAttribute('DOB', 'Date of Birth: ', DICOMTAGS.PATIENT_BIRTH_DATE),
+                           WatchBoxAttribute('StudyDate', 'Preop Study Date: ', DICOMTAGS.PATIENT_ID)]
+    self.patientWatchBox = DICOMBasedInformationWatchBox(watchBoxInformation)
     self.layout.addWidget(self.patientWatchBox)
+
+    intraopWatchBoxInformation = [WatchBoxAttribute('StudyDate', 'Intraop Study Date: ', DICOMTAGS.STUDY_DATE),
+                                  WatchBoxAttribute('CurrentSeries', 'Current Series: ', [DICOMTAGS.SERIES_NUMBER,
+                                                                                          DICOMTAGS.SERIES_DESCRIPTION])]
+    self.intraopWatchBox = DICOMBasedInformationWatchBox(intraopWatchBoxInformation)
+    self.registrationDetailsButton = self.createButton("", icon=self.settingsIcon, styleSheet="border:none;",
+                                                       maximumWidth=16)
+    self.layout.addWidget(self.intraopWatchBox)
 
   def createCaseInformationArea(self):
     self.casesRootDirectoryButton = self.createDirectoryButton(text="Choose cases root location",
@@ -175,30 +182,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.layout.addWidget(self.collapsibleDirectoryConfigurationArea)
 
   def createCaseWatchBox(self):
-    watchBoxInformation = OrderedDict([('Directory: ', "CurrentCaseDirectory"),
-                                       ('Preop DICOM Directory: ', "CurrentPreopDICOMDirectory"),
-                                       ('Intraop DICOM Directory: ', "CurrentIntraopDICOMDirectory"),
-                                       ('mpReview Directory: ', "mpReviewDirectory")])
-    self.caseWatchBox = SourceFileInformationWatchBox(watchBoxInformation, title="Current Case")
-
-  def createRegistrationWatchBox(self):
-    self.registrationWatchBox, registrationWatchBoxLayout = self._createWatchBox(maximumHeight=40)
-    self.currentRegisteredSeries = qt.QLabel('None')
-    self.registrationDetailsButton = self.createButton("", icon=self.settingsIcon, styleSheet="border:none;",
-                                                       maximumWidth=16)
-    self.registrationDetailsButton.setCursor(qt.Qt.PointingHandCursor)
-    registrationWatchBoxLayout.addWidget(self.createHLayout([qt.QLabel('Current Series:'), self.currentRegisteredSeries,
-                                                             self.registrationDetailsButton], margin=1))
-    self.registrationWatchBox.hide()
-
-  def _createWatchBox(self, maximumHeight):
-    watchBox = qt.QGroupBox()
-    watchBox.maximumHeight = maximumHeight
-    watchBox.setStyleSheet(STYLE.LIGHT_GRAY_BACKGROUND)
-    watchBoxLayout = qt.QGridLayout()
-    watchBox.setLayout(watchBoxLayout)
-    self.layout.addWidget(watchBox)
-    return watchBox, watchBoxLayout
+    watchBoxInformation = [WatchBoxAttribute('CurrentCaseDirectory', 'Directory'),
+                           WatchBoxAttribute('CurrentPreopDICOMDirectory', 'Preop DICOM Directory: '),
+                           WatchBoxAttribute('CurrentIntraopDICOMDirectory', 'Intraop DICOM Directory: '),
+                           WatchBoxAttribute('mpReviewDirectory', 'mpReview Directory: ')]
+    self.caseWatchBox = BasicInformationWatchBox(watchBoxInformation, title="Current Case")
 
   def setupIcons(self):
     self.cancelSegmentationIcon = self.createIcon('icon-cancelSegmentation.png')
@@ -247,7 +235,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.createPatientWatchBox()
     self.createCaseInformationArea()
-    self.createRegistrationWatchBox()
     self.setupRegistrationWatchBox()
     self.settingsArea()
 
@@ -673,7 +660,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
                               windowTitle="SliceTracker")
 
   def onReturnFromMpReview(self):
-    # TODO: unload mpReview
     slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(self.onReturnFromMpReview)
     self.layoutManager.selectModule(self.moduleName)
     self.preopDataDir = self.logic.getFirstStudyFromMpReviewPreprocessed(self.mpReviewPreprocessedOutput)
@@ -705,9 +691,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     from mpReview import mpReviewLogic
 
     if self.logic.hasCaseBeenCompleted(self.currentCaseDirectory):
-      # TODO: reconstruct results from SliceTrackerOutputs if available or continue case
-      pass
-    elif mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
+      if not slicer.util.confirmYesNoDisplay("The selected case has already been completed. Would you like to reopen it?"):
+        return
+        # TODO: reconstruct results from SliceTrackerOutputs if available or continue case
+    if mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
       self.preopDataDir = self.logic.getFirstStudyFromMpReviewPreprocessed(self.mpReviewPreprocessedOutput)
       self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
     self.updateCaseWatchbox()
@@ -846,7 +833,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       try:
         result = self.registrationResults.getResultsBySeries(selectedSeries)[0]
       except IndexError:
-        volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
+        volume, _ = self.logic.getOrCreateVolumeForSeries(selectedSeries)
         self.setupRedSlicePreview(volume)
         return
       self.setupRedSlicePreview(result.fixedVolume)
@@ -1145,6 +1132,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.logic.closeCase(self.currentCaseDirectory)
     self.caseCompletedButton.enabled = False
     self.patientWatchBox.sourceFile = None
+    self.intraopWatchBox.sourceFile = None
+    self.caseWatchBox.reset()
     self.logic.stopWatching()
     self.logic.stopStoreSCP()
     self.createNewCaseButton.enabled = True
@@ -1313,7 +1302,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def loadPreopData(self):
     dicomFileName = self.logic.getFileList(self.preopDICOMDataDirectory)[0]
     self.patientWatchBox.sourceFile = os.path.join(self.preopDICOMDataDirectory, dicomFileName)
-    self.currentID = self.patientWatchBox.getInformation(DICOMTAGS.PATIENT_ID)
+    self.currentID = self.patientWatchBox.getInformation("PatientID")
     message = self.loadMpReviewProcessedData()
     if message:
       slicer.util.warningDisplay(message, winowTitle="SliceTracker")
@@ -1388,28 +1377,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def checkForPatientIdSimilarityAndGetSeriesNumbers(self, fileList):
     newSeries = {}
+    acceptedSeriesNumbers = []
     for currentFile in fileList:
       currentFile = os.path.join(self.intraopDataDir, currentFile)
       seriesNumber = int(self.logic.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
       if seriesNumber not in newSeries.keys():
         patientID = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
-        studyDate = self.logic.extractDateFromDICOMFile(currentFile, DICOMTAGS.STUDY_DATE)
-        newSeries[seriesNumber] = [patientID, studyDate]
+        if patientID is not None and patientID != self.currentID:
+          if not slicer.util.confirmYesNoDisplay(message='WARNING: Preop data of Patient ID ' + self.currentID + ' was selected, but '
+                                          ' data of patient with ID ' + patientID + ' just arrived in the folder, which '
+                                          'you selected for incoming data.\nDo you want to keep this series?',
+                                                 title="PatientsID Not Matching", windowTitle="SliceTracker"):
+            self.logic.deleteSeriesFromSeriesList(seriesNumber)
+            continue
+        acceptedSeriesNumbers.append(seriesNumber)
+        newSeries[seriesNumber] = patientID
 
-    acceptedSeriesNumbers = []
-    for seriesNumber, values in newSeries.iteritems():
-      patientID, studyDate = values
-      if patientID is not None and patientID != self.currentID:
-        if not slicer.util.confirmYesNoDisplay(message='WARNING: Preop data of Patient ID ' + self.currentID + ' was selected, but '
-                                        ' data of patient with ID ' + patientID + ' just arrived in the folder, which '
-                                        'you selected for incoming data.\nDo you want to keep this series?',
-                                               title="PatientsID Not Matching", windowTitle="SliceTracker"):
-          self.logic.deleteSeriesFromSeriesList(seriesNumber)
-          continue
-      if self.patientWatchBox.getInformation("IntraopStudyDate") == '':
-        self.patientWatchBox.setInformation("IntraopStudyDate", studyDate)
-        self.updateOutputFolder()
-      acceptedSeriesNumbers.append(seriesNumber)
     acceptedSeriesNumbers.sort()
     return acceptedSeriesNumbers
 
@@ -1491,7 +1474,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def activateEvaluationStep(self):
     self.evaluationMode = True
-    self.currentRegisteredSeries.setText(self.logic.currentIntraopVolume.GetName())
     self.targetingGroupBox.hide()
     self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTable, 4, 0)
     self.registrationEvaluationGroupBox.show()
@@ -1532,7 +1514,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.hideAllLabels()
     if ratingResult:
       self.currentResult.score = ratingResult
-    self.registrationWatchBox.hide()
     self.updateIntraopSeriesSelectorTable()
     self.registrationEvaluationGroupBox.hide()
     self.targetingGroupBoxLayout.addWidget(self.targetTable, 2, 0, 1, 2)
@@ -1576,7 +1557,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         break
 
   def skipSeries(self, seriesText):
-    volume = self.logic.getOrCreateVolumeForSeries(seriesText)
+    volume, _ = self.logic.getOrCreateVolumeForSeries(seriesText)
     name, suffix = self.logic.getRegistrationResultNameAndGeneratedSuffix(volume.GetName())
     result = self.registrationResults.createResult(name+suffix)
     result.fixedVolume = volume
@@ -1646,7 +1627,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
                                               self.fixedLabelSelector.currentNode())
     self.applyRegistrationButton.setEnabled(1 if self.inputsAreSet() else 0)
     self.editorWidgetButton.setEnabled(True)
-    self.registrationWatchBox.show()
 
   def setupScreenForSegmentationComparison(self, viewName, volume, label):
     compositeNode = getattr(self, viewName+"CompositeNode")
@@ -1660,33 +1640,37 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.disableTargetMovingMode()
     self.removeSliceAnnotations()
     self.targetTableModel.computeCursorDistances = False
-    if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
-      self.openZFrameRegistrationStep()
-      return
-    else:
-      if self.currentResult is None or \
-         self.registrationResults.getMostRecentApprovedCoverProstateRegistration() is None or \
-         self.logic.retryMode or self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
-        self.initiateOrRetryTracking()
-      else:
-        self.repeatRegistrationForCurrentSelection()
-      self.activateEvaluationStep()
-
-  def openZFrameRegistrationStep(self):
-    self.resetZFrameRegistration()
-    volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
+    volume, files = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
+    firstRun = self.intraopWatchBox.sourceFile is None
+    self.intraopWatchBox.sourceFile = files[0]
+    if firstRun:
+      self.updateOutputFolder()
     if volume:
-      self.evaluationMode = True
-      self.targetingGroupBox.hide()
-      self.zFrameRegistrationGroupBox.show()
-      self.setupFourUpView(volume)
-      self.redSliceNode.SetSliceVisible(True)
-      self.showZFrameModelButton.checked = True
-      self.showTemplateButton.checked = True
-      self.showTemplatePathButton.checked = True
-      self.addROIObserver()
-      self.activateCreateROIMode()
-      self.addZFrameInstructions()
+      if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
+        self.openZFrameRegistrationStep(volume)
+        return
+      else:
+        if self.currentResult is None or \
+           self.registrationResults.getMostRecentApprovedCoverProstateRegistration() is None or \
+           self.logic.retryMode or self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
+          self.initiateOrRetryTracking(volume)
+        else:
+          self.repeatRegistrationForCurrentSelection(volume)
+        self.activateEvaluationStep()
+
+  def openZFrameRegistrationStep(self, volume):
+    self.resetZFrameRegistration()
+    self.evaluationMode = True
+    self.targetingGroupBox.hide()
+    self.zFrameRegistrationGroupBox.show()
+    self.setupFourUpView(volume)
+    self.redSliceNode.SetSliceVisible(True)
+    self.showZFrameModelButton.checked = True
+    self.showTemplateButton.checked = True
+    self.showTemplatePathButton.checked = True
+    self.addROIObserver()
+    self.activateCreateROIMode()
+    self.addZFrameInstructions()
 
   def addZFrameInstructions(self, step=1):
     self.zFrameStep = step
@@ -1750,7 +1734,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     progress = slicer.util.createProgressDialog(maximum=2, value=1)
     progress.labelText = '\nZFrame registration'
     self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
-    zFrameTemplateVolume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
+    zFrameTemplateVolume, _ = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
     self.zFrameCroppedVolume = self.logic.createCroppedVolume(zFrameTemplateVolume, self.coverTemplateROI)
     self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume)
     self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume)
@@ -1796,16 +1780,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.openTargetingStep()
     self.save()
 
-  def initiateOrRetryTracking(self):
-    volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
-    if volume:
-      self.logic.currentIntraopVolume = volume
-      self.disableTargetTable()
-      self.segmentationGroupBox.show()
-      self.editorWidgetButton.setEnabled(False)
-      self.activateRegistrationResultsArea(collapsed=True, enabled=False)
-      self.registrationWatchBox.hide()
-      self.configureSegmentationMode()
+  def initiateOrRetryTracking(self, volume):
+    self.logic.currentIntraopVolume = volume
+    self.disableTargetTable()
+    self.segmentationGroupBox.show()
+    self.editorWidgetButton.setEnabled(False)
+    self.activateRegistrationResultsArea(collapsed=True, enabled=False)
+    self.configureSegmentationMode()
 
   def activateRegistrationResultsArea(self, collapsed, enabled):
     self.collapsibleRegistrationArea.collapsed = collapsed
@@ -1816,13 +1797,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetTable.clearSelection()
     self.targetTable.enabled = False
 
-  def repeatRegistrationForCurrentSelection(self):
+  def repeatRegistrationForCurrentSelection(self, volume):
     logging.debug('Performing Re-Registration')
-    selectedSeries = self.intraopSeriesSelector.currentText
-    self.skipAllUnregisteredPreviousSeries(selectedSeries)
-    volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
-    if volume:
-      self.logic.currentIntraopVolume = volume
+    self.skipAllUnregisteredPreviousSeries(self.intraopSeriesSelector.currentText)
+    self.logic.currentIntraopVolume = volume
     self.onInvokeRegistration(initial=False)
     self.segmentationGroupBox.hide()
     self.activateRegistrationResultsArea(collapsed=False, enabled=True)
@@ -1914,7 +1892,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.updateRegistrationResultSelector()
     self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
     self.setupRegistrationResultView()
-    self.registrationWatchBox.show()
     self.segmentationGroupBox.hide()
     self.activateRegistrationResultsArea(collapsed=False, enabled=True)
     self.evaluationButtonsGroupBox.enabled = True
@@ -2115,7 +2092,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     return caseNumber
 
   def completeCase(self, directory):
-    self.storeSCPProcess()
+    self.stopStoreSCP()
     if os.path.exists(directory):
       if self.getDirectorySize(directory) > 0:
         open(os.path.join(directory, ".completed"), 'a').close()
@@ -2251,8 +2228,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
   def onDICOMStoreSCPProcessStateChanged(self, newState):
     messageCodes = {0:"DICOM StoreSCP not running", 1:"DICOM StoreSCP starting", 2:"DICOM StoreSCP running"}
-    if newState == 0:
-      del self.storeSCPProcess
     slicer.util.showStatusMessage(messageCodes[newState] if newState in messageCodes.keys() else "")
 
   def getSeriesInfoFromXML(self, f):
@@ -2384,15 +2359,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         self.loadableList[selectedSeries].append(currentFile)
 
   def getOrCreateVolumeForSeries(self, series):
+    files = self.loadableList[series]
     try:
       volume = self.alreadyLoadedSeries[series]
     except KeyError:
-      files = self.loadableList[series]
       loadables = self.scalarVolumePlugin.examine([files])
       volume = self.scalarVolumePlugin.load(loadables[0])
       volume.SetName(loadables[0].name)
       self.alreadyLoadedSeries[series] = volume
-    return volume
+    return volume, files
 
   def importDICOMSeries(self):
     indexer = ctk.ctkDICOMIndexer()
