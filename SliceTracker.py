@@ -1,10 +1,11 @@
 import EditorLib, DICOMLib
-import csv, re, numpy
+import csv, re, numpy, json
 import os, sys, shutil, datetime, logging
 import slicer, ctk, vtk, qt
+from collections import OrderedDict
 
 from Editor import EditorWidget
-from SliceTrackerUtils.Constants import DICOMTAGS, COLOR, STYLE, SliceTrackerConstants
+from SliceTrackerUtils.Constants import DICOMTAGS, COLOR, STYLE, SliceTrackerConstants, FileExtension
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
 from SliceTrackerUtils.ZFrameRegistration import ZFrameRegistration
 from SliceTrackerUtils.helpers import SliceAnnotation, ExtendedQMessageBox
@@ -109,6 +110,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def outputDir(self):
     return os.path.join(self.currentCaseDirectory, "SliceTrackerOutputs")
 
+  @property
+  def generatedOutputDirectory(self):
+    return self._generatedOutputDirectory
+
+  @generatedOutputDirectory.setter
+  def generatedOutputDirectory(self, path):
+    print path
+    exists = os.path.exists(path)
+    self._generatedOutputDirectory = path if exists else ""
+    self.caseCompletedButton.enabled = exists
+
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
     self.logic = SliceTrackerLogic()
@@ -137,19 +149,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.disconnectCrosshairNode()
 
   def updateOutputFolder(self):
-    if self.outputDir and not os.path.exists(self.outputDir):
-      self.logic.createDirectory(self.outputDir)
-    if os.path.exists(self.outputDir) and self.patientWatchBox.getInformation("PatientID") != '' \
+    if os.path.exists(self.generatedOutputDirectory):
+      return
+    if self.patientWatchBox.getInformation("PatientID") != '' \
             and self.intraopWatchBox.getInformation("StudyDate") != '':
-      time = qt.QTime().currentTime().toString().replace(":", "")
-      date = str(qt.QDate().currentDate())
-      finalDirectory = self.patientWatchBox.getInformation("PatientID") + "-biopsy-" + date + "-" + time
+      if self.outputDir and not os.path.exists(self.outputDir):
+        self.logic.createDirectory(self.outputDir)
+      finalDirectory = self.patientWatchBox.getInformation("PatientID") + "-biopsy-" + \
+                       str(qt.QDate().currentDate()) + "-" + qt.QTime().currentTime().toString().replace(":", "")
       self.generatedOutputDirectory = os.path.join(self.outputDir, finalDirectory, "MRgBiopsy")
-      self.caseCompletedButton.enabled = True
-      self.collapsibleDirectoryConfigurationArea.collapsed = True
     else:
       self.generatedOutputDirectory = ""
-      self.caseCompletedButton.enabled = False
 
   def createPatientWatchBox(self):
     watchBoxInformation = [WatchBoxAttribute('PatientID', 'Patient ID: ', DICOMTAGS.PATIENT_ID),
@@ -266,6 +276,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.zFrameClickObserver = None
     self.zFrameInstructionAnnotation = None
+
+    self.preopDicomReceiver = None
+    self._generatedOutputDirectory = ""
 
   def settingsArea(self):
     self.collapsibleSettingsArea = ctk.ctkCollapsibleButton()
@@ -687,16 +700,31 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       slicer.util.warningDisplay("The selected case directory seems not to be valid", windowTitle="SliceTracker")
       self.closeCase()
       return
+    else:
+      self.loadCaseData()
 
+  def loadCaseData(self):
+    self.continueOldCase = False
     from mpReview import mpReviewLogic
-
     if self.logic.hasCaseBeenCompleted(self.currentCaseDirectory):
       if not slicer.util.confirmYesNoDisplay("The selected case has already been completed. Would you like to reopen it?"):
         return
-        # TODO: reconstruct results from SliceTrackerOutputs if available or continue case
-    if mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
-      self.preopDataDir = self.logic.getFirstStudyFromMpReviewPreprocessed(self.mpReviewPreprocessedOutput)
-      self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
+    outputDir = self.outputDir
+    savedCases = [os.path.join(outputDir, d) for d in os.listdir(outputDir) if os.path.isdir(os.path.join(outputDir, d))]
+    if len(savedCases) > 0:
+      latestCase = max(savedCases, key=os.path.getmtime)
+      if slicer.util.confirmYesNoDisplay("The selected case has not been completed. Do you want to continue this case?"):
+        self.continueOldCase = True
+        self.preopDataDir = self.logic.getFirstStudyFromMpReviewPreprocessed(self.mpReviewPreprocessedOutput)
+        latestCase = os.path.join(latestCase, "MRgBiopsy")
+        self.logic.loadFromJSON(latestCase)
+        self.generatedOutputDirectory = latestCase
+        self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
+        self.logic.completeJSONLoadedResultsWithIntraop()
+    else:
+      if mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
+        self.preopDataDir = self.logic.getFirstStudyFromMpReviewPreprocessed(self.mpReviewPreprocessedOutput)
+        self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
     self.updateCaseWatchbox()
 
   def updateCaseWatchbox(self):
@@ -826,6 +854,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
                                                        fontSize=15, yPos=20))
 
   def configureViewersForSelectedIntraopSeries(self, selectedSeries):
+    volume, files = self.logic.getOrCreateVolumeForSeries(selectedSeries)
+    firstRun = self.intraopWatchBox.sourceFile is None
+    self.intraopWatchBox.sourceFile = files[0]
+    if firstRun:
+      self.updateOutputFolder()
     if self.registrationResults.registrationResultWasApproved(selectedSeries) or \
             self.registrationResults.registrationResultWasRejected(selectedSeries):
       self.setupSideBySideRegistrationView()
@@ -833,7 +866,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       try:
         result = self.registrationResults.getResultsBySeries(selectedSeries)[0]
       except IndexError:
-        volume, _ = self.logic.getOrCreateVolumeForSeries(selectedSeries)
         self.setupRedSlicePreview(volume)
         return
       self.setupRedSlicePreview(result.fixedVolume)
@@ -1128,7 +1160,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       stopFlickering()
 
   def closeCase(self):
-    # TODO: think about what else to release
+    if self.preopDicomReceiver:
+      self.preopDicomReceiver.stop()
     self.logic.closeCase(self.currentCaseDirectory)
     self.caseCompletedButton.enabled = False
     self.patientWatchBox.sourceFile = None
@@ -1144,6 +1177,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.save(showDialog=True)
     self.logic.completeCase(self.currentCaseDirectory)
     self.closeCase()
+    self.intraopSeriesSelector.clear()
+    self.logic.resetAndInitializeData()
 
   def save(self, showDialog=False):
     if not os.path.exists(self.outputDir) or self.generatedOutputDirectory == "":
@@ -1320,7 +1355,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
     self.configureRedSliceNodeForPreopData()
-    self.promptUserAndApplyBiasCorrectionIfNeeded()
+    if not self.continueOldCase:
+      self.promptUserAndApplyBiasCorrectionIfNeeded()
 
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
     self.setDefaultFOV(self.redSliceLogic, self.logic.preopVolume)
@@ -1509,11 +1545,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.logic.removeNeedleModelNode()
     self.targetTableModel.computeCursorDistances = False
     self.evaluationMode = False
+    if ratingResult:
+      self.currentResult.score = ratingResult
     self.save()
     self.disconnectCrosshairNode()
     self.hideAllLabels()
-    if ratingResult:
-      self.currentResult.score = ratingResult
     self.updateIntraopSeriesSelectorTable()
     self.registrationEvaluationGroupBox.hide()
     self.targetingGroupBoxLayout.addWidget(self.targetTable, 2, 0, 1, 2)
@@ -1547,7 +1583,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def skipAllUnregisteredPreviousSeries(self, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-    for series in self.logic.seriesList:
+    for series in [series for series in self.logic.seriesList if not self.COVER_TEMPLATE in series]:
       currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
       if currentSeriesNumber < selectedSeriesNumber:
         results = self.registrationResults.getResultsBySeriesNumber(currentSeriesNumber)
@@ -1641,10 +1677,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.removeSliceAnnotations()
     self.targetTableModel.computeCursorDistances = False
     volume, files = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
-    firstRun = self.intraopWatchBox.sourceFile is None
-    self.intraopWatchBox.sourceFile = files[0]
-    if firstRun:
-      self.updateOutputFolder()
     if volume:
       if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
         self.openZFrameRegistrationStep(volume)
@@ -1937,6 +1969,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   ZFRAME_TEMPLATE_PATH_NAME = 'NeedleGuideNeedlePath'
   COMPUTED_NEEDLE_MODEL_NAME = 'ComputedNeedleModel'
   MPREVIEW_COLORS_FILE_NAME = 'Resources/Colors/mpReviewColors.csv'
+  DEFAULT_JSON_FILE_NAME = "results.json"
 
   @property
   def intraopDataDir(self):
@@ -2024,7 +2057,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.loadTemplateConfigFile()
     self.intraopTargetDisplayNode = self.setupDisplayNode(starBurst=True)
     self.preopTargetDisplayNode = self.setupDisplayNode(starBurst=True)
-    self.volumeClipPointsDisplayNode = self.setupDisplayNode()
 
   def configureTimers(self):
     self.importTimer = qt.QTimer()
@@ -2062,6 +2094,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self._incomingDataCallback = func
 
   def createNewCase(self, destinationDir):
+    self.continueOldCase = False
     newCaseDirectoryName = "Case"+self.getNextCaseNumber(destinationDir)+datetime.date.today().strftime("-%Y%m%d")
     newCaseDirectory = os.path.join(destinationDir, newCaseDirectoryName)
     os.mkdir(newCaseDirectory)
@@ -2156,6 +2189,81 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         self.markupsLogic.SetAllMarkupsLocked(self.preopTargets, True)
     return success
 
+  def loadFromJSON(self, directory):
+    filename = os.path.join(directory, self.DEFAULT_JSON_FILE_NAME)
+    if not os.path.exists(filename):
+      return
+    self.registrationResults.resetAndInitializeData()
+    with open(filename) as data_file:
+      data = json.load(data_file)
+      if data["VOLUME-PREOP-N4"]:
+        self.loadBiasCorrectedImage(os.path.join(directory, data["VOLUME-PREOP-N4"]))
+      self.loadZFrameTransform(os.path.join(directory, data["zFrameTransform"]))
+      for name, jsonResult in data["results"].iteritems():
+        result = self.registrationResults.createResult(name)
+        for attribute, value in jsonResult.iteritems():
+          if attribute == 'volumes':
+            self._loadResultFileData(value, directory, slicer.util.loadVolume, result.setVolume)
+          elif attribute == 'transforms':
+            self._loadResultFileData(value, directory, slicer.util.loadTransform, result.setTransform)
+          elif attribute == 'targets':
+            self._loadResultFileData(value, directory, slicer.util.loadMarkupsFiducialList, result.setTargets)
+          elif attribute in ['fixedLabel', 'movingLabel']:
+            if value:
+              _, label = slicer.util.loadLabelVolume(os.path.join(directory, value), returnNode=True)
+              setattr(result, attribute, label)
+          else:
+            setattr(result, attribute, value)
+    self.postProcessJSONLoadedData(directory)
+    return True
+
+  def _loadResultFileData(self, dictionary, directory, loadFunction, setFunction):
+    for regType, filename in dictionary.iteritems():
+      if not filename:
+        continue
+      _, data = loadFunction(os.path.join(directory, filename), returnNode=True)
+      setFunction(regType, data)
+
+  def postProcessJSONLoadedData(self, directory):
+    approvedCoverProstate = self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
+    if approvedCoverProstate:
+      success, targets = slicer.util.loadMarkupsFiducialList(
+        os.path.join(directory, "PreopTargets" + FileExtension.FCSV),
+        returnNode=True)
+      approvedCoverProstate.originalTargets = targets
+      for result in [result for result in self.registrationResults.getResultsAsList() if result is not approvedCoverProstate]:
+        if SliceTrackerConstants.COVER_PROSTATE in result.name:
+          result.originalTargets = targets
+        else:
+          result.originalTargets = approvedCoverProstate.approvedTargets
+
+  def completeJSONLoadedResultsWithIntraop(self):
+    for series in self.seriesList:
+      results = self.registrationResults.getResultsBySeries(series)
+      for result in results:
+        if SliceTrackerConstants.COVER_PROSTATE in result.name:
+          result.movingVolume = self.preopVolume
+        else:
+          result.movingVolume = self.registrationResults.getMostRecentApprovedCoverProstateRegistration().fixedVolume
+        result.fixedVolume = self.getOrCreateVolumeForSeries(series)[0]
+
+  def loadZFrameTransform(self, transformFile):
+    self.zFrameRegistrationSuccessful = False
+    if not os.path.exists(transformFile):
+      return False
+    success, self.zFrameTransform = slicer.util.loadTransform(transformFile, returnNode=True)
+    self.zFrameRegistrationSuccessful = success
+    self.applyZFrameTransform(self.zFrameTransform)
+    return success
+
+  def loadBiasCorrectedImage(self, n4File):
+    self.biasCorrectionDone = False
+    if not os.path.exists(n4File):
+      return False
+    self.biasCorrectionDone = True
+    success, self.preopVolume = slicer.util.loadVolume(n4File, returnNode=True)
+    return success
+
   def save(self, outputDir):
     self.createDirectory(outputDir)
 
@@ -2166,38 +2274,52 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       intraopLabel = self.registrationResults.intraopLabel
       if intraopLabel:
         seriesNumber = intraopLabel.GetName().split(":")[0]
-        success, name = self.saveNodeData(intraopLabel, outputDir, '.nrrd', name=seriesNumber+"-LABEL")
+        success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL")
         self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
         if self.clippingModelNode:
-          success, name = self.saveNodeData(self.clippingModelNode, outputDir, '.vtk', name=seriesNumber+"-MODEL")
+          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK, name=seriesNumber+"-MODEL")
           self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
         if self.inputMarkupNode:
-          success, name = self.saveNodeData(self.inputMarkupNode, outputDir, '.fcsv',
+          success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
                                             name=seriesNumber+"-VolumeClip_points")
           self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     def saveOriginalTargets():
       originalTargets = self.registrationResults.originalTargets
       if originalTargets:
-        success, name = self.saveNodeData(originalTargets, outputDir, '.fcsv', name="PreopTargets")
+        success, name = self.saveNodeData(originalTargets, outputDir, FileExtension.FCSV, name="PreopTargets")
         self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     def saveBiasCorrectionResult():
-      if self.biasCorrectionDone:
-        success, name = self.saveNodeData(self.preopVolume, outputDir, '.nrrd')
-        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+      if not self.biasCorrectionDone:
+        return None
+      success, name = self.saveNodeData(self.preopVolume, outputDir, FileExtension.NRRD)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+      return name+FileExtension.NRRD
 
     def saveZFrameTransformation():
-      if self.zFrameTransform:
-        success, name = self.saveNodeData(self.zFrameTransform, outputDir, '.h5')
-        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+      success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+      return name+FileExtension.H5
+
+    def createResultsDict():
+      resultDict = OrderedDict()
+      for result in self.registrationResults.getResultsAsList():
+        resultDict.update(result.toDict())
+      return resultDict
+
+    def saveJSON(dictString):
+      with open(os.path.join(outputDir, self.DEFAULT_JSON_FILE_NAME), 'w') as outfile:
+        json.dump(dictString, outfile, indent=2)
 
     saveIntraopSegmentation()
     saveOriginalTargets()
     saveBiasCorrectionResult()
-    saveZFrameTransformation()
+
+    saveJSON({"results":createResultsDict(), "VOLUME-PREOP-N4":saveBiasCorrectionResult(),
+              "zFrameTransform":saveZFrameTransformation()})
 
     savedSuccessfully, failedToSave = self.registrationResults.save(outputDir)
     successfullySavedData += savedSuccessfully
@@ -2229,22 +2351,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def onDICOMStoreSCPProcessStateChanged(self, newState):
     messageCodes = {0:"DICOM StoreSCP not running", 1:"DICOM StoreSCP starting", 2:"DICOM StoreSCP running"}
     slicer.util.showStatusMessage(messageCodes[newState] if newState in messageCodes.keys() else "")
-
-  def getSeriesInfoFromXML(self, f):
-    import xml.dom.minidom
-    dom = xml.dom.minidom.parse(f)
-    number = self.findElement(dom, 'SeriesNumber')
-    name = self.findElement(dom, 'SeriesDescription')
-    name = name.replace('-', '')
-    name = name.replace('(', '')
-    name = name.replace(')', '')
-    return number, name
-
-  def findElement(self, dom, name):
-    els = dom.getElementsByTagName('element')
-    for e in els:
-      if e.getAttribute('name') == name:
-        return e.childNodes[0].nodeValue
 
   def getMostRecentWholeGlandSegmentation(self, path):
     return self.getMostRecentFile(path, "nrrd", filter="WholeGland")
@@ -2480,7 +2586,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.createClippingModelDisplayNode()
     self.createMarkupAndDisplayNodeForFiducials()
     self.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateModel)
-    self.inputMarkupNode.SetAndObserveDisplayNodeID(self.volumeClipPointsDisplayNode.GetID())
+    volumeClipPointsDisplayNode = self.setupDisplayNode()
+    self.inputMarkupNode.SetAndObserveDisplayNodeID(volumeClipPointsDisplayNode.GetID())
 
   def createMarkupAndDisplayNodeForFiducials(self):
     self.inputMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()

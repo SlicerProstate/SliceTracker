@@ -54,3 +54,12 @@ class SliceTrackerConstants(object):
 
   ZFrame_INSTRUCTION_STEPS = {1: "Scroll and click into ZFrame center to set ROI center",
                               2: "Click outside of upper right ZFrame corner to set ROI border"}
+
+
+class FileExtension(object):
+
+  TXT = ".TXT"
+  NRRD = ".nrrd"
+  FCSV = ".fcsv"
+  H5 = ".h5"
+  VTK = ".vtk"

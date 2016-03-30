@@ -1,7 +1,6 @@
 import logging
 import os
-import vtk
-from Constants import SliceTrackerConstants
+from Constants import SliceTrackerConstants, FileExtension
 from decorators import onExceptionReturnNone
 from mixins import ModuleLogicMixin
 from collections import OrderedDict
@@ -29,9 +28,12 @@ class RegistrationResults(object):
     return self.getMostRecentApprovedCoverProstateRegistration().fixedLabel
 
   def __init__(self):
-    self._registrationResults = OrderedDict()
+    self.resetAndInitializeData()
+
+  def resetAndInitializeData(self):
     self._activeResult = None
     self.preopTargets = None
+    self._registrationResults = OrderedDict()
 
   def save(self, outputDir):
     savedSuccessfully = []
@@ -41,7 +43,6 @@ class RegistrationResults(object):
       successfulList, failedList = result.save(outputDir)
       savedSuccessfully += successfulList
       failedToSave += failedList
-
     return savedSuccessfully, failedToSave
 
   def _registrationResultHasStatus(self, series, status):
@@ -258,6 +259,17 @@ class RegistrationResult(ModuleLogicMixin):
     self.affineVolume = None
     self.bSplineVolume = None
 
+  def _getAllFileNames(self, keyFunction):
+    fileNames = {}
+    for regType in self.REGISTRATION_TYPE_NAMES:
+      fileNames[regType] = keyFunction(regType)
+    return fileNames
+
+  def _getFileName(self, node, extension):
+    if node:
+      return ModuleLogicMixin.replaceUnwantedCharacters(node.GetName()) + extension
+    return None
+
   def setVolume(self, regType, volume):
     self._setRegAttribute(regType, "Volume", volume)
 
@@ -309,36 +321,79 @@ class RegistrationResult(ModuleLogicMixin):
 
     def saveCMDParameters():
       if self.cmdArguments != "":
-        filename = os.path.join(outputDir, str(self.seriesNumber) + "-CMD-PARAMETERS" + self.suffix + ".txt")
+        filename = os.path.join(outputDir, self.cmdFileName)
         f = open(filename, 'w+')
         f.write(self.cmdArguments)
         f.close()
 
     def saveTransformations():
       for transformNode in [node for node in self.transforms.values() if node]:
-        success, name = self.saveNodeData(transformNode, outputDir, ".h5")
+        success, name = self.saveNodeData(transformNode, outputDir, FileExtension.H5)
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     def saveTargets():
       for targetNode in [node for node in self.targets.values() if node]:
-        success, name = self.saveNodeData(targetNode, outputDir, ".fcsv")
+        success, name = self.saveNodeData(targetNode, outputDir, FileExtension.FCSV)
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     def saveApprovedTargets():
       if self.approved:
         fileName = self.approvedTargets.GetName().replace("-TARGETS-", "-APPROVED-TARGETS-")
-        success, name = self.saveNodeData(self.approvedTargets, outputDir, ".fcsv", name=fileName)
+        success, name = self.saveNodeData(self.approvedTargets, outputDir, FileExtension.FCSV, name=fileName)
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     def saveVolumes():
       for volumeNode in [node for node in self.volumes.values() if node]:
-        success, name = self.saveNodeData(volumeNode, outputDir, ".nrrd")
+        success, name = self.saveNodeData(volumeNode, outputDir, FileExtension.NRRD)
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+
+    def saveLabels():
+      for labelVolume in [self.fixedLabel, self.movingLabel]:
+        if labelVolume:
+          success, name = self.saveNodeData(labelVolume, outputDir, FileExtension.NRRD)
+          self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     saveCMDParameters()
     saveTransformations()
     saveTargets()
     saveApprovedTargets()
     saveVolumes()
+    saveLabels()
 
     return savedSuccessfully, failedToSave
+
+  @property
+  def cmdFileName(self):
+    return str(self.seriesNumber) + "-CMD-PARAMETERS" + self.suffix + FileExtension.TXT
+
+  def getTransformFileName(self, regType):
+    return self._getFileName(self.getTransform(regType), FileExtension.H5)
+
+  def getVolumeFileName(self, regType):
+    return self._getFileName(self.getVolume(regType), FileExtension.NRRD)
+
+  def getTargetFileName(self, regType):
+    return self._getFileName(self.getTargets(regType), FileExtension.FCSV)
+
+  def getAllTargetFileNames(self):
+    return self._getAllFileNames(self.getTargetFileName)
+
+  def getAllTransformationFileNames(self):
+    return self._getAllFileNames(self.getTransformFileName)
+
+  def getAllVolumeFileNames(self):
+    return self._getAllFileNames(self.getVolumeFileName)
+
+  def getLabelFileName(self, attributeName):
+    label = getattr(self, attributeName)
+    if not label:
+      return None
+    return self._getFileName(label, FileExtension.NRRD)
+
+  def toDict(self):
+    #TODO: targetsWereModified
+    return {self.name:{"targets":self.getAllTargetFileNames(), "transforms":self.getAllTransformationFileNames(),
+                       "volumes":self.getAllVolumeFileNames(), "approvedRegistrationType":self.approvedRegistrationType,
+                       "suffix":self.suffix, "status":self.status, "score": self.score,
+                       "fixedLabel":self.getLabelFileName("fixedLabel"),
+                       "movingLabel":self.getLabelFileName("movingLabel")}}
