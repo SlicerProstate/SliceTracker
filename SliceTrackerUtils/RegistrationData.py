@@ -1,5 +1,6 @@
 import logging
-import os
+import slicer
+import os, json
 from Constants import SliceTrackerConstants, FileExtension
 from decorators import onExceptionReturnNone
 from mixins import ModuleLogicMixin
@@ -34,6 +35,47 @@ class RegistrationResults(object):
     self._activeResult = None
     self.preopTargets = None
     self._registrationResults = OrderedDict()
+
+  def loadFromJSON(self, directory, filename):
+    self.resetAndInitializeData()
+    self.alreadyLoadedFileNames = {}
+    with open(filename) as data_file:
+      data = json.load(data_file)
+      for name, jsonResult in data["results"].iteritems():
+        result = self.createResult(name)
+        for attribute, value in jsonResult.iteritems():
+          if attribute == 'volumes':
+            self._loadResultFileData(value, directory, slicer.util.loadVolume, result.setVolume)
+          elif attribute == 'transforms':
+            self._loadResultFileData(value, directory, slicer.util.loadTransform, result.setTransform)
+          elif attribute == 'targets':
+            self._loadResultFileData(value, directory, slicer.util.loadMarkupsFiducialList, result.setTargets)
+          elif attribute in ['fixedLabel', 'movingLabel']:
+              label = self._loadOrGetFileData(directory, value, slicer.util.loadLabelVolume)
+              setattr(result, attribute, label)
+          elif attribute in ['fixedVolume', 'movingVolume']:
+              volume = self._loadOrGetFileData(directory, value, slicer.util.loadVolume)
+              setattr(result, attribute, volume)
+          elif attribute == 'originalTargets':
+              targets = self._loadOrGetFileData(directory, value, slicer.util.loadMarkupsFiducialList)
+              setattr(result, attribute, targets)
+          else:
+            setattr(result, attribute, value)
+
+  def _loadResultFileData(self, dictionary, directory, loadFunction, setFunction):
+    for regType, filename in dictionary.iteritems():
+      data = self._loadOrGetFileData(directory, filename, loadFunction)
+      setFunction(regType, data)
+
+  def _loadOrGetFileData(self, directory, filename, loadFunction):
+    if not filename:
+      return None
+    try:
+      data = self.alreadyLoadedFileNames[filename]
+    except KeyError:
+      _, data = loadFunction(os.path.join(directory, filename), returnNode=True)
+      self.alreadyLoadedFileNames[filename] = data
+    return data
 
   def save(self, outputDir):
     savedSuccessfully = []
@@ -332,7 +374,7 @@ class RegistrationResult(ModuleLogicMixin):
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     def saveTargets():
-      for targetNode in [node for node in self.targets.values() if node]:
+      for targetNode in [node for node in self.targets.values()+[self.originalTargets] if node]:
         success, name = self.saveNodeData(targetNode, outputDir, FileExtension.FCSV)
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
@@ -343,7 +385,7 @@ class RegistrationResult(ModuleLogicMixin):
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     def saveVolumes():
-      for volumeNode in [node for node in self.volumes.values() if node]:
+      for volumeNode in [node for node in self.volumes.values()+[self.fixedVolume, self.movingVolume] if node]:
         success, name = self.saveNodeData(volumeNode, outputDir, FileExtension.NRRD)
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
@@ -359,7 +401,6 @@ class RegistrationResult(ModuleLogicMixin):
     saveApprovedTargets()
     saveVolumes()
     saveLabels()
-
     return savedSuccessfully, failedToSave
 
   @property
@@ -384,16 +425,26 @@ class RegistrationResult(ModuleLogicMixin):
   def getAllVolumeFileNames(self):
     return self._getAllFileNames(self.getVolumeFileName)
 
-  def getLabelFileName(self, attributeName):
-    label = getattr(self, attributeName)
-    if not label:
-      return None
-    return self._getFileName(label, FileExtension.NRRD)
+  def getFixedVolumeFileName(self):
+    return self._getFileName(self.fixedVolume, FileExtension.NRRD)
+
+  def getMovingVolumeFileName(self):
+    return self._getFileName(self.movingVolume, FileExtension.NRRD)
+
+  def getFixedLabelFileName(self):
+    return self._getFileName(self.fixedLabel, FileExtension.NRRD)
+
+  def getMovingLabelFileName(self):
+    return self._getFileName(self.movingLabel, FileExtension.NRRD)
+
+  def getOriginalTargetsFileName(self):
+    return self._getFileName(self.originalTargets, FileExtension.FCSV)
 
   def toDict(self):
     #TODO: targetsWereModified
     return {self.name:{"targets":self.getAllTargetFileNames(), "transforms":self.getAllTransformationFileNames(),
                        "volumes":self.getAllVolumeFileNames(), "approvedRegistrationType":self.approvedRegistrationType,
                        "suffix":self.suffix, "status":self.status, "score": self.score,
-                       "fixedLabel":self.getLabelFileName("fixedLabel"),
-                       "movingLabel":self.getLabelFileName("movingLabel")}}
+                       "fixedLabel":self.getFixedLabelFileName(), "movingLabel":self.getMovingLabelFileName(),
+                       "fixedVolume": self.getFixedVolumeFileName(), "movingVolume": self.getMovingVolumeFileName(),
+                       "originalTargets":self.getOriginalTargetsFileName()}}
