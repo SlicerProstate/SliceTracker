@@ -36,3 +36,22 @@ class LineMarkerRegistration(ZFrameRegistrationBase):
     params = {'inputVolume': self.inputVolume, 'markerConfigFile': self.markerConfigPath,
               'outputVolume': self.outputVolume, 'markerTransform': self.outputTransform}
     slicer.cli.run(slicer.modules.linemarkerregistration, None, params, wait_for_completion=True)
+
+
+class ZFrameRegistration(ZFrameRegistrationBase):
+
+  startSlice = 4
+  endSlice = 15
+
+  def __init__(self, inputVolume):
+    super(ZFrameRegistration, self).__init__(inputVolume)
+
+  def runRegistration(self, start=None, end=None):
+    start = start if start else self.startSlice
+    end = end if end else self.endSlice
+    seriesNumber = self.inputVolume.GetName().split(":")[0]
+    self.outputTransform = self.createLinearTransformNode(seriesNumber + "-" + self.ZFRAME_TRANSFORM_NAME)
+
+    params = {'inputVolume': self.inputVolume, 'startSlice': start, 'endSlice': end,
+              'outputTransform': self.outputTransform}
+    slicer.cli.run(slicer.modules.zframecalibration, None, params, wait_for_completion=True)

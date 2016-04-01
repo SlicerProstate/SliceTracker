@@ -1,5 +1,7 @@
-import qt
-import vtk
+import vtk, ctk, qt
+import xml.dom.minidom, datetime
+from Constants import DICOMTAGS
+from mixins import ModuleLogicMixin
 
 
 class SliceAnnotation(object):
@@ -220,8 +222,179 @@ class ExtendedQMessageBox(qt.QMessageBox):
     self.setupUI()
 
   def setupUI(self):
-    self.checkbox = qt.QCheckBox("Do not notify again")
+    self.checkbox = qt.QCheckBox("Remember the selection and do not notify again")
     self.layout().addWidget(self.checkbox, 1,2)
 
   def exec_(self, *args, **kwargs):
     return qt.QMessageBox.exec_(self, *args, **kwargs), self.checkbox.isChecked()
+
+
+class WatchBoxAttribute(object):
+
+  @property
+  def title(self):
+    return self.titleLabel.text
+
+  @title.setter
+  def title(self, value):
+    self.titleLabel.text = value if value else ""
+
+  @property
+  def value(self):
+    return self.valueLabel.text
+
+  @value.setter
+  def value(self, value):
+    self.valueLabel.text = value if value else ""
+    self.valueLabel.toolTip = value if value else ""
+
+  def __init__(self, name, title, tags=None):
+    self.name = name
+    self.titleLabel = qt.QLabel()
+    self.valueLabel = qt.QLabel()
+    self.title = title
+    self.tags = None if not tags else tags if type(tags) is list else [str(tags)]
+    self.value = None
+
+
+class BasicInformationWatchBox(qt.QGroupBox):
+
+  DEFAULT_STYLE = 'background-color: rgb(230,230,230)'
+  PREFERRED_DATE_FORMAT = "%Y-%b-%d"
+
+  def __init__(self, attributes, title="", parent=None):
+    super(BasicInformationWatchBox, self).__init__(title, parent)
+    self.attributes = attributes
+    if not self.checkAttributeUniqueness():
+      raise ValueError("Attribute names are not unique.")
+    self.setup()
+
+  def checkAttributeUniqueness(self):
+    onlyNames = [attribute.name for attribute in self.attributes]
+    return len(self.attributes) == len(set(onlyNames))
+
+  def reset(self):
+    for attribute in self.attributes:
+      attribute.value = ""
+
+  def setup(self):
+    self.setStyleSheet(self.DEFAULT_STYLE)
+    layout = qt.QGridLayout()
+    self.setLayout(layout)
+
+    for index, attribute in enumerate(self.attributes):
+      layout.addWidget(attribute.titleLabel, index, 0, 1, 1, qt.Qt.AlignLeft)
+      layout.addWidget(attribute.valueLabel, index, 1, 1, 2)
+
+  def getAttribute(self, name):
+    for attribute in self.attributes:
+      if attribute.name == name:
+        return attribute
+    return None
+
+  def setInformation(self, attributeName, value, toolTip=None):
+    attribute = self.getAttribute(attributeName)
+    attribute.value = value
+    attribute.valueLabel.toolTip = toolTip
+
+  def getInformation(self, attributeName):
+    attribute = self.getAttribute(attributeName)
+    return attribute.value
+
+  def formatDate(self, dateToFormat):
+    if dateToFormat and dateToFormat != "":
+      formatted = datetime.date(int(dateToFormat[0:4]), int(dateToFormat[4:6]), int(dateToFormat[6:8]))
+      return formatted.strftime(self.PREFERRED_DATE_FORMAT)
+    return "No Date found"
+
+  def formatPatientName(self, name):
+    if name != "":
+      splitted = name.split('^')
+      try:
+        name = splitted[1] + ", " + splitted[0]
+      except IndexError:
+        name = splitted[0]
+    return name
+
+
+class FileBasedInformationWatchBox(BasicInformationWatchBox):
+
+  DEFAULT_TAG_VALUE_SEPARATOR = ": "
+  DEFAULT_TAG_NAME_SEPARATOR = "_"
+
+  @property
+  def sourceFile(self):
+    return self._sourceFile
+
+  @sourceFile.setter
+  def sourceFile(self, filePath):
+    self._sourceFile = filePath
+    if filePath:
+      self.updateInformation()
+    else:
+      self.reset()
+
+  def __init__(self, attributes, title="", sourceFile=None, parent=None):
+    super(FileBasedInformationWatchBox, self).__init__(attributes, title, parent)
+    if sourceFile:
+      self.sourceFile = sourceFile
+
+  def _getTagNameFromTagNames(self, tagNames):
+    return self.DEFAULT_TAG_NAME_SEPARATOR.join(tagNames)
+
+  def _getTagValueFromTagValues(self, values):
+    return self.DEFAULT_TAG_VALUE_SEPARATOR.join(values)
+
+  def updateInformation(self):
+    raise NotImplementedError
+
+
+class XMLBasedInformationWatchBox(FileBasedInformationWatchBox):
+
+  DATE_TAGS_TO_FORMAT = ["StudyDate", "PatientBirthDate", "SeriesDate", "ContentDate", "AcquisitionDate"]
+
+  def __init__(self, attributes, title="", sourceFile=None, parent=None):
+    super(XMLBasedInformationWatchBox, self).__init__(attributes, title, sourceFile, parent)
+
+  def _findElement(self, dom, name):
+    for e in [e for e in dom.getElementsByTagName('element') if e.getAttribute('name') == name]:
+      try:
+        return e.childNodes[0].nodeValue
+      except IndexError:
+        return ""
+
+  def updateInformation(self):
+    dom = xml.dom.minidom.parse(self._sourceFile)
+
+    for attribute in self.attributes:
+      values = []
+      for tag in attribute.tags:
+        currentValue = self._findElement(dom, tag)
+        if tag in self.DATE_TAGS_TO_FORMAT:
+          currentValue = self.formatDate(currentValue)
+        elif tag == "PatientName":
+          currentValue = self.formatPatientName(currentValue)
+        values.append(currentValue)
+      value = self._getTagValueFromTagValues(values)
+      self.setInformation(attribute.name, value, toolTip=value)
+
+
+class DICOMBasedInformationWatchBox(FileBasedInformationWatchBox):
+
+  DICOM_DATE_TAGS_TO_FORMAT = [DICOMTAGS.STUDY_DATE, DICOMTAGS.PATIENT_BIRTH_DATE]
+
+  def __init__(self, attributes, title="", sourceFile=None, parent=None):
+    super(DICOMBasedInformationWatchBox, self).__init__(attributes, title, sourceFile, parent)
+
+  def updateInformation(self):
+    for attribute in self.attributes:
+      values = []
+      for tag in attribute.tags:
+        currentValue = ModuleLogicMixin.getDICOMValue(self.sourceFile, tag, "")
+        if tag in self.DICOM_DATE_TAGS_TO_FORMAT:
+          currentValue = self.formatDate(currentValue)
+        elif tag == DICOMTAGS.PATIENT_NAME:
+          currentValue = self.formatPatientName(currentValue)
+        values.append(currentValue)
+      value = self._getTagValueFromTagValues(values)
+      self.setInformation(attribute.name, value, toolTip=value)

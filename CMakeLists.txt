@@ -57,6 +57,13 @@ slicerMacroBuildScriptedModule(
   WITH_GENERIC_TESTS
   )
 
+slicerMacroBuildScriptedModule(
+  NAME SliceTrackerZFrameRegistration
+  SCRIPTS SliceTrackerZFrameRegistration.py
+  RESOURCES ""
+  WITH_GENERIC_TESTS
+  )
+
 #-----------------------------------------------------------------------------
 if(BUILD_TESTING)
 

@@ -176,16 +176,6 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
       self.transformTargets(registrationTypes, result.originalTargets, str(result.seriesNumber))
     result.movingVolume = movingVolume
 
-  def dilateMask(self, mask):
-    imagedata = mask.GetImageData()
-    dilateErode = vtk.vtkImageDilateErode3D()
-    dilateErode.SetInputData(imagedata)
-    dilateErode.SetDilateValue(1.0)
-    dilateErode.SetErodeValue(0.0)
-    dilateErode.SetKernelSize(12,12,1)
-    dilateErode.Update()
-    mask.SetAndObserveImageData(dilateErode.GetOutput())
-
   def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
 
     params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,

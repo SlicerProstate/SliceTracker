@@ -1,7 +1,5 @@
-import ctk
-import logging
-import os
-import qt
+import qt, vtk, ctk
+import os, logging
 import slicer
 
 
@@ -16,38 +14,6 @@ class ModuleWidgetMixin(object):
     return slicer.dicomDatabase
 
   @staticmethod
-  def makeProgressIndicator(maxVal, initialValue=0):
-    progressIndicator = qt.QProgressDialog()
-    progressIndicator.minimumDuration = 0
-    progressIndicator.modal = True
-    progressIndicator.setMaximum(maxVal)
-    progressIndicator.setValue(initialValue)
-    progressIndicator.setWindowTitle("Processing...")
-    progressIndicator.show()
-    progressIndicator.autoClose = False
-    return progressIndicator
-
-  @staticmethod
-  def confirmDialog(message, title='SliceTracker'):
-    result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
-                                     qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
-    return result == qt.QMessageBox.Ok
-
-  @staticmethod
-  def notificationDialog(message, title='SliceTracker'):
-    return qt.QMessageBox.information(slicer.util.mainWindow(), title, message)
-
-  @staticmethod
-  def yesNoDialog(message, title='SliceTracker'):
-    result = qt.QMessageBox.question(slicer.util.mainWindow(), title, message,
-                                     qt.QMessageBox.Yes | qt.QMessageBox.No)
-    return result == qt.QMessageBox.Yes
-
-  @staticmethod
-  def warningDialog(message, title='SliceTracker'):
-    return qt.QMessageBox.warning(slicer.util.mainWindow(), title, message)
-
-  @staticmethod
   def truncatePath(path):
     try:
       split = path.split('/')
@@ -56,13 +22,47 @@ class ModuleWidgetMixin(object):
       pass
     return path
 
-  def getSetting(self, setting):
-    settings = qt.QSettings()
-    return str(settings.value(self.moduleName + '/' + setting))
+  @staticmethod
+  def setFOV(sliceLogic, FOV):
+    sliceNode = sliceLogic.GetSliceNode()
+    sliceNode.SetFieldOfView(FOV[0], FOV[1], FOV[2])
+    sliceNode.UpdateMatrices()
 
-  def setSetting(self, setting, value):
+  @staticmethod
+  def removeNodeFromMRMLScene(node):
+    if node:
+      slicer.mrmlScene.RemoveNode(node)
+      node = None
+
+  @staticmethod
+  def refreshViewNodeIDs(node, sliceNodes):
+    displayNode = node.GetDisplayNode()
+    if displayNode:
+      displayNode.RemoveAllViewNodeIDs()
+      for sliceNode in sliceNodes:
+        displayNode.AddViewNodeID(sliceNode.GetID())
+
+  @staticmethod
+  def jumpSliceNodeToTarget(sliceNode, targetNode, index):
+    point = [0,0,0,0]
+    targetNode.GetMarkupPointWorld(index, 0, point)
+    sliceNode.JumpSlice(point[0], point[1], point[2])
+
+  @staticmethod
+  def resetToRegularViewMode():
+    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+    interactionNode.SwitchToViewTransformMode()
+    interactionNode.SetPlaceModePersistence(0)
+
+  def getSetting(self, setting, moduleName=None):
+    moduleName = moduleName if moduleName else self.moduleName
     settings = qt.QSettings()
-    settings.setValue(self.moduleName + '/' + setting, value)
+    return str(settings.value(moduleName + '/' + setting))
+
+  def setSetting(self, setting, value, moduleName=None):
+    moduleName = moduleName if moduleName else self.moduleName
+    settings = qt.QSettings()
+    settings.setValue(moduleName + '/' + setting, value)
 
   def createHLayout(self, elements, **kwargs):
     return self._createLayout(qt.QHBoxLayout, elements, **kwargs)
@@ -139,6 +139,57 @@ class ModuleWidgetMixin(object):
 class ModuleLogicMixin(object):
 
   @staticmethod
+  def getMostRecentFile(path, fileType, filter=None):
+    assert type(fileType) is str
+    files = [f for f in os.listdir(path) if f.endswith(fileType)]
+    if len(files) == 0:
+      return None
+    mostRecent = None
+    storedTimeStamp = 0
+    for filename in files:
+      if filter and not filter in filename:
+        continue
+      actualFileName = filename.split(".")[0]
+      timeStamp = int(actualFileName.split("-")[-1])
+      if timeStamp > storedTimeStamp:
+        mostRecent = filename
+        storedTimeStamp = timeStamp
+    return mostRecent
+
+  @staticmethod
+  def get2DDistance(pos1, pos2):
+    x = abs(pos1[0] - pos2[0])
+    y = abs(pos1[1] - pos2[1])
+    return [x, y]
+
+  @staticmethod
+  def get3DDistance(pos1, pos2):
+    rulerNode = slicer.vtkMRMLAnnotationRulerNode()
+    rulerNode.SetPosition1(pos1)
+    rulerNode.SetPosition2(pos2)
+    distance_3D = rulerNode.GetDistanceMeasurement()
+    return distance_3D
+
+  @staticmethod
+  def dilateMask(label):
+    imagedata = label.GetImageData()
+    dilateErode = vtk.vtkImageDilateErode3D()
+    dilateErode.SetInputData(imagedata)
+    dilateErode.SetDilateValue(1.0)
+    dilateErode.SetErodeValue(0.0)
+    dilateErode.SetKernelSize(12, 12, 1)
+    dilateErode.Update()
+    label.SetAndObserveImageData(dilateErode.GetOutput())
+
+  @staticmethod
+  def getDirectorySize(directory):
+    size = 0
+    for path, dirs, files in os.walk(directory):
+      for currentFile in files:
+        size += os.path.getsize(os.path.join(path, currentFile))
+    return size
+
+  @staticmethod
   def createDirectory(directory, message=None):
     if message:
       logging.debug(message)
@@ -153,7 +204,7 @@ class ModuleLogicMixin(object):
     try:
       value = db.fileValue(currentFile, tag)
     except RuntimeError:
-      logging.info("There are problems with accessing DICOM values from file %s" % currentFile)
+      logging.info("There are problems with accessing DICOM value %s from file %s" % (tag, currentFile))
       value = fallback
     return value
 
