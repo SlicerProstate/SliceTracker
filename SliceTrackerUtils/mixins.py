@@ -1,7 +1,5 @@
-import ctk
-import logging
-import os
-import qt
+import qt, vtk, ctk
+import os, logging
 import slicer
 
 
@@ -23,6 +21,38 @@ class ModuleWidgetMixin(object):
     except IndexError:
       pass
     return path
+
+  @staticmethod
+  def setFOV(sliceLogic, FOV):
+    sliceNode = sliceLogic.GetSliceNode()
+    sliceNode.SetFieldOfView(FOV[0], FOV[1], FOV[2])
+    sliceNode.UpdateMatrices()
+
+  @staticmethod
+  def removeNodeFromMRMLScene(node):
+    if node:
+      slicer.mrmlScene.RemoveNode(node)
+      node = None
+
+  @staticmethod
+  def refreshViewNodeIDs(node, sliceNodes):
+    displayNode = node.GetDisplayNode()
+    if displayNode:
+      displayNode.RemoveAllViewNodeIDs()
+      for sliceNode in sliceNodes:
+        displayNode.AddViewNodeID(sliceNode.GetID())
+
+  @staticmethod
+  def jumpSliceNodeToTarget(sliceNode, targetNode, index):
+    point = [0,0,0,0]
+    targetNode.GetMarkupPointWorld(index, 0, point)
+    sliceNode.JumpSlice(point[0], point[1], point[2])
+
+  @staticmethod
+  def resetToRegularViewMode():
+    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+    interactionNode.SwitchToViewTransformMode()
+    interactionNode.SetPlaceModePersistence(0)
 
   def getSetting(self, setting, moduleName=None):
     moduleName = moduleName if moduleName else self.moduleName
@@ -107,6 +137,49 @@ class ModuleWidgetMixin(object):
 
 
 class ModuleLogicMixin(object):
+
+  @staticmethod
+  def getMostRecentFile(path, fileType, filter=None):
+    assert type(fileType) is str
+    files = [f for f in os.listdir(path) if f.endswith(fileType)]
+    if len(files) == 0:
+      return None
+    mostRecent = None
+    storedTimeStamp = 0
+    for filename in files:
+      if filter and not filter in filename:
+        continue
+      actualFileName = filename.split(".")[0]
+      timeStamp = int(actualFileName.split("-")[-1])
+      if timeStamp > storedTimeStamp:
+        mostRecent = filename
+        storedTimeStamp = timeStamp
+    return mostRecent
+
+  @staticmethod
+  def get2DDistance(pos1, pos2):
+    x = abs(pos1[0] - pos2[0])
+    y = abs(pos1[1] - pos2[1])
+    return [x, y]
+
+  @staticmethod
+  def get3DDistance(pos1, pos2):
+    rulerNode = slicer.vtkMRMLAnnotationRulerNode()
+    rulerNode.SetPosition1(pos1)
+    rulerNode.SetPosition2(pos2)
+    distance_3D = rulerNode.GetDistanceMeasurement()
+    return distance_3D
+
+  @staticmethod
+  def dilateMask(label):
+    imagedata = label.GetImageData()
+    dilateErode = vtk.vtkImageDilateErode3D()
+    dilateErode.SetInputData(imagedata)
+    dilateErode.SetDilateValue(1.0)
+    dilateErode.SetErodeValue(0.0)
+    dilateErode.SetKernelSize(12, 12, 1)
+    dilateErode.Update()
+    label.SetAndObserveImageData(dilateErode.GetOutput())
 
   @staticmethod
   def getDirectorySize(directory):

@@ -11,6 +11,7 @@ from SliceTrackerUtils.ZFrameRegistration import ZFrameRegistration
 from SliceTrackerUtils.helpers import SliceAnnotation, ExtendedQMessageBox
 from SliceTrackerUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SliceTrackerUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 from slicer.ScriptedLoadableModule import *
 
 
@@ -75,7 +76,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.intraopWatchBox.sourceFile = None
     self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
     self.logic.intraopDataDir = path
-    self.logic.startStoreSCP(slicer.util.warningDisplay)
 
   @property
   def evaluationMode(self):
@@ -102,6 +102,18 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   @property
   def outputDir(self):
     return os.path.join(self.currentCaseDirectory, "SliceTrackerOutputs")
+
+  @property
+  def currentCaseDirectory(self):
+    return self._currentCaseDirectory
+
+  @currentCaseDirectory.setter
+  def currentCaseDirectory(self, path):
+    if path:
+      self._currentCaseDirectory = path
+      self.updateCaseWatchBox()
+    else:
+      self.caseWatchBox.reset()
 
   @property
   def generatedOutputDirectory(self):
@@ -260,7 +272,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.generatedOutputDirectory = ""
     self.caseRootDir = self.getSetting('CasesRootLocation')
-    self.currentCaseDirectory = None
+    self._currentCaseDirectory = None
 
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
     self.setAxialOrientation()
@@ -652,13 +664,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.createNewCaseButton.enabled = False
     self.openCaseButton.enabled = False
     self.currentCaseDirectory = self.logic.createNewCase(self.caseRootDir)
-    self.updateCaseWatchBox()
     self.preopDicomReceiver = SmartDICOMReceiver(incomingDataDirectory=self.preopDICOMDataDirectory,
                                                  receiveFinishedCallback=self.onPreopDataReceived)
     self.preopDicomReceiver.start()
     # TODO: stop whenever needs to be stopped
 
-  def onPreopDataReceived(self):
+  def onPreopDataReceived(self, **kwargs):
     self.preopDicomReceiver.stop()
     success = self.invokePreProcessing()
     if success:
@@ -676,7 +687,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onReturnFromMpReview(self):
     slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(self.onReturnFromMpReview)
     self.layoutManager.selectModule(self.moduleName)
-    self.clearData()
+    slicer.mrmlScene.Clear(0)
     self.preopDataDir = self.logic.getFirstStudyFromMpReviewPreprocessed(self.mpReviewPreprocessedOutput)
     self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
 
@@ -729,19 +740,20 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       if mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
         self.preopDataDir = self.logic.getFirstStudyFromMpReviewPreprocessed(self.mpReviewPreprocessedOutput)
         self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
-    self.updateCaseWatchBox()
     self.createNewCaseButton.enabled = False
     self.openCaseButton.enabled = False
 
   def updateCaseWatchBox(self):
     value = self.currentCaseDirectory
-    self.caseWatchBox.setInformation("CurrentCaseDirectory", self.truncatePath(value), toolTip=value)
+    self.caseWatchBox.setInformation("CurrentCaseDirectory", os.path.relpath(value, self.caseRootDir), toolTip=value)
     preop = os.path.join(value, "DICOM", "Preop")
-    self.caseWatchBox.setInformation("CurrentPreopDICOMDirectory", self.truncatePath(preop), toolTip=preop)
+    self.caseWatchBox.setInformation("CurrentPreopDICOMDirectory", os.path.relpath(preop, self.caseRootDir),
+                                     toolTip=preop)
     intraop = os.path.join(value, "DICOM", "Intraop")
-    self.caseWatchBox.setInformation("CurrentIntraopDICOMDirectory", self.truncatePath(intraop), toolTip=intraop)
+    self.caseWatchBox.setInformation("CurrentIntraopDICOMDirectory", os.path.relpath(intraop, self.caseRootDir),
+                                     toolTip=intraop)
     mpReviewPreprocessed = os.path.join(value, "mpReviewPreprocessed")
-    self.caseWatchBox.setInformation("mpReviewDirectory", self.truncatePath(mpReviewPreprocessed),
+    self.caseWatchBox.setInformation("mpReviewDirectory", os.path.relpath(mpReviewPreprocessed, self.caseRootDir),
                                      toolTip=mpReviewPreprocessed)
 
   def onShowZFrameModelToggled(self, checked):
@@ -1013,11 +1025,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if modelIndex:
       self.targetTable.clicked(modelIndex)
 
-  def jumpSliceNodeToTarget(self, sliceNode, targetNode, n):
-    point = [0,0,0,0]
-    targetNode.GetMarkupPointWorld(n, 0, point)
-    sliceNode.JumpSlice(point[0], point[1], point[2])
-
   def updateRegistrationResultSelector(self):
     self.resultSelector.clear()
     results = self.registrationResults.getResultsBySeriesNumber(self.currentResult.seriesNumber)
@@ -1174,8 +1181,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.patientWatchBox.sourceFile = None
     self.intraopWatchBox.sourceFile = None
     self.caseWatchBox.reset()
-    self.logic.stopWatching()
-    self.logic.stopStoreSCP()
+    self.logic.stopSmartDICOMReceiver()
     self.createNewCaseButton.enabled = True
     self.openCaseButton.enabled = True
     self.currentCaseDirectory = None
@@ -1293,11 +1299,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setFOV(sliceLogic, [FOV[0] * factor, FOV[1] * factor, FOV[2]])
     sliceNode = sliceLogic.GetSliceNode()
     sliceNode.RotateToVolumePlane(volume)
-
-  def setFOV(self, sliceLogic, FOV):
-    sliceNode = sliceLogic.GetSliceNode()
-    sliceNode.SetFieldOfView(FOV[0], FOV[1], FOV[2])
-    sliceNode.UpdateMatrices()
 
   def setCurrentRegistrationResultSliceViews(self, registrationType):
     compositeNodes = [self.yellowCompositeNode]
@@ -1483,11 +1484,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     except AttributeError:
       self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
       self.deletedMarkups.SetName('deletedMarkups')
-
-  def resetToRegularViewMode(self):
-    interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
-    interactionNode.SwitchToViewTransformMode()
-    interactionNode.SetPlaceModePersistence(0)
 
   def onOpacitySpinBoxChanged(self, value):
     if self.opacitySlider.value != value:
@@ -1735,11 +1731,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.removeNodeFromMRMLScene(self.zFrameMaskedVolume)
     self.removeNodeFromMRMLScene(self.logic.zFrameTransform)
 
-  def removeNodeFromMRMLScene(self, node):
-    if node:
-      slicer.mrmlScene.RemoveNode(node)
-      node = None
-
   def removeROIObserver(self):
     if self.roiObserverTag:
       self.roiObserverTag = slicer.mrmlScene.RemoveObserver(self.roiObserverTag)
@@ -1925,15 +1916,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.activateRegistrationResultsArea(collapsed=False, enabled=True)
     self.evaluationButtonsGroupBox.enabled = True
 
-  def refreshViewNodeIDs(self, targets, sliceNodes):
-    displayNode = targets.GetDisplayNode()
-    if displayNode:
-      displayNode.RemoveAllViewNodeIDs()
-      for sliceNode in sliceNodes:
-        displayNode.AddViewNodeID(sliceNode.GetID())
-
   def onNewImageDataReceived(self, **kwargs):
-    newFileList = kwargs.pop('newList')
+    newFileList = kwargs.pop('newFileList')
     newSeriesNumbers = self.checkForPatientIdSimilarityAndGetSeriesNumbers(newFileList)
     self.updateIntraopSeriesSelectorTable()
     selectedSeries = self.intraopSeriesSelector.currentText
@@ -1952,9 +1936,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
           self.notifyUserAboutNewData = not checked
         if self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
           self.onTrackTargetsButtonClicked()
-
-
-from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
 
 class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
@@ -1976,7 +1957,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def intraopDataDir(self, path):
     if os.path.exists(path):
       self._intraopDataDir = path
-      self.startIntraopDirListener()
+      self.startSmartDICOMReceiver()
 
   @property
   def currentResult(self):
@@ -2004,21 +1985,15 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.defaultTemplateFile = os.path.join(self.modulePath, self.ZFRAME_TEMPLATE_CONFIG_FILE_NAME)
     self.defaultColorFile = os.path.join(self.modulePath, self.MPREVIEW_COLORS_FILE_NAME)
-    self.configureTimers()
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
-
-    self.stopWatching()
-
-    self.currentFileCount = 0
 
     self.inputMarkupNode = None
     self.clippingModelNode = None
     self.seriesList = []
     self.loadableList = {}
     self.alreadyLoadedSeries = {}
-    self.storeSCPProcess = None
 
     self.currentIntraopVolume = None
     self.preopVolume = None
@@ -2028,8 +2003,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.registrationResults = RegistrationResults()
 
     self._intraopDataDir = ""
-
     self._incomingDataCallback = None
+    self.smartDicomReceiver = None
 
     self.retryMode = False
     self.zFrameRegistrationSuccessful = False
@@ -2052,17 +2027,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.clearOldNodes()
     self.loadZFrameModel()
     self.loadTemplateConfigFile()
-
-  def configureTimers(self):
-    self.importTimer = qt.QTimer()
-    self.importTimer.setInterval(5000)
-    self.importTimer.timeout.connect(self.importDICOMSeries)
-    self.importTimer.setSingleShot(True)
-
-    self.watchTimer = qt.QTimer()
-    self.watchTimer.setInterval(500)
-    self.watchTimer.timeout.connect(self.startWatchingIntraop)
-    self.watchTimer.setSingleShot(True)
+    self.stopSmartDICOMReceiver()
 
   def clearOldNodes(self):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
@@ -2111,13 +2076,14 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
                and os.path.exists(os.path.join(directory, "mpReviewPreprocessed"))
 
   def hasCaseBeenCompleted(self, directory):
+    #TODO: should better explore SliceTrackerOutputs
     return ".completed" in os.listdir(directory)
 
   def getNextCaseNumber(self, destinationDir):
     caseNumber = 0
-    for dirname in [dirname for dirname in os.listdir(destinationDir)
-                     if os.path.isdir(os.path.join(destinationDir, dirname)) and dirname.startswith("Case")]:
-      number = int(dirname.split("-")[0].replace("Case",""))
+    for dirName in [dirName for dirName in os.listdir(destinationDir)
+                     if os.path.isdir(os.path.join(destinationDir, dirName)) and dirName.startswith("Case")]:
+      number = int(dirName.split("-")[0].replace("Case",""))
       caseNumber = caseNumber if caseNumber > number else number
     caseNumber = str(caseNumber+1)
     while len(caseNumber) < 3 :
@@ -2125,7 +2091,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     return caseNumber
 
   def completeCase(self, directory):
-    self.stopStoreSCP()
+    self.stopSmartDICOMReceiver()
     if os.path.exists(directory):
       if self.getDirectorySize(directory) > 0:
         open(os.path.join(directory, ".completed"), 'a').close()
@@ -2298,48 +2264,11 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
           messageOutput += message + "\n"
     return messageOutput if messageOutput != "" else "There is nothing to be saved yet."
 
-  def stopStoreSCP(self):
-    if self.storeSCPProcess:
-      self.storeSCPProcess.stop()
-
-  def startStoreSCP(self, callback=None):
-    self.storeSCPCallback = callback
-    self.stopStoreSCP()
-    try:
-      self.storeSCPProcess = DICOMLib.DICOMStoreSCPProcess(incomingDataDir=self.intraopDataDir)
-      self.storeSCPProcess.start()
-      if self.storeSCPProcess.process:
-        self.onDICOMStoreSCPProcessStateChanged(self.storeSCPProcess.process.state())
-        self.storeSCPProcess.process.connect('stateChanged(QProcess::ProcessState)', self.onDICOMStoreSCPProcessStateChanged)
-    except UserWarning as message:
-      self.storeSCPCallback("Could not start listener:\n %s" % message, windowTitle="DICOM")
-
-  def onDICOMStoreSCPProcessStateChanged(self, newState):
-    messageCodes = {0:"DICOM StoreSCP not running", 1:"DICOM StoreSCP starting", 2:"DICOM StoreSCP running"}
-    slicer.util.showStatusMessage(messageCodes[newState] if newState in messageCodes.keys() else "")
-
   def getMostRecentWholeGlandSegmentation(self, path):
-    return self.getMostRecentFile(path, "nrrd", filter="WholeGland")
+    return self.getMostRecentFile(path, FileExtension.NRRD, filter="WholeGland")
 
   def getMostRecentTargetsFile(self, path):
-    return self.getMostRecentFile(path, "fcsv")
-
-  def getMostRecentFile(self, path, fileType, filter=None):
-    assert type(fileType) is str
-    files = [f for f in os.listdir(path) if f.endswith(fileType)]
-    if len(files) == 0:
-      return None
-    mostRecent = None
-    storedTimeStamp = 0
-    for filename in files:
-      if filter and not filter in filename:
-        continue
-      actualFileName = filename.split(".")[0]
-      timeStamp = int(actualFileName.split("-")[-1])
-      if timeStamp > storedTimeStamp:
-        mostRecent = filename
-        storedTimeStamp = timeStamp
-    return mostRecent
+    return self.getMostRecentFile(path, FileExtension.FCSV)
 
   def applyBiasCorrection(self):
     outputVolume = slicer.vtkMRMLScalarVolumeNode()
@@ -2395,31 +2324,41 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.registrationLogic.runReRegistration(parameterNode, progressCallback=progressCallback)
 
   def getRegistrationResultNameAndGeneratedSuffix(self, name):
-    nOccurences = sum([1 for result in self.registrationResults.getResultsAsList() if name in result.name])
+    nOccurrences = sum([1 for result in self.registrationResults.getResultsAsList() if name in result.name])
     suffix = ""
-    if nOccurences:
-      suffix = "_Retry_" + str(nOccurences)
+    if nOccurrences:
+      suffix = "_Retry_" + str(nOccurrences)
     return name, suffix
 
-  def startIntraopDirListener(self):
-    self.currentFileList = []
-    self.lastFileCount = len(self.getFileList(self._intraopDataDir))
-    self.currentFileCount = self.lastFileCount
-    self.importDICOMSeries()
-    self.stopWatching()
-    self.startWatchingIntraop()
+  def startSmartDICOMReceiver(self):
+    self.importDICOMSeries(newFileList=self.getFileList(self.intraopDataDir))
+    if self.smartDicomReceiver:
+      self.smartDicomReceiver.stop()
+    self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir, self.importDICOMSeries)
+    self.smartDicomReceiver.start()
 
-  def stopWatching(self):
-    self.importTimer.stop()
-    self.watchTimer.stop()
+  def stopSmartDICOMReceiver(self):
+    if self.smartDicomReceiver:
+      self.smartDicomReceiver.stop()
+      self.smartDicomReceiver = None
 
-  def startWatchingIntraop(self):
-    # TODO: should rather start watching DICOM database and check if there are new series that can be loaded
-    self.currentFileCount = len(self.getFileList(self._intraopDataDir))
-    if self.lastFileCount != self.currentFileCount:
-      self.importTimer.start()
-    self.lastFileCount = self.currentFileCount
-    self.watchTimer.start()
+  def importDICOMSeries(self, **kwargs):
+    newFileList = kwargs.pop('newFileList')
+    indexer = ctk.ctkDICOMIndexer()
+    db = slicer.dicomDatabase
+
+    for currentFile in newFileList:
+      currentFile = os.path.join(self._intraopDataDir, currentFile)
+      indexer.addFile(db, currentFile, None)
+      series = self.makeSeriesNumberDescription(currentFile)
+      if series and series not in self.seriesList and self.isDICOMSeriesEligible(series):
+        self.seriesList.append(series)
+        self.createLoadableFileListForSeries(series)
+
+    self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
+
+    if self._incomingDataCallback and len(newFileList):
+      self._incomingDataCallback(newFileList=newFileList)
 
   def createLoadableFileListForSeries(self, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
@@ -2440,33 +2379,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       volume.SetName(loadables[0].name)
       self.alreadyLoadedSeries[series] = volume
     return volume
-
-  def importDICOMSeries(self):
-    indexer = ctk.ctkDICOMIndexer()
-    db = slicer.dicomDatabase
-
-    fileList = self.getFileList(self._intraopDataDir)
-
-    newFileList = list(set(fileList) - set(self.currentFileList))
-
-    for currentFile in newFileList:
-      currentFile = os.path.join(self._intraopDataDir, currentFile)
-      indexer.addFile(db, currentFile, None)
-      series = self.makeSeriesNumberDescription(currentFile)
-      if series and series not in self.seriesList and self.isDICOMSeriesEligible(series):
-        self.seriesList.append(series)
-        self.createLoadableFileListForSeries(series)
-
-    indexer.addDirectory(db, self._intraopDataDir)
-    indexer.waitForImportFinished()
-
-    self.seriesList = sorted(self.seriesList, key=lambda series: RegistrationResult.getSeriesNumberFromString(series))
-
-    if self._incomingDataCallback and len(newFileList) > 0 and \
-                    len(self.getFileList(self._intraopDataDir)) == self.currentFileCount:
-      self._incomingDataCallback(newList=newFileList)
-
-    self.currentFileList = fileList
 
   def deleteSeriesFromSeriesList(self, seriesNumber):
     for series in self.seriesList:
@@ -2494,27 +2406,14 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       seriesNumberDescription = seriesNumber + ": " + seriesDescription
     return seriesNumberDescription
 
-  def getTargetPositions(self, registeredTargets):
-    number_of_targets = registeredTargets.GetNumberOfFiducials()
+  def getTargetPositions(self, targets):
     target_positions = []
-    for target in range(number_of_targets):
+    for target in range(targets.GetNumberOfFiducials()):
       target_position = [0.0, 0.0, 0.0]
-      registeredTargets.GetNthFiducialPosition(target, target_position)
+      targets.GetNthFiducialPosition(target, target_position)
       target_positions.append(target_position)
     logging.debug('target_positions are ' + str(target_positions))
     return target_positions
-
-  def getNeedleTipTargetDistance2D(self, target_position, needleTip_position):
-    x = abs(target_position[0] - needleTip_position[0])
-    y = abs(target_position[1] - needleTip_position[1])
-    return [x, y]
-
-  def getNeedleTipTargetDistance3D(self, target_position, needleTip_position):
-    rulerNode = slicer.vtkMRMLAnnotationRulerNode()
-    rulerNode.SetPosition1(target_position)
-    rulerNode.SetPosition2(needleTip_position)
-    distance_3D = rulerNode.GetDistanceMeasurement()
-    return distance_3D
 
   def run(self):
     return True
@@ -3073,9 +2972,9 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
       return self.targetList.GetNthFiducialLabel(row)
     elif (col == 1 or col == 2) and self.cursorPosition and self.computeCursorDistances:
       if col == 1:
-        distance2D = self.logic.getNeedleTipTargetDistance2D(targetPosition, self.cursorPosition)
+        distance2D = self.logic.get2DDistance(targetPosition, self.cursorPosition)
         return 'x = ' + str(round(distance2D[0], 2)) + ' y = ' + str(round(distance2D[1], 2))
-      distance3D = self.logic.getNeedleTipTargetDistance3D(targetPosition, self.cursorPosition)
+      distance3D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
       return str(round(distance3D, 2))
 
     elif (col == 3 or col == 4) and self.logic.zFrameRegistrationSuccessful:
@@ -3121,7 +3020,13 @@ class SmartDICOMReceiver(ModuleLogicMixin):
     self.receiveFinishedCallback = receiveFinishedCallback
     self.storeSCPProcess = None
     self.setupTimers()
+    self.reset()
+
+  def reset(self):
     self.timerIterations = 0
+    self.startingFileList = []
+    self.currentFileList = []
+    self.dataHasBeenReceived = False
 
   def setupTimers(self):
     self.dataReceivedTimer = qt.QTimer()
@@ -3137,8 +3042,8 @@ class SmartDICOMReceiver(ModuleLogicMixin):
   def start(self):
     self.stop()
 
-    self.dataHasBeenReceived = False
-    self.lastFileCount = len(self.getFileList(self.incomingDataDirectory))
+    self.startingFileList = self.getFileList(self.incomingDataDirectory)
+    self.lastFileCount = len(self.startingFileList)
 
     self.storeSCPProcess = DICOMLib.DICOMStoreSCPProcess(incomingDataDir=self.incomingDataDirectory)
     self.startWatching()
@@ -3149,16 +3054,17 @@ class SmartDICOMReceiver(ModuleLogicMixin):
     self.stopWatching()
     if self.storeSCPProcess:
       self.storeSCPProcess.stop()
+    self.reset()
 
   def startWatching(self):
-    self.currentFileCount = len(self.getFileList(self.incomingDataDirectory))
-    if self.lastFileCount != self.currentFileCount:
+    self.currentFileList = self.getFileList(self.incomingDataDirectory)
+    if self.lastFileCount != len(self.currentFileList):
       slicer.util.showStatusMessage(self.getReceivingStatusMessage())
       self.dataHasBeenReceived = True
-      self.lastFileCount = self.currentFileCount
+      self.lastFileCount = len(self.currentFileList)
       self.watchTimer.start()
     elif self.dataHasBeenReceived:
-      self.lastFileCount = self.currentFileCount
+      self.lastFileCount = len(self.currentFileList)
       slicer.util.showStatusMessage("DICOM data receive completed.")
       self.dataReceivedTimer.start()
     else:
@@ -3178,8 +3084,10 @@ class SmartDICOMReceiver(ModuleLogicMixin):
     self.watchTimer.stop()
 
   def checkIfStillSameFileCount(self):
-    self.currentFileCount = len(self.getFileList(self.incomingDataDirectory))
-    if self.lastFileCount == self.currentFileCount:
-      self.receiveFinishedCallback()
-    else:
-      self.watchTimer.start()
+    self.currentFileList = self.getFileList(self.incomingDataDirectory)
+    if self.lastFileCount == len(self.currentFileList):
+      newFileList = list(set(self.currentFileList) - set(self.startingFileList))
+      self.startingFileList = self.currentFileList
+      self.lastFileCount = len(self.startingFileList)
+      self.receiveFinishedCallback(newFileList=newFileList)
+    self.watchTimer.start()
