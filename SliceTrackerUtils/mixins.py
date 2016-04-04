@@ -199,6 +199,14 @@ class ModuleLogicMixin(object):
       logging.debug('Failed to create the following directory: ' + directory)
 
   @staticmethod
+  def findElement(dom, name):
+    for e in [e for e in dom.getElementsByTagName('element') if e.getAttribute('name') == name]:
+      try:
+        return e.childNodes[0].nodeValue
+      except IndexError:
+        return ""
+
+  @staticmethod
   def getDICOMValue(currentFile, tag, fallback=None):
     db = slicer.dicomDatabase
     try:
