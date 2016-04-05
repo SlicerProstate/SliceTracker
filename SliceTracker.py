@@ -465,8 +465,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
                                                      styleSheet=STYLE.WHITE_BACKGROUND, enabled=False)
     self.cancelSegmentationButton = self.createButton("", icon=self.cancelSegmentationIcon,
                                                       iconSize=iconSize, enabled=False)
-    self.backButton = self.createButton("", icon=self.undoIcon, iconSize=iconSize, enabled=False)
-    self.forwardButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False)
+    self.undoButton = self.createButton("", icon=self.undoIcon, iconSize=iconSize, enabled=False)
+    self.redoButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False)
 
     self.applyRegistrationButton = self.createButton("Apply Registration", icon=self.greenCheckIcon, iconSize=iconSize,
                                                      toolTip="Run Registration.")
@@ -476,7 +476,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
                                                 enabled=False, iconSize=iconSize)
 
     segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
-                                              self.cancelSegmentationButton, self.backButton, self.forwardButton,
+                                              self.cancelSegmentationButton, self.undoButton, self.redoButton,
                                               self.editorWidgetButton])
     self.setupEditorWidget()
 
@@ -621,37 +621,51 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def setupConnections(self):
 
-    # TODO: separate by steps
-
     def setupButtonConnections():
-      self.createNewCaseButton.clicked.connect(self.onCreateNewCaseButtonClicked)
-      self.openCaseButton.directorySelected.connect(self.onOpenCaseButtonClicked)
-      self.casesRootDirectoryButton.directoryChanged.connect(lambda: setattr(self, "caseRootDir",
-                                                                              self.casesRootDirectoryButton.directory))
-      self.forwardButton.clicked.connect(self.onForwardButtonClicked)
-      self.backButton.clicked.connect(self.onBackButtonClicked)
-      self.editorWidgetButton.clicked.connect(self.onEditorGearIconClicked)
-      self.applyRegistrationButton.clicked.connect(lambda: self.onInvokeRegistration(initial=True))
-      self.quickSegmentationButton.clicked.connect(self.onQuickSegmentationButtonClicked)
-      self.cancelSegmentationButton.clicked.connect(self.onCancelSegmentationButtonClicked)
-      self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
-      self.applySegmentationButton.clicked.connect(self.onApplySegmentationButtonClicked)
-      self.approveRegistrationResultButton.clicked.connect(self.onApproveRegistrationResultButtonClicked)
-      self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
-      self.rejectRegistrationResultButton.clicked.connect(self.onRejectRegistrationResultButtonClicked)
-      self.retryRegistrationButton.clicked.connect(self.onRetryRegistrationButtonClicked)
-      self.caseCompletedButton.clicked.connect(self.onCaseCompletedButtonClicked)
-      self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
-      self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
-      self.crosshairButton.clicked.connect(self.onCrosshairButtonClicked)
-      self.retryZFrameRegistrationButton.clicked.connect(self.onRetryZFrameRegistrationButtonClicked)
-      self.approveZFrameRegistrationButton.clicked.connect(self.onApproveZFrameRegistrationButtonClicked)
-      self.applyZFrameRegistrationButton.clicked.connect(self.onApplyZFrameRegistrationButtonClicked)
-      self.useRevealCursorButton.connect('toggled(bool)', self.onRevealToggled)
-      self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
-      self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
-      self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
-      self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
+      def setupOverviewStepButtonConnections():
+        self.createNewCaseButton.clicked.connect(self.onCreateNewCaseButtonClicked)
+        self.openCaseButton.directorySelected.connect(self.onOpenCaseButtonClicked)
+        self.casesRootDirectoryButton.directoryChanged.connect(lambda: setattr(self, "caseRootDir",
+                                                                                self.casesRootDirectoryButton.directory))
+        self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
+        self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
+        self.caseCompletedButton.clicked.connect(self.onCaseCompletedButtonClicked)
+
+      def setupSegmentationStepButtonConnections():
+        self.quickSegmentationButton.clicked.connect(self.onQuickSegmentationButtonClicked)
+        self.applySegmentationButton.clicked.connect(self.onApplySegmentationButtonClicked)
+        self.cancelSegmentationButton.clicked.connect(self.onCancelSegmentationButtonClicked)
+        self.redoButton.clicked.connect(self.onRedoButtonClicked)
+        self.undoButton.clicked.connect(self.onUndoButtonClicked)
+        self.editorWidgetButton.clicked.connect(self.onEditorGearIconClicked)
+        self.applyRegistrationButton.clicked.connect(lambda: self.onInvokeRegistration(initial=True))
+
+      def setupEvaluationStepButtonConnections():
+        self.registrationButtonGroup.connect('buttonClicked(int)', self.onRegistrationButtonChecked)
+
+        self.retryRegistrationButton.clicked.connect(self.onRetryRegistrationButtonClicked)
+        self.approveRegistrationResultButton.clicked.connect(self.onApproveRegistrationResultButtonClicked)
+        self.rejectRegistrationResultButton.clicked.connect(self.onRejectRegistrationResultButtonClicked)
+        self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
+
+      def setupViewSettingsButtonConnections():
+        self.crosshairButton.clicked.connect(self.onCrosshairButtonClicked)
+        self.useRevealCursorButton.connect('toggled(bool)', self.onRevealToggled)
+        self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
+        self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
+        self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
+        self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
+
+      def setupZFrameRegistrationStepButtonConnections():
+        self.retryZFrameRegistrationButton.clicked.connect(self.onRetryZFrameRegistrationButtonClicked)
+        self.approveZFrameRegistrationButton.clicked.connect(self.onApproveZFrameRegistrationButtonClicked)
+        self.applyZFrameRegistrationButton.clicked.connect(self.onApplyZFrameRegistrationButtonClicked)
+
+      setupViewSettingsButtonConnections()
+      setupOverviewStepButtonConnections()
+      setupZFrameRegistrationStepButtonConnections()
+      setupSegmentationStepButtonConnections()
+      setupEvaluationStepButtonConnections()
 
     def setupSelectorConnections():
       self.resultSelector.connect('currentIndexChanged(QString)', self.onRegistrationResultSelected)
@@ -850,12 +864,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.onBSplineResultClicked()
 
   def deactivateUndoRedoButtons(self):
-    self.forwardButton.setEnabled(0)
-    self.backButton.setEnabled(0)
+    self.redoButton.setEnabled(0)
+    self.undoButton.setEnabled(0)
 
   def updateUndoRedoButtons(self, observer=None, caller=None):
-    self.forwardButton.setEnabled(self.deletedMarkups.GetNumberOfFiducials() > 0)
-    self.backButton.setEnabled(self.logic.inputMarkupNode.GetNumberOfFiducials() > 0)
+    self.redoButton.setEnabled(self.deletedMarkups.GetNumberOfFiducials() > 0)
+    self.undoButton.setEnabled(self.logic.inputMarkupNode.GetNumberOfFiducials() > 0)
 
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
     if self.evaluationMode:
@@ -1099,7 +1113,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.sliceAnnotations.append(self.registrationResultOldImageAnnotation)
     self.registrationResultStatusAnnotation = None
 
-  def onForwardButtonClicked(self):
+  def onRedoButtonClicked(self):
     numberOfDeletedTargets = self.deletedMarkups.GetNumberOfFiducials()
     logging.debug(('numberOfTargets in deletedMarkups is' + str(numberOfDeletedTargets)))
     pos = [0.0, 0.0, 0.0]
@@ -1117,7 +1131,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.updateUndoRedoButtons()
 
-  def onBackButtonClicked(self):
+  def onUndoButtonClicked(self):
     activeFiducials = self.logic.inputMarkupNode
     numberOfTargets = activeFiducials.GetNumberOfFiducials()
     logging.debug('numberOfTargets is' + str(numberOfTargets))
