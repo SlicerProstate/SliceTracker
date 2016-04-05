@@ -765,3 +765,125 @@ class CustomTargetTableModel(qt.QAbstractTableModel):
     self.dataChanged(self.index(0, 3), self.index(self.rowCount()-1, 4))
     if self._targetModifiedCallback:
       self._targetModifiedCallback()
+
+
+class TargetCreationWidget(ModuleWidgetMixin):
+
+  HEADERS = ["Name","Delete"]
+  MODIFIED_EVENT = "ModifiedEvent"
+  FIDUCIAL_LIST_OBSERVED_EVENTS = [MODIFIED_EVENT]
+
+  @property
+  def currentNode(self):
+    return self._currentNode
+
+  @currentNode.setter
+  def currentNode(self, node):
+    if self._currentNode:
+      self.removeObservers()
+    self._currentNode = node
+    if node:
+      self.placeWidget.setCurrentNode(node)
+      self.addObservers()
+    else:
+      selectionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
+      selectionNode.SetReferenceActivePlaceNodeID(None)
+    self.updateTable()
+
+  def __init__(self, parent, listModifiedCallback=None):
+    self.parent = parent
+    self.connectedButtons = []
+    self.fiducialsNodeObservers = []
+    self.setup()
+    self._currentNode = None
+    self.markupsLogic = slicer.modules.markups.logic()
+    self.listModifiedCallback = listModifiedCallback
+
+  def setup(self):
+    self.placeWidget = slicer.qSlicerMarkupsPlaceWidget()
+    self.placeWidget.setMRMLScene(slicer.mrmlScene)
+    self.placeWidget.placeMultipleMarkups = slicer.qSlicerMarkupsPlaceWidget.ForcePlaceMultipleMarkups
+
+    self.table = qt.QTableWidget(0, 2)
+    self.table.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+    self.table.setSelectionMode(qt.QAbstractItemView.SingleSelection)
+    self.table.setMaximumHeight(200)
+    self.table.horizontalHeader().setStretchLastSection(True)
+    self.resetTable()
+    self.parent.addRow(self.table)
+
+    self.setupConnections()
+
+  def setupConnections(self):
+    self.table.connect("cellChanged (int,int)", self.onCellChanged)
+
+  def reset(self):
+    self.stopPlacing()
+    self.currentNode = None
+
+  def startPlacing(self):
+    self.placeWidget.setPlaceModeEnabled(True)
+
+  def stopPlacing(self):
+    self.placeWidget.setPlaceModeEnabled(False)
+
+  def createNewFiducialNode(self, name=None):
+    self.currentNode = slicer.mrmlScene.GetNodeByID(self.markupsLogic.AddNewFiducialNode())
+    if name:
+      self.currentNode.SetName(name)
+
+  def resetTable(self):
+    self.cleanupButtons()
+    self.table.clear()
+    self.table.setHorizontalHeaderLabels(self.HEADERS)
+
+  def cleanupButtons(self):
+    for button in self.connectedButtons:
+      button.clicked.disconnect(self.handleDeleteButtonClicked)
+    self.connectedButtons = []
+
+  def removeObservers(self):
+    if self._currentNode and len(self.fiducialsNodeObservers) > 0:
+      for observer in self.fiducialsNodeObservers:
+        self._currentNode.RemoveObserver(observer)
+    self.fiducialsNodeObservers = []
+
+  def addObservers(self):
+    if self.currentNode:
+      for event in self.FIDUCIAL_LIST_OBSERVED_EVENTS:
+        self.fiducialsNodeObservers.append(self.currentNode.AddObserver(event, self.onFiducialsUpdated))
+
+  def updateTable(self):
+    self.resetTable()
+    if not self.currentNode:
+      return
+    nOfControlPoints = self.currentNode.GetNumberOfFiducials()
+    if self.table.rowCount != nOfControlPoints:
+      self.table.setRowCount(nOfControlPoints)
+    for i in range(nOfControlPoints):
+      label = self.currentNode.GetNthFiducialLabel(i)
+      cellLabel = qt.QTableWidgetItem(label)
+      self.table.setItem(i, 0, cellLabel)
+      self.addDeleteButton(i, 1)
+    self.table.show()
+
+  def addDeleteButton(self, row, col):
+    button = qt.QPushButton('X')
+    self.table.setCellWidget(row, col, button)
+    button.clicked.connect(lambda: self.handleDeleteButtonClicked(row))
+    self.connectedButtons.append(button)
+
+  def handleDeleteButtonClicked(self, idx):
+    if slicer.util.confirmYesNoDisplay("Do you really want to delete fiducial %s?"
+                                               % self.currentNode.GetNthFiducialLabel(idx), windowTitle="mpReview"):
+      self.currentNode.RemoveMarkup(idx)
+
+  def onFiducialsUpdated(self, caller, event):
+    if caller.IsA("vtkMRMLMarkupsFiducialNode") and event == self.MODIFIED_EVENT:
+      self.updateTable()
+      if self.listModifiedCallback:
+        self.listModifiedCallback()
+
+  def onCellChanged(self, row, col):
+    if col == 0:
+      self.currentNode.SetNthFiducialLabel(row, self.table.item(row, col).text())

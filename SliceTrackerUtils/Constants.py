@@ -52,6 +52,8 @@ class SliceTrackerConstants(object):
   COVER_TEMPLATE = "COVER TEMPLATE"
   GUIDANCE_IMAGE = "GUIDANCE"
 
+  TRACKABLE_IMAGE_TYPES = [COVER_PROSTATE, COVER_TEMPLATE, GUIDANCE_IMAGE]
+
   ZFrame_INSTRUCTION_STEPS = {1: "Scroll and click into ZFrame center to set ROI center",
                               2: "Click outside of upper right ZFrame corner to set ROI border"}
 

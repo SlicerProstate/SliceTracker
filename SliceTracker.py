@@ -8,7 +8,7 @@ from Editor import EditorWidget
 from SliceTrackerUtils.Constants import DICOMTAGS, COLOR, STYLE, SliceTrackerConstants, FileExtension
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
 from SliceTrackerUtils.ZFrameRegistration import ZFrameRegistration
-from SliceTrackerUtils.helpers import SmartDICOMReceiver, SliceAnnotation, CustomTargetTableModel
+from SliceTrackerUtils.helpers import SmartDICOMReceiver, SliceAnnotation, CustomTargetTableModel, TargetCreationWidget
 from SliceTrackerUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
 from SliceTrackerUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SliceTrackerUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
@@ -426,14 +426,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetingGroupBoxLayout = qt.QFormLayout()
     self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
 
-    from mpReview import mpReviewFiducialTable
-    self.fiducialsWidget = mpReviewFiducialTable(self.targetingGroupBoxLayout)
+    self.fiducialsWidget = TargetCreationWidget(self.targetingGroupBoxLayout, listModifiedCallback=self.onTargetListModified)
     self.finishTargetingStepButton = self.createButton("Done setting targets", enabled=True,
                                                        toolTip="Click this button to continue after setting targets")
 
     self.targetingGroupBoxLayout.addRow(self.finishTargetingStepButton)
     self.targetingGroupBox.hide()
     self.layout.addWidget(self.targetingGroupBox)
+
+  def onTargetListModified(self):
+    self.finishTargetingStepButton.enabled = self.fiducialsWidget.currentNode is not None and \
+                                             self.fiducialsWidget.currentNode.GetNumberOfFiducials()
 
   def setupTargetsTable(self):
     self.targetTable = qt.QTableView()
@@ -661,11 +664,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.approveZFrameRegistrationButton.clicked.connect(self.onApproveZFrameRegistrationButtonClicked)
         self.applyZFrameRegistrationButton.clicked.connect(self.onApplyZFrameRegistrationButtonClicked)
 
+      def setupTargetingStepButtonConnections():
+        self.finishTargetingStepButton.clicked.connect(self.onFinishTargetingStepButtonClicked)
+
       setupViewSettingsButtonConnections()
       setupOverviewStepButtonConnections()
       setupZFrameRegistrationStepButtonConnections()
       setupSegmentationStepButtonConnections()
       setupEvaluationStepButtonConnections()
+      setupTargetingStepButtonConnections()
 
     def setupSelectorConnections():
       self.resultSelector.connect('currentIndexChanged(QString)', self.onRegistrationResultSelected)
@@ -688,6 +695,13 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     setupButtonConnections()
     setupSelectorConnections()
     setupOtherConnections()
+
+  def onFinishTargetingStepButtonClicked(self):
+    self.fiducialsWidget.stopPlacing()
+    if slicer.util.confirmYesNoDisplay("Are you done setting targets and renaming them?"):
+      self.openOverviewStep()
+      self.targetTableModel.targetList = self.fiducialsWidget.currentNode
+      self.fiducialsWidget.reset()
 
   def onCreateNewCaseButtonClicked(self):
     self.clearData()
@@ -886,7 +900,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def isTrackingPossible(self, series):
     return self.logic.isTrackingPossible(series) and \
-          ((self.GUIDANCE_IMAGE in series and self.registrationResults.getMostRecentApprovedCoverProstateRegistration()) or
+          ((self.GUIDANCE_IMAGE in series and (self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
+                                               or not self.usePreopData)) or
           (self.COVER_PROSTATE in series and self.logic.zFrameRegistrationSuccessful) or
           (self.COVER_TEMPLATE in series and not self.logic.zFrameRegistrationSuccessful))
 
@@ -1602,6 +1617,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.evaluationButtonsGroupBox.hide()
     self.overviewGroupBox.hide()
     self.targetingGroupBox.show()
+    self.fiducialsWidget.createNewFiducialNode(name="ManuallySetIntraopTargets")
+    self.fiducialsWidget.startPlacing()
 
   def onRetryRegistrationButtonClicked(self):
     self.registrationAssessmentMode = False
