@@ -157,6 +157,14 @@ class ModuleLogicMixin(object):
     return mostRecent
 
   @staticmethod
+  def createTimer(interval, slot, singleShot=False):
+    timer = qt.QTimer()
+    timer.setInterval(interval)
+    timer.timeout.connect(slot)
+    timer.setSingleShot(singleShot)
+    return timer
+
+  @staticmethod
   def get2DDistance(pos1, pos2):
     x = abs(pos1[0] - pos2[0])
     y = abs(pos1[1] - pos2[1])

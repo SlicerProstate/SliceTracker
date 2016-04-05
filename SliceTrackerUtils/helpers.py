@@ -8,9 +8,14 @@ from mixins import ModuleLogicMixin, ModuleWidgetMixin
 
 class SmartDICOMReceiver(ModuleLogicMixin):
 
-  def __init__(self, incomingDataDirectory, receiveFinishedCallback):
+  STATUS_RECEIVING = "Receiving DICOM data"
+  STATUS_WAITING = "Waiting for incoming DICOM data"
+  STATUS_COMPLETED = "DICOM data receive completed."
+
+  def __init__(self, incomingDataDirectory, receiveFinishedCallback, statusCallback=None):
     self.incomingDataDirectory = incomingDataDirectory
     self.receiveFinishedCallback = receiveFinishedCallback
+    self.statusCallback = slicer.util.showStatusMessage if not statusCallback else statusCallback
     self.storeSCPProcess = None
     self.setupTimers()
     self.reset()
@@ -22,17 +27,11 @@ class SmartDICOMReceiver(ModuleLogicMixin):
     self.dataHasBeenReceived = False
 
   def setupTimers(self):
-    self.dataReceivedTimer = qt.QTimer()
-    self.dataReceivedTimer.setInterval(5000)
-    self.dataReceivedTimer.timeout.connect(self.checkIfStillSameFileCount)
-    self.dataReceivedTimer.setSingleShot(True)
+    self.dataReceivedTimer = self.createTimer(interval=5000, slot=self.checkIfStillSameFileCount, singleShot=True)
+    self.watchTimer = self.createTimer(interval=1000, slot=self.startWatching, singleShot=True)
 
-    self.watchTimer = qt.QTimer()
-    self.watchTimer.setInterval(1000)
-    self.watchTimer.timeout.connect(self.startWatching)
-    self.watchTimer.setSingleShot(True)
-
-  def start(self):
+  def start(self, showDots=True):
+    self.showDots = showDots
     self.stop()
 
     self.startingFileList = self.getFileList(self.incomingDataDirectory)
@@ -41,7 +40,6 @@ class SmartDICOMReceiver(ModuleLogicMixin):
     self.storeSCPProcess = DICOMLib.DICOMStoreSCPProcess(incomingDataDir=self.incomingDataDirectory)
     self.startWatching()
     self.storeSCPProcess.start()
-    slicer.util.showStatusMessage("Waiting for incoming DICOM data")
 
   def stop(self):
     self.stopWatching()
@@ -52,25 +50,27 @@ class SmartDICOMReceiver(ModuleLogicMixin):
   def startWatching(self):
     self.currentFileList = self.getFileList(self.incomingDataDirectory)
     if self.lastFileCount != len(self.currentFileList):
-      slicer.util.showStatusMessage(self.getReceivingStatusMessage())
+      status = self.getReceivingStatusMessage(self.STATUS_RECEIVING) if self.showDots else self.STATUS_RECEIVING
+      self.statusCallback(status)
       self.dataHasBeenReceived = True
       self.lastFileCount = len(self.currentFileList)
       self.watchTimer.start()
     elif self.dataHasBeenReceived:
       self.lastFileCount = len(self.currentFileList)
-      slicer.util.showStatusMessage("DICOM data receive completed.")
+      self.statusCallback(self.STATUS_COMPLETED)
       self.dataReceivedTimer.start()
     else:
+      self.statusCallback(self.STATUS_WAITING)
       self.watchTimer.start()
 
-  def getReceivingStatusMessage(self):
+  def getReceivingStatusMessage(self, message):
     if self.timerIterations == 4:
       self.timerIterations = 0
     dots = ""
     for iteration in range(self.timerIterations):
       dots += "."
     self.timerIterations += 1
-    return "Receiving DICOM data %s" % dots
+    return message + dots
 
   def stopWatching(self):
     self.dataReceivedTimer.stop()
@@ -315,12 +315,67 @@ class IncomingDataMessageBox(ExtendedQMessageBox):
 
   def __init__(self, parent=None):
     super(IncomingDataMessageBox, self).__init__(parent)
-    self.setWindowTitle("Dialog with CheckBox")
+    self.setWindowTitle("Incoming image data")
     self.setText("New data has been received. What would you do?")
     self.setIcon(qt.QMessageBox.Question)
     trackButton =  self.addButton(qt.QPushButton('Track targets'), qt.QMessageBox.AcceptRole)
     self.addButton(qt.QPushButton('Postpone'), qt.QMessageBox.NoRole)
     self.setDefaultButton(trackButton)
+
+
+class IncomingDataWindow(qt.QWidget, ModuleWidgetMixin):
+
+  def __init__(self, callback=None, title="Receiving image data", skipText="Skip", cancelText="Cancel", *args):
+    super(IncomingDataWindow, self).__init__(*args)
+    self.setWindowTitle(title)
+    self.callback = callback if callback else None
+    self.setWindowFlags(qt.Qt.CustomizeWindowHint | qt.Qt.WindowTitleHint | qt.Qt.WindowStaysOnTopHint)
+    self.skipButtonText = skipText
+    self.cancelButtonText = cancelText
+    self.setup()
+
+  def setText(self, text):
+    self.skipButton.enabled = text in SmartDICOMReceiver.STATUS_WAITING
+    self.textLabel.text = text
+
+  def show(self, disableWidget=None):
+    self.disabledWidget = disableWidget
+    if disableWidget:
+      disableWidget.enabled = False
+    qt.QWidget.show(self)
+
+  def setup(self):
+    self.setLayout(qt.QGridLayout())
+    self.statusLabel = qt.QLabel("Status:")
+    self.textLabel = qt.QLabel()
+    self.layout().addWidget(self.statusLabel, 0, 0)
+    self.layout().addWidget(self.textLabel, 0, 1)
+
+    self.progress = qt.QProgressBar()
+    self.progress.maximum = 0
+    self.progress.setAlignment(qt.Qt.AlignCenter)
+
+    self.layout().addWidget(self.progress, 1, 0, 1, qt.QSizePolicy.ExpandFlag)
+
+    self.buttonGroup = qt.QButtonGroup()
+    self.skipButton = self.createButton(self.skipButtonText)
+    self.cancelButton = self.createButton(self.cancelButtonText)
+    self.buttonGroup.addButton(self.skipButton)
+    self.buttonGroup.addButton(self.cancelButton)
+    self.layout().addWidget(self.skipButton, 2, 0)
+    self.layout().addWidget(self.cancelButton, 2, 1)
+    self.setupConnections()
+
+  def setupConnections(self):
+    self.buttonGroup.connect('buttonClicked(QAbstractButton*)', self.onButtonClicked)
+
+  def onButtonClicked(self, button):
+    if self.disabledWidget:
+      self.disabledWidget.enabled = True
+      self.disabledWidget = None
+    if self.callback:
+      self.callback(button)
+    self.hide()
 
 
 class RatingWindow(qt.QWidget, ModuleWidgetMixin):
@@ -340,7 +395,7 @@ class RatingWindow(qt.QWidget, ModuleWidgetMixin):
     qt.QWidget.__init__(self, *args)
     self.maximumValue = maximumValue
     self.text = text
-    self.iconPath = os.path.join(os.path.dirname(sys.modules[self.__module__].__file__), 'Resources/Icons')
+    self.iconPath = os.path.join(os.path.dirname(sys.modules[self.__module__].__file__), '../Resources/Icons')
     self.setupIcons()
     self.setLayout(qt.QGridLayout())
     self.setWindowFlags(qt.Qt.WindowStaysOnTopHint | qt.Qt.FramelessWindowHint)
