@@ -1667,46 +1667,35 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setAxialOrientation()
     self.onQuickSegmentationFinished()
 
+  def processValidQuickSegmentationResult(self):
+    self.currentIntraopLabel = self.logic.labelMapFromClippingModel(self.logic.currentIntraopVolume)
+    labelName = self.logic.currentIntraopVolume.GetName() + '-label'
+    self.currentIntraopLabel.SetName(labelName)
+
+    displayNode = self.currentIntraopLabel.GetDisplayNode()
+    displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+
+    self.fixedLabelSelector.setCurrentNode(self.currentIntraopLabel)
+
+    self.setTargetVisibility(self.logic.inputMarkupNode, show=False)
+    self.logic.clippingModelNode.SetDisplayVisibility(False)
+    self.setQuickSegmentationModeOFF()
+    self.setupScreenAfterSegmentation()
+    self.setSegmentationButtons(segmentationActive=False)
+
   def onQuickSegmentationFinished(self):
-    continueSegmentation = False
-    if self.logic.inputMarkupNode.GetNumberOfFiducials() > 3 and self.validPointsForQuickModeSet():
-      self.currentIntraopLabel = self.logic.labelMapFromClippingModel(self.logic.currentIntraopVolume)
-      labelName = self.logic.currentIntraopVolume.GetName() + '-label'
-      self.currentIntraopLabel.SetName(labelName)
-
-      displayNode = self.currentIntraopLabel.GetDisplayNode()
-      displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
-
-      self.fixedLabelSelector.setCurrentNode(self.currentIntraopLabel)
-
-      self.setTargetVisibility(self.logic.inputMarkupNode, show=False)
-      self.logic.clippingModelNode.SetDisplayVisibility(False)
-      self.setupScreenAfterSegmentation()
-    else:
-      if slicer.util.confirmYesNoDisplay("You need to set at least three points with an additional one situated on a distinct slice "
-                          "as the algorithm input in order to be able to create a proper segmentation. This step is "
-                          "essential for an efficient registration. Do you want to continue using the quick mode?",
-                                         windowTitle="SliceTracker"):
-        continueSegmentation = True
-      else:
-        self.logic.deleteClippingData()
-    if not continueSegmentation:
+    if not self.logic.isSegmentationValid():
+      if slicer.util.confirmYesNoDisplay(
+              "You need to set at least three points with an additional one situated on a distinct slice "
+              "as the algorithm input in order to be able to create a proper segmentation. This step is "
+              "essential for an efficient registration. Do you want to continue using the quick mode?",
+              windowTitle="SliceTracker"):
+        return
+      self.logic.deleteClippingData()
       self.setQuickSegmentationModeOFF()
       self.setSegmentationButtons(segmentationActive=False)
-
-  def validPointsForQuickModeSet(self):
-    positions = self.getMarkupSlicePositions()
-    return min(positions) != max(positions)
-
-  def getMarkupSlicePositions(self):
-    markupNode = self.logic.inputMarkupNode
-    nOfControlPoints = markupNode.GetNumberOfFiducials()
-    positions = []
-    pos = [0, 0, 0]
-    for i in range(nOfControlPoints):
-      markupNode.GetNthFiducialPosition(i, pos)
-      positions.append(pos[2])
-    return positions
+    else:
+      self.processValidQuickSegmentationResult()
 
   def setupScreenAfterSegmentation(self):
     self.hideAllLabels()
@@ -2509,6 +2498,22 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     import VolumeClipWithModel
     clipLogic = VolumeClipWithModel.VolumeClipWithModelLogic()
     clipLogic.updateModelFromMarkup(self.inputMarkupNode, self.clippingModelNode)
+
+  def isSegmentationValid(self):
+    return self.inputMarkupNode.GetNumberOfFiducials() > 3 and self.validPointsForQuickModeSet()
+
+  def validPointsForQuickModeSet(self):
+    positions = self.getMarkupSlicePositions()
+    return min(positions) != max(positions)
+
+  def getMarkupSlicePositions(self):
+    nOfControlPoints = self.inputMarkupNode.GetNumberOfFiducials()
+    positions = []
+    pos = [0, 0, 0]
+    for i in range(nOfControlPoints):
+      self.inputMarkupNode.GetNthFiducialPosition(i, pos)
+      positions.append(pos[2])
+    return positions
 
   def deleteClippingData(self):
     slicer.mrmlScene.RemoveNode(self.clippingModelNode)
