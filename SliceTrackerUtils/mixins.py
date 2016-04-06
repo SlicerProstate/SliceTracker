@@ -139,6 +139,14 @@ class ModuleWidgetMixin(object):
 class ModuleLogicMixin(object):
 
   @staticmethod
+  def cloneFiducials(original, cloneName):
+    clone = slicer.vtkMRMLMarkupsFiducialNode()
+    clone.Copy(original)
+    clone.SetName(cloneName)
+    slicer.mrmlScene.AddNode(clone)
+    return clone
+
+  @staticmethod
   def getMostRecentFile(path, fileType, filter=None):
     assert type(fileType) is str
     files = [f for f in os.listdir(path) if f.endswith(fileType)]

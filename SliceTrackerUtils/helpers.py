@@ -344,6 +344,12 @@ class IncomingDataWindow(qt.QWidget, ModuleWidgetMixin):
       disableWidget.enabled = False
     qt.QWidget.show(self)
 
+  def hide(self):
+    if self.disabledWidget:
+      self.disabledWidget.enabled = True
+      self.disabledWidget = None
+    qt.QWidget.hide(self)
+
   def setup(self):
     self.setLayout(qt.QGridLayout())
     self.statusLabel = qt.QLabel("Status:")
@@ -370,9 +376,6 @@ class IncomingDataWindow(qt.QWidget, ModuleWidgetMixin):
     self.buttonGroup.connect('buttonClicked(QAbstractButton*)', self.onButtonClicked)
 
   def onButtonClicked(self, button):
-    if self.disabledWidget:
-      self.disabledWidget.enabled = True
-      self.disabledWidget = None
     if self.callback:
       self.callback(button)
     self.hide()
