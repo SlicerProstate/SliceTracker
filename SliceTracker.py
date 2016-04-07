@@ -907,6 +907,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.disableTargetMovingMode()
         self.setupRegistrationResultView()
         self.onRegistrationResultSelected(self.currentResult.name)
+        self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
     else:
       self.layoutsMenuButton.setIcon(qt.QIcon())
       self.layoutsMenuButton.setText("Layouts")
