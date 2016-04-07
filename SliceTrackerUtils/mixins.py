@@ -139,11 +139,14 @@ class ModuleWidgetMixin(object):
 class ModuleLogicMixin(object):
 
   @staticmethod
-  def cloneFiducials(original, cloneName):
+  def cloneFiducials(original, cloneName, keepDisplayNode=False):
     clone = slicer.vtkMRMLMarkupsFiducialNode()
     clone.Copy(original)
     clone.SetName(cloneName)
     slicer.mrmlScene.AddNode(clone)
+    displayNode = slicer.vtkMRMLMarkupsDisplayNode()
+    slicer.mrmlScene.AddNode(displayNode)
+    clone.SetAndObserveDisplayNodeID(displayNode.GetID())
     return clone
 
   @staticmethod

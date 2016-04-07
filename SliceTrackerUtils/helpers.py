@@ -831,6 +831,7 @@ class TargetCreationWidget(ModuleWidgetMixin):
     self.placeWidget.setPlaceModeEnabled(False)
 
   def createNewFiducialNode(self, name=None):
+    # TODO: set displayNode here
     self.currentNode = slicer.mrmlScene.GetNodeByID(self.markupsLogic.AddNewFiducialNode())
     if name:
       self.currentNode.SetName(name)

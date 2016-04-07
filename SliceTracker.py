@@ -12,6 +12,7 @@ from SliceTrackerUtils.helpers import SmartDICOMReceiver, SliceAnnotation, Custo
 from SliceTrackerUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
 from SliceTrackerUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SliceTrackerUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from SliceTrackerUtils.exceptions import DICOMValueError
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 from slicer.ScriptedLoadableModule import *
 
@@ -754,6 +755,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     result.originalTargets = self.logic.preopTargets
     targetName = str(result.seriesNumber) + '-TARGETS-' + approvedRegistrationType + result.suffix
     clone = self.logic.cloneFiducials(self.logic.preopTargets, targetName)
+    self.logic.applyDefaultTargetDisplayNode(clone)
     result.setTargets(approvedRegistrationType, clone)
     result.fixedVolume = fixedVolume
     result.fixedLabel = self.fixedLabelSelector.currentNode()
@@ -855,6 +857,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       else:
         return
     else:
+      # TODO: continuing with intraop only if preop is empty
+      # TODO: thinks about different stages where a case could be continued
       if mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
         self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
         self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
@@ -895,6 +899,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.registrationGroupBox.enabled = False
 
   def onLayoutChanged(self):
+    # TODO: replace dropdown by buttongroup checkable
     if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
@@ -1033,6 +1038,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       registrationType = self.currentResult.approvedRegistrationType
       self.targetTableModel.targetList = self.currentResult.getTargets(registrationType)
       self.targetTable.enabled = True
+      #TODO: clean this up
       self.refreshViewNodeIDs(self.currentResult.approvedTargets, [self.redSliceNode])
       self.showCurrentTargets(registrationType=registrationType)
       if self.lastSelectedModelIndex:
@@ -1047,8 +1053,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.targetTable.enabled = True
     for result in self.registrationResults.getResultsBySeries(self.intraopSeriesSelector.currentText):
       if result.approved or result.rejected:
-        self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
-        self.setupRegistrationResultSideBySideView()
+        self.setupRegistrationResultView(layout=self.LAYOUT_SIDE_BY_SIDE)
         if result.rejected:
           self.onRegistrationResultSelected(result.name, registrationType='bSpline')
         elif result.approved:
@@ -1440,7 +1445,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def showCurrentTargets(self, registrationType):
     self.currentTargets = self.currentResult.getTargets(registrationType)
-    self.logic.applyDefaultTargetDisplayNode(self.currentTargets)
+    self.logic.applyDefaultTargetDisplayNode(self.currentTargets, new=True)
     for targetNode in [t for t in self.currentResult.targets.values() if t]:
       self.setTargetVisibility(targetNode, self.currentTargets is targetNode)
 
@@ -1662,6 +1667,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def openTargetingStep(self):
     self.currentStep = self.STEP_TARGETING
     self.fiducialsWidget.createNewFiducialNode(name="IntraopTargets")
+
     self.fiducialsWidget.startPlacing()
 
   def onRetryRegistrationButtonClicked(self):
@@ -1896,7 +1902,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onRetryZFrameRegistrationButtonClicked(self):
     self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
-    self.openZFrameRegistrationStep()
+    volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
+    self.openZFrameRegistrationStep(volume)
 
   def onApproveZFrameRegistrationButtonClicked(self):
     self.logic.zFrameRegistrationSuccessful = True
@@ -1959,29 +1966,24 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
       slicer.mrmlScene.AddNode(targetNode)
 
-  def setupRegistrationResultView(self):
-    if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
-      self.setupRegistrationResultFourUpView()
-    else:
-      self.setupRegistrationResultSideBySideView()
-
-  def setupRegistrationResultSideBySideView(self):
+  def setupRegistrationResultView(self, layout=None):
+    if layout:
+      self.layoutManager.setLayout(layout)
     self.hideAllLabels()
-    self.addSideBySideSliceAnnotations()
-
     self.refreshViewNodeIDs(self.logic.preopTargets, [self.redSliceNode])
-    for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
-      self.refreshViewNodeIDs(targetNode, [self.yellowSliceNode])
-    self.setAxialOrientation()
 
-  def setupRegistrationResultFourUpView(self):
-    self.hideAllLabels()
-    self.addFourUpSliceAnnotations()
+    def setupViewNodes(sliceNodes):
+      for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
+        self.refreshViewNodeIDs(targetNode, sliceNodes)
 
-    self.refreshViewNodeIDs(self.logic.preopTargets, [])
-    for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
-      self.refreshViewNodeIDs(targetNode, [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode])
-    self.setDefaultOrientation()
+    if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+      self.addFourUpSliceAnnotations()
+      self.setDefaultOrientation()
+      setupViewNodes([self.redSliceNode, self.yellowSliceNode, self.greenSliceNode])
+    else:
+      self.addSideBySideSliceAnnotations()
+      self.setAxialOrientation()
+      setupViewNodes([self.yellowSliceNode])
 
   def openEvaluationStep(self):
     self.currentStep = self.STEP_EVALUATION
@@ -1990,8 +1992,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.addNewTargetsToScene()
 
     self.updateRegistrationResultSelector()
-    self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
-    self.setupRegistrationResultView()
+    self.setupRegistrationResultView(layout=self.LAYOUT_SIDE_BY_SIDE)
 
     self.showBSplineResultButton.click()
     self.currentResult.printSummary()
@@ -2145,9 +2146,10 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       displayNode.SetGlyphType(slicer.vtkMRMLAnnotationPointDisplayNode.StarBurst2D)
     return displayNode
 
-  def applyDefaultTargetDisplayNode(self, targetNode):
-    displayNode = self.setupDisplayNode(targetNode.GetDisplayNode(), True)
-    targetNode.SetAndObserveDisplayNodeID(displayNode.GetID())
+  def applyDefaultTargetDisplayNode(self, targetNode, new=False):
+    displayNode = None if new else targetNode.GetDisplayNode()
+    modifiedDisplayNode = self.setupDisplayNode(displayNode, True)
+    targetNode.SetAndObserveDisplayNodeID(modifiedDisplayNode.GetID())
 
   def isTrackingPossible(self, series):
     return not (self.registrationResults.registrationResultWasApproved(series) or
@@ -2450,18 +2452,21 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     indexer = ctk.ctkDICOMIndexer()
     db = slicer.dicomDatabase
 
+    eligibleSeriesFiles = []
     for currentFile in newFileList:
       currentFile = os.path.join(self._intraopDataDir, currentFile)
       indexer.addFile(db, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
-      if series and series not in self.seriesList and self.isDICOMSeriesEligible(series):
-        self.seriesList.append(series)
-        self.createLoadableFileListForSeries(series)
+      if series and self.isDICOMSeriesEligible(series):
+        eligibleSeriesFiles.append(currentFile)
+        if series not in self.seriesList:
+          self.seriesList.append(series)
+          self.createLoadableFileListForSeries(series)
 
     self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
 
-    if self._incomingDataCallback and len(newFileList):
-      self._incomingDataCallback(newFileList=newFileList)
+    if self._incomingDataCallback and len(eligibleSeriesFiles):
+      self._incomingDataCallback(newFileList=eligibleSeriesFiles)
 
   def createLoadableFileListForSeries(self, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
@@ -2504,10 +2509,11 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def makeSeriesNumberDescription(self, dicomFile):
     seriesDescription = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_DESCRIPTION)
     seriesNumber = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_NUMBER)
-    seriesNumberDescription = None
-    if seriesDescription and seriesNumber:
-      seriesNumberDescription = seriesNumber + ": " + seriesDescription
-    return seriesNumberDescription
+    if not (seriesNumber and seriesDescription):
+      raise DICOMValueError("Missing Attribute(s):\nFile: {}\nseriesNumber: {}\nseriesDescription: {}".format(dicomFile,
+                                                                                                              seriesNumber,
+                                                                                                              seriesDescription))
+    return "{}: {}".format(seriesNumber, seriesDescription)
 
   def getTargetPositions(self, targets):
     target_positions = []
