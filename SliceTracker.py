@@ -53,8 +53,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   @caseRootDir.setter
   def caseRootDir(self, path):
     exists = os.path.exists(path)
-    self.createNewCaseButton.enabled = exists
-    self.openCaseButton.enabled = exists
     self.setSetting('CasesRootLocation', path if exists else None)
     self.casesRootDirectoryButton.text = self.truncatePath(path) if exists else "Choose output directory"
     self.casesRootDirectoryButton.toolTip = path
@@ -146,6 +144,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     return os.path.join(self.currentCaseDirectory, "DICOM", "Preop") if self.currentCaseDirectory else None
 
   @property
+  def intraopDICOMDataDirectory(self):
+    return os.path.join(self.currentCaseDirectory, "DICOM", "Intraop") if self.currentCaseDirectory else None
+
+  @property
   def outputDir(self):
     return os.path.join(self.currentCaseDirectory, "SliceTrackerOutputs")
 
@@ -203,6 +205,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.resetVisualEffects()
     self.disconnectCrosshairNode()
     self.caseWatchBox.reset()
+    self.continueOldCase = False
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -762,9 +765,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onCreateNewCaseButtonClicked(self):
     self.clearData()
-    self.createNewCaseButton.enabled = False
-    self.openCaseButton.enabled = False
     self.currentCaseDirectory = self.logic.createNewCase(self.caseRootDir)
+    self.startPreopDICOMReceiver()
+
+  def startPreopDICOMReceiver(self):
     self.preopTransferWindow = IncomingDataWindow(callback=self.onPreopTransferMessageBoxButtonClicked,
                                                   skipText="No Preop available")
     self.preopDicomReceiver = SmartDICOMReceiver(incomingDataDirectory=self.preopDICOMDataDirectory,
@@ -782,11 +786,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def continueWithoutPreopData(self):
     self.logic.usePreopData = False
     self.preopDicomReceiver.stop()
-    self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
+    self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def onPreopDataReceived(self, **kwargs):
     self.preopTransferWindow.hide()
     self.preopDicomReceiver.stop()
+    self.startPreProcessingPreopData()
+
+  def startPreProcessingPreopData(self):
     success = self.invokePreProcessing()
     if success:
       self.setSetting('InputLocation', None, moduleName="mpReview")
@@ -806,7 +813,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     slicer.mrmlScene.Clear(0)
     self.logic.resetAndInitializeData()
     self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
-    self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
+    self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def invokePreProcessing(self):
     from mpReviewPreprocessor import mpReviewPreprocessorLogic
@@ -834,36 +841,39 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.loadCaseData()
 
   def loadCaseData(self):
-    self.continueOldCase = False
     from mpReview import mpReviewLogic
     if self.logic.hasCaseBeenCompleted(self.currentCaseDirectory):
       if not slicer.util.confirmYesNoDisplay("The selected case has already been completed. Would you like to reopen it?"):
         return
-    outputDir = self.outputDir
-    savedCases = [os.path.join(outputDir, d) for d in os.listdir(outputDir) if os.path.isdir(os.path.join(outputDir, d))]
-    #TODO: provide drop down for user to select saved case data. dropdown should display date and time and sort it like that
-    if len(savedCases) > 0:
-      latestCase = max(savedCases, key=os.path.getmtime)
-      if slicer.util.confirmYesNoDisplay("The selected case has not been completed. Do you want to continue this case?"):
-        self.continueOldCase = True
-        latestCase = os.path.join(latestCase, "MRgBiopsy")
-        self.logic.loadFromJSON(latestCase)
-        if self.logic.usePreopData:
-          self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
-        else:
-          self.setupPreopLoadedTargets()
-        self.generatedOutputDirectory = latestCase
-        self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
-      else:
-        return
+    savedSessions = self.logic.getSavedSessions(self.currentCaseDirectory)
+    if len(savedSessions) > 0: # After registration(s) has been done
+      self.openSavedSession(savedSessions)
     else:
-      # TODO: continuing with intraop only if preop is empty
-      # TODO: thinks about different stages where a case could be continued
       if mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
         self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
-        self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
-    self.createNewCaseButton.enabled = False
-    self.openCaseButton.enabled = False
+        self.intraopDataDir = self.intraopDICOMDataDirectory
+      else:
+        if len(os.listdir(self.preopDICOMDataDirectory)):
+          self.startPreProcessingPreopData()
+        elif len(os.listdir(self.intraopDICOMDataDirectory)):
+          self.logic.usePreopData = False
+          self.intraopDataDir = self.intraopDICOMDataDirectory
+        else:
+          self.startPreopDICOMReceiver()
+
+  def openSavedSession(self, sessions):
+    # TODO: provide drop down for user to select saved case data. dropdown should display date and time and sort it like that
+    # TODO: also provide possibility to start a new session for the current case
+    if slicer.util.confirmYesNoDisplay("A session has been found for the selected case. Do you want to continue?"):
+      self.continueOldCase = True
+      latestCase = os.path.join(max(sessions, key=os.path.getmtime), "MRgBiopsy")
+      self.logic.loadFromJSON(latestCase)
+      if self.logic.usePreopData:
+        self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
+      else:
+        self.setupPreopLoadedTargets()
+      self.generatedOutputDirectory = latestCase
+      self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
 
   def updateCaseWatchBox(self):
     value = self.currentCaseDirectory
@@ -1320,8 +1330,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.intraopWatchBox.sourceFile = None
     self.caseWatchBox.reset()
     self.logic.stopSmartDICOMReceiver()
-    self.createNewCaseButton.enabled = True
-    self.openCaseButton.enabled = True
     self.currentCaseDirectory = None
 
   def onCaseCompletedButtonClicked(self):
@@ -2181,6 +2189,10 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def hasCaseBeenCompleted(self, directory):
     #TODO: should better explore SliceTrackerOutputs
     return ".completed" in os.listdir(directory)
+
+  def getSavedSessions(self, caseDirectory):
+    outputDir = os.path.join(caseDirectory, "SliceTrackerOutputs")
+    return [os.path.join(outputDir, d) for d in os.listdir(outputDir) if os.path.isdir(os.path.join(outputDir, d))]
 
   def getNextCaseNumber(self, destinationDir):
     caseNumber = 0
