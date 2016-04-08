@@ -1876,32 +1876,46 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onApplyZFrameRegistrationButtonClicked(self):
     progress = slicer.util.createProgressDialog(maximum=2, value=1)
     progress.labelText = '\nZFrame registration'
+
     self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
     zFrameTemplateVolume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
     self.zFrameCroppedVolume = self.logic.createCroppedVolume(zFrameTemplateVolume, self.coverTemplateROI)
     self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume)
     self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume)
+    self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName() + "-label")
 
+    start, center, end = self.getROIMinCenterMaxSliceNumbers()
+    self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=start, endSlice=end)
+
+    self.approveZFrameRegistrationButton.enabled = True
+    self.retryZFrameRegistrationButton.enabled = True
+    self.applyZFrameRegistrationButton.enabled = False
+
+    progress.setValue(2)
+    progress.close()
+
+  def getROIMinCenterMaxSliceNumbers(self):
+    center = [0.0, 0.0, 0.0]
+    self.coverTemplateROI.GetXYZ(center)
+    bounds = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    self.coverTemplateROI.GetRASBounds(bounds)
+    pMin = [bounds[0], bounds[2], bounds[4]]
+    pMax = [bounds[1], bounds[3], bounds[5]]
+    return [self.getIJKForXYZ(pMin)[2], self.getIJKForXYZ(center)[2], self.getIJKForXYZ(pMax)[2]]
+
+  def getIJKForXYZ(self, p):
     def roundInt(value):
       try:
         return int(round(value))
       except ValueError:
         return 0
 
-    layerLogic = self.redSliceLogic.GetBackgroundLayer()
-    p = [0.0,0.0,0.0]
-    self.coverTemplateROI.GetXYZ(p)
     xyz = self.redSliceView.convertRASToXYZ(p)
+    layerLogic = self.redSliceLogic.GetBackgroundLayer()
     xyToIJK = layerLogic.GetXYToIJKTransform()
     ijkFloat = xyToIJK.TransformDoublePoint(xyz)
     ijk = [roundInt(value) for value in ijkFloat]
-    self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName()+"-label")
-    self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=ijk[2]-4, endSlice=ijk[2]+4)
-    self.approveZFrameRegistrationButton.enabled = True
-    self.retryZFrameRegistrationButton.enabled = True
-    self.applyZFrameRegistrationButton.enabled = False
-    progress.setValue(2)
-    progress.close()
+    return ijk
 
   def activateCreateROIMode(self):
     mrmlScene = self.annotationLogic.GetMRMLScene()
