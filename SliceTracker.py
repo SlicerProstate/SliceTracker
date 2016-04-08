@@ -308,9 +308,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.notifyUserAboutNewData = True
 
     self.createPatientWatchBox()
+    self.setupViewSettingGroupBox()
     self.createCaseInformationArea()
     self.setupRegistrationWatchBox()
-    self.settingsArea()
 
     self.setupSliceWidgets()
     self.setupZFrameRegistrationUIElements()
@@ -346,25 +346,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
     self.currentStep = self.STEP_OVERVIEW
 
-  def settingsArea(self):
-    self.collapsibleSettingsArea = ctk.ctkCollapsibleButton()
-    self.collapsibleSettingsArea.text = "Settings"
-    self.collapsibleSettingsArea.collapsed = True
-    self.settingsAreaLayout = qt.QGridLayout(self.collapsibleSettingsArea)
-
-    self.setupViewSettingGroupBox()
-    self.setupZFrameViewSettingsGroupBox()
-
-    self.settingsAreaLayout.addWidget(self.zFrameViewSettingsGroupBox)
-    self.layout.addWidget(self.collapsibleSettingsArea)
-
-  def setupViewSettingGroupBox(self):
-    self.setupLayoutsButton()
-    self.setupCrosshairButton()
-    self.viewSettingsGroupBox = qt.QGroupBox('View options:')
-    viewSettingsLayout = qt.QVBoxLayout()
-    self.viewSettingsGroupBox.setLayout(viewSettingsLayout)
-
   def setupLayoutsButton(self):
     self.layoutsMenuButton = self.createButton("Layouts", minimumHeight=30)
     self.layoutsMenu = qt.QMenu()
@@ -377,18 +358,19 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.crosshairButton = self.createButton("", checkable=True, icon=self.crosshairIcon, toolTip="Show crosshair")
     self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
 
-  def setupZFrameViewSettingsGroupBox(self):
-    self.zFrameViewSettingsGroupBox = qt.QGroupBox('View options:')
-    viewSettingsLayout = qt.QVBoxLayout()
-    self.zFrameViewSettingsGroupBox.setLayout(viewSettingsLayout)
+  def setupViewSettingGroupBox(self):
+    self.setupLayoutsButton()
+    self.setupCrosshairButton()
     self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zFrame model")
     self.showTemplateButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
     self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
     self.showTemplatePathButton = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
+    self.showAnnotationsButton = self.createButton("Annotations", checkable=True, toolTip="Display annotations", checked=True)
 
     self.resetViewSettingButtons()
-    viewSettingsLayout.addWidget(self.createHLayout([self.layoutsMenuButton, self.showZFrameModelButton, self.showTemplatePathButton]))
-    viewSettingsLayout.addWidget(self.createHLayout([self.crosshairButton, self.showTemplateButton, self.showNeedlePathButton]))
+    self.layout.addWidget(self.createHLayout([self.layoutsMenuButton, self.showAnnotationsButton,
+                                              self.crosshairButton, self.showZFrameModelButton,
+                                              self.showTemplatePathButton, self.showNeedlePathButton]))
 
   def resetViewSettingButtons(self):
     self.showTemplateButton.enabled = self.logic.templateSuccessfulLoaded
@@ -716,6 +698,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
         self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
         self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
+        self.showAnnotationsButton.connect('toggled(bool)', self.onShowTAnnotationsToggled)
         self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
 
       def setupZFrameRegistrationStepButtonConnections():
@@ -926,6 +909,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onShowNeedlePathToggled(self, checked):
     self.logic.setNeedlePathVisibility(checked)
+
+  def onShowTAnnotationsToggled(self, checked):
+    #TODO: handle situation where annotation would be visible but is not shown (maybe just opacity
+    self.setAnnotationOpacity(1.0 if checked else 0.0)
 
   def onShowRegistrationDetails(self):
     if self.registrationGroupBox.visible:
@@ -1213,6 +1200,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.sliceAnnotations = []
     self.removeZFrameInstructionAnnotation()
     self.clearTargetMovementObserverAndAnnotations()
+
+  def setAnnotationOpacity(self, opacity):
+    for annotation in self.sliceAnnotations:
+      annotation.opacity = opacity
+    if hasattr(self, "zFrameInstructionAnnotation") and self.zFrameInstructionAnnotation:
+      self.zFrameInstructionAnnotation.opacity = opacity
 
   def addSideBySideSliceAnnotations(self):
     self.removeSliceAnnotations()
