@@ -103,6 +103,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.overviewGroupBox.hide()
       self.zFrameRegistrationGroupBox.show()
 
+      self.zFrameRegistrationManualIndexesGroupBox.checked = False
       self.showZFrameModelButton.checked = True
       self.showTemplateButton.checked = True
       self.showTemplatePathButton.checked = True
@@ -431,14 +432,30 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.zFrameRegistrationGroupBox.setLayout(self.zFrameRegistrationGroupBoxGroupBoxLayout)
 
     self.applyZFrameRegistrationButton = self.createButton("Run ZFrame Registration", enabled=False)
-    self.approveZFrameRegistrationButton = self.createButton("Confirm registration accuracy", enabled=False)
-    self.retryZFrameRegistrationButton = self.createButton("Retry", enabled=False)
 
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.applyZFrameRegistrationButton, 0, 0)
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.createHLayout([self.retryZFrameRegistrationButton,
-                                                                                self.approveZFrameRegistrationButton])
-                                                            , 1, 0)
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.setRowStretch(2,1)
+    self.zFrameRegistrationManualIndexesGroupBox = qt.QGroupBox("Use manual start/end indexes")
+    self.zFrameRegistrationManualIndexesGroupBox.setCheckable(True)
+    self.zFrameRegistrationManualIndexesGroupBoxLayout = qt.QGridLayout()
+    self.zFrameRegistrationManualIndexesGroupBox.setLayout(self.zFrameRegistrationManualIndexesGroupBoxLayout)
+
+    self.zFrameRegistrationStartIndex = qt.QSpinBox()
+    self.zFrameRegistrationEndIndex = qt.QSpinBox()
+
+    self.zFrameRegistrationManualIndexesGroupBoxLayout.addWidget(self.createHLayout([qt.QLabel("start"),
+                                                                                  self.zFrameRegistrationStartIndex,
+                                                                                  qt.QLabel("end"),
+                                                                                  self.zFrameRegistrationEndIndex]),
+                                                                 1, 1, qt.Qt.AlignRight)
+
+    self.approveZFrameRegistrationButton = self.createButton("Confirm registration accuracy", enabled=False)
+    self.retryZFrameRegistrationButton = self.createButton("Reset", enabled=False)
+
+    buttons = self.createVLayout([self.applyZFrameRegistrationButton, self.approveZFrameRegistrationButton,
+                                  self.retryZFrameRegistrationButton])
+    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.createHLayout([buttons,
+                                                                                self.zFrameRegistrationManualIndexesGroupBox]))
+
+    self.zFrameRegistrationGroupBoxGroupBoxLayout.setRowStretch(1, 1)
     self.layout.addWidget(self.zFrameRegistrationGroupBox)
 
   def setupOverviewStepUIElements(self):
@@ -732,11 +749,21 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
       self.layoutsMenu.triggered.connect(self.onLayoutSelectionChanged)
       self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
+      self.zFrameRegistrationStartIndex.valueChanged.connect(self.onZFrameStartIndexSpinBoxChanged)
+      self.zFrameRegistrationEndIndex.valueChanged.connect(self.onZFrameEndIndexSpinBoxChanged)
 
     setupCheckBoxConnections()
     setupButtonConnections()
     setupSelectorConnections()
     setupOtherConnections()
+
+  def onZFrameStartIndexSpinBoxChanged(self, value):
+    if not value <= self.zFrameRegistrationEndIndex.value:
+      self.zFrameRegistrationEndIndex.value = value
+
+  def onZFrameEndIndexSpinBoxChanged(self, value):
+    if not value >= self.zFrameRegistrationStartIndex.value:
+      self.zFrameRegistrationStartIndex.value = value
 
   def onFinishTargetingStepButtonClicked(self):
     self.fiducialsWidget.stopPlacing()
@@ -1884,17 +1911,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume)
     self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName() + "-label")
 
-    start, center, end = self.getROIMinCenterMaxSliceNumbers()
-    otsuOutputVolume = self.logic.applyOtsuFilter(self.zFrameMaskedVolume)
-    self.logic.dilateMask(otsuOutputVolume)
-    start, end = self.getStartEndWithConnectedComponents(otsuOutputVolume, center)
+    if not self.zFrameRegistrationManualIndexesGroupBox.checked:
+      start, center, end = self.getROIMinCenterMaxSliceNumbers()
+      otsuOutputVolume = self.logic.applyOtsuFilter(self.zFrameMaskedVolume)
+      self.logic.dilateMask(otsuOutputVolume)
+      start, end = self.getStartEndWithConnectedComponents(otsuOutputVolume, center)
+      self.zFrameRegistrationStartIndex.value = start
+      self.zFrameRegistrationEndIndex.value = end
+    else:
+      start = self.zFrameRegistrationStartIndex.value
+      end = self.zFrameRegistrationEndIndex.value
+
     self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=start, endSlice=end)
 
     self.setBackgroundToVolumeID(zFrameTemplateVolume.GetID())
     self.approveZFrameRegistrationButton.enabled = True
     self.retryZFrameRegistrationButton.enabled = True
-    self.applyZFrameRegistrationButton.enabled = False
-
     progress.setValue(2)
     progress.close()
 

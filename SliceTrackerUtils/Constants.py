@@ -65,10 +65,7 @@ class SliceTrackerConstants(object):
   TRACKABLE_IMAGE_TYPES = [COVER_PROSTATE, COVER_TEMPLATE, GUIDANCE_IMAGE]
 
   ZFrame_INSTRUCTION_STEPS = {1: "Scroll and click into ZFrame center to set ROI center",
-                              2: "Click outside of upper right ZFrame corner to set ROI border",
-                              3: "Viewer below:\n"
-                                 "Scroll to slice where |/| is visible (both sides))\n"
-                                 "Adjust upper and lower ROI extent to position where zFrame CLEARLY visible"}
+                              2: "Click outside of upper right ZFrame corner to set ROI border"}
 
 
 class FileExtension(object):
