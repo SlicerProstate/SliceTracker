@@ -1924,6 +1924,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.annotationLogic.StartPlaceMode(False)
 
   def onRetryZFrameRegistrationButtonClicked(self):
+    self.removeZFrameInstructionAnnotation()
     self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
     volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
     self.openZFrameRegistrationStep(volume)
@@ -2206,7 +2207,11 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
   def getSavedSessions(self, caseDirectory):
     outputDir = os.path.join(caseDirectory, "SliceTrackerOutputs")
-    return [os.path.join(outputDir, d) for d in os.listdir(outputDir) if os.path.isdir(os.path.join(outputDir, d))]
+    validDirectories = []
+    for d in [os.path.join(outputDir, d) for d in os.listdir(outputDir) if os.path.isdir(os.path.join(outputDir, d))]:
+      if self.getDirectorySize(d) > 0:
+        validDirectories.append(d)
+    return validDirectories
 
   def getNextCaseNumber(self, destinationDir):
     caseNumber = 0

@@ -205,7 +205,8 @@ class ModuleLogicMixin(object):
     size = 0
     for path, dirs, files in os.walk(directory):
       for currentFile in files:
-        size += os.path.getsize(os.path.join(path, currentFile))
+        if not ".DS_Store" in currentFile:
+          size += os.path.getsize(os.path.join(path, currentFile))
     return size
 
   @staticmethod
