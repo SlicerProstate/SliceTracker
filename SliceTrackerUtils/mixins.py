@@ -201,6 +201,18 @@ class ModuleLogicMixin(object):
     label.SetAndObserveImageData(dilateErode.GetOutput())
 
   @staticmethod
+  def applyOtsuFilter(volume):
+    outputVolume = slicer.vtkMRMLScalarVolumeNode()
+    outputVolume.SetName('ZFrame_Otsu_Output')
+    slicer.mrmlScene.AddNode(outputVolume)
+    params = {'inputVolume': volume.GetID(),
+              'outputVolume': outputVolume.GetID(),
+              'insideValue': 0, 'outsideValue': 1}
+
+    slicer.cli.run(slicer.modules.otsuthresholdimagefilter, None, params, wait_for_completion=True)
+    return outputVolume
+
+  @staticmethod
   def getDirectorySize(directory):
     size = 0
     for path, dirs, files in os.walk(directory):

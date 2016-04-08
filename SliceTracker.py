@@ -1030,7 +1030,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def setupFourUpView(self, volume):
     self.disableTargetTable()
-    self.setBackgroundToVolume(volume.GetID())
+    self.setBackgroundToVolumeID(volume.GetID())
     self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
     slicer.app.applicationLogic().FitSliceToAll()
 
@@ -1056,7 +1056,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.targetTable.clicked(self.lastSelectedModelIndex)
     else:
       self.disableTargetTable()
-    self.setBackgroundToVolume(volume.GetID())
+    self.setBackgroundToVolumeID(volume.GetID())
     slicer.app.applicationLogic().FitSliceToAll()
 
   def setupSideBySideRegistrationView(self):
@@ -1570,10 +1570,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onQuickSegmentationButtonClicked(self):
     self.applyRegistrationButton.enabled = False
     self.hideAllLabels()
-    self.setBackgroundToVolume(self.logic.currentIntraopVolume.GetID())
+    self.setBackgroundToVolumeID(self.logic.currentIntraopVolume.GetID())
     self.setQuickSegmentationModeON()
 
-  def setBackgroundToVolume(self, volumeID):
+  def setBackgroundToVolumeID(self, volumeID):
     for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
       compositeNode.Reset(None)
       compositeNode.SetBackgroundVolumeID(volumeID)
@@ -1885,8 +1885,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName() + "-label")
 
     start, center, end = self.getROIMinCenterMaxSliceNumbers()
+    otsuOutputVolume = self.logic.applyOtsuFilter(self.zFrameMaskedVolume)
+    self.logic.dilateMask(otsuOutputVolume)
+    start, end = self.getStartEndWithConnectedComponents(otsuOutputVolume, center)
     self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=start, endSlice=end)
 
+    self.setBackgroundToVolumeID(zFrameTemplateVolume.GetID())
     self.approveZFrameRegistrationButton.enabled = True
     self.retryZFrameRegistrationButton.enabled = True
     self.applyZFrameRegistrationButton.enabled = False
@@ -1916,6 +1920,50 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     ijkFloat = xyToIJK.TransformDoublePoint(xyz)
     ijk = [roundInt(value) for value in ijkFloat]
     return ijk
+
+  def getStartEndWithConnectedComponents(self, volume, center):
+    import SimpleITK as sitk
+    import sitkUtils
+    address = sitkUtils.GetSlicerITKReadWriteAddress(volume.GetName())
+    image = sitk.ReadImage(address)
+    start = self.getStartSliceUsingConnectedComponents(center, image)
+    end = self.getEndSliceUsingConnectedComponents(center, image)
+
+    return start, end
+
+  def getStartSliceUsingConnectedComponents(self, center, image):
+    sliceIndex = start = center
+    while sliceIndex > 0:
+      if self.getIslandCount(image, sliceIndex) > 6:
+        start = sliceIndex
+        sliceIndex -= 1
+        continue
+      break
+    return start
+
+  def getEndSliceUsingConnectedComponents(self, center, image):
+    imageSize = image.GetSize()
+    sliceIndex = end = center
+    while sliceIndex < imageSize[2]:
+      if self.getIslandCount(image, sliceIndex) > 6:
+        end = sliceIndex
+        sliceIndex += 1
+        continue
+      break
+    return end
+
+  @staticmethod
+  def getIslandCount(image, index):
+    import SimpleITK as sitk
+    imageSize = image.GetSize()
+    index = [0, 0, index]
+    extractor = sitk.ExtractImageFilter()
+    extractor.SetSize([imageSize[0], imageSize[1], 0])
+    extractor.SetIndex(index)
+    slice = extractor.Execute(image)
+    cc = sitk.ConnectedComponentImageFilter()
+    cc.Execute(slice)
+    return cc.GetObjectCount()
 
   def activateCreateROIMode(self):
     mrmlScene = self.annotationLogic.GetMRMLScene()
