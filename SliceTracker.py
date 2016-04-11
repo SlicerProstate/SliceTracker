@@ -1913,33 +1913,38 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     progress.labelText = '\nZFrame registration'
     zFrameTemplateVolume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
 
-    if self.logic.zFrameRegistrationClass is OpenSourceZFrameRegistration:
-      self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
-      self.zFrameCroppedVolume = self.logic.createCroppedVolume(zFrameTemplateVolume, self.coverTemplateROI)
-      self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume)
-      self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume)
-      self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName() + "-label")
+    try:
+      if self.logic.zFrameRegistrationClass is OpenSourceZFrameRegistration:
+        self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
+        self.zFrameCroppedVolume = self.logic.createCroppedVolume(zFrameTemplateVolume, self.coverTemplateROI)
+        self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume)
+        self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume)
+        self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName() + "-label")
 
-      if not self.zFrameRegistrationManualIndexesGroupBox.checked:
-        start, center, end = self.getROIMinCenterMaxSliceNumbers()
-        otsuOutputVolume = self.logic.applyOtsuFilter(self.zFrameMaskedVolume)
-        self.logic.dilateMask(otsuOutputVolume)
-        start, end = self.getStartEndWithConnectedComponents(otsuOutputVolume, center)
-        self.zFrameRegistrationStartIndex.value = start
-        self.zFrameRegistrationEndIndex.value = end
+        if not self.zFrameRegistrationManualIndexesGroupBox.checked:
+          start, center, end = self.getROIMinCenterMaxSliceNumbers()
+          otsuOutputVolume = self.logic.applyOtsuFilter(self.zFrameMaskedVolume)
+          self.logic.dilateMask(otsuOutputVolume)
+          start, end = self.getStartEndWithConnectedComponents(otsuOutputVolume, center)
+          self.zFrameRegistrationStartIndex.value = start
+          self.zFrameRegistrationEndIndex.value = end
+        else:
+          start = self.zFrameRegistrationStartIndex.value
+          end = self.zFrameRegistrationEndIndex.value
+
+        self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=start, endSlice=end)
       else:
-        start = self.zFrameRegistrationStartIndex.value
-        end = self.zFrameRegistrationEndIndex.value
-
-      self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=start, endSlice=end)
+        self.logic.runZFrameRegistration(zFrameTemplateVolume)
+    except AttributeError as exc:
+      progress.close()
+      slicer.util.errorDisplay("An error occurred. For further information click 'Show Details...'",
+                   windowTitle=self.__class__.__name__, detailedText=str(exc.message))
     else:
-      self.logic.runZFrameRegistration(zFrameTemplateVolume)
-
-    self.setBackgroundToVolumeID(zFrameTemplateVolume.GetID())
-    self.approveZFrameRegistrationButton.enabled = True
-    self.retryZFrameRegistrationButton.enabled = True
-    progress.setValue(2)
-    progress.close()
+      self.setBackgroundToVolumeID(zFrameTemplateVolume.GetID())
+      self.approveZFrameRegistrationButton.enabled = True
+      self.retryZFrameRegistrationButton.enabled = True
+      progress.setValue(2)
+      progress.close()
 
   def getROIMinCenterMaxSliceNumbers(self):
     center = [0.0, 0.0, 0.0]
