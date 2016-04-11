@@ -188,6 +188,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onReload(self):
     try:
+      self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
       self.clearData()
     except:
       pass
@@ -272,13 +273,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.redoIcon = self.createIcon('icon-redo.png')
     self.fourUpIcon = self.createIcon('icon-four-up.png')
     self.sideBySideIcon = self.createIcon('icon-side-by-side.png')
-    self.crosshairIcon = self.createIcon('icon-crosshair')
-    self.zFrameIcon = self.createIcon('icon-zframe')
-    self.needleIcon = self.createIcon('icon-needle')
-    self.templateIcon = self.createIcon('icon-template')
-    self.pathIcon = self.createIcon('icon-path')
-    self.revealCursorIcon = self.createIcon('icon-revealCursor')
-    self.skipIcon = self.createIcon('icon-skip')
+    self.crosshairIcon = self.createIcon('icon-crosshair.png')
+    self.zFrameIcon = self.createIcon('icon-zframe.png')
+    self.needleIcon = self.createIcon('icon-needle.png')
+    self.templateIcon = self.createIcon('icon-template.png')
+    self.pathIcon = self.createIcon('icon-path.png')
+    self.textInfoIcon = self.createIcon('icon-text-info.png')
+    self.revealCursorIcon = self.createIcon('icon-revealCursor.png')
+    self.skipIcon = self.createIcon('icon-skip.png')
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -365,7 +367,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.showTemplateButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
     self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
     self.showTemplatePathButton = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
-    self.showAnnotationsButton = self.createButton("Annotations", checkable=True, toolTip="Display annotations", checked=True)
+    self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, checkable=True, toolTip="Display annotations", checked=True)
 
     self.resetViewSettingButtons()
     self.layout.addWidget(self.createHLayout([self.layoutsMenuButton, self.showAnnotationsButton,
@@ -698,7 +700,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
         self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
         self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
-        self.showAnnotationsButton.connect('toggled(bool)', self.onShowTAnnotationsToggled)
+        self.showAnnotationsButton.connect('toggled(bool)', self.onShowAnnotationsToggled)
         self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
 
       def setupZFrameRegistrationStepButtonConnections():
@@ -910,9 +912,22 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onShowNeedlePathToggled(self, checked):
     self.logic.setNeedlePathVisibility(checked)
 
-  def onShowTAnnotationsToggled(self, checked):
-    #TODO: handle situation where annotation would be visible but is not shown (maybe just opacity
-    self.setAnnotationOpacity(1.0 if checked else 0.0)
+  def onShowAnnotationsToggled(self, checked):
+    allSliceAnnotations = self.sliceAnnotations[:]
+
+    for attr in ["zFrameInstructionAnnotation", "registrationResultOldImageAnnotation",
+                 "registrationResultNewImageAnnotation"]:
+      try:
+        annotation = getattr(self, attr)
+        if annotation:
+          allSliceAnnotations.append(annotation)
+      except AttributeError:
+        pass
+    for annotation in allSliceAnnotations:
+      if checked:
+        annotation.show()
+      else:
+        annotation.hide()
 
   def onShowRegistrationDetails(self):
     if self.registrationGroupBox.visible:
@@ -923,14 +938,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.registrationGroupBox.enabled = False
 
   def onLayoutChanged(self):
-    # TODO: replace dropdown by buttongroup checkable
+    # TODO: replace drop down by button group checkable
     if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
       if self.currentStep == self.STEP_EVALUATION:
         self.disableTargetMovingMode()
-        self.setupRegistrationResultView()
         self.onRegistrationResultSelected(self.currentResult.name)
+        self.setupRegistrationResultView()
         self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
     else:
       self.layoutsMenuButton.setIcon(qt.QIcon())
@@ -1201,12 +1216,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.removeZFrameInstructionAnnotation()
     self.clearTargetMovementObserverAndAnnotations()
 
-  def setAnnotationOpacity(self, opacity):
-    for annotation in self.sliceAnnotations:
-      annotation.opacity = opacity
-    if hasattr(self, "zFrameInstructionAnnotation") and self.zFrameInstructionAnnotation:
-      self.zFrameInstructionAnnotation.opacity = opacity
-
   def addSideBySideSliceAnnotations(self):
     self.removeSliceAnnotations()
     self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize=30,
@@ -1224,14 +1233,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def addFourUpSliceAnnotations(self):
     self.removeSliceAnnotations()
-    for widget in (self.redWidget, self.yellowWidget, self.greenWidget):
-      self.sliceAnnotations.append(SliceAnnotation(widget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=55, fontSize=30))
+    self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=50, fontSize=20))
     self.registrationResultNewImageAnnotation = SliceAnnotation(self.redWidget,
-                                                                self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, yPos=35,
-                                                                opacity=0.0, color=(0,0.5,0))
+                                                                self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT,
+                                                                yPos=35, opacity=0.0, color=(0,0.5,0), fontSize=15)
     self.sliceAnnotations.append(self.registrationResultNewImageAnnotation)
     self.registrationResultOldImageAnnotation = SliceAnnotation(self.redWidget,
-                                                                self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, yPos=35)
+                                                                self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT,
+                                                                yPos=35, fontSize=15)
     self.sliceAnnotations.append(self.registrationResultOldImageAnnotation)
     self.registrationResultStatusAnnotation = None
 

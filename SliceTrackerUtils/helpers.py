@@ -198,6 +198,15 @@ class SliceAnnotation(object):
 
     self.createTextActor()
 
+  def show(self):
+    self.fitIntoViewport()
+    self._addActor()
+    self._addObserver()
+    self.sliceView.update()
+
+  def hide(self):
+    self.remove()
+
   def remove(self):
     self._removeObserver()
     self._removeActor()
@@ -234,9 +243,7 @@ class SliceAnnotation(object):
     self.textProperty.SetShadow(self.textShadow)
     self.textProperty.SetOpacity(self.textOpacity)
     self.textActor.SetTextProperty(self.textProperty)
-    self.fitIntoViewport()
-    self._addActor()
-    self._addObserver()
+    self.show()
 
   def applyPositioning(self):
     xPos = self.applyHorizontalAlign()
