@@ -2,12 +2,13 @@ import EditorLib
 import csv, re, numpy, json
 import os, shutil, datetime, logging
 import slicer, ctk, vtk, qt
+import ConfigParser
 from collections import OrderedDict
 
 from Editor import EditorWidget
 from SliceTrackerUtils.Constants import DICOMTAGS, COLOR, STYLE, SliceTrackerConstants, FileExtension
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
-from SliceTrackerUtils.ZFrameRegistration import ZFrameRegistration
+from SliceTrackerUtils.ZFrameRegistration import *
 from SliceTrackerUtils.helpers import SmartDICOMReceiver, SliceAnnotation, CustomTargetTableModel, TargetCreationWidget
 from SliceTrackerUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
 from SliceTrackerUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
@@ -103,7 +104,11 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.overviewGroupBox.hide()
       self.zFrameRegistrationGroupBox.show()
 
+      self.zFrameRegistrationManualIndexesGroupBox.visible = self.logic.zFrameRegistrationClass is OpenSourceZFrameRegistration
       self.zFrameRegistrationManualIndexesGroupBox.checked = False
+      self.applyZFrameRegistrationButton.enabled = self.logic.zFrameRegistrationClass is LineMarkerRegistration
+      self.retryZFrameRegistrationButton.visible = self.logic.zFrameRegistrationClass is OpenSourceZFrameRegistration
+
       self.showZFrameModelButton.checked = True
       self.showTemplateButton.checked = True
       self.showTemplatePathButton.checked = True
@@ -1832,13 +1837,14 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
           self.repeatRegistrationForCurrentSelection(volume)
 
   def openZFrameRegistrationStep(self, volume):
-    self.currentStep = self.STEP_ZFRAME_REGISTRATION
     self.resetZFrameRegistration()
+    self.currentStep = self.STEP_ZFRAME_REGISTRATION
     self.setupFourUpView(volume)
     self.redSliceNode.SetSliceVisible(True)
-    self.addROIObserver()
-    self.activateCreateROIMode()
-    self.addZFrameInstructions()
+    if self.logic.zFrameRegistrationClass is OpenSourceZFrameRegistration:
+      self.addROIObserver()
+      self.activateCreateROIMode()
+      self.addZFrameInstructions()
 
   def resetZFrameRegistration(self):
     self.applyZFrameRegistrationButton.enabled = False
@@ -1905,26 +1911,29 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def onApplyZFrameRegistrationButtonClicked(self):
     progress = slicer.util.createProgressDialog(maximum=2, value=1)
     progress.labelText = '\nZFrame registration'
-
-    self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
     zFrameTemplateVolume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
-    self.zFrameCroppedVolume = self.logic.createCroppedVolume(zFrameTemplateVolume, self.coverTemplateROI)
-    self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume)
-    self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume)
-    self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName() + "-label")
 
-    if not self.zFrameRegistrationManualIndexesGroupBox.checked:
-      start, center, end = self.getROIMinCenterMaxSliceNumbers()
-      otsuOutputVolume = self.logic.applyOtsuFilter(self.zFrameMaskedVolume)
-      self.logic.dilateMask(otsuOutputVolume)
-      start, end = self.getStartEndWithConnectedComponents(otsuOutputVolume, center)
-      self.zFrameRegistrationStartIndex.value = start
-      self.zFrameRegistrationEndIndex.value = end
+    if self.logic.zFrameRegistrationClass is OpenSourceZFrameRegistration:
+      self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
+      self.zFrameCroppedVolume = self.logic.createCroppedVolume(zFrameTemplateVolume, self.coverTemplateROI)
+      self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume)
+      self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume)
+      self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName() + "-label")
+
+      if not self.zFrameRegistrationManualIndexesGroupBox.checked:
+        start, center, end = self.getROIMinCenterMaxSliceNumbers()
+        otsuOutputVolume = self.logic.applyOtsuFilter(self.zFrameMaskedVolume)
+        self.logic.dilateMask(otsuOutputVolume)
+        start, end = self.getStartEndWithConnectedComponents(otsuOutputVolume, center)
+        self.zFrameRegistrationStartIndex.value = start
+        self.zFrameRegistrationEndIndex.value = end
+      else:
+        start = self.zFrameRegistrationStartIndex.value
+        end = self.zFrameRegistrationEndIndex.value
+
+      self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=start, endSlice=end)
     else:
-      start = self.zFrameRegistrationStartIndex.value
-      end = self.zFrameRegistrationEndIndex.value
-
-    self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=start, endSlice=end)
+      self.logic.runZFrameRegistration(zFrameTemplateVolume)
 
     self.setBackgroundToVolumeID(zFrameTemplateVolume.GetID())
     self.approveZFrameRegistrationButton.enabled = True
@@ -2017,7 +2026,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.showZFrameModelButton.checked = False
     self.showTemplateButton.checked = False
     self.showTemplatePathButton.checked = False
-    self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
+    if self.logic.zFrameRegistrationClass is OpenSourceZFrameRegistration:
+      self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
     self.openOverviewStep()
     self.save()
 
@@ -2235,6 +2245,17 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.loadZFrameModel()
     self.loadTemplateConfigFile()
     self.stopSmartDICOMReceiver()
+    self.loadConfigFile()
+
+  def loadConfigFile(self):
+    def getClassFromString(name):
+      return getattr(sys.modules[__name__], name)
+
+    config = ConfigParser.RawConfigParser()
+    configFile = os.path.join(self.modulePath, 'Resources', "default.cfg")
+    config.read(configFile)
+    zFrameRegistrationClassName = config.get('ZFrame Registration', 'class')
+    self.zFrameRegistrationClass = getClassFromString(zFrameRegistrationClassName)
 
   def clearOldNodes(self):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
@@ -2769,10 +2790,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     slicer.cli.run(slicer.modules.maskscalarvolume, None, params, wait_for_completion=True)
     return maskedVolume
 
-  def runZFrameRegistration(self, inputVolume, startSlice, endSlice):
-    # TODO: create configfile that chooses the Registration algorithm to use
-    registration = ZFrameRegistration(inputVolume)
-    registration.runRegistration(start=startSlice, end=endSlice)
+  def runZFrameRegistration(self, inputVolume, **kwargs):
+    registration = self.zFrameRegistrationClass(inputVolume)
+    if isinstance(registration, OpenSourceZFrameRegistration):
+      registration.runRegistration(start=kwargs.pop("startSlice"), end=kwargs.pop("endSlice"))
+    elif isinstance(registration, LineMarkerRegistration):
+      registration.runRegistration()
     self.zFrameTransform = registration.getOutputTransformation()
     self.applyZFrameTransform(self.zFrameTransform)
 

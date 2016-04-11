@@ -4,7 +4,7 @@ from SliceTrackerUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from Editor import EditorWidget
 import EditorLib
 import os
-from SliceTrackerUtils.ZFrameRegistration import ZFrameRegistration
+from SliceTrackerUtils.ZFrameRegistration import OpenSourceZFrameRegistration
 
 
 class SliceTrackerZFrameRegistration(ScriptedLoadableModule):
@@ -157,7 +157,7 @@ class SliceTrackerZFrameRegistrationWidget(ScriptedLoadableModuleWidget, ModuleW
     return False
 
   def runRegistration(self):
-    registration = ZFrameRegistration(self.maskedVolume)
+    registration = OpenSourceZFrameRegistration(self.maskedVolume)
     registration.runRegistration()
     self.zFrameModelNode.SetAndObserveTransformNodeID(registration.outputTransform.GetID())
 

@@ -36,7 +36,7 @@ class STYLE:
 class SliceTrackerConstants(object):
 
   STEP_OVERVIEW = "Overview"
-  STEP_ZFRAME_REGISTRATION = "ZFrameRegistration"
+  STEP_ZFRAME_REGISTRATION = "OpenSourceZFrameRegistration"
   STEP_SEGMENTATION = "Segmentation"
   STEP_TARGETING = "Targeting"
   STEP_SEGMENTATION_COMPARISON = "SegmentationComparison"
