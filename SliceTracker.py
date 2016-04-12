@@ -1684,8 +1684,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setupQuickModeHistory()
     self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
     self.logic.runQuickSegmentationMode()
-    # TODO: remove Observer after segmentation finished
-    self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateUndoRedoButtons)
+    self.inputMarkupNodeObserver = self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,
+                                                                          self.updateUndoRedoButtons)
 
   def disableEditorWidgetAndResetEditorTool(self, enabledButton=False):
     self.editorWidgetParent.hide()
@@ -1696,6 +1696,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.setSegmentationButtons(segmentationActive=False)
     self.deactivateUndoRedoButtons()
     self.resetToRegularViewMode()
+    if self.inputMarkupNodeObserver:
+      self.inputMarkupNodeObserver = self.logic.inputMarkupNode.RemoveObserver(self.inputMarkupNodeObserver)
 
   def setSegmentationButtons(self, segmentationActive=False):
     self.quickSegmentationButton.setEnabled(not segmentationActive)
@@ -1719,7 +1721,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.opacitySpinBox.value = value
 
   def onOpacityChanged(self, value):
-    #TODO: Seems like having a delay here in all views.
     if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.redCompositeNode.SetForegroundOpacity(value)
       self.greenCompositeNode.SetForegroundOpacity(value)
@@ -2271,6 +2272,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def resetAndInitializeData(self):
 
     self.inputMarkupNode = None
+    self.volumeClipFiducialsObserver = None
     self.clippingModelNode = None
     self.seriesList = []
     self.loadableList = {}
@@ -2404,7 +2406,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
         shutil.rmtree(directory)
 
   def getFirstMpReviewPreprocessedStudy(self, directory):
-    # TODO: if several studies are available provide a dropdown or anything similar for choosing
+    # TODO: if several studies are available provide a drop down or anything similar for choosing
     directoryNames = [x[0] for x in os.walk(directory)]
     assert len(directoryNames) > 1
     return directoryNames[1]
