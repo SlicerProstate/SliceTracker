@@ -139,6 +139,17 @@ class ModuleWidgetMixin(object):
 class ModuleLogicMixin(object):
 
   @staticmethod
+  def cloneFiducials(original, cloneName, keepDisplayNode=False):
+    clone = slicer.vtkMRMLMarkupsFiducialNode()
+    clone.Copy(original)
+    clone.SetName(cloneName)
+    slicer.mrmlScene.AddNode(clone)
+    displayNode = slicer.vtkMRMLMarkupsDisplayNode()
+    slicer.mrmlScene.AddNode(displayNode)
+    clone.SetAndObserveDisplayNodeID(displayNode.GetID())
+    return clone
+
+  @staticmethod
   def getMostRecentFile(path, fileType, filter=None):
     assert type(fileType) is str
     files = [f for f in os.listdir(path) if f.endswith(fileType)]
@@ -155,6 +166,14 @@ class ModuleLogicMixin(object):
         mostRecent = filename
         storedTimeStamp = timeStamp
     return mostRecent
+
+  @staticmethod
+  def createTimer(interval, slot, singleShot=False):
+    timer = qt.QTimer()
+    timer.setInterval(interval)
+    timer.timeout.connect(slot)
+    timer.setSingleShot(singleShot)
+    return timer
 
   @staticmethod
   def get2DDistance(pos1, pos2):
@@ -182,11 +201,24 @@ class ModuleLogicMixin(object):
     label.SetAndObserveImageData(dilateErode.GetOutput())
 
   @staticmethod
+  def applyOtsuFilter(volume):
+    outputVolume = slicer.vtkMRMLScalarVolumeNode()
+    outputVolume.SetName('ZFrame_Otsu_Output')
+    slicer.mrmlScene.AddNode(outputVolume)
+    params = {'inputVolume': volume.GetID(),
+              'outputVolume': outputVolume.GetID(),
+              'insideValue': 0, 'outsideValue': 1}
+
+    slicer.cli.run(slicer.modules.otsuthresholdimagefilter, None, params, wait_for_completion=True)
+    return outputVolume
+
+  @staticmethod
   def getDirectorySize(directory):
     size = 0
     for path, dirs, files in os.walk(directory):
       for currentFile in files:
-        size += os.path.getsize(os.path.join(path, currentFile))
+        if not ".DS_Store" in currentFile:
+          size += os.path.getsize(os.path.join(path, currentFile))
     return size
 
   @staticmethod
@@ -197,6 +229,14 @@ class ModuleLogicMixin(object):
       os.makedirs(directory)
     except OSError:
       logging.debug('Failed to create the following directory: ' + directory)
+
+  @staticmethod
+  def findElement(dom, name):
+    for e in [e for e in dom.getElementsByTagName('element') if e.getAttribute('name') == name]:
+      try:
+        return e.childNodes[0].nodeValue
+      except IndexError:
+        return ""
 
   @staticmethod
   def getDICOMValue(currentFile, tag, fallback=None):

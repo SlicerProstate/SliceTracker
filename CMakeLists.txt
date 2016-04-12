@@ -24,7 +24,7 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/mixins
   SliceTrackerUtils/helpers
   SliceTrackerUtils/decorators
-  SliceTrackerUtils/ZFrameRegistration
+  SliceTrackerUtils/OpenSourceZFrameRegistration
   )
 
 set(MODULE_PYTHON_RESOURCES

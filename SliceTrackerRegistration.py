@@ -135,7 +135,7 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     targetsNodeID = parameterNode.GetAttribute('TargetsNodeID')
     if targetsNodeID:
       result.originalTargets = slicer.mrmlScene.GetNodeByID(targetsNodeID)
-      self.transformTargets(registrationTypes, result.originalTargets, str(result.seriesNumber))
+      self.transformTargets(registrationTypes, result.originalTargets, str(result.seriesNumber), suffix=result.suffix)
     result.movingVolume = movingVolume
 
   def runReRegistration(self, parameterNode, progressCallback=None):
@@ -173,7 +173,7 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     targetsNodeID = parameterNode.GetAttribute('TargetsNodeID')
     if targetsNodeID:
       result.originalTargets = slicer.mrmlScene.GetNodeByID(targetsNodeID)
-      self.transformTargets(registrationTypes, result.originalTargets, str(result.seriesNumber))
+      self.transformTargets(registrationTypes, result.originalTargets, str(result.seriesNumber), suffix=result.suffix)
     result.movingVolume = movingVolume
 
   def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
@@ -197,10 +197,10 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
         else self.createLinearTransformNode(transformName)
       self.registrationResult.setTransform(regType, transform)
 
-  def transformTargets(self, registrations, targets, prefix):
+  def transformTargets(self, registrations, targets, prefix, suffix=""):
     if targets:
       for registration in registrations:
-        name = prefix + '-TARGETS-' + registration
+        name = prefix + '-TARGETS-' + registration + suffix
         clone = self.cloneFiducialAndTransform(name, targets, self.registrationResult.getTransform(registration))
         self.markupsLogic.SetAllMarkupsLocked(clone, True)
         self.registrationResult.setTargets(registration, clone)
@@ -211,17 +211,6 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     clonedTargets.SetAndObserveTransformNodeID(transformNode.GetID())
     tfmLogic.hardenTransform(clonedTargets)
     return clonedTargets
-
-  def cloneFiducials(self, original, cloneName):
-    nodeId = self.markupsLogic.AddNewFiducialNode(cloneName, slicer.mrmlScene)
-    clone = slicer.mrmlScene.GetNodeByID(nodeId)
-    for i in range(original.GetNumberOfFiducials()):
-      pos = [0.0, 0.0, 0.0]
-      original.GetNthFiducialPosition(i, pos)
-      name = original.GetNthFiducialLabel(i)
-      clone.AddFiducial(pos[0], pos[1], pos[2])
-      clone.SetNthFiducialLabel(i, name)
-    return clone
 
   def doRigidRegistration(self, **kwargs):
     self.updateProgress(labelText='\nRigid registration', value=2)

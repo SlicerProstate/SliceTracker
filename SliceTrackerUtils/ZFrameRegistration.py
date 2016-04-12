@@ -1,4 +1,5 @@
 import slicer
+import os, sys
 from mixins import ModuleLogicMixin
 
 class ZFrameRegistrationBase(ModuleLogicMixin):
@@ -22,9 +23,10 @@ class ZFrameRegistrationBase(ModuleLogicMixin):
 
 class LineMarkerRegistration(ZFrameRegistrationBase):
 
-  def __init__(self, inputVolume, markerConfigPath):
+  def __init__(self, inputVolume):
     super(LineMarkerRegistration, self).__init__(inputVolume)
-    self.markerConfigPath = markerConfigPath
+    self.markerConfigPath = os.path.join(os.path.dirname(sys.modules[self.__module__].__file__), '..', 'Resources',
+                                         'zframe', 'zframe-config.csv')
 
   def runRegistration(self):
     volumesLogic = slicer.modules.volumes.logic()
@@ -38,17 +40,13 @@ class LineMarkerRegistration(ZFrameRegistrationBase):
     slicer.cli.run(slicer.modules.linemarkerregistration, None, params, wait_for_completion=True)
 
 
-class ZFrameRegistration(ZFrameRegistrationBase):
-
-  startSlice = 4
-  endSlice = 15
+class OpenSourceZFrameRegistration(ZFrameRegistrationBase):
 
   def __init__(self, inputVolume):
-    super(ZFrameRegistration, self).__init__(inputVolume)
+    super(OpenSourceZFrameRegistration, self).__init__(inputVolume)
 
-  def runRegistration(self, start=None, end=None):
-    start = start if start else self.startSlice
-    end = end if end else self.endSlice
+  def runRegistration(self, start, end):
+    assert start != -1 and end != -1
     seriesNumber = self.inputVolume.GetName().split(":")[0]
     self.outputTransform = self.createLinearTransformNode(seriesNumber + "-" + self.ZFRAME_TRANSFORM_NAME)
 
