@@ -977,7 +977,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onRegistrationButtonChecked(self, buttonId):
     self.disableTargetMovingMode()
-    self.hideAllTargets()
     if buttonId == 1:
       self.displayRegistrationResults(registrationType="rigid")
     elif buttonId == 2:
@@ -1102,7 +1101,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         if result.rejected:
           self.onRegistrationResultSelected(result.name, registrationType='bSpline')
         elif result.approved:
-          self.onRegistrationResultSelected(result.name, registrationType=result.approvedRegistrationType)
+          self.onRegistrationResultSelected(result.name, showApproved=True)
         break
 
   def onTargetTableSelectionChanged(self, modelIndex=None):
@@ -1178,7 +1177,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     widget = self.getWidgetForInteractor(observee)
     posRAS = self.xyToRAS(widget.sliceLogic(), posXY)
     if self.currentlyMovedTargetModelIndex is not None:
-      self.currentResult.isGoingToBeMoved(self.targetTableModel.targetList, self.currentlyMovedTargetModelIndex.row())
+      self.currentResult.isGoingToBeMoved(self.targetTableModel.targetList, self.currentlyMovedTargetModelIndex.row(),
+                                          posRAS)
       self.targetTableModel.targetList.SetNthFiducialPositionFromArray(self.currentlyMovedTargetModelIndex.row(), posRAS)
     self.disableTargetMovingMode()
 
@@ -1420,7 +1420,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.intraopSeriesSelector.setCurrentIndex(index)
     self.intraopSeriesSelector.blockSignals(False)
 
-  def onRegistrationResultSelected(self, seriesText, registrationType=None):
+  def onRegistrationResultSelected(self, seriesText, registrationType=None, showApproved=False):
     self.disableTargetMovingMode()
     if not seriesText:
       return
@@ -1429,6 +1429,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.showAffineResultButton.setEnabled(self.GUIDANCE_IMAGE not in seriesText)
     if registrationType:
       self.checkButtonByRegistrationType(registrationType)
+    elif showApproved:
+      self.displayApprovedRegistrationResults()
     elif self.registrationButtonGroup.checkedId() != -1:
       self.onRegistrationButtonChecked(self.registrationButtonGroup.checkedId())
     else:
@@ -1444,13 +1446,27 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     for result in self.registrationResults.getResultsAsList():
       for targetNode in [targets for targets in result.targets.values() if targets]:
         self.setTargetVisibility(targetNode, show=False)
+      if result.approvedTargets:
+        self.setTargetVisibility(result.approvedTargets, show=False)
     self.setTargetVisibility(self.logic.preopTargets, show=False)
 
+  def displayApprovedRegistrationResults(self):
+    self.hideAllTargets()
+    self.setupRegistrationResultSliceViews(self.currentResult.approvedRegistrationType)
+    self.targetTableModel.targetList = self.currentResult.approvedTargets
+    self.currentTargets = self.currentResult.approvedTargets
+    self.logic.applyDefaultTargetDisplayNode(self.currentTargets)
+    self.setTargetVisibility(self.currentTargets, True)
+    self.setPreopTargetVisibilityAndSelectLastIndex()
+
   def displayRegistrationResults(self, registrationType):
+    self.hideAllTargets()
     self.setupRegistrationResultSliceViews(registrationType)
     self.targetTableModel.targetList = self.currentResult.getTargets(registrationType)
     self.showCurrentTargets(registrationType=registrationType)
+    self.setPreopTargetVisibilityAndSelectLastIndex()
 
+  def setPreopTargetVisibilityAndSelectLastIndex(self):
     self.setTargetVisibility(self.logic.preopTargets)
     if self.lastSelectedModelIndex:
       self.targetTable.clicked(self.lastSelectedModelIndex)
@@ -1801,7 +1817,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         if coverProstateRegResult:
           self.movingVolumeSelector.setCurrentNode(coverProstateRegResult.fixedVolume)
           self.movingLabelSelector.setCurrentNode(coverProstateRegResult.fixedLabel)
-          self.fiducialSelector.setCurrentNode(coverProstateRegResult.bSplineTargets)
+          self.fiducialSelector.setCurrentNode(coverProstateRegResult.approvedTargets)
 
       self.setupScreenForSegmentationComparison("red", self.movingVolumeSelector.currentNode(),
                                                 self.movingLabelSelector.currentNode())
@@ -2494,12 +2510,12 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     saveOriginalTargets()
     saveBiasCorrectionResult()
 
-    saveJSON({"usedPreopData":self.usePreopData, "results":createResultsDict(),
-              "VOLUME-PREOP-N4":saveBiasCorrectionResult(), "zFrameTransform":saveZFrameTransformation()})
-
     savedSuccessfully, failedToSave = self.registrationResults.save(outputDir)
     successfullySavedData += savedSuccessfully
     failedSaveOfData += failedToSave
+
+    saveJSON({"usedPreopData": self.usePreopData, "results": createResultsDict(),
+              "VOLUME-PREOP-N4": saveBiasCorrectionResult(), "zFrameTransform": saveZFrameTransformation()})
 
     messageOutput = ""
     for messageList in [successfullySavedData, failedSaveOfData] :

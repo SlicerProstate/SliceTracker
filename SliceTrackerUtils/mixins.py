@@ -144,9 +144,10 @@ class ModuleLogicMixin(object):
     clone.Copy(original)
     clone.SetName(cloneName)
     slicer.mrmlScene.AddNode(clone)
-    displayNode = slicer.vtkMRMLMarkupsDisplayNode()
-    slicer.mrmlScene.AddNode(displayNode)
-    clone.SetAndObserveDisplayNodeID(displayNode.GetID())
+    if not keepDisplayNode:
+      displayNode = slicer.vtkMRMLMarkupsDisplayNode()
+      slicer.mrmlScene.AddNode(displayNode)
+      clone.SetAndObserveDisplayNodeID(displayNode.GetID())
     return clone
 
   @staticmethod
