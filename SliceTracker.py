@@ -1,7 +1,7 @@
 import EditorLib
 import csv, re, numpy, json
-import os, shutil, datetime, logging
-import slicer, ctk, vtk, qt
+import shutil, datetime, logging
+import ctk, vtk, qt
 import ConfigParser
 from collections import OrderedDict
 
@@ -346,6 +346,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.zFrameClickObserver = None
     self.zFrameInstructionAnnotation = None
 
+    self.segmentationNoPreopAnnotation = None
+
     self.preopDicomReceiver = None
     self._generatedOutputDirectory = ""
     self.continueOldCase = False
@@ -409,11 +411,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.redSliceNode.SetOrientationToAxial()
     self.yellowSliceNode.SetOrientationToSagittal()
     self.greenSliceNode.SetOrientationToCoronal()
+    slicer.app.processEvents()
+    slicer.app.applicationLogic().FitSliceToAll()
 
   def setAxialOrientation(self):
     self.redSliceNode.SetOrientationToAxial()
     self.yellowSliceNode.SetOrientationToAxial()
     self.greenSliceNode.SetOrientationToAxial()
+    slicer.app.processEvents()
+    slicer.app.applicationLogic().FitSliceToAll()
 
   def setupZFrameRegistrationUIElements(self):
     self.zFrameRegistrationGroupBox = qt.QGroupBox()
@@ -604,10 +610,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.registrationResultsGroupBox.setLayout(self.registrationResultsGroupBoxLayout)
 
     self.resultSelector = ctk.ctkComboBox()
-    self.resultSelector.setFixedWidth(250)
-    self.registrationResultAlternatives = self.createHLayout([qt.QLabel('Alternative Registration Result'),
-                                                              self.resultSelector])
-    self.registrationResultsGroupBoxLayout.addWidget(self.registrationResultAlternatives)
+    self.registrationResultsGroupBoxLayout.addWidget(self.resultSelector)
 
     self.showRigidResultButton = self.createButton('Rigid', checkable=True, name='rigid')
     self.showAffineResultButton = self.createButton('Affine', checkable=True, name='affine')
@@ -771,7 +774,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     fixedVolume = self.fixedVolumeSelector.currentNode()
     result = self.logic.generateNameAndCreateRegistrationResult(fixedVolume)
     approvedRegistrationType = "bSpline"
-    result.approve(approvedRegistrationType)
     result.originalTargets = self.logic.preopTargets
     targetName = str(result.seriesNumber) + '-TARGETS-' + approvedRegistrationType + result.suffix
     clone = self.logic.cloneFiducials(self.logic.preopTargets, targetName)
@@ -779,6 +781,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     result.setTargets(approvedRegistrationType, clone)
     result.fixedVolume = fixedVolume
     result.fixedLabel = self.fixedLabelSelector.currentNode()
+    result.approve(approvedRegistrationType)
 
   def onCreateNewCaseButtonClicked(self):
     self.clearData()
@@ -888,7 +891,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       if self.logic.usePreopData:
         self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
       else:
-        self.setupPreopLoadedTargets()
+        if self.logic.preopTargets:
+          self.setupPreopLoadedTargets()
       self.generatedOutputDirectory = latestCase
       self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
 
@@ -952,9 +956,47 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         self.onRegistrationResultSelected(self.currentResult.name)
         self.setupRegistrationResultView()
         self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
+      elif self.currentStep == self.STEP_SEGMENTATION:
+        if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
+          self.setupSideBySideSegmentationView()
+        elif self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+          self.removeMissingPreopDataAnnotation()
+          self.setBackgroundToVolumeID(self.logic.currentIntraopVolume.GetID())
+        sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE else \
+                     [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+        for node in [n for n in [self.logic.clippingModelNode, self.logic.inputMarkupNode] if n]:
+          self.refreshViewNodeIDs(node, sliceNodes)
     else:
       self.layoutsMenuButton.setIcon(qt.QIcon())
       self.layoutsMenuButton.setText("Layouts")
+
+  def removeMissingPreopDataAnnotation(self):
+    if self.segmentationNoPreopAnnotation:
+      self.segmentationNoPreopAnnotation.remove()
+      self.segmentationNoPreopAnnotation = None
+
+  def addMissingPreopDataAnnotation(self, widget):
+    self.removeMissingPreopDataAnnotation()
+    self.segmentationNoPreopAnnotation = SliceAnnotation(widget, self.MISSING_PREOP_ANNOTATION_TEXT, opacity=0.7,
+                                                         color=(1, 0, 0))
+
+  def setupSideBySideSegmentationView(self):
+    # TODO: red slice view should not be possible to set target
+    coverProstate = self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
+    redVolume = coverProstate.fixedVolume if self.logic.retryMode and coverProstate else self.logic.preopVolume
+    redLabel = coverProstate.fixedLabel if self.logic.retryMode and coverProstate else self.logic.preopLabel
+
+    if redVolume and redLabel:
+      self.redCompositeNode.SetBackgroundVolumeID(redVolume.GetID())
+      self.redCompositeNode.SetLabelVolumeID(redLabel.GetID())
+      self.redSliceNode.SetUseLabelOutline(True)
+      self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume)
+    else:
+      self.redCompositeNode.SetBackgroundVolumeID(None)
+      self.redCompositeNode.SetLabelVolumeID(None)
+      self.addMissingPreopDataAnnotation(self.redWidget)
+    self.yellowCompositeNode.SetBackgroundVolumeID(self.logic.currentIntraopVolume.GetID())
+    self.setAxialOrientation()
 
   def onLayoutSelectionChanged(self, action):
     self.layoutsMenuButton.setIcon(action.icon)
@@ -1065,7 +1107,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.disableTargetTable()
     self.setBackgroundToVolumeID(volume.GetID())
     self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
-    slicer.app.applicationLogic().FitSliceToAll()
 
   def setupRedSlicePreview(self, selectedSeries):
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
@@ -1090,7 +1131,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     else:
       self.disableTargetTable()
     self.setBackgroundToVolumeID(volume.GetID())
-    slicer.app.applicationLogic().FitSliceToAll()
 
   def setupSideBySideRegistrationView(self):
     # TODO: shall we add a selector for viewing different registration results that has been rejected?
@@ -1220,6 +1260,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.sliceAnnotations = []
     self.removeZFrameInstructionAnnotation()
     self.clearTargetMovementObserverAndAnnotations()
+    self.removeMissingPreopDataAnnotation()
 
   def addSideBySideSliceAnnotations(self):
     self.removeSliceAnnotations()
@@ -1472,6 +1513,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.targetTable.clicked(self.lastSelectedModelIndex)
 
   def setDefaultFOV(self, sliceLogic, volume, factor=0.5):
+    slicer.app.processEvents()
     sliceLogic.FitSliceToAll()
     FOV = sliceLogic.GetSliceNode().GetFieldOfView()
     self.setFOV(sliceLogic, [FOV[0] * factor, FOV[1] * factor, FOV[2]])
@@ -1625,10 +1667,10 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def setBackgroundToVolumeID(self, volumeID):
     for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
-      compositeNode.Reset(None)
+      compositeNode.SetLabelVolumeID(None)
+      compositeNode.SetForegroundVolumeID(None)
       compositeNode.SetBackgroundVolumeID(volumeID)
     self.setDefaultOrientation()
-    slicer.app.applicationLogic().FitSliceToAll()
 
   def hideAllLabels(self):
     for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
@@ -1725,8 +1767,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def openTargetingStep(self):
     self.currentStep = self.STEP_TARGETING
+    self.setupFourUpView(self.logic.currentIntraopVolume)
     self.fiducialsWidget.createNewFiducialNode(name="IntraopTargets")
-
     self.fiducialsWidget.startPlacing()
 
   def onRetryRegistrationButtonClicked(self):
@@ -1809,6 +1851,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.currentStep = self.STEP_SEGMENTATION_COMPARISON
     self.hideAllLabels()
     self.hideAllTargets()
+    self.removeMissingPreopDataAnnotation()
     if self.logic.usePreopData or self.logic.retryMode:
       self.layoutManager.setLayout(self.LAYOUT_SIDE_BY_SIDE)
 
@@ -1823,6 +1866,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
                                                 self.movingLabelSelector.currentNode())
       self.setupScreenForSegmentationComparison("yellow", self.fixedVolumeSelector.currentNode(),
                                                 self.fixedLabelSelector.currentNode())
+      self.setAxialOrientation()
+      self.redSliceNode.RotateToVolumePlane(self.movingVolumeSelector.currentNode())
+      self.redSliceNode.SetUseLabelOutline(True)
       self.applyRegistrationButton.setEnabled(1 if self.inputsAreSet() else 0)
       self.editorWidgetButton.setEnabled(True)
     else:
@@ -1833,8 +1879,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     compositeNode.SetReferenceBackgroundVolumeID(volume.GetID())
     compositeNode.SetLabelVolumeID(label.GetID())
     compositeNode.SetLabelOpacity(1)
-    logic = getattr(self, viewName+"SliceLogic")
-    self.setDefaultFOV(logic, volume)
 
   def onTrackTargetsButtonClicked(self):
     self.removeSliceAnnotations()
@@ -1848,7 +1892,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
         if self.currentResult is None or \
            self.registrationResults.getMostRecentApprovedCoverProstateRegistration() is None or \
            self.logic.retryMode or self.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
-          self.initiateOrRetrySegmentation(volume)
+          self.openSegmentationStep(volume)
         else:
           self.repeatRegistrationForCurrentSelection(volume)
 
@@ -1912,7 +1956,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.redSliceViewInteractor.RemoveObserver(self.zFrameClickObserver)
       self.zFrameClickObserver = None
 
-  def initiateOrRetrySegmentation(self, volume):
+  def openSegmentationStep(self, volume):
     self.currentStep = self.STEP_SEGMENTATION
     self.logic.currentIntraopVolume = volume
     self.fixedVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
@@ -2147,7 +2191,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     results = self.registrationResults.getResultsBySeriesNumber(self.currentResult.seriesNumber)
     for result in reversed(results):
       self.resultSelector.addItem(result.name)
-    self.registrationResultAlternatives.visible = len(results) > 1
+    self.resultSelector.visible = len(results) > 1
 
   def onNewImageDataReceived(self, **kwargs):
     newFileList = kwargs.pop('newFileList')
@@ -2692,8 +2736,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     for widgetName in ['Red', 'Green', 'Yellow']:
       slice = lm.sliceWidget(widgetName)
       sliceLogic = slice.sliceLogic()
-      sliceLogic.FitSliceToAll()
-
     # set the mouse mode into Markups fiducial placement
     placeModePersistence = 1
     self.markupsLogic.StartPlaceMode(placeModePersistence)
