@@ -1,6 +1,6 @@
-import slicer
 import os, sys
-from mixins import ModuleLogicMixin
+import slicer
+from SlicerProstateUtils.mixins import ModuleLogicMixin
 
 class ZFrameRegistrationBase(ModuleLogicMixin):
 

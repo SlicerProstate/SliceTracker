@@ -1,10 +1,13 @@
 import logging
 import slicer
 import os, json
-from Constants import SliceTrackerConstants, FileExtension
-from decorators import onExceptionReturnNone
-from mixins import ModuleLogicMixin
 from collections import OrderedDict
+
+from decorators import onExceptionReturnNone
+from constants import SliceTrackerConstants
+
+from SlicerProstateUtils.constants import FileExtension
+from SlicerProstateUtils.mixins import ModuleLogicMixin
 
 
 class RegistrationResults(object):

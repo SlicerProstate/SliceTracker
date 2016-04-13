@@ -1,21 +1,26 @@
-import EditorLib
 import csv, re, numpy, json
 import shutil, datetime, logging
 import ctk, vtk, qt
 import ConfigParser
 from collections import OrderedDict
 
+from slicer.ScriptedLoadableModule import *
+
+import EditorLib
 from Editor import EditorWidget
-from SliceTrackerUtils.Constants import DICOMTAGS, COLOR, STYLE, SliceTrackerConstants, FileExtension
+
+from SlicerProstateUtils.constants import DICOMTAGS, COLOR, STYLE, FileExtension
+from SlicerProstateUtils.helpers import SmartDICOMReceiver, SliceAnnotation, CustomTargetTableModel, TargetCreationWidget
+from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
+from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
+from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+
+from SliceTrackerUtils.constants import SliceTrackerConstants
+from SliceTrackerUtils.exceptions import DICOMValueError
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
 from SliceTrackerUtils.ZFrameRegistration import *
-from SliceTrackerUtils.helpers import SmartDICOMReceiver, SliceAnnotation, CustomTargetTableModel, TargetCreationWidget
-from SliceTrackerUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
-from SliceTrackerUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
-from SliceTrackerUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
-from SliceTrackerUtils.exceptions import DICOMValueError
+
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
-from slicer.ScriptedLoadableModule import *
 
 
 class SliceTracker(ScriptedLoadableModule):

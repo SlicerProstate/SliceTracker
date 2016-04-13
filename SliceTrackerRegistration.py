@@ -1,11 +1,8 @@
-import os
+import argparse, sys, os, logging
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
-from SliceTrackerUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
+from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from SliceTrackerUtils.RegistrationData import RegistrationResult
-import argparse
-import sys
-import logging
 
 
 class SliceTrackerRegistration(ScriptedLoadableModule):
