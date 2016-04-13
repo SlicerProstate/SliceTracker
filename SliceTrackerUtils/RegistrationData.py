@@ -3,11 +3,11 @@ import slicer
 import os, json
 from collections import OrderedDict
 
-from decorators import onExceptionReturnNone
 from constants import SliceTrackerConstants
 
 from SlicerProstateUtils.constants import FileExtension
 from SlicerProstateUtils.mixins import ModuleLogicMixin
+from SlicerProstateUtils.decorators import onExceptionReturnNone
 
 
 class RegistrationResults(object):
