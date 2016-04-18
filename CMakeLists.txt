@@ -21,6 +21,7 @@ set(MODULE_NAME SliceTracker)
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   SliceTrackerUtils/__init__.py
+  SliceTrackerUtils/configuration.py
   SliceTrackerUtils/constants.py
   SliceTrackerUtils/exceptions.py
   SliceTrackerUtils/RegistrationData.py

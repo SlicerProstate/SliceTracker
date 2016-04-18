@@ -3,8 +3,6 @@ import slicer
 import os, json
 from collections import OrderedDict
 
-from constants import SliceTrackerConstants
-
 from SlicerProstateUtils.constants import FileExtension
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 from SlicerProstateUtils.decorators import onExceptionReturnNone
@@ -31,7 +29,8 @@ class RegistrationResults(object):
   def intraopLabel(self):
     return self.getMostRecentApprovedCoverProstateRegistration().fixedLabel
 
-  def __init__(self):
+  def __init__(self, configuration):
+    self.config = configuration
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
@@ -116,7 +115,7 @@ class RegistrationResults(object):
   def getMostRecentApprovedCoverProstateRegistration(self):
     mostRecent = None
     for result in self._registrationResults.values():
-      if SliceTrackerConstants.COVER_PROSTATE in result.name and result.approved:
+      if self.config.COVER_PROSTATE in result.name and result.approved:
         mostRecent = result
     return mostRecent
 
