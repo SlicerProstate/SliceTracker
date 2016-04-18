@@ -58,10 +58,15 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   @caseRootDir.setter
   def caseRootDir(self, path):
-    exists = os.path.exists(path)
+    try:
+      exists = os.path.exists(path)
+    except TypeError:
+      exists = False
     self.setSetting('CasesRootLocation', path if exists else None)
     self.casesRootDirectoryButton.text = self.truncatePath(path) if exists else "Choose output directory"
     self.casesRootDirectoryButton.toolTip = path
+    self.openCaseButton.enabled = exists
+    self.createNewCaseButton.enabled = exists
 
   @property
   def preopDataDir(self):
@@ -841,6 +846,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def invokePreProcessing(self):
+    if not os.path.exists(self.mpReviewPreprocessedOutput):
+      self.logic.createDirectory(self.mpReviewPreprocessedOutput)
     from mpReviewPreprocessor import mpReviewPreprocessorLogic
     self.mpReviewPreprocessorLogic = mpReviewPreprocessorLogic()
     self.progress = slicer.util.createProgressDialog()
@@ -874,7 +881,8 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if len(savedSessions) > 0: # After registration(s) has been done
       self.openSavedSession(savedSessions)
     else:
-      if mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
+      if os.path.exists(self.mpReviewPreprocessedOutput) and \
+              mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
         self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
         self.intraopDataDir = self.intraopDICOMDataDirectory
       else:
@@ -2100,7 +2108,6 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if self.logic.zFrameRegistrationClass is OpenSourceZFrameRegistration:
       self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
     self.openOverviewStep()
-    self.save()
 
   def disableTargetTable(self):
     self.hideAllTargets()
@@ -2372,9 +2379,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     return newCaseDirectory
 
   def isCaseDirectoryValid(self, directory):
-    return os.path.exists(os.path.join(directory, "DICOM")) and os.path.exists(os.path.join(directory, "DICOM", "Preop")) \
-           and os.path.exists(os.path.join(directory, "DICOM", "Intraop")) \
-               and os.path.exists(os.path.join(directory, "mpReviewPreprocessed"))
+    return os.path.exists(os.path.join(directory, "DICOM", "Preop")) \
+           and os.path.exists(os.path.join(directory, "DICOM", "Intraop"))
 
   def hasCaseBeenCompleted(self, directory):
     #TODO: should better explore SliceTrackerOutputs
@@ -2383,6 +2389,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
   def getSavedSessions(self, caseDirectory):
     outputDir = os.path.join(caseDirectory, "SliceTrackerOutputs")
     validDirectories = []
+    if not os.path.exists(outputDir):
+      return validDirectories
     for d in [os.path.join(outputDir, d) for d in os.listdir(outputDir) if os.path.isdir(os.path.join(outputDir, d))]:
       if self.getDirectorySize(d) > 0:
         validDirectories.append(d)
@@ -2508,7 +2516,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     return success
 
   def save(self, outputDir):
-    self.createDirectory(outputDir)
+    if not os.path.exists(outputDir):
+      self.createDirectory(outputDir)
 
     successfullySavedData = ["The following data was successfully saved:\n"]
     failedSaveOfData = ["The following data failed to saved:\n"]

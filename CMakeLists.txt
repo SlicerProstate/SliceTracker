@@ -21,10 +21,10 @@ set(MODULE_NAME SliceTracker)
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   SliceTrackerUtils/__init__.py
-  SliceTrackerUtils/mixins
-  SliceTrackerUtils/helpers
-  SliceTrackerUtils/decorators
-  SliceTrackerUtils/OpenSourceZFrameRegistration
+  SliceTrackerUtils/constants.py
+  SliceTrackerUtils/exceptions.py
+  SliceTrackerUtils/RegistrationData.py
+  SliceTrackerUtils/ZFrameRegistration.py
   )
 
 set(MODULE_PYTHON_RESOURCES
@@ -36,8 +36,6 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-newImageData.png
   Resources/Icons/icon-quickSegmentation.png
   Resources/Icons/icon-settings.png
-  Resources/Icons/icon-star-filled.png
-  Resources/Icons/icon-star-unfilled.png
   Resources/Icons/icon-infoBox.png
   Resources/Icons/${MODULE_NAME}.png
   )
