@@ -29,7 +29,7 @@ class SliceTracker(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker"
     self.parent.categories = ["Radiology"]
-    self.parent.dependencies = ["SlicerProstate", "mpReview", "mpReviewPreprocessor"]
+    self.parent.dependencies = ["mpReview", "mpReviewPreprocessor"]
     self.parent.contributors = ["Peter Behringer (SPL), Christian Herz (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy. """
     self.parent.acknowledgementText = """Surgical Planning Laboratory, Brigham and Women's Hospital, Harvard
@@ -1054,7 +1054,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       return
     self.removeSliceAnnotations()
     if selectedSeries:
-      trackingPossible = self.isTrackingPossible(selectedSeries)
+      trackingPossible = self.logic.isTrackingPossible(selectedSeries)
       self.trackTargetsButton.setEnabled(trackingPossible)
       self.showTemplatePathButton.checked = trackingPossible and self.COVER_PROSTATE in selectedSeries
       self.skipIntraopSeriesButton.setEnabled(trackingPossible)
@@ -1062,16 +1062,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.updateIntraopSeriesSelectorColor(selectedSeries)
       self.updateSliceAnnotations(selectedSeries)
 
-  def isTrackingPossible(self, series):
-    return self.logic.isTrackingPossible(series) and \
-          ((self.GUIDANCE_IMAGE in series and (self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
-                                               or not self.logic.usePreopData)) or
-          (self.COVER_PROSTATE in series and self.logic.zFrameRegistrationSuccessful) or
-          (self.COVER_TEMPLATE in series and not self.logic.zFrameRegistrationSuccessful))
-
   def updateIntraopSeriesSelectorColor(self, selectedSeries):
     style = STYLE.YELLOW_BACKGROUND
-    if not self.isTrackingPossible(selectedSeries):
+    if not self.logic.isTrackingPossible(selectedSeries):
       if self.registrationResults.registrationResultWasApproved(selectedSeries) or \
               (self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in selectedSeries):
         style = STYLE.GREEN_BACKGROUND
@@ -1082,7 +1075,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     self.intraopSeriesSelector.setStyleSheet(style)
 
   def updateSliceAnnotations(self, selectedSeries):
-    if not self.isTrackingPossible(selectedSeries):
+    if not self.logic.isTrackingPossible(selectedSeries):
       annotationText = None
       if self.registrationResults.registrationResultWasApproved(selectedSeries):
         annotationText = self.APPROVED_RESULT_TEXT_ANNOTATION
@@ -1812,7 +1805,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
     for series in [series for series in self.logic.seriesList if not self.COVER_TEMPLATE in series]:
       currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
-      if currentSeriesNumber < selectedSeriesNumber:
+      if currentSeriesNumber < selectedSeriesNumber and self.logic.isTrackingPossible(series):
         results = self.registrationResults.getResultsBySeriesNumber(currentSeriesNumber)
         if len(results) == 0:
           self.skipSeries(series)
@@ -2215,16 +2208,17 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       newSeriesNumbers = seriesNumberPatientIDs.keys()
     self.updateIntraopSeriesSelectorTable()
     selectedSeries = self.intraopSeriesSelector.currentText
-    if selectedSeries != "":
+    if selectedSeries != "" and self.logic.isTrackingPossible(selectedSeries):
       selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
       if not self.logic.zFrameRegistrationSuccessful and self.COVER_TEMPLATE in selectedSeries and \
                       selectedSeriesNumber in newSeriesNumbers:
         self.onTrackTargetsButtonClicked()
         return
 
-      if self.currentStep == self.STEP_OVERVIEW and any(seriesText in self.intraopSeriesSelector.currentText
-                                                        for seriesText in [self.COVER_TEMPLATE, self.COVER_PROSTATE,
-                                                                           self.GUIDANCE_IMAGE]):
+      if self.currentStep == self.STEP_OVERVIEW and selectedSeriesNumber in newSeriesNumbers and \
+              any(seriesText in self.intraopSeriesSelector.currentText for seriesText in [self.COVER_TEMPLATE,
+                                                                                          self.COVER_PROSTATE,
+                                                                                          self.GUIDANCE_IMAGE]):
         if self.notifyUserAboutNewData:
           dialog = IncomingDataMessageBox()
           self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
@@ -2357,11 +2351,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     modifiedDisplayNode = self.setupDisplayNode(displayNode, True)
     targetNode.SetAndObserveDisplayNodeID(modifiedDisplayNode.GetID())
 
-  def isTrackingPossible(self, series):
-    return not (self.registrationResults.registrationResultWasApproved(series) or
-                self.registrationResults.registrationResultWasSkipped(series) or
-                self.registrationResults.registrationResultWasRejected(series))
-
   def setReceivedNewImageDataCallback(self, func):
     assert hasattr(func, '__call__')
     self._incomingDataCallback = func
@@ -2377,6 +2366,26 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     os.mkdir(os.path.join(newCaseDirectory, "mpReviewPreprocessed"))
     os.mkdir(os.path.join(newCaseDirectory, "SliceTrackerOutputs"))
     return newCaseDirectory
+
+  def isInGeneralTrackable(self, series):
+    return any(seriesType in series for seriesType in [SliceTrackerConstants.COVER_TEMPLATE,
+                                                       SliceTrackerConstants.COVER_PROSTATE,
+                                                       SliceTrackerConstants.GUIDANCE_IMAGE])
+
+  def resultHasNotBeenProcessed(self, series):
+    return not (self.registrationResults.registrationResultWasApproved(series) or
+                self.registrationResults.registrationResultWasSkipped(series) or
+                self.registrationResults.registrationResultWasRejected(series))
+
+  def isTrackingPossible(self, series):
+    if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
+      if SliceTrackerConstants.GUIDANCE_IMAGE in series:
+        return self.registrationResults.getMostRecentApprovedCoverProstateRegistration() or not self.usePreopData
+      elif SliceTrackerConstants.COVER_PROSTATE in series:
+        return self.zFrameRegistrationSuccessful
+      elif SliceTrackerConstants.COVER_TEMPLATE in series:
+        return not self.zFrameRegistrationSuccessful
+    return False
 
   def isCaseDirectoryValid(self, directory):
     return os.path.exists(os.path.join(directory, "DICOM", "Preop")) \
@@ -2673,7 +2682,7 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       currentFile = os.path.join(self._intraopDataDir, currentFile)
       indexer.addFile(db, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
-      if series and self.isDICOMSeriesEligible(series):
+      if series:
         eligibleSeriesFiles.append(currentFile)
         if series not in self.seriesList:
           self.seriesList.append(series)
@@ -2717,10 +2726,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
       return formatted.strftime("%Y-%b-%d")
     else:
       return ""
-
-  def isDICOMSeriesEligible(self, series):
-    return SliceTrackerConstants.COVER_PROSTATE in series or SliceTrackerConstants.COVER_TEMPLATE in series or \
-           SliceTrackerConstants.GUIDANCE_IMAGE in series
 
   def makeSeriesNumberDescription(self, dicomFile):
     seriesDescription = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_DESCRIPTION)
