@@ -64,8 +64,8 @@ class RegistrationResults(object):
           elif attribute == 'approvedTargets':
             targets = self._loadOrGetFileData(directory, value["fileName"], slicer.util.loadMarkupsFiducialList)
             setattr(result, attribute, targets)
-          elif attribute == 'modifiedTargets':
-            setattr(result, attribute, value)
+            approvedRegType = value["derivedFrom"]
+            result.modifiedTargets[approvedRegType] = value["userModified"]
           else:
             setattr(result, attribute, value)
 
@@ -280,19 +280,12 @@ class RegistrationResult(ModuleLogicMixin):
         return regType
     return None
 
-  def isGoingToBeMoved(self, targetList, index, newPosition):
+  def isGoingToBeMoved(self, targetList, index):
     assert targetList in self.targets.values()
     regType = self.getRegistrationTypeForTargetList(targetList)
     if not self.modifiedTargets.has_key(regType):
-      self.modifiedTargets[regType] = {}
-    if self.modifiedTargets[regType].has_key(index):
-      originalPosition = self.modifiedTargets[regType][index]["originalPosition"]
-    else:
-      self.modifiedTargets[regType][index] = {}
-      originalPosition = [0.0, 0.0, 0.0]
-      targetList.GetNthFiducialPosition(index, originalPosition)
-    self.modifiedTargets[regType][index]["originalPosition"] = originalPosition
-    self.modifiedTargets[regType][index]["modifiedPosition"] = newPosition
+      self.modifiedTargets[regType] = [False for i in range(targetList.GetNumberOfFiducials())]
+    self.modifiedTargets[regType][index] = True
 
   def _initLabels(self):
     self.movingLabel = None
@@ -359,37 +352,23 @@ class RegistrationResult(ModuleLogicMixin):
     self.status = self.APPROVED_STATUS
     self.approvedTargets = self.cloneFiducials(self.targets[self.approvedRegistrationType],
                                                cloneName="%s-TARGETS-approved" % str(self.seriesNumber), keepDisplayNode=True)
-    self._resetOriginalTargetPositions()
 
   def skip(self):
     self.status = self.SKIPPED_STATUS
 
   def reject(self):
     self.status = self.REJECTED_STATUS
-    self._resetOriginalTargetPositions()
 
   def printSummary(self):
     logging.debug('# ___________________________  registration output  ________________________________')
     logging.debug(self.__dict__)
     logging.debug('# __________________________________________________________________________________')
 
-  def _resetOriginalTargetPositions(self):
-    for regType, targetList in self.targets.iteritems():
-      if targetList:
-        for index in range(targetList.GetNumberOfFiducials()):
-          if self.modifiedTargets.has_key(regType):
-            if self.modifiedTargets[regType].has_key(index):
-              originalPos = self.modifiedTargets[regType][index]["originalPosition"]
-              targetList.SetNthFiducialPositionFromArray(index, originalPos)
-
   def getApprovedTargetsModifiedStatus(self):
-    modified = []
-    for index in range(self.approvedTargets.GetNumberOfFiducials()):
-      try:
-        self.modifiedTargets[self.approvedRegistrationType][index]
-        modified.append(True)
-      except KeyError:
-        modified.append(False)
+    try:
+      modified = self.modifiedTargets[self.approvedRegistrationType]
+    except KeyError:
+      modified = [False for i in range(self.approvedTargets.GetNumberOfFiducials())]
     return modified
 
   def save(self, outputDir):
@@ -486,7 +465,7 @@ class RegistrationResult(ModuleLogicMixin):
                        "suffix":self.suffix, "status":self.status, "score": self.score,
                        "fixedLabel":self.getFixedLabelFileName(), "movingLabel":self.getMovingLabelFileName(),
                        "fixedVolume": self.getFixedVolumeFileName(), "movingVolume": self.getMovingVolumeFileName(),
-                       "originalTargets":self.getOriginalTargetsFileName(), "modifiedTargets": self.modifiedTargets}}
+                       "originalTargets":self.getOriginalTargetsFileName()}}
     if self.approved:
       dictionary[self.name]["approvedTargets"] = {"derivedFrom":self.approvedRegistrationType,
                                        "userModified": self.getApprovedTargetsModifiedStatus(),

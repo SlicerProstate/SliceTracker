@@ -965,11 +965,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onLayoutChanged(self):
     # TODO: replace drop down by button group checkable
-    self.onCrosshairButtonClicked(self.layoutManager.layout == self.LAYOUT_FOUR_UP)
+    self.onCrosshairButtonClicked(False)
     if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
       if self.currentStep == self.STEP_EVALUATION:
+        self.onCrosshairButtonClicked(self.layoutManager.layout == self.LAYOUT_FOUR_UP)
         self.disableTargetMovingMode()
         self.onRegistrationResultSelected(self.currentResult.name)
         self.setupRegistrationResultView()
@@ -1229,8 +1230,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     widget = self.getWidgetForInteractor(observee)
     posRAS = self.xyToRAS(widget.sliceLogic(), posXY)
     if self.currentlyMovedTargetModelIndex is not None:
-      self.currentResult.isGoingToBeMoved(self.targetTableModel.targetList, self.currentlyMovedTargetModelIndex.row(),
-                                          posRAS)
+      self.currentResult.isGoingToBeMoved(self.targetTableModel.targetList, self.currentlyMovedTargetModelIndex.row())
       self.targetTableModel.targetList.SetNthFiducialPositionFromArray(self.currentlyMovedTargetModelIndex.row(), posRAS)
     self.disableTargetMovingMode()
 
@@ -2180,6 +2180,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def openEvaluationStep(self):
     self.currentStep = self.STEP_EVALUATION
+    self.currentResult.save(self.generatedOutputDirectory)
     self.targetTable.connect('doubleClicked(QModelIndex)', self.onMoveTargetRequest)
     self.targetTableModel.computeCursorDistances = True
     self.addNewTargetsToScene()
