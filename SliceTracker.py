@@ -965,6 +965,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
 
   def onLayoutChanged(self):
     # TODO: replace drop down by button group checkable
+    self.onCrosshairButtonClicked(self.layoutManager.layout == self.LAYOUT_FOUR_UP)
     if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
@@ -1027,8 +1028,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       if action is searchedAction:
         return layout
 
-  def onCrosshairButtonClicked(self):
-    if self.crosshairButton.checked:
+  def onCrosshairButtonClicked(self, enabled):
+    self.crosshairButton.checked = enabled
+    if enabled:
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
     else:
