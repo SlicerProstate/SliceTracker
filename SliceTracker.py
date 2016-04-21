@@ -1,4 +1,4 @@
-import csv, re, numpy, json
+import csv, re, numpy, json, ast
 import shutil, datetime, logging
 import ctk, vtk, qt
 from collections import OrderedDict
@@ -12,8 +12,9 @@ from SlicerProstateUtils.constants import DICOMTAGS, COLOR, STYLE, FileExtension
 from SlicerProstateUtils.helpers import SmartDICOMReceiver, SliceAnnotation, CustomTargetTableModel, TargetCreationWidget
 from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
-from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ParameterNodeObservationMixin
 
+from SliceTrackerUtils.events import SliceTrackerEvents
 from SliceTrackerUtils.constants import SliceTrackerConstants
 from SliceTrackerUtils.exceptions import DICOMValueError
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
@@ -29,7 +30,7 @@ class SliceTracker(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker"
     self.parent.categories = ["Radiology"]
-    self.parent.dependencies = ["SlicerProstateUtils", "mpReview", "mpReviewPreprocessor"]
+    self.parent.dependencies = ["SlicerProstate", "mpReview", "mpReviewPreprocessor"]
     self.parent.contributors = ["Peter Behringer (SPL), Christian Herz (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy. """
     self.parent.acknowledgementText = """Surgical Planning Laboratory, Brigham and Women's Hospital, Harvard
@@ -38,7 +39,7 @@ class SliceTracker(ScriptedLoadableModule):
                                           R01 CA111288 and P41 EB015898."""
 
 
-class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceTrackerConstants):
+class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoadableModuleWidget):
 
   @property
   def config(self):
@@ -90,7 +91,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
   def intraopDataDir(self, path):
     if os.path.exists(path):
       self.intraopWatchBox.sourceFile = None
-      self.logic.setReceivedNewImageDataCallback(self.onNewImageDataReceived)
+      self.logic.addObserver(SliceTrackerEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
       self.logic.intraopDataDir = path
 
   @property
@@ -969,6 +970,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
+      self.refreshZFrameTemplateViewNodes()
       if self.currentStep == self.STEP_EVALUATION:
         self.onCrosshairButtonClicked(self.layoutManager.layout == self.LAYOUT_FOUR_UP)
         self.disableTargetMovingMode()
@@ -988,6 +990,12 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
     else:
       self.layoutsMenuButton.setIcon(qt.QIcon())
       self.layoutsMenuButton.setText("Layouts")
+
+  def refreshZFrameTemplateViewNodes(self):
+    sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+    if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
+      sliceNodes = [self.yellowSliceNode]
+    self.refreshViewNodeIDs(self.logic.pathModelNode, sliceNodes)
 
   def removeMissingPreopDataAnnotation(self):
     if self.segmentationNoPreopAnnotation:
@@ -2206,8 +2214,9 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
       self.resultSelector.addItem(result.name)
     self.resultSelector.visible = len(results) > 1
 
-  def onNewImageDataReceived(self, **kwargs):
-    newFileList = kwargs.pop('newFileList')
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onNewImageDataReceived(self, caller, event, callData):
+    newFileList = ast.literal_eval(callData)
     seriesNumberPatientIDs = self.getAllNewSeriesNumbersIncludingPatientIDs(newFileList)
     if self.logic.usePreopData:
       newSeriesNumbers = self.verifyPatientIDEquality(seriesNumberPatientIDs)
@@ -2234,7 +2243,7 @@ class SliceTrackerWidget(ScriptedLoadableModuleWidget, ModuleWidgetMixin, SliceT
           self.onTrackTargetsButtonClicked()
 
 
-class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
+class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, ScriptedLoadableModuleLogic):
 
   ZFRAME_MODEL_PATH = 'Resources/zframe/zframe-model.vtk'
   ZFRAME_TEMPLATE_CONFIG_FILE_NAME = 'Resources/zframe/ProstateTemplate.csv'
@@ -2303,7 +2312,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.registrationResults = RegistrationResults(self.config)
 
     self._intraopDataDir = ""
-    self._incomingDataCallback = None
     self.smartDicomReceiver = None
 
     self.retryMode = False
@@ -2329,6 +2337,9 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     self.loadTemplateConfigFile()
     self.stopSmartDICOMReceiver()
 
+  def getParameterNode(self):
+    return ScriptedLoadableModuleLogic.getParameterNode(self)
+
   def clearOldNodes(self):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_PATH_NAME)
@@ -2349,10 +2360,6 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
     displayNode = None if new else targetNode.GetDisplayNode()
     modifiedDisplayNode = self.setupDisplayNode(displayNode, True)
     targetNode.SetAndObserveDisplayNodeID(modifiedDisplayNode.GetID())
-
-  def setReceivedNewImageDataCallback(self, func):
-    assert hasattr(func, '__call__')
-    self._incomingDataCallback = func
 
   def createNewCase(self, destinationDir):
     self.continueOldCase = False
@@ -2689,8 +2696,8 @@ class SliceTrackerLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
     self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
 
-    if self._incomingDataCallback and len(eligibleSeriesFiles):
-      self._incomingDataCallback(newFileList=eligibleSeriesFiles)
+    if len(eligibleSeriesFiles):
+      self.invokeEvent(SliceTrackerEvents.NewImageDataReceivedEvent, eligibleSeriesFiles.__str__())
 
   def createLoadableFileListForSeries(self, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
