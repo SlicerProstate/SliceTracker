@@ -2295,7 +2295,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
   ZFRAME_TEMPLATE_NAME = 'NeedleGuideTemplate'
   ZFRAME_TEMPLATE_PATH_NAME = 'NeedleGuideNeedlePath'
   COMPUTED_NEEDLE_MODEL_NAME = 'ComputedNeedleModel'
-  MPREVIEW_COLORS_FILE_NAME = 'Resources/Colors/mpReviewColors.csv'
   DEFAULT_JSON_FILE_NAME = "results.json"
 
   @property
@@ -2332,7 +2331,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     self.registrationLogic = SliceTrackerRegistrationLogic()
     self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.defaultTemplateFile = os.path.join(self.modulePath, self.ZFRAME_TEMPLATE_CONFIG_FILE_NAME)
-    self.defaultColorFile = os.path.join(self.modulePath, self.MPREVIEW_COLORS_FILE_NAME)
     # TODO: provide UI possibility to select alternative config file at the beginning
     self.config = SliceTrackerConfiguration(os.path.join(self.modulePath, 'Resources', "default.cfg"),
                                             scope=sys.modules[__name__])
@@ -2375,7 +2373,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     self.pathVectors = []  ## Normal vectors of needle paths (after transformation by parent transform node)
 
     from mpReview import mpReviewLogic
-    self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.defaultColorFile)
+    self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.config.colorFile)
     self.clearOldNodes()
     self.loadZFrameModel()
     self.loadTemplateConfigFile()

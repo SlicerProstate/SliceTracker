@@ -1,5 +1,5 @@
 import ConfigParser
-import sys
+import inspect, os
 
 
 class SliceTrackerConfiguration(object):
@@ -24,3 +24,7 @@ class SliceTrackerConfiguration(object):
     self.NEEDLE_IMAGE = config.get('Series Descriptions', 'NEEDLE_IMAGE')
 
     self.maximumRatingScore = config.getint('Rating', 'Maximum_Score')
+
+    colorFilename = config.get('Color File', 'Filename')
+    self.colorFile = os.path.join(os.path.dirname(inspect.getfile(self.__class__)),
+                                  '../Resources/Colors', colorFilename)
