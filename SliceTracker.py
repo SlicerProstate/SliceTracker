@@ -1427,11 +1427,15 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     def startRocking():
       self.showOpacitySliderPopup(True)
       self.flickerCheckBox.enabled = False
+      self.wlEffectsToolButton.checked = False
+      self.wlEffectsToolButton.enabled = False
+      self.disableWindowLevelEffects()
       self.rockTimer.start()
       self.opacitySpinBox.value = 0.5 + numpy.sin(self.rockCount / 10.) / 2.
       self.rockCount += 1
 
     def stopRocking():
+      self.wlEffectsToolButton.enabled = True
       self.showOpacitySliderPopup(False)
       self.flickerCheckBox.enabled  = True
       self.rockTimer.stop()
@@ -1446,10 +1450,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     def startFlickering():
       self.showOpacitySliderPopup(True)
       self.rockCheckBox.setEnabled(False)
+      self.wlEffectsToolButton.checked = False
+      self.wlEffectsToolButton.enabled = False
+      self.disableWindowLevelEffects()
       self.flickerTimer.start()
       self.opacitySpinBox.value = 1.0 if self.opacitySpinBox.value == 0.0 else 0.0
 
     def stopFlickering():
+      self.wlEffectsToolButton.enabled = True
       self.showOpacitySliderPopup(False)
       self.rockCheckBox.setEnabled(True)
       self.flickerTimer.stop()
