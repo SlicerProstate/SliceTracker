@@ -1,10 +1,11 @@
 import logging
 import slicer
 import os, json
-from Constants import SliceTrackerConstants, FileExtension
-from decorators import onExceptionReturnNone
-from mixins import ModuleLogicMixin
 from collections import OrderedDict
+
+from SlicerProstateUtils.constants import FileExtension
+from SlicerProstateUtils.mixins import ModuleLogicMixin
+from SlicerProstateUtils.decorators import onExceptionReturnNone
 
 
 class RegistrationResults(object):
@@ -28,7 +29,8 @@ class RegistrationResults(object):
   def intraopLabel(self):
     return self.getMostRecentApprovedCoverProstateRegistration().fixedLabel
 
-  def __init__(self):
+  def __init__(self, configuration):
+    self.config = configuration
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
@@ -51,14 +53,19 @@ class RegistrationResults(object):
           elif attribute == 'targets':
             self._loadResultFileData(value, directory, slicer.util.loadMarkupsFiducialList, result.setTargets)
           elif attribute in ['fixedLabel', 'movingLabel']:
-              label = self._loadOrGetFileData(directory, value, slicer.util.loadLabelVolume)
-              setattr(result, attribute, label)
+            label = self._loadOrGetFileData(directory, value, slicer.util.loadLabelVolume)
+            setattr(result, attribute, label)
           elif attribute in ['fixedVolume', 'movingVolume']:
-              volume = self._loadOrGetFileData(directory, value, slicer.util.loadVolume)
-              setattr(result, attribute, volume)
+            volume = self._loadOrGetFileData(directory, value, slicer.util.loadVolume)
+            setattr(result, attribute, volume)
           elif attribute == 'originalTargets':
-              targets = self._loadOrGetFileData(directory, value, slicer.util.loadMarkupsFiducialList)
-              setattr(result, attribute, targets)
+            targets = self._loadOrGetFileData(directory, value, slicer.util.loadMarkupsFiducialList)
+            setattr(result, attribute, targets)
+          elif attribute == 'approvedTargets':
+            targets = self._loadOrGetFileData(directory, value["fileName"], slicer.util.loadMarkupsFiducialList)
+            setattr(result, attribute, targets)
+            approvedRegType = value["derivedFrom"]
+            result.modifiedTargets[approvedRegType] = value["userModified"]
           else:
             setattr(result, attribute, value)
 
@@ -108,7 +115,7 @@ class RegistrationResults(object):
   def getMostRecentApprovedCoverProstateRegistration(self):
     mostRecent = None
     for result in self._registrationResults.values():
-      if SliceTrackerConstants.COVER_PROSTATE in result.name and result.approved:
+      if self.config.COVER_PROSTATE in result.name and result.approved:
         mostRecent = result
     return mostRecent
 
@@ -209,11 +216,6 @@ class RegistrationResult(ModuleLogicMixin):
 
   @property
   @onExceptionReturnNone
-  def approvedTargets(self):
-    return self.targets[self.approvedRegistrationType]
-
-  @property
-  @onExceptionReturnNone
   def approvedVolume(self):
     return self.volumes[self.approvedRegistrationType]
 
@@ -257,7 +259,6 @@ class RegistrationResult(ModuleLogicMixin):
     self.name = series
 
     self.status = None
-    self.approvedRegistrationType = None
 
     self._initVolumes()
     self._initTransforms()
@@ -270,14 +271,21 @@ class RegistrationResult(ModuleLogicMixin):
 
     self.modifiedTargets = {}
 
+    self.approvedRegistrationType = None
+    self.approvedTargets = None
+
+  def getRegistrationTypeForTargetList(self, targetList):
+    for regType, currentTargetList in self.targets.iteritems():
+      if targetList is currentTargetList:
+        return regType
+    return None
+
   def isGoingToBeMoved(self, targetList, index):
     assert targetList in self.targets.values()
-    if not self.modifiedTargets.has_key(targetList):
-      self.modifiedTargets[targetList] = {}
-    if not self.modifiedTargets[targetList].has_key(index):
-      originalPosition = [0.0, 0.0, 0.0]
-      targetList.GetNthFiducialPosition(index, originalPosition)
-      self.modifiedTargets[targetList][index] = originalPosition
+    regType = self.getRegistrationTypeForTargetList(targetList)
+    if not self.modifiedTargets.has_key(regType):
+      self.modifiedTargets[regType] = [False for i in range(targetList.GetNumberOfFiducials())]
+    self.modifiedTargets[regType][index] = True
 
   def _initLabels(self):
     self.movingLabel = None
@@ -342,6 +350,8 @@ class RegistrationResult(ModuleLogicMixin):
     assert registrationType in self.REGISTRATION_TYPE_NAMES
     self.approvedRegistrationType = registrationType
     self.status = self.APPROVED_STATUS
+    self.approvedTargets = self.cloneFiducials(self.targets[self.approvedRegistrationType],
+                                               cloneName="%s-TARGETS-approved" % str(self.seriesNumber), keepDisplayNode=True)
 
   def skip(self):
     self.status = self.SKIPPED_STATUS
@@ -353,6 +363,13 @@ class RegistrationResult(ModuleLogicMixin):
     logging.debug('# ___________________________  registration output  ________________________________')
     logging.debug(self.__dict__)
     logging.debug('# __________________________________________________________________________________')
+
+  def getApprovedTargetsModifiedStatus(self):
+    try:
+      modified = self.modifiedTargets[self.approvedRegistrationType]
+    except KeyError:
+      modified = [False for i in range(self.approvedTargets.GetNumberOfFiducials())]
+    return modified
 
   def save(self, outputDir):
     if not os.path.exists(outputDir):
@@ -379,9 +396,8 @@ class RegistrationResult(ModuleLogicMixin):
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     def saveApprovedTargets():
-      if self.approved:
-        fileName = self.approvedTargets.GetName().replace("-TARGETS-", "-APPROVED-TARGETS-")
-        success, name = self.saveNodeData(self.approvedTargets, outputDir, FileExtension.FCSV, name=fileName)
+      if self.approvedTargets:
+        success, name = self.saveNodeData(self.approvedTargets, outputDir, FileExtension.FCSV)
         self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
 
     def saveVolumes():
@@ -440,11 +456,19 @@ class RegistrationResult(ModuleLogicMixin):
   def getOriginalTargetsFileName(self):
     return self._getFileName(self.originalTargets, FileExtension.FCSV)
 
+  def getApprovedTargetsFileName(self):
+    return self._getFileName(self.approvedTargets, FileExtension.FCSV)
+
   def toDict(self):
-    #TODO: targetsWereModified
-    return {self.name:{"targets":self.getAllTargetFileNames(), "transforms":self.getAllTransformationFileNames(),
+    dictionary = {self.name:{"targets":self.getAllTargetFileNames(), "transforms":self.getAllTransformationFileNames(),
                        "volumes":self.getAllVolumeFileNames(), "approvedRegistrationType":self.approvedRegistrationType,
                        "suffix":self.suffix, "status":self.status, "score": self.score,
                        "fixedLabel":self.getFixedLabelFileName(), "movingLabel":self.getMovingLabelFileName(),
                        "fixedVolume": self.getFixedVolumeFileName(), "movingVolume": self.getMovingVolumeFileName(),
                        "originalTargets":self.getOriginalTargetsFileName()}}
+    if self.approved:
+      dictionary[self.name]["approvedTargets"] = {"derivedFrom":self.approvedRegistrationType,
+                                       "userModified": self.getApprovedTargetsModifiedStatus(),
+                                       "fileName": self.getApprovedTargetsFileName()}
+    return dictionary
+

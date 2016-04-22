@@ -1,9 +1,10 @@
+import os
 import vtk, qt, slicer
-from slicer.ScriptedLoadableModule import *
-from SliceTrackerUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from Editor import EditorWidget
 import EditorLib
-import os
+
+from slicer.ScriptedLoadableModule import *
+from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from SliceTrackerUtils.ZFrameRegistration import OpenSourceZFrameRegistration
 
 
