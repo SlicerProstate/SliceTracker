@@ -998,18 +998,29 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def onLayoutChanged(self):
     # TODO: replace drop down by button group checkable
+    self.redCompositeNode.SetLinkedControl(False)
     self.onCrosshairButtonClicked(False)
     self.onWindowLevelEffectToggled(self.wlEffectsToolButton.checked)
     if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
       self.refreshZFrameTemplateViewNodes()
-      if self.currentStep == self.STEP_EVALUATION:
+      if self.currentStep in [self.STEP_EVALUATION, self.STEP_OVERVIEW]:
         self.onCrosshairButtonClicked(self.layoutManager.layout == self.LAYOUT_FOUR_UP)
         self.disableTargetMovingMode()
-        self.onRegistrationResultSelected(self.currentResult.name)
-        self.setupRegistrationResultView()
-        self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
+        if self.currentStep == self.STEP_EVALUATION:
+          self.onRegistrationResultSelected(self.currentResult.name)
+          self.setupRegistrationResultView()
+          self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
+        elif self.currentStep == self.STEP_OVERVIEW:
+          self.redCompositeNode.SetLinkedControl(True)
+          selectedSeries = self.intraopSeriesSelector.currentText
+          if selectedSeries != "":
+            if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+              volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
+              self.setBackgroundToVolumeID(volume.GetID())
+            elif self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
+              self.onIntraopSeriesSelectionChanged(selectedSeries)
       elif self.currentStep == self.STEP_SEGMENTATION:
         if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
           self.setupSideBySideSegmentationView()
