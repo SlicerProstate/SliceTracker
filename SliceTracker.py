@@ -20,6 +20,7 @@ from SliceTrackerUtils.exceptions import DICOMValueError
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
 from SliceTrackerUtils.ZFrameRegistration import *
 from SliceTrackerUtils.configuration import SliceTrackerConfiguration
+from SliceTrackerUtils.WindowLevelEffect import WindowLevelEffect
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
@@ -301,6 +302,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.textInfoIcon = self.createIcon('icon-text-info.png')
     self.revealCursorIcon = self.createIcon('icon-revealCursor.png')
     self.skipIcon = self.createIcon('icon-skip.png')
+    self.wlIcon = self.createIcon('icon-WindowLevelEffect.png')
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -321,6 +323,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.crosshairNode = None
     self.crosshairNodeObserverTag = None
+
+    self.wlEffects = {}
 
     self.logic.retryMode = False
     self.logic.zFrameRegistrationSuccessful = False
@@ -390,11 +394,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
     self.showTemplatePathButton = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
     self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, checkable=True, toolTip="Display annotations", checked=True)
+    self.wlEffectsToolButton = self.createButton("", icon=self.wlIcon, checkable=True,
+                                                 toolTip="Use this tool for changing W/L with respect to FG and BG opacity")
 
     self.resetViewSettingButtons()
     self.layout.addWidget(self.createHLayout([self.layoutsMenuButton, self.showAnnotationsButton,
                                               self.crosshairButton, self.showZFrameModelButton,
-                                              self.showTemplatePathButton, self.showNeedlePathButton]))
+                                              self.showTemplatePathButton, self.showNeedlePathButton,
+                                              self.wlEffectsToolButton]))
 
   def resetViewSettingButtons(self):
     self.showTemplateButton.enabled = self.logic.templateSuccessfulLoaded
@@ -421,6 +428,17 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     setattr(self, name.lower()+"SliceLogic", logic)
     setattr(self, name.lower()+"SliceNode", logic.GetSliceNode())
     setattr(self, name.lower()+"FOV", [])
+    self.wlEffects[widget] = WindowLevelEffect(widget)
+
+  def enableWindowLevelEffects(self, sliceWidgets):
+    self.disableWindowLevelEffects()
+    for sliceWidget in sliceWidgets:
+      if self.wlEffects.has_key(sliceWidget):
+        self.wlEffects[sliceWidget].enable()
+
+  def disableWindowLevelEffects(self):
+    for wlEffect in self.wlEffects.values():
+      wlEffect.disable()
 
   def setDefaultOrientation(self):
     self.redSliceNode.SetOrientationToAxial()
@@ -725,6 +743,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
         self.showAnnotationsButton.connect('toggled(bool)', self.onShowAnnotationsToggled)
         self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
+        self.wlEffectsToolButton.connect('toggled(bool)', self.onWindowLevelEffectToggled)
 
       def setupZFrameRegistrationStepButtonConnections():
         self.retryZFrameRegistrationButton.clicked.connect(self.onRetryZFrameRegistrationButtonClicked)
@@ -939,6 +958,19 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def onShowNeedlePathToggled(self, checked):
     self.logic.setNeedlePathVisibility(checked)
 
+  def onWindowLevelEffectToggled(self, checked):
+    if not checked:
+      self.disableWindowLevelEffects()
+    else:
+      widgets = []
+      if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+        widgets = [self.redWidget, self.yellowWidget, self.greenWidget]
+      elif self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
+        widgets = [self.redWidget, self.yellowWidget]
+      elif self.layoutManager.layout == self.LAYOUT_RED_SLICE_ONLY:
+        widgets = [self.redWidget]
+      self.enableWindowLevelEffects(widgets)
+
   def onShowAnnotationsToggled(self, checked):
     allSliceAnnotations = self.sliceAnnotations[:]
 
@@ -967,6 +999,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def onLayoutChanged(self):
     # TODO: replace drop down by button group checkable
     self.onCrosshairButtonClicked(False)
+    self.onWindowLevelEffectToggled(self.wlEffectsToolButton.checked)
     if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])

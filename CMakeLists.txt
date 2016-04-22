@@ -26,6 +26,7 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/exceptions.py
   SliceTrackerUtils/RegistrationData.py
   SliceTrackerUtils/ZFrameRegistration.py
+  SliceTrackerUtils/WindowLevelEffect.py
   )
 
 set(MODULE_PYTHON_RESOURCES
