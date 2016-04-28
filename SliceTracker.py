@@ -298,7 +298,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.zFrameIcon = self.createIcon('icon-zframe.png')
     self.needleIcon = self.createIcon('icon-needle.png')
     self.templateIcon = self.createIcon('icon-template.png')
-    self.pathIcon = self.createIcon('icon-path.png')
     self.textInfoIcon = self.createIcon('icon-text-info.png')
     self.revealCursorIcon = self.createIcon('icon-revealCursor.png')
     self.skipIcon = self.createIcon('icon-skip.png')
@@ -392,7 +391,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zFrame model")
     self.showTemplateButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
     self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
-    self.showTemplatePathButton = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
+    self.showTemplatePathButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template paths")
     self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, checkable=True, toolTip="Display annotations", checked=True)
     self.wlEffectsToolButton = self.createButton("", icon=self.wlIcon, checkable=True,
                                                  toolTip="Use this tool for changing W/L with respect to FG and BG opacity")
