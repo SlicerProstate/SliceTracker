@@ -497,7 +497,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.setupIntraopSeriesSelector()
 
     self.createNewCaseButton = self.createButton("New case")
-    self.openCaseButton = self.createDirectoryButton(text="Open case", caption="Open Case", directory=self.caseRootDir)
+    self.openCaseButton = self.createDirectoryButton(text="Open case", caption="Open Case", directory=self.caseRootDir,
+                                                     styleSheet="QPushButton{icon-size: 16px;}")
 
     self.overviewGroupBoxLayout.addWidget(self.createNewCaseButton, 1, 0)
     self.overviewGroupBoxLayout.addWidget(self.openCaseButton, 1, 1)
