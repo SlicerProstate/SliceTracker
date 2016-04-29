@@ -13,6 +13,7 @@ from SlicerProstateUtils.helpers import SmartDICOMReceiver, SliceAnnotation, Cus
 from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ParameterNodeObservationMixin
+from SlicerProstateUtils.events import SlicerProstateEvents
 
 from SliceTrackerUtils.events import SliceTrackerEvents
 from SliceTrackerUtils.constants import SliceTrackerConstants
@@ -366,7 +367,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.segmentationNoPreopAnnotation = None
 
-    self.preopDicomReceiver = None
+    self.preopTransferWindow = None
     self._generatedOutputDirectory = ""
     self.continueOldCase = False
     self._preopDataDir = None
@@ -515,21 +516,22 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.targetingGroupBoxLayout = qt.QFormLayout()
     self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
 
-    self.fiducialsWidget = TargetCreationWidget(self.targetingGroupBoxLayout, listModifiedCallback=self.onTargetListModified)
+    self.fiducialsWidget = TargetCreationWidget(self.targetingGroupBoxLayout)
+    self.fiducialsWidget.addObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
     self.finishTargetingStepButton = self.createButton("Done setting targets", enabled=True,
                                                        toolTip="Click this button to continue after setting targets")
 
     self.targetingGroupBoxLayout.addRow(self.finishTargetingStepButton)
     self.layout.addWidget(self.targetingGroupBox)
 
-  def onTargetListModified(self):
+  def onTargetListModified(self, caller, event):
     self.finishTargetingStepButton.enabled = self.fiducialsWidget.currentNode is not None and \
                                              self.fiducialsWidget.currentNode.GetNumberOfFiducials()
 
   def setupTargetsTable(self):
     self.targetTable = qt.QTableView()
     self.targetTableModel = CustomTargetTableModel(self.logic)
-    self.targetTableModel.setTargetModifiedCallback(self.updateNeedleModel)
+    self.targetTableModel.addObserver(vtk.vtkCommand.ModifiedEvent, self.updateNeedleModel)
     self.targetTable.setModel(self.targetTableModel)
     self.targetTable.setSelectionBehavior(qt.QTableView.SelectRows)
     self.setTargetTableSizeConstraints()
@@ -779,10 +781,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.zFrameRegistrationStartIndex.valueChanged.connect(self.onZFrameStartIndexSpinBoxChanged)
       self.zFrameRegistrationEndIndex.valueChanged.connect(self.onZFrameEndIndexSpinBoxChanged)
 
+    def setupEventConnections():
+      self.ratingWindow.addObserver(SlicerProstateEvents.RatingWindowClosedEvent, self.onRatingDone)
+
     setupCheckBoxConnections()
     setupButtonConnections()
     setupSelectorConnections()
     setupOtherConnections()
+    setupEventConnections()
 
   def onZFrameStartIndexSpinBoxChanged(self, value):
     if not value <= self.zFrameRegistrationEndIndex.value:
@@ -823,31 +829,24 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.startPreopDICOMReceiver()
 
   def startPreopDICOMReceiver(self):
-    self.preopTransferWindow = IncomingDataWindow(callback=self.onPreopTransferMessageBoxButtonClicked,
+    self.preopTransferWindow = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDataDirectory,
                                                   skipText="No Preop available")
-    self.preopDicomReceiver = SmartDICOMReceiver(incomingDataDirectory=self.preopDICOMDataDirectory,
-                                                 receiveFinishedCallback=self.onPreopDataReceived,
-                                                 statusCallback=self.preopTransferWindow.setText)
-    self.preopDicomReceiver.start(showDots=False)
+    self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
+                                         self.continueWithoutPreopData)
+    self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
+                                         self.onPreopTransferMessageBoxCanceled)
+    self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+                                         self.startPreProcessingPreopData)
     self.preopTransferWindow.show(disableWidget=self.parent)
 
-  def onPreopTransferMessageBoxButtonClicked(self, button):
-    if button is self.preopTransferWindow.cancelButton:
-      self.clearData()
-    else:
-      self.continueWithoutPreopData()
+  def onPreopTransferMessageBoxCanceled(self, caller, event):
+    self.clearData()
 
-  def continueWithoutPreopData(self):
+  def continueWithoutPreopData(self, caller, event):
     self.logic.usePreopData = False
-    self.preopDicomReceiver.stop()
     self.intraopDataDir = self.intraopDICOMDataDirectory
 
-  def onPreopDataReceived(self, **kwargs):
-    self.preopTransferWindow.hide()
-    self.preopDicomReceiver.stop()
-    self.startPreProcessingPreopData()
-
-  def startPreProcessingPreopData(self):
+  def startPreProcessingPreopData(self, caller=None, event=None):
     success = self.invokePreProcessing()
     if success:
       self.setSetting('InputLocation', None, moduleName="mpReview")
@@ -1299,7 +1298,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     rast = sliceNode.GetXYToRAS().MultiplyPoint(xyPoint + (0,1,))
     return rast[:3]
 
-  def updateNeedleModel(self):
+  def updateNeedleModel(self, caller=None, event=None):
     if self.showNeedlePathButton.checked and self.logic.zFrameRegistrationSuccessful:
       modelIndex = self.lastSelectedModelIndex
       try:
@@ -1469,8 +1468,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       stopFlickering()
 
   def closeCase(self):
-    if self.preopDicomReceiver:
-      self.preopDicomReceiver.stop()
+    if self.preopTransferWindow:
+      self.preopTransferWindow.hide()
     self.logic.closeCase(self.currentCaseDirectory)
     self.caseCompletedButton.enabled = False
     self.patientWatchBox.sourceFile = None
@@ -1824,13 +1823,17 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       (self.currentStep != self.STEP_EVALUATION and sliceNode is self.yellowSliceNode):
       self.targetTableModel.cursorPosition = ras
 
-  def openOverviewStep(self, ratingResult=None):
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onRatingDone(self, caller, event, callData):
+    rating = int(callData)
+    print rating
+    self.currentResult.score = rating
+    self.openOverviewStep()
+
+  def openOverviewStep(self):
     self.currentStep = self.STEP_OVERVIEW
     self.logic.removeNeedleModelNode()
     self.targetTableModel.computeCursorDistances = False
-
-    if ratingResult:
-      self.currentResult.score = ratingResult
     self.save()
     self.disconnectCrosshairNode()
     self.hideAllLabels()
@@ -1852,7 +1855,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentResult.approve(registrationType=self.registrationButtonGroup.checkedButton().name)
 
     if self.ratingWindow.isRatingEnabled():
-      self.ratingWindow.show(disableWidget=self.parent, callback=self.openOverviewStep)
+      self.ratingWindow.show(disableWidget=self.parent)
     else:
       self.openOverviewStep()
 
@@ -2387,9 +2390,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     self.loadTemplateConfigFile()
     self.stopSmartDICOMReceiver()
 
-  def getParameterNode(self):
-    return ScriptedLoadableModuleLogic.getParameterNode(self)
-
   def clearOldNodes(self):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_PATH_NAME)
@@ -2717,10 +2717,12 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     return name, suffix
 
   def startSmartDICOMReceiver(self):
-    self.importDICOMSeries(newFileList=self.getFileList(self.intraopDataDir))
+    self.importDICOMSeries(self.getFileList(self.intraopDataDir))
     if self.smartDicomReceiver:
       self.smartDicomReceiver.stop()
-    self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir, self.importDICOMSeries)
+    self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir)
+    self.smartDicomReceiver.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+                                        self.onDICOMSeriesReceived)
     self.smartDicomReceiver.start()
 
   def stopSmartDICOMReceiver(self):
@@ -2728,8 +2730,12 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
       self.smartDicomReceiver.stop()
       self.smartDicomReceiver = None
 
-  def importDICOMSeries(self, **kwargs):
-    newFileList = kwargs.pop('newFileList')
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onDICOMSeriesReceived(self, caller, event, callData):
+    newFileList = ast.literal_eval(callData)
+    self.importDICOMSeries(newFileList)
+
+  def importDICOMSeries(self, newFileList):
     indexer = ctk.ctkDICOMIndexer()
     db = slicer.dicomDatabase
 
