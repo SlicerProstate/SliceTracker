@@ -315,6 +315,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                 "VolumeClip.", "Missing Extension")
 
     self.ratingWindow = RatingWindow(self.config.maximumRatingScore)
+    self.ratingWindow.disableWidgetCheckbox.checked = not self.config.ratingEnabled
     self.sliceAnnotations = []
     self.mouseReleaseEventObservers = {}
     self.revealCursor = None

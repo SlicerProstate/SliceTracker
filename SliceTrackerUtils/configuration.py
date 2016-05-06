@@ -23,6 +23,7 @@ class SliceTrackerConfiguration(object):
     self.COVER_TEMPLATE = config.get('Series Descriptions', 'COVER_TEMPLATE')
     self.NEEDLE_IMAGE = config.get('Series Descriptions', 'NEEDLE_IMAGE')
 
+    self.ratingEnabled = config.getboolean('Rating', 'Enabled')
     self.maximumRatingScore = config.getint('Rating', 'Maximum_Score')
 
     colorFilename = config.get('Color File', 'Filename')
