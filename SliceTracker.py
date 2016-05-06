@@ -107,6 +107,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.targetTable.disconnect('doubleClicked(QModelIndex)', self.onMoveTargetRequest)
     self.disableTargetMovingMode()
+    self.resetViewSettingButtons()
 
     if name == self.STEP_OVERVIEW:
       self.registrationEvaluationButtonsGroupBox.hide()
@@ -321,7 +322,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.moveTargetMode = False
     self.currentlyMovedTargetModelIndex = None
 
-    self.crosshairNode = None
+    self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
     self.crosshairNodeObserverTag = None
 
     self.wlEffects = {}
@@ -374,21 +375,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.currentStep = self.STEP_OVERVIEW
 
-  def setupLayoutsButton(self):
-    self.layoutsMenuButton = self.createButton("Layouts", minimumHeight=30)
-    self.layoutsMenu = qt.QMenu()
-    self.layoutDict = dict()
-    self.layoutDict[self.LAYOUT_SIDE_BY_SIDE] = self.layoutsMenu.addAction(self.sideBySideIcon, "Side by side")
-    self.layoutDict[self.LAYOUT_FOUR_UP] = self.layoutsMenu.addAction(self.fourUpIcon, "Four-Up")
-    self.layoutsMenuButton.setMenu(self.layoutsMenu)
-
-  def setupCrosshairButton(self):
-    self.crosshairButton = self.createButton("", checkable=True, icon=self.crosshairIcon, toolTip="Show crosshair")
-    self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
-
   def setupViewSettingGroupBox(self):
     self.setupLayoutsButton()
-    self.setupCrosshairButton()
+    self.crosshairButton = self.createButton("", checkable=True, icon=self.crosshairIcon, toolTip="Show crosshair")
     self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zFrame model")
     self.showTemplateButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
     self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
@@ -403,6 +392,15 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                               self.showTemplatePathButton, self.showNeedlePathButton,
                                               self.wlEffectsToolButton]))
 
+  def setupLayoutsButton(self):
+    # TODO: To make better accessible replace by buttons
+    self.layoutsMenuButton = self.createButton("Layouts", minimumHeight=30)
+    self.layoutsMenu = qt.QMenu()
+    self.layoutDict = dict()
+    self.layoutDict[self.LAYOUT_SIDE_BY_SIDE] = self.layoutsMenu.addAction(self.sideBySideIcon, "Side by side")
+    self.layoutDict[self.LAYOUT_FOUR_UP] = self.layoutsMenu.addAction(self.fourUpIcon, "Four-Up")
+    self.layoutsMenuButton.setMenu(self.layoutsMenu)
+
   def resetViewSettingButtons(self):
     self.showTemplateButton.enabled = self.logic.templateSuccessfulLoaded
     self.showTemplatePathButton.enabled = self.logic.templateSuccessfulLoaded
@@ -412,13 +410,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.showZFrameModelButton.checked = False
     self.showNeedlePathButton.checked = False
 
+    self.wlEffectsToolButton.checked = False
+    self.crosshairButton.checked = False
+
   def setupSliceWidgets(self):
-    self.setupSliceWidget("Red")
-    self.setupSliceWidget("Yellow")
-    self.setupSliceWidget("Green")
+    self.createSliceWidgetClassMembers("Red")
+    self.createSliceWidgetClassMembers("Yellow")
+    self.createSliceWidgetClassMembers("Green")
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
 
-  def setupSliceWidget(self, name):
+  def createSliceWidgetClassMembers(self, name):
     widget = self.layoutManager.sliceWidget(name)
     setattr(self, name.lower()+"Widget", widget)
     setattr(self, name.lower()+"CompositeNode", widget.mrmlSliceCompositeNode())
@@ -431,7 +432,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.wlEffects[widget] = WindowLevelEffect(widget)
 
   def enableWindowLevelEffects(self, sliceWidgets):
-    self.disableWindowLevelEffects()
     for sliceWidget in sliceWidgets:
       if self.wlEffects.has_key(sliceWidget):
         self.wlEffects[sliceWidget].enable()
@@ -511,23 +511,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.overviewGroupBoxLayout.setRowStretch(6, 1)
     self.layout.addWidget(self.overviewGroupBox)
 
-  def setupTargetingStepUIElements(self):
-    self.targetingGroupBox = qt.QGroupBox()
-    self.targetingGroupBoxLayout = qt.QFormLayout()
-    self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
-
-    self.fiducialsWidget = TargetCreationWidget(self.targetingGroupBoxLayout)
-    self.fiducialsWidget.addObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
-    self.finishTargetingStepButton = self.createButton("Done setting targets", enabled=True,
-                                                       toolTip="Click this button to continue after setting targets")
-
-    self.targetingGroupBoxLayout.addRow(self.finishTargetingStepButton)
-    self.layout.addWidget(self.targetingGroupBox)
-
-  def onTargetListModified(self, caller, event):
-    self.finishTargetingStepButton.enabled = self.fiducialsWidget.currentNode is not None and \
-                                             self.fiducialsWidget.currentNode.GetNumberOfFiducials()
-
   def setupTargetsTable(self):
     self.targetTable = qt.QTableView()
     self.targetTableModel = CustomTargetTableModel(self.logic)
@@ -592,6 +575,23 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.editorWidget = EditorWidget(parent=self.editorWidgetParent, showVolumesFrame=False)
     self.editorWidget.setup()
     self.editorParameterNode = self.editUtil.getParameterNode()
+
+  def setupTargetingStepUIElements(self):
+    self.targetingGroupBox = qt.QGroupBox()
+    self.targetingGroupBoxLayout = qt.QFormLayout()
+    self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
+
+    self.fiducialsWidget = TargetCreationWidget(self.targetingGroupBoxLayout)
+    self.fiducialsWidget.addObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
+    self.finishTargetingStepButton = self.createButton("Done setting targets", enabled=True,
+                                                       toolTip="Click this button to continue after setting targets")
+
+    self.targetingGroupBoxLayout.addRow(self.finishTargetingStepButton)
+    self.layout.addWidget(self.targetingGroupBox)
+
+  def onTargetListModified(self, caller, event):
+    self.finishTargetingStepButton.enabled = self.fiducialsWidget.currentNode is not None and \
+                                             self.fiducialsWidget.currentNode.GetNumberOfFiducials()
 
   def setupRegistrationWatchBox(self):
     self.registrationGroupBox = qt.QGroupBox()
@@ -739,7 +739,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
 
       def setupViewSettingsButtonConnections():
-        self.crosshairButton.clicked.connect(self.onCrosshairButtonClicked)
+        self.crosshairButton.connect('toggled(bool)', self.onCrosshairToggled)
         self.useRevealCursorButton.connect('toggled(bool)', self.onRevealToggled)
         self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
         self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
@@ -999,14 +999,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def onLayoutChanged(self):
     # TODO: replace drop down by button group checkable
     self.redCompositeNode.SetLinkedControl(False)
-    self.onCrosshairButtonClicked(False)
-    self.onWindowLevelEffectToggled(self.wlEffectsToolButton.checked)
-    if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
+    self.onCrosshairToggled(False)
+    isAllowedLayout = self.layoutManager.layout in self.ALLOWED_LAYOUTS
+    self.wlEffectsToolButton.enabled = isAllowedLayout
+    self.wlEffectsToolButton.checked = False
+    if isAllowedLayout:
       self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
       self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
       self.refreshZFrameTemplateViewNodes()
       if self.currentStep in [self.STEP_EVALUATION, self.STEP_OVERVIEW]:
-        self.onCrosshairButtonClicked(self.layoutManager.layout == self.LAYOUT_FOUR_UP)
+        self.crosshairButton.checked = self.layoutManager.layout == self.LAYOUT_FOUR_UP
         self.disableTargetMovingMode()
         if self.currentStep == self.STEP_EVALUATION:
           self.onRegistrationResultSelected(self.currentResult.name)
@@ -1081,9 +1083,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       if action is searchedAction:
         return layout
 
-  def onCrosshairButtonClicked(self, enabled):
-    self.crosshairButton.checked = enabled
-    if enabled:
+  def onCrosshairToggled(self, checked):
+    if checked:
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
     else:
