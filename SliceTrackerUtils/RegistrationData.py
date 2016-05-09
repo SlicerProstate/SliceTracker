@@ -110,6 +110,10 @@ class RegistrationResults(object):
   def registrationResultWasRejected(self, series):
     return self._registrationResultHasStatus(series, RegistrationResult.REJECTED_STATUS)
 
+  def registrationResultWasApprovedOrRejected(self, series):
+    return self._registrationResultHasStatus(series, RegistrationResult.REJECTED_STATUS) or \
+           self._registrationResultHasStatus(series, RegistrationResult.APPROVED_STATUS)
+
   def getResultsAsList(self):
     return self._registrationResults.values()
 

@@ -1129,6 +1129,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if self.currentStep != self.STEP_OVERVIEW:
       return
     self.removeSliceAnnotations()
+    trackingPossible = False
     if selectedSeries:
       trackingPossible = self.logic.isTrackingPossible(selectedSeries)
       self.trackTargetsButton.setEnabled(trackingPossible)
@@ -1137,6 +1138,15 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
       self.updateIntraopSeriesSelectorColor(selectedSeries)
       self.updateSliceAnnotations(selectedSeries)
+    self.updateLayoutButtons(trackingPossible, selectedSeries)
+
+  def updateLayoutButtons(self, trackingPossible, selectedSeries=None):
+    self.redOnlyLayoutButton.enabled = True
+    self.sideBySideLayoutButton.enabled = True
+    if selectedSeries:
+      isApprovedOrRejected = self.registrationResults.registrationResultWasApprovedOrRejected(selectedSeries)
+      self.redOnlyLayoutButton.enabled = not trackingPossible and not isApprovedOrRejected
+      self.sideBySideLayoutButton.enabled = not trackingPossible and isApprovedOrRejected
 
   def updateIntraopSeriesSelectorColor(self, selectedSeries):
     style = STYLE.YELLOW_BACKGROUND
@@ -2327,9 +2337,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         return
 
       if self.currentStep == self.STEP_OVERVIEW and selectedSeriesNumber in newSeriesNumbers and \
-              any(seriesText in self.intraopSeriesSelector.currentText for seriesText in [self.config.COVER_TEMPLATE,
-                                                                                          self.config.COVER_PROSTATE,
-                                                                                          self.config.NEEDLE_IMAGE]):
+              self.logic.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
         if self.notifyUserAboutNewData:
           dialog = IncomingDataMessageBox()
           self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
@@ -2464,9 +2472,11 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     return newCaseDirectory
 
   def isInGeneralTrackable(self, series):
-    return any(seriesType in series for seriesType in [self.config.COVER_TEMPLATE,
-                                                       self.config.COVER_PROSTATE,
-                                                       self.config.NEEDLE_IMAGE])
+    return self.isAnyListItemInString(series, [self.config.COVER_TEMPLATE, self.config.COVER_PROSTATE,
+                                               self.config.NEEDLE_IMAGE])
+
+  def isAnyListItemInString(self, string, listItem):
+    return any(item in string for item in listItem)
 
   def resultHasNotBeenProcessed(self, series):
     return not (self.registrationResults.registrationResultWasApproved(series) or
