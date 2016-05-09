@@ -294,6 +294,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.settingsIcon = self.createIcon('icon-settings.png')
     self.undoIcon = self.createIcon('icon-undo.png')
     self.redoIcon = self.createIcon('icon-redo.png')
+    self.redOnlyIcon = self.createIcon('icon-red-only.png')
     self.fourUpIcon = self.createIcon('icon-four-up.png')
     self.sideBySideIcon = self.createIcon('icon-side-by-side.png')
     self.crosshairIcon = self.createIcon('icon-crosshair.png')
@@ -378,32 +379,37 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.registrationResultNewImageAnnotation = None
 
     self.currentStep = self.STEP_OVERVIEW
+    self.checkLayoutButtonByLayout(self.layoutManager.layout)
 
   def setupViewSettingGroupBox(self):
-    self.setupLayoutsButton()
-    self.crosshairButton = self.createButton("", checkable=True, icon=self.crosshairIcon, toolTip="Show crosshair")
-    self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zFrame model")
-    self.showTemplateButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
-    self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
-    self.showTemplatePathButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template paths")
-    self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, checkable=True, toolTip="Display annotations", checked=True)
-    self.wlEffectsToolButton = self.createButton("", icon=self.wlIcon, checkable=True,
+    iconSize = qt.QSize(24, 24)
+    self.redOnlyLayoutButton = self.createButton("", checkable=True, icon=self.redOnlyIcon, iconSize=iconSize,
+                                                    toolTip="Red Slice Only Layout")
+    self.sideBySideLayoutButton = self.createButton("", checkable=True, icon=self.sideBySideIcon, iconSize=iconSize,
+                                                    toolTip="Side by Side Layout")
+    self.fourUpLayoutButton = self.createButton("", checkable=True, icon=self.fourUpIcon, iconSize=iconSize,
+                                                toolTip="FourUp Layout")
+    self.layoutButtonGroup = qt.QButtonGroup()
+    self.layoutButtonGroup.addButton(self.redOnlyLayoutButton, self.LAYOUT_RED_SLICE_ONLY)
+    self.layoutButtonGroup.addButton(self.fourUpLayoutButton, self.LAYOUT_FOUR_UP)
+    self.layoutButtonGroup.addButton(self.sideBySideLayoutButton, self.LAYOUT_SIDE_BY_SIDE)
+    self.layoutButtonGroup.setExclusive(False)
+
+    self.crosshairButton = self.createButton("", checkable=True, icon=self.crosshairIcon, iconSize=iconSize, toolTip="Show crosshair")
+    self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, iconSize=iconSize, checkable=True, toolTip="Display zFrame model")
+    self.showTemplateButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template")
+    self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, iconSize=iconSize, checkable=True, toolTip="Display needle path")
+    self.showTemplatePathButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template paths")
+    self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, iconSize=iconSize, checkable=True, toolTip="Display annotations", checked=True)
+    self.wlEffectsToolButton = self.createButton("", icon=self.wlIcon, iconSize=iconSize, checkable=True,
                                                  toolTip="Use this tool for changing W/L with respect to FG and BG opacity")
 
     self.resetViewSettingButtons()
-    self.layout.addWidget(self.createHLayout([self.layoutsMenuButton, self.showAnnotationsButton,
+    self.layout.addWidget(self.createHLayout([self.redOnlyLayoutButton, self.sideBySideLayoutButton,
+                                              self.fourUpLayoutButton, self.showAnnotationsButton,
                                               self.crosshairButton, self.showZFrameModelButton,
                                               self.showTemplatePathButton, self.showNeedlePathButton,
                                               self.wlEffectsToolButton]))
-
-  def setupLayoutsButton(self):
-    # TODO: To make better accessible replace by buttons
-    self.layoutsMenuButton = self.createButton("Layouts", minimumHeight=30)
-    self.layoutsMenu = qt.QMenu()
-    self.layoutDict = dict()
-    self.layoutDict[self.LAYOUT_SIDE_BY_SIDE] = self.layoutsMenu.addAction(self.sideBySideIcon, "Side by side")
-    self.layoutDict[self.LAYOUT_FOUR_UP] = self.layoutsMenu.addAction(self.fourUpIcon, "Four-Up")
-    self.layoutsMenuButton.setMenu(self.layoutsMenu)
 
   def resetViewSettingButtons(self):
     self.showTemplateButton.enabled = self.logic.templateSuccessfulLoaded
@@ -743,6 +749,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
 
       def setupViewSettingsButtonConnections():
+        self.layoutButtonGroup.connect('buttonClicked(QAbstractButton*)', self.onLayoutSelectionChanged)
         self.crosshairButton.connect('toggled(bool)', self.onCrosshairToggled)
         self.useRevealCursorButton.connect('toggled(bool)', self.onRevealToggled)
         self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
@@ -781,7 +788,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.rockTimer.connect('timeout()', self.onRockToggled)
       self.flickerTimer.connect('timeout()', self.onFlickerToggled)
       self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
-      self.layoutsMenu.triggered.connect(self.onLayoutSelectionChanged)
       self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
       self.zFrameRegistrationStartIndex.valueChanged.connect(self.onZFrameStartIndexSpinBoxChanged)
       self.zFrameRegistrationEndIndex.valueChanged.connect(self.onZFrameEndIndexSpinBoxChanged)
@@ -1008,8 +1014,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.wlEffectsToolButton.enabled = isAllowedLayout
     self.wlEffectsToolButton.checked = False
     if isAllowedLayout:
-      self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
-      self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
       self.refreshZFrameTemplateViewNodes()
       if self.currentStep in [self.STEP_EVALUATION, self.STEP_OVERVIEW]:
         self.crosshairButton.checked = self.layoutManager.layout == self.LAYOUT_FOUR_UP
@@ -1042,9 +1046,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                      [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
         for node in [n for n in [self.logic.clippingModelNode, self.logic.inputMarkupNode] if n]:
           self.refreshViewNodeIDs(node, sliceNodes)
-    else:
-      self.layoutsMenuButton.setIcon(qt.QIcon())
-      self.layoutsMenuButton.setText("Layouts")
+    self.checkLayoutButtonByLayout(self.layoutManager.layout)
 
   def refreshZFrameTemplateViewNodes(self):
     sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
@@ -1080,17 +1082,22 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.yellowCompositeNode.SetBackgroundVolumeID(self.logic.currentIntraopVolume.GetID())
     self.setAxialOrientation()
 
-  def onLayoutSelectionChanged(self, action):
-    self.layoutsMenuButton.setIcon(action.icon)
-    self.layoutsMenuButton.setText(action.text)
-    selectedLayout = self.getLayoutByAction(action)
+  def onLayoutSelectionChanged(self, button):
+    self.uncheckLayoutButtons()
+    selectedLayout = self.layoutButtonGroup.id(button)
+    button.checked = True
     if self.layoutManager.layout != selectedLayout:
       self.layoutManager.setLayout(selectedLayout)
 
-  def getLayoutByAction(self, searchedAction):
-    for layout, action in self.layoutDict.iteritems():
-      if action is searchedAction:
-        return layout
+  def checkLayoutButtonByLayout(self, layout):
+    self.uncheckLayoutButtons()
+    for button in self.layoutButtonGroup.buttons():
+      if self.layoutButtonGroup.id(button) == layout:
+        self.onLayoutSelectionChanged(button)
+
+  def uncheckLayoutButtons(self):
+    for button in self.layoutButtonGroup.buttons():
+      button.checked = False
 
   def onCrosshairToggled(self, checked):
     if checked:
