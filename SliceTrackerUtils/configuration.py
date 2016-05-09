@@ -22,6 +22,7 @@ class SliceTrackerConfiguration(object):
     self.COVER_PROSTATE = config.get('Series Descriptions', 'COVER_PROSTATE')
     self.COVER_TEMPLATE = config.get('Series Descriptions', 'COVER_TEMPLATE')
     self.NEEDLE_IMAGE = config.get('Series Descriptions', 'NEEDLE_IMAGE')
+    self.VIBE_IMAGE = config.get('Series Descriptions', 'VIBE_IMAGE')
 
     self.ratingEnabled = config.getboolean('Rating', 'Enabled')
     self.maximumRatingScore = config.getint('Rating', 'Maximum_Score')

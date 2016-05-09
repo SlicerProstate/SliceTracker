@@ -374,6 +374,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.continueOldCase = False
     self._preopDataDir = None
 
+    self.registrationResultOldImageAnnotation = None
+    self.registrationResultNewImageAnnotation = None
+
     self.currentStep = self.STEP_OVERVIEW
 
   def setupViewSettingGroupBox(self):
@@ -1020,8 +1023,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           selectedSeries = self.intraopSeriesSelector.currentText
           if selectedSeries != "":
             if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
-              volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
-              self.setBackgroundToVolumeID(volume.GetID())
+              result = self.registrationResults.getResult(self.intraopSeriesSelector.currentText)
+              if not result:
+                volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
+                self.setBackgroundToVolumeID(volume.GetID())
+              else:
+                self.onRegistrationResultSelected(result.name)
+                self.setupRegistrationResultView()
             elif self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
               self.onIntraopSeriesSelectionChanged(selectedSeries)
       elif self.currentStep == self.STEP_SEGMENTATION:
@@ -1147,6 +1155,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       if self.registrationResults.registrationResultWasSkipped(selectedSeries):
         self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.SKIPPED_RESULT_TEXT_ANNOTATION,
                                                        fontSize=15, yPos=20))
+    self.onShowAnnotationsToggled(self.showAnnotationsButton.checked)
 
   def configureViewersForSelectedIntraopSeries(self, selectedSeries):
     firstRun = self.intraopWatchBox.sourceFile is None
@@ -1177,6 +1186,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def setupRedSlicePreview(self, selectedSeries):
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
+    self.hideAllTargets()
     try:
       result = self.registrationResults.getResultsBySeries(selectedSeries)[0]
       volume = result.fixedVolume
@@ -1185,7 +1195,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
 
     if result and self.config.COVER_PROSTATE in selectedSeries and not self.logic.usePreopData:
-      self.hideAllTargets()
       self.currentResult = selectedSeries
       registrationType = self.currentResult.approvedRegistrationType
       self.targetTableModel.targetList = self.currentResult.getTargets(registrationType)
@@ -1195,12 +1204,18 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.showCurrentTargets(registrationType=registrationType)
       if self.lastSelectedModelIndex:
         self.targetTable.clicked(self.lastSelectedModelIndex)
+    elif self.config.VIBE_IMAGE in selectedSeries:
+      mostRecentApprovedTargets = self.registrationResults.getMostRecentApprovedTargets()
+      if mostRecentApprovedTargets:
+        self.targetTable.enabled = True
+        self.targetTableModel.targetList = mostRecentApprovedTargets
+        self.setTargetVisibility(mostRecentApprovedTargets, show=True)
+        self.currentTargets = mostRecentApprovedTargets
     else:
       self.disableTargetTable()
     self.setBackgroundToVolumeID(volume.GetID())
 
   def setupSideBySideRegistrationView(self):
-    # TODO: shall we add a selector for viewing different registration results that has been rejected?
     self.targetTable.enabled = True
     for result in self.registrationResults.getResultsBySeries(self.intraopSeriesSelector.currentText):
       if result.approved or result.rejected:
@@ -1224,11 +1239,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.updateNeedleModel()
 
   def jumpSliceNodesToNthTarget(self, targetIndex):
+    currentTargetsSliceNodes = []
     if self.layoutManager.layout in [self.LAYOUT_RED_SLICE_ONLY, self.LAYOUT_SIDE_BY_SIDE]:
-      self.jumpSliceNodeToTarget(self.redSliceNode, self.logic.preopTargets, targetIndex)
-      self.setTargetSelected(self.logic.preopTargets, selected=False)
-      self.logic.preopTargets.SetNthFiducialSelected(targetIndex, True)
-      currentTargetsSliceNodes = []
+      targets = self.logic.preopTargets
+      if self.config.VIBE_IMAGE in self.intraopSeriesSelector.currentText:
+        targets = self.targetTableModel.targetList
+      self.jumpSliceNodeToTarget(self.redSliceNode, targets, targetIndex)
+      self.setTargetSelected(targets, selected=False)
+      targets.SetNthFiducialSelected(targetIndex, True)
 
     if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
       currentTargetsSliceNodes = [self.yellowSliceNode]
@@ -1324,12 +1342,20 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     for annotation in self.sliceAnnotations:
       annotation.remove()
     self.sliceAnnotations = []
+    for attr in ["zFrameInstructionAnnotation", "registrationResultOldImageAnnotation",
+                 "registrationResultNewImageAnnotation"]:
+      try:
+        annotation = getattr(self, attr)
+        if annotation:
+          annotation.remove()
+          setattr(self, attr, None)
+      except AttributeError:
+        pass
     self.removeZFrameInstructionAnnotation()
     self.clearTargetMovementObserverAndAnnotations()
     self.removeMissingPreopDataAnnotation()
 
   def addSideBySideSliceAnnotations(self):
-    self.removeSliceAnnotations()
     self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize=30,
                                                  yPos=55))
     self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=55,
@@ -1337,24 +1363,21 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.registrationResultNewImageAnnotation = SliceAnnotation(self.yellowWidget,
                                                                 self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, yPos=35,
                                                                 opacity=0.0, color=(0,0.5,0))
-    self.sliceAnnotations.append(self.registrationResultNewImageAnnotation)
     self.registrationResultOldImageAnnotation = SliceAnnotation(self.yellowWidget,
                                                                 self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, yPos=35)
-    self.sliceAnnotations.append(self.registrationResultOldImageAnnotation)
     self.registrationResultStatusAnnotation = None
+    self.onShowAnnotationsToggled(self.showAnnotationsButton.checked)
 
   def addFourUpSliceAnnotations(self):
-    self.removeSliceAnnotations()
     self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=50, fontSize=20))
     self.registrationResultNewImageAnnotation = SliceAnnotation(self.redWidget,
                                                                 self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT,
                                                                 yPos=35, opacity=0.0, color=(0,0.5,0), fontSize=15)
-    self.sliceAnnotations.append(self.registrationResultNewImageAnnotation)
     self.registrationResultOldImageAnnotation = SliceAnnotation(self.redWidget,
                                                                 self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT,
                                                                 yPos=35, fontSize=15)
-    self.sliceAnnotations.append(self.registrationResultOldImageAnnotation)
     self.registrationResultStatusAnnotation = None
+    self.onShowAnnotationsToggled(self.showAnnotationsButton.checked)
 
   def onRedoButtonClicked(self):
     numberOfDeletedTargets = self.deletedMarkups.GetNumberOfFiducials()
@@ -2020,6 +2043,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                                        opacity=0.6, color=(0,0.6,0))
     self.zFrameClickObserver = self.redSliceViewInteractor.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent,
                                                       self.onZFrameStepAccomplished)
+    self.onShowAnnotationsToggled(self.showAnnotationsButton.checked)
 
   def onZFrameStepAccomplished(self, observee, event):
     self.removeZFrameInstructionAnnotation()
@@ -2230,19 +2254,25 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.layoutManager.setLayout(layout)
     self.hideAllLabels()
     self.refreshViewNodeIDs(self.logic.preopTargets, [self.redSliceNode])
+    self.addSliceAnnotationsBasedOnLayoutAndSetOrientation()
+    self.setupViewNodesForCurrentTargets()
 
-    def setupViewNodes(sliceNodes):
-      for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
-        self.refreshViewNodeIDs(targetNode, sliceNodes)
-
+  def addSliceAnnotationsBasedOnLayoutAndSetOrientation(self):
+    self.removeSliceAnnotations()
     if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.addFourUpSliceAnnotations()
       self.setDefaultOrientation()
-      setupViewNodes([self.redSliceNode, self.yellowSliceNode, self.greenSliceNode])
     else:
       self.addSideBySideSliceAnnotations()
       self.setAxialOrientation()
-      setupViewNodes([self.yellowSliceNode])
+
+  def setupViewNodesForCurrentTargets(self):
+    if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+      sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+    else:
+      sliceNodes = [self.yellowSliceNode]
+    for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
+      self.refreshViewNodeIDs(targetNode, sliceNodes)
 
   def openEvaluationStep(self):
     self.currentStep = self.STEP_EVALUATION
