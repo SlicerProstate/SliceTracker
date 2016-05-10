@@ -131,6 +131,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.showTemplateButton.checked = True
       self.showTemplatePathButton.checked = True
     elif name == self.STEP_SEGMENTATION:
+      self.sideBySideLayoutButton.enabled = True
       self.registrationEvaluationButtonsGroupBox.hide()
       self.registrationEvaluationGroupBox.hide()
       self.registrationResultsGroupBox.hide()
@@ -147,6 +148,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       # TODO: Apply registration Button should be visible here
       pass
     elif name == self.STEP_EVALUATION:
+      self.sideBySideLayoutButton.enabled = True
       self.overviewGroupBox.hide()
       self.segmentationGroupBox.hide()
       self.registrationEvaluationButtonsGroupBox.show()
@@ -1049,10 +1051,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.checkLayoutButtonByLayout(self.layoutManager.layout)
 
   def refreshZFrameTemplateViewNodes(self):
-    sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+    sliceNodes = []
     if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
-      sliceNodes = [self.yellowSliceNode]
-    self.refreshViewNodeIDs(self.logic.pathModelNode, sliceNodes)
+      sliceNodes = [self.redSliceNode]
+    self.removeViewNodeIDs(self.logic.pathModelNode, sliceNodes)
 
   def removeMissingPreopDataAnnotation(self):
     if self.segmentationNoPreopAnnotation:
