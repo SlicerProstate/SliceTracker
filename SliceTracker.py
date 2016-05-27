@@ -98,6 +98,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.intraopWatchBox.sourceFile = None
       self.logic.addObserver(SliceTrackerEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
       self.logic.intraopDataDir = path
+      self.closeCaseButton.enabled = True
 
   @property
   def currentStep(self):
@@ -187,7 +188,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   @currentCaseDirectory.setter
   def currentCaseDirectory(self, path):
     self._currentCaseDirectory = path
-    if path:
+    valid = path is not None
+    self.closeCaseButton.enabled = valid
+    if valid:
       self.updateCaseWatchBox()
     else:
       self.caseWatchBox.reset()
@@ -202,7 +205,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.logic.createDirectory(path)
     exists = os.path.exists(path)
     self._generatedOutputDirectory = path if exists else ""
-    self.caseCompletedButton.enabled = exists
+    self.completeCaseButton.enabled = exists and not self.logic.caseCompleted
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -223,11 +226,15 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     ScriptedLoadableModuleWidget.onReload(self)
 
   def clearData(self):
+    if self.preopTransferWindow:
+      self.preopTransferWindow.hide()
     if self.currentCaseDirectory:
-      self.closeCase()
+      self.logic.closeCase(self.currentCaseDirectory)
       self.currentCaseDirectory = None
     slicer.mrmlScene.Clear(0)
     self.logic.resetAndInitializeData()
+    self.updateIntraopSeriesSelectorTable()
+    self.updateIntraopSeriesSelectorColor(None)
     self.removeSliceAnnotations()
     self.seriesModel.clear()
     self.trackTargetsButton.setEnabled(False)
@@ -236,7 +243,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.resetViewSettingButtons()
     self.resetVisualEffects()
     self.disconnectCrosshairNode()
-    self.caseWatchBox.reset()
+    self.patientWatchBox.sourceFile = None
+    self.intraopWatchBox.sourceFile = None
     self.continueOldCase = False
 
   def cleanup(self):
@@ -354,7 +362,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.setupTargetingStepUIElements()
     self.setupSegmentationUIElements()
     self.setupEvaluationStepUIElements()
-
     self.setupConnections()
 
     self.generatedOutputDirectory = ""
@@ -510,7 +517,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series", enabled=False)
-    self.caseCompletedButton = self.createButton('Case completed', enabled=False)
+    self.closeCaseButton = self.createButton("Close case", toolTip="Close case without completing it", enabled=False)
+    self.completeCaseButton = self.createButton('Case completed', enabled=False)
     self.setupTargetsTable()
     self.setupIntraopSeriesSelector()
 
@@ -523,7 +531,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.overviewGroupBoxLayout.addWidget(self.intraopSeriesSelector, 3, 0)
     self.overviewGroupBoxLayout.addWidget(self.skipIntraopSeriesButton, 3, 1)
     self.overviewGroupBoxLayout.addWidget(self.trackTargetsButton, 4, 0, 1, 2)
-    self.overviewGroupBoxLayout.addWidget(self.caseCompletedButton, 5, 0, 1, 2)
+    self.overviewGroupBoxLayout.addWidget(self.closeCaseButton, 5, 0, 1, 2)
+    self.overviewGroupBoxLayout.addWidget(self.completeCaseButton, 6, 0, 1, 2)
     self.overviewGroupBoxLayout.setRowStretch(6, 1)
     self.layout.addWidget(self.overviewGroupBox)
 
@@ -735,7 +744,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                                                                 self.casesRootDirectoryButton.directory))
         self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
         self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
-        self.caseCompletedButton.clicked.connect(self.onCaseCompletedButtonClicked)
+        self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
+        self.closeCaseButton.clicked.connect(self.clearData)
 
       def setupSegmentationStepButtonConnections():
         self.quickSegmentationButton.clicked.connect(self.onQuickSegmentationButtonClicked)
@@ -928,13 +938,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def loadCaseData(self):
     from mpReview import mpReviewLogic
-    if self.logic.hasCaseBeenCompleted(self.currentCaseDirectory):
-      if not slicer.util.confirmYesNoDisplay("The selected case has already been completed. Would you like to reopen it?"):
-        self.clearData()
-        return
     savedSessions = self.logic.getSavedSessions(self.currentCaseDirectory)
     if len(savedSessions) > 0: # After registration(s) has been done
-      self.openSavedSession(savedSessions)
+      if not self.openSavedSession(savedSessions):
+        self.clearData()
     else:
       if os.path.exists(self.mpReviewPreprocessedOutput) and \
               mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
@@ -950,11 +957,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           self.startPreopDICOMReceiver()
 
   def openSavedSession(self, sessions):
-    # TODO: provide drop down for user to select saved case data. dropdown should display date and time and sort it like that
-    # TODO: also provide possibility to start a new session for the current case
-    if slicer.util.confirmYesNoDisplay("A session has been found for the selected case. Do you want to continue?"):
+    latestCase = os.path.join(max(sessions, key=os.path.getmtime), "MRgBiopsy")
+    if slicer.util.confirmYesNoDisplay("A session has been found for the selected case. Do you want to continue with "
+                                       "the latest session?"):
       self.continueOldCase = True
-      latestCase = os.path.join(max(sessions, key=os.path.getmtime), "MRgBiopsy")
+      if self.logic.hasCaseBeenCompleted(latestCase):
+        if not slicer.util.confirmYesNoDisplay("The selected case has already been completed. Would you like to reopen it?"):
+          return False
       self.logic.loadFromJSON(latestCase)
       if self.logic.usePreopData:
         self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
@@ -963,9 +972,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           self.setupPreopLoadedTargets()
       self.generatedOutputDirectory = latestCase
       self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
+      return True
     else:
-      print"dasd"
-      self.clearData()
+      return False
 
   def updateCaseWatchBox(self):
     value = self.currentCaseDirectory
@@ -1156,13 +1165,17 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     trackingPossible = False
     if selectedSeries:
       trackingPossible = self.logic.isTrackingPossible(selectedSeries)
-      self.trackTargetsButton.setEnabled(trackingPossible)
       self.showTemplatePathButton.checked = trackingPossible and self.config.COVER_PROSTATE in selectedSeries
-      self.skipIntraopSeriesButton.setEnabled(trackingPossible)
+      self.setIntraopSeriesButtons(trackingPossible)
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
-      self.updateIntraopSeriesSelectorColor(selectedSeries)
       self.updateSliceAnnotations(selectedSeries)
+    self.updateIntraopSeriesSelectorColor(selectedSeries)
     self.updateLayoutButtons(trackingPossible, selectedSeries)
+
+  def setIntraopSeriesButtons(self, trackingPossible):
+    trackingPossible = trackingPossible if not self.logic.caseCompleted else False
+    self.trackTargetsButton.setEnabled(trackingPossible)
+    self.skipIntraopSeriesButton.setEnabled(trackingPossible)
 
   def updateLayoutButtons(self, trackingPossible, selectedSeries=None):
     self.redOnlyLayoutButton.enabled = True
@@ -1173,6 +1186,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.sideBySideLayoutButton.enabled = not trackingPossible and isApprovedOrRejected
 
   def updateIntraopSeriesSelectorColor(self, selectedSeries):
+    if selectedSeries is None:
+      self.intraopSeriesSelector.setStyleSheet("")
+      return
     style = STYLE.YELLOW_BACKGROUND
     if not self.logic.isTrackingPossible(selectedSeries):
       if self.registrationResults.registrationResultWasApproved(selectedSeries) or \
@@ -1534,20 +1550,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     else:
       stopFlickering()
 
-  def closeCase(self):
-    if self.preopTransferWindow:
-      self.preopTransferWindow.hide()
-    self.logic.closeCase(self.currentCaseDirectory)
-    self.caseCompletedButton.enabled = False
-    self.patientWatchBox.sourceFile = None
-    self.intraopWatchBox.sourceFile = None
-    self.caseWatchBox.reset()
-    self.logic.stopSmartDICOMReceiver()
-    self.currentCaseDirectory = None
-
-  def onCaseCompletedButtonClicked(self):
+  def onCompleteCaseButtonClicked(self):
+    self.logic.caseCompleted = True
     self.save(showDialog=True)
-    self.logic.completeCase(self.currentCaseDirectory)
     self.clearData()
 
   def save(self, showDialog=False):
@@ -1555,7 +1560,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       slicer.util.infoDisplay("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
                               "sure to select one.", windowTitle="SliceTracker")
     else:
-      message = self.logic.save(self.generatedOutputDirectory)
+      message = self.logic.saveSession(self.generatedOutputDirectory)
       if showDialog:
         slicer.util.infoDisplay(message, windowTitle="SliceTracker")
 
@@ -2363,11 +2368,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
       if self.currentStep == self.STEP_OVERVIEW and selectedSeriesNumber in newSeriesNumbers and \
               self.logic.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
-        if self.notifyUserAboutNewData:
+        if self.notifyUserAboutNewData and not self.logic.caseCompleted:
           dialog = IncomingDataMessageBox()
           self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
           self.notifyUserAboutNewData = not checked
-        if self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
+        if hasattr(self, "notifyUserAboutNewDataAnswer") and self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
           self.onTrackTargetsButtonClicked()
 
 
@@ -2388,7 +2393,20 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
   @intraopDataDir.setter
   def intraopDataDir(self, path):
     self._intraopDataDir = path
-    self.startSmartDICOMReceiver()
+    self.stopSmartDICOMReceiver()
+    self.importDICOMSeries(self.getFileList(self.intraopDataDir))
+    if not self.caseCompleted:
+      self.startSmartDICOMReceiver()
+
+  @property
+  def caseCompleted(self):
+    return self._caseCompleted
+
+  @caseCompleted.setter
+  def caseCompleted(self, value):
+    self._caseCompleted = value
+    if value is True:
+      self.stopSmartDICOMReceiver()
 
   @property
   def currentResult(self):
@@ -2461,6 +2479,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     self.clearOldNodes()
     self.loadZFrameModel()
     self.loadTemplateConfigFile()
+    self._caseCompleted = False
     self.stopSmartDICOMReceiver()
 
   def clearOldNodes(self):
@@ -2540,8 +2559,14 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
            and os.path.exists(os.path.join(directory, "DICOM", "Intraop"))
 
   def hasCaseBeenCompleted(self, directory):
-    #TODO: should better explore SliceTrackerOutputs
-    return ".completed" in os.listdir(directory)
+    self.caseCompleted = False
+    filename = os.path.join(directory, self.DEFAULT_JSON_FILE_NAME)
+    if not os.path.exists(filename):
+      return
+    with open(filename) as data_file:
+      data = json.load(data_file)
+      self.caseCompleted = data["completed"]
+    return self.caseCompleted
 
   def getSavedSessions(self, caseDirectory):
     outputDir = os.path.join(caseDirectory, "SliceTrackerOutputs")
@@ -2564,14 +2589,10 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
       caseNumber = "0" + caseNumber
     return caseNumber
 
-  def completeCase(self, directory):
+  def closeCase(self, directory):
     self.stopSmartDICOMReceiver()
     if os.path.exists(directory):
-      if self.getDirectorySize(directory) > 0:
-        open(os.path.join(directory, ".completed"), 'a').close()
-
-  def closeCase(self, directory):
-    if os.path.exists(directory):
+      self.caseCompleted = False
       if self.getDirectorySize(directory) == 0:
         shutil.rmtree(directory)
 
@@ -2672,7 +2693,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     success, self.preopVolume = slicer.util.loadVolume(n4File, returnNode=True)
     return success
 
-  def save(self, outputDir):
+  def saveSession(self, outputDir):
     if not os.path.exists(outputDir):
       self.createDirectory(outputDir)
 
@@ -2731,8 +2752,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     successfullySavedData += savedSuccessfully
     failedSaveOfData += failedToSave
 
-    saveJSON({"usedPreopData": self.usePreopData, "results": createResultsDict(),
-              "VOLUME-PREOP-N4": saveBiasCorrectionResult(), "zFrameTransform": saveZFrameTransformation()})
+    saveJSON({"completed":self.caseCompleted, "usedPreopData":self.usePreopData, "results":createResultsDict(),
+              "VOLUME-PREOP-N4":saveBiasCorrectionResult(), "zFrameTransform":saveZFrameTransformation()})
 
     messageOutput = ""
     for messageList in [successfullySavedData, failedSaveOfData] :
@@ -2809,9 +2830,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     return name, suffix
 
   def startSmartDICOMReceiver(self):
-    self.importDICOMSeries(self.getFileList(self.intraopDataDir))
-    if self.smartDicomReceiver:
-      self.smartDicomReceiver.stop()
     self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir)
     self.smartDicomReceiver.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                         self.onDICOMSeriesReceived)
