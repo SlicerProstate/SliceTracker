@@ -3,6 +3,9 @@ import shutil, datetime, logging
 import ctk, vtk, qt
 from collections import OrderedDict
 
+import SimpleITK as sitk
+import sitkUtils
+
 from slicer.ScriptedLoadableModule import *
 
 import EditorLib
@@ -1053,8 +1056,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def refreshZFrameTemplateViewNodes(self):
     sliceNodes = []
     if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
-      sliceNodes = [self.redSliceNode]
-    self.removeViewNodeIDs(self.logic.pathModelNode, sliceNodes)
+      sliceNodes = [self.yellowSliceNode]
+    self.refreshViewNodeIDs(self.logic.pathModelNode, sliceNodes)
 
   def removeMissingPreopDataAnnotation(self):
     if self.segmentationNoPreopAnnotation:
@@ -1573,8 +1576,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       if substring in series:
         index = self.intraopSeriesSelector.findText(series)
         break
-    if index != -1:
-      self.intraopSeriesSelector.setCurrentIndex(index)
+    rowCount = self.intraopSeriesSelector.model().rowCount()
+    self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
     self.intraopSeriesSelector.blockSignals(False)
 
   def onRegistrationResultSelected(self, seriesText, registrationType=None, showApproved=False):
@@ -1628,13 +1631,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if self.lastSelectedModelIndex:
       self.targetTable.clicked(self.lastSelectedModelIndex)
 
-  def setDefaultFOV(self, sliceLogic, volume, factor=0.5):
+  def setDefaultFOV(self, sliceLogic, factor=0.5):
     slicer.app.processEvents()
     sliceLogic.FitSliceToAll()
     FOV = sliceLogic.GetSliceNode().GetFieldOfView()
     self.setFOV(sliceLogic, [FOV[0] * factor, FOV[1] * factor, FOV[2]])
-    sliceNode = sliceLogic.GetSliceNode()
-    sliceNode.RotateToVolumePlane(volume)
 
   def setupRegistrationResultSliceViews(self, registrationType):
     if self.layoutManager.layout in [self.LAYOUT_SIDE_BY_SIDE, self.LAYOUT_RED_SLICE_ONLY]:
@@ -1654,11 +1655,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       compositeNode.SetForegroundVolumeID(self.currentResult.fixedVolume.GetID())
       compositeNode.SetBackgroundVolumeID(bgVolume.GetID())
 
-    self.setDefaultFOV(self.redSliceLogic, self.logic.preopVolume if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE
+    self.setDefaultFOV(self.redSliceLogic)
+    self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE
                                                             else bgVolume)
+
     if self.layoutManager.layout in [self.LAYOUT_SIDE_BY_SIDE, self.LAYOUT_FOUR_UP]:
-      self.setDefaultFOV(self.yellowSliceLogic, self.currentResult.getVolume(registrationType))
-      self.setDefaultFOV(self.greenSliceLogic, self.currentResult.getVolume(registrationType))
+      self.setDefaultFOV(self.yellowSliceLogic)
+      self.setDefaultFOV(self.greenSliceLogic)
+      volume = self.currentResult.getVolume(registrationType)
+      self.yellowSliceNode.RotateToVolumePlane(volume)
+      self.greenSliceNode.RotateToVolumePlane(volume)
 
   def showCurrentTargets(self, registrationType):
     self.currentTargets = self.currentResult.getTargets(registrationType)
@@ -1695,7 +1701,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.promptUserAndApplyBiasCorrectionIfNeeded()
 
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
-    self.setDefaultFOV(self.redSliceLogic, self.logic.preopVolume)
+    self.setDefaultFOV(self.redSliceLogic)
+    self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume)
     self.setupPreopLoadedTargets()
 
   def loadMpReviewProcessedData(self):
@@ -2152,8 +2159,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     return ijk
 
   def getStartEndWithConnectedComponents(self, volume, center):
-    import SimpleITK as sitk
-    import sitkUtils
     address = sitkUtils.GetSlicerITKReadWriteAddress(volume.GetName())
     image = sitk.ReadImage(address)
     start = self.getStartSliceUsingConnectedComponents(center, image)
@@ -2184,7 +2189,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   @staticmethod
   def getIslandCount(image, index):
-    import SimpleITK as sitk
     imageSize = image.GetSize()
     index = [0, 0, index]
     extractor = sitk.ExtractImageFilter()
@@ -2234,7 +2238,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     else:
       self.editorWidgetParent.show()
       displayNode = self.currentIntraopLabel.GetDisplayNode()
-      displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+      displayNode.SetAndObserveColorNodeID(self.logic.mpReviewColorNode.GetID())
       self.editorParameterNode.SetParameter('effect', 'DrawEffect')
       self.editUtil.setLabel(8)
       self.editUtil.setLabelOutline(1)
@@ -2445,6 +2449,23 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_PATH_NAME)
     self.clearOldNodesByName(self.ZFRAME_MODEL_NAME)
     self.clearOldNodesByName(self.COMPUTED_NEEDLE_MODEL_NAME)
+
+  def getCentroidForLabel(self, label, index):
+    ls = sitk.LabelShapeStatisticsImageFilter()
+    dstLabelAddress = sitkUtils.GetSlicerITKReadWriteAddress(label.GetName())
+    dstLabelImage = sitk.ReadImage(dstLabelAddress)
+    ls.Execute(dstLabelImage)
+    centroid = ls.GetCentroid(index)
+    IJKtoRAS = vtk.vtkMatrix4x4()
+    label.GetIJKToRASMatrix(IJKtoRAS)
+    order = label.ComputeScanOrderFromIJKToRAS(IJKtoRAS)
+    if order == 'IS':
+      centroid = [-centroid[0], -centroid[1], centroid[2]]
+    elif order == 'AP':
+      centroid = [-centroid[0], -centroid[2], -centroid[1]]
+    elif order == 'LR':
+      centroid = [centroid[0], -centroid[2], -centroid[1]]
+    return centroid
 
   def setupDisplayNode(self, displayNode=None, starBurst=False):
     if not displayNode:
