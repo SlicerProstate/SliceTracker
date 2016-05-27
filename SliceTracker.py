@@ -186,8 +186,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   @currentCaseDirectory.setter
   def currentCaseDirectory(self, path):
+    self._currentCaseDirectory = path
     if path:
-      self._currentCaseDirectory = path
       self.updateCaseWatchBox()
     else:
       self.caseWatchBox.reset()
@@ -225,12 +225,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def clearData(self):
     if self.currentCaseDirectory:
       self.closeCase()
+      self.currentCaseDirectory = None
     slicer.mrmlScene.Clear(0)
     self.logic.resetAndInitializeData()
     self.removeSliceAnnotations()
     self.seriesModel.clear()
     self.trackTargetsButton.setEnabled(False)
     self.targetTable.enabled = True
+    self.targetTableModel.targetList = None
     self.resetViewSettingButtons()
     self.resetVisualEffects()
     self.disconnectCrosshairNode()
@@ -513,8 +515,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.setupIntraopSeriesSelector()
 
     self.createNewCaseButton = self.createButton("New case")
-    self.openCaseButton = self.createDirectoryButton(text="Open case", caption="Open Case", directory=self.caseRootDir,
-                                                     styleSheet="QPushButton{icon-size: 16px;}")
+    self.openCaseButton = self.createButton("Open case")
 
     self.overviewGroupBoxLayout.addWidget(self.createNewCaseButton, 1, 0)
     self.overviewGroupBoxLayout.addWidget(self.openCaseButton, 1, 1)
@@ -729,7 +730,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     def setupButtonConnections():
       def setupOverviewStepButtonConnections():
         self.createNewCaseButton.clicked.connect(self.onCreateNewCaseButtonClicked)
-        self.openCaseButton.directorySelected.connect(self.onOpenCaseButtonClicked)
+        self.openCaseButton.clicked.connect(self.onOpenCaseButtonClicked)
         self.casesRootDirectoryButton.directoryChanged.connect(lambda: setattr(self, "caseRootDir",
                                                                                 self.casesRootDirectoryButton.directory))
         self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
@@ -840,9 +841,18 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     result.approve(approvedRegistrationType)
 
   def onCreateNewCaseButtonClicked(self):
+    if not self.checkAndWarnUserIfCaseInProgress():
+      return
     self.clearData()
     self.currentCaseDirectory = self.logic.createNewCase(self.caseRootDir)
     self.startPreopDICOMReceiver()
+
+  def checkAndWarnUserIfCaseInProgress(self):
+    proceed = True
+    if self.currentCaseDirectory is not None:
+      if not slicer.util.confirmYesNoDisplay("Current case will be closed. Do you want to proceed?"):
+        proceed = False
+    return proceed
 
   def startPreopDICOMReceiver(self):
     self.preopTransferWindow = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDataDirectory,
@@ -902,9 +912,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     return success
 
   def onOpenCaseButtonClicked(self):
+    if not self.checkAndWarnUserIfCaseInProgress():
+      return
+    path = qt.QFileDialog.getExistingDirectory(self.parent.window(), "Select Case Directory", self.caseRootDir)
+    if not path:
+      return
     self.clearData()
-    self.currentCaseDirectory = self.openCaseButton.directory
-    if not self.logic.isCaseDirectoryValid(self.openCaseButton.directory):
+    self.currentCaseDirectory = path
+    if not self.logic.isCaseDirectoryValid(self.currentCaseDirectory):
       slicer.util.warningDisplay("The selected case directory seems not to be valid", windowTitle="SliceTracker")
       self.closeCase()
       return
@@ -915,6 +930,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     from mpReview import mpReviewLogic
     if self.logic.hasCaseBeenCompleted(self.currentCaseDirectory):
       if not slicer.util.confirmYesNoDisplay("The selected case has already been completed. Would you like to reopen it?"):
+        self.clearData()
         return
     savedSessions = self.logic.getSavedSessions(self.currentCaseDirectory)
     if len(savedSessions) > 0: # After registration(s) has been done
@@ -947,6 +963,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           self.setupPreopLoadedTargets()
       self.generatedOutputDirectory = latestCase
       self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
+    else:
+      print"dasd"
+      self.clearData()
 
   def updateCaseWatchBox(self):
     value = self.currentCaseDirectory
