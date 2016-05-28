@@ -3,6 +3,9 @@ import shutil, datetime, logging
 import ctk, vtk, qt
 from collections import OrderedDict
 
+import SimpleITK as sitk
+import sitkUtils
+
 from slicer.ScriptedLoadableModule import *
 
 import EditorLib
@@ -13,6 +16,7 @@ from SlicerProstateUtils.helpers import SmartDICOMReceiver, SliceAnnotation, Cus
 from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ParameterNodeObservationMixin
+from SlicerProstateUtils.events import SlicerProstateEvents
 
 from SliceTrackerUtils.events import SliceTrackerEvents
 from SliceTrackerUtils.constants import SliceTrackerConstants
@@ -94,6 +98,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.intraopWatchBox.sourceFile = None
       self.logic.addObserver(SliceTrackerEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
       self.logic.intraopDataDir = path
+      self.closeCaseButton.enabled = True
 
   @property
   def currentStep(self):
@@ -106,6 +111,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.targetTable.disconnect('doubleClicked(QModelIndex)', self.onMoveTargetRequest)
     self.disableTargetMovingMode()
+    self.resetViewSettingButtons()
 
     if name == self.STEP_OVERVIEW:
       self.registrationEvaluationButtonsGroupBox.hide()
@@ -129,6 +135,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.showTemplateButton.checked = True
       self.showTemplatePathButton.checked = True
     elif name == self.STEP_SEGMENTATION:
+      self.sideBySideLayoutButton.enabled = True
       self.registrationEvaluationButtonsGroupBox.hide()
       self.registrationEvaluationGroupBox.hide()
       self.registrationResultsGroupBox.hide()
@@ -145,6 +152,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       # TODO: Apply registration Button should be visible here
       pass
     elif name == self.STEP_EVALUATION:
+      self.sideBySideLayoutButton.enabled = True
       self.overviewGroupBox.hide()
       self.segmentationGroupBox.hide()
       self.registrationEvaluationButtonsGroupBox.show()
@@ -179,8 +187,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   @currentCaseDirectory.setter
   def currentCaseDirectory(self, path):
-    if path:
-      self._currentCaseDirectory = path
+    self._currentCaseDirectory = path
+    valid = path is not None
+    self.closeCaseButton.enabled = valid
+    if valid:
       self.updateCaseWatchBox()
     else:
       self.caseWatchBox.reset()
@@ -195,7 +205,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.logic.createDirectory(path)
     exists = os.path.exists(path)
     self._generatedOutputDirectory = path if exists else ""
-    self.caseCompletedButton.enabled = exists
+    self.completeCaseButton.enabled = exists and not self.logic.caseCompleted
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -216,18 +226,25 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     ScriptedLoadableModuleWidget.onReload(self)
 
   def clearData(self):
+    if self.preopTransferWindow:
+      self.preopTransferWindow.hide()
     if self.currentCaseDirectory:
-      self.closeCase()
+      self.logic.closeCase(self.currentCaseDirectory)
+      self.currentCaseDirectory = None
     slicer.mrmlScene.Clear(0)
     self.logic.resetAndInitializeData()
+    self.updateIntraopSeriesSelectorTable()
+    self.updateIntraopSeriesSelectorColor(None)
     self.removeSliceAnnotations()
     self.seriesModel.clear()
     self.trackTargetsButton.setEnabled(False)
     self.targetTable.enabled = True
+    self.targetTableModel.targetList = None
     self.resetViewSettingButtons()
     self.resetVisualEffects()
     self.disconnectCrosshairNode()
-    self.caseWatchBox.reset()
+    self.patientWatchBox.sourceFile = None
+    self.intraopWatchBox.sourceFile = None
     self.continueOldCase = False
 
   def cleanup(self):
@@ -292,13 +309,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.settingsIcon = self.createIcon('icon-settings.png')
     self.undoIcon = self.createIcon('icon-undo.png')
     self.redoIcon = self.createIcon('icon-redo.png')
+    self.redOnlyIcon = self.createIcon('icon-red-only.png')
     self.fourUpIcon = self.createIcon('icon-four-up.png')
     self.sideBySideIcon = self.createIcon('icon-side-by-side.png')
     self.crosshairIcon = self.createIcon('icon-crosshair.png')
     self.zFrameIcon = self.createIcon('icon-zframe.png')
     self.needleIcon = self.createIcon('icon-needle.png')
     self.templateIcon = self.createIcon('icon-template.png')
-    self.pathIcon = self.createIcon('icon-path.png')
     self.textInfoIcon = self.createIcon('icon-text-info.png')
     self.revealCursorIcon = self.createIcon('icon-revealCursor.png')
     self.skipIcon = self.createIcon('icon-skip.png')
@@ -314,6 +331,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                 "VolumeClip.", "Missing Extension")
 
     self.ratingWindow = RatingWindow(self.config.maximumRatingScore)
+    self.ratingWindow.disableWidgetCheckbox.checked = not self.config.ratingEnabled
     self.sliceAnnotations = []
     self.mouseReleaseEventObservers = {}
     self.revealCursor = None
@@ -321,7 +339,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.moveTargetMode = False
     self.currentlyMovedTargetModelIndex = None
 
-    self.crosshairNode = None
+    self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
     self.crosshairNodeObserverTag = None
 
     self.wlEffects = {}
@@ -344,7 +362,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.setupTargetingStepUIElements()
     self.setupSegmentationUIElements()
     self.setupEvaluationStepUIElements()
-
     self.setupConnections()
 
     self.generatedOutputDirectory = ""
@@ -367,38 +384,43 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.segmentationNoPreopAnnotation = None
 
-    self.preopDicomReceiver = None
+    self.preopTransferWindow = None
     self._generatedOutputDirectory = ""
     self.continueOldCase = False
     self._preopDataDir = None
 
+    self.registrationResultOldImageAnnotation = None
+    self.registrationResultNewImageAnnotation = None
+
     self.currentStep = self.STEP_OVERVIEW
-
-  def setupLayoutsButton(self):
-    self.layoutsMenuButton = self.createButton("Layouts", minimumHeight=30)
-    self.layoutsMenu = qt.QMenu()
-    self.layoutDict = dict()
-    self.layoutDict[self.LAYOUT_SIDE_BY_SIDE] = self.layoutsMenu.addAction(self.sideBySideIcon, "Side by side")
-    self.layoutDict[self.LAYOUT_FOUR_UP] = self.layoutsMenu.addAction(self.fourUpIcon, "Four-Up")
-    self.layoutsMenuButton.setMenu(self.layoutsMenu)
-
-  def setupCrosshairButton(self):
-    self.crosshairButton = self.createButton("", checkable=True, icon=self.crosshairIcon, toolTip="Show crosshair")
-    self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
+    self.checkLayoutButtonByLayout(self.layoutManager.layout)
 
   def setupViewSettingGroupBox(self):
-    self.setupLayoutsButton()
-    self.setupCrosshairButton()
-    self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, checkable=True, toolTip="Display zFrame model")
-    self.showTemplateButton = self.createButton("", icon=self.templateIcon, checkable=True, toolTip="Display template")
-    self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, checkable=True, toolTip="Display needle path")
-    self.showTemplatePathButton = self.createButton("", icon=self.pathIcon, checkable=True, toolTip="Display template paths")
-    self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, checkable=True, toolTip="Display annotations", checked=True)
-    self.wlEffectsToolButton = self.createButton("", icon=self.wlIcon, checkable=True,
+    iconSize = qt.QSize(24, 24)
+    self.redOnlyLayoutButton = self.createButton("", checkable=True, icon=self.redOnlyIcon, iconSize=iconSize,
+                                                    toolTip="Red Slice Only Layout")
+    self.sideBySideLayoutButton = self.createButton("", checkable=True, icon=self.sideBySideIcon, iconSize=iconSize,
+                                                    toolTip="Side by Side Layout")
+    self.fourUpLayoutButton = self.createButton("", checkable=True, icon=self.fourUpIcon, iconSize=iconSize,
+                                                toolTip="FourUp Layout")
+    self.layoutButtonGroup = qt.QButtonGroup()
+    self.layoutButtonGroup.addButton(self.redOnlyLayoutButton, self.LAYOUT_RED_SLICE_ONLY)
+    self.layoutButtonGroup.addButton(self.fourUpLayoutButton, self.LAYOUT_FOUR_UP)
+    self.layoutButtonGroup.addButton(self.sideBySideLayoutButton, self.LAYOUT_SIDE_BY_SIDE)
+    self.layoutButtonGroup.setExclusive(False)
+
+    self.crosshairButton = self.createButton("", checkable=True, icon=self.crosshairIcon, iconSize=iconSize, toolTip="Show crosshair")
+    self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, iconSize=iconSize, checkable=True, toolTip="Display zFrame model")
+    self.showTemplateButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template")
+    self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, iconSize=iconSize, checkable=True, toolTip="Display needle path")
+    self.showTemplatePathButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template paths")
+    self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, iconSize=iconSize, checkable=True, toolTip="Display annotations", checked=True)
+    self.wlEffectsToolButton = self.createButton("", icon=self.wlIcon, iconSize=iconSize, checkable=True,
                                                  toolTip="Use this tool for changing W/L with respect to FG and BG opacity")
 
     self.resetViewSettingButtons()
-    self.layout.addWidget(self.createHLayout([self.layoutsMenuButton, self.showAnnotationsButton,
+    self.layout.addWidget(self.createHLayout([self.redOnlyLayoutButton, self.sideBySideLayoutButton,
+                                              self.fourUpLayoutButton, self.showAnnotationsButton,
                                               self.crosshairButton, self.showZFrameModelButton,
                                               self.showTemplatePathButton, self.showNeedlePathButton,
                                               self.wlEffectsToolButton]))
@@ -412,13 +434,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.showZFrameModelButton.checked = False
     self.showNeedlePathButton.checked = False
 
+    self.wlEffectsToolButton.checked = False
+    self.crosshairButton.checked = False
+
   def setupSliceWidgets(self):
-    self.setupSliceWidget("Red")
-    self.setupSliceWidget("Yellow")
-    self.setupSliceWidget("Green")
+    self.createSliceWidgetClassMembers("Red")
+    self.createSliceWidgetClassMembers("Yellow")
+    self.createSliceWidgetClassMembers("Green")
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
 
-  def setupSliceWidget(self, name):
+  def createSliceWidgetClassMembers(self, name):
     widget = self.layoutManager.sliceWidget(name)
     setattr(self, name.lower()+"Widget", widget)
     setattr(self, name.lower()+"CompositeNode", widget.mrmlSliceCompositeNode())
@@ -431,7 +456,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.wlEffects[widget] = WindowLevelEffect(widget)
 
   def enableWindowLevelEffects(self, sliceWidgets):
-    self.disableWindowLevelEffects()
     for sliceWidget in sliceWidgets:
       if self.wlEffects.has_key(sliceWidget):
         self.wlEffects[sliceWidget].enable()
@@ -493,12 +517,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series", enabled=False)
-    self.caseCompletedButton = self.createButton('Case completed', enabled=False)
+    self.closeCaseButton = self.createButton("Close case", toolTip="Close case without completing it", enabled=False)
+    self.completeCaseButton = self.createButton('Case completed', enabled=False)
     self.setupTargetsTable()
     self.setupIntraopSeriesSelector()
 
     self.createNewCaseButton = self.createButton("New case")
-    self.openCaseButton = self.createDirectoryButton(text="Open case", caption="Open Case", directory=self.caseRootDir)
+    self.openCaseButton = self.createButton("Open case")
 
     self.overviewGroupBoxLayout.addWidget(self.createNewCaseButton, 1, 0)
     self.overviewGroupBoxLayout.addWidget(self.openCaseButton, 1, 1)
@@ -506,35 +531,21 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.overviewGroupBoxLayout.addWidget(self.intraopSeriesSelector, 3, 0)
     self.overviewGroupBoxLayout.addWidget(self.skipIntraopSeriesButton, 3, 1)
     self.overviewGroupBoxLayout.addWidget(self.trackTargetsButton, 4, 0, 1, 2)
-    self.overviewGroupBoxLayout.addWidget(self.caseCompletedButton, 5, 0, 1, 2)
+    self.overviewGroupBoxLayout.addWidget(self.closeCaseButton, 5, 0, 1, 2)
+    self.overviewGroupBoxLayout.addWidget(self.completeCaseButton, 6, 0, 1, 2)
     self.overviewGroupBoxLayout.setRowStretch(6, 1)
     self.layout.addWidget(self.overviewGroupBox)
-
-  def setupTargetingStepUIElements(self):
-    self.targetingGroupBox = qt.QGroupBox()
-    self.targetingGroupBoxLayout = qt.QFormLayout()
-    self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
-
-    self.fiducialsWidget = TargetCreationWidget(self.targetingGroupBoxLayout, listModifiedCallback=self.onTargetListModified)
-    self.finishTargetingStepButton = self.createButton("Done setting targets", enabled=True,
-                                                       toolTip="Click this button to continue after setting targets")
-
-    self.targetingGroupBoxLayout.addRow(self.finishTargetingStepButton)
-    self.layout.addWidget(self.targetingGroupBox)
-
-  def onTargetListModified(self):
-    self.finishTargetingStepButton.enabled = self.fiducialsWidget.currentNode is not None and \
-                                             self.fiducialsWidget.currentNode.GetNumberOfFiducials()
 
   def setupTargetsTable(self):
     self.targetTable = qt.QTableView()
     self.targetTableModel = CustomTargetTableModel(self.logic)
-    self.targetTableModel.setTargetModifiedCallback(self.updateNeedleModel)
+    self.targetTableModel.addObserver(vtk.vtkCommand.ModifiedEvent, self.updateNeedleModel)
     self.targetTable.setModel(self.targetTableModel)
     self.targetTable.setSelectionBehavior(qt.QTableView.SelectRows)
     self.setTargetTableSizeConstraints()
     self.targetTable.verticalHeader().hide()
     self.targetTable.minimumHeight = 150
+    self.targetTable.setStyleSheet("QTableView::item:selected{background-color: #ff7f7f; color: black};")
 
   def setTargetTableSizeConstraints(self):
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
@@ -589,6 +600,23 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.editorWidget = EditorWidget(parent=self.editorWidgetParent, showVolumesFrame=False)
     self.editorWidget.setup()
     self.editorParameterNode = self.editUtil.getParameterNode()
+
+  def setupTargetingStepUIElements(self):
+    self.targetingGroupBox = qt.QGroupBox()
+    self.targetingGroupBoxLayout = qt.QFormLayout()
+    self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
+
+    self.fiducialsWidget = TargetCreationWidget(self.targetingGroupBoxLayout)
+    self.fiducialsWidget.addObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
+    self.finishTargetingStepButton = self.createButton("Done setting targets", enabled=True,
+                                                       toolTip="Click this button to continue after setting targets")
+
+    self.targetingGroupBoxLayout.addRow(self.finishTargetingStepButton)
+    self.layout.addWidget(self.targetingGroupBox)
+
+  def onTargetListModified(self, caller, event):
+    self.finishTargetingStepButton.enabled = self.fiducialsWidget.currentNode is not None and \
+                                             self.fiducialsWidget.currentNode.GetNumberOfFiducials()
 
   def setupRegistrationWatchBox(self):
     self.registrationGroupBox = qt.QGroupBox()
@@ -711,12 +739,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     def setupButtonConnections():
       def setupOverviewStepButtonConnections():
         self.createNewCaseButton.clicked.connect(self.onCreateNewCaseButtonClicked)
-        self.openCaseButton.directorySelected.connect(self.onOpenCaseButtonClicked)
+        self.openCaseButton.clicked.connect(self.onOpenCaseButtonClicked)
         self.casesRootDirectoryButton.directoryChanged.connect(lambda: setattr(self, "caseRootDir",
                                                                                 self.casesRootDirectoryButton.directory))
         self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
         self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
-        self.caseCompletedButton.clicked.connect(self.onCaseCompletedButtonClicked)
+        self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
+        self.closeCaseButton.clicked.connect(self.clearData)
 
       def setupSegmentationStepButtonConnections():
         self.quickSegmentationButton.clicked.connect(self.onQuickSegmentationButtonClicked)
@@ -736,7 +765,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
 
       def setupViewSettingsButtonConnections():
-        self.crosshairButton.clicked.connect(self.onCrosshairButtonClicked)
+        self.layoutButtonGroup.connect('buttonClicked(QAbstractButton*)', self.onLayoutSelectionChanged)
+        self.crosshairButton.connect('toggled(bool)', self.onCrosshairToggled)
         self.useRevealCursorButton.connect('toggled(bool)', self.onRevealToggled)
         self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
         self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
@@ -774,15 +804,18 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.rockTimer.connect('timeout()', self.onRockToggled)
       self.flickerTimer.connect('timeout()', self.onFlickerToggled)
       self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
-      self.layoutsMenu.triggered.connect(self.onLayoutSelectionChanged)
       self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
       self.zFrameRegistrationStartIndex.valueChanged.connect(self.onZFrameStartIndexSpinBoxChanged)
       self.zFrameRegistrationEndIndex.valueChanged.connect(self.onZFrameEndIndexSpinBoxChanged)
+
+    def setupEventConnections():
+      self.ratingWindow.addObserver(SlicerProstateEvents.RatingWindowClosedEvent, self.onRatingDone)
 
     setupCheckBoxConnections()
     setupButtonConnections()
     setupSelectorConnections()
     setupOtherConnections()
+    setupEventConnections()
 
   def onZFrameStartIndexSpinBoxChanged(self, value):
     if not value <= self.zFrameRegistrationEndIndex.value:
@@ -818,36 +851,38 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     result.approve(approvedRegistrationType)
 
   def onCreateNewCaseButtonClicked(self):
+    if not self.checkAndWarnUserIfCaseInProgress():
+      return
     self.clearData()
     self.currentCaseDirectory = self.logic.createNewCase(self.caseRootDir)
     self.startPreopDICOMReceiver()
 
+  def checkAndWarnUserIfCaseInProgress(self):
+    proceed = True
+    if self.currentCaseDirectory is not None:
+      if not slicer.util.confirmYesNoDisplay("Current case will be closed. Do you want to proceed?"):
+        proceed = False
+    return proceed
+
   def startPreopDICOMReceiver(self):
-    self.preopTransferWindow = IncomingDataWindow(callback=self.onPreopTransferMessageBoxButtonClicked,
+    self.preopTransferWindow = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDataDirectory,
                                                   skipText="No Preop available")
-    self.preopDicomReceiver = SmartDICOMReceiver(incomingDataDirectory=self.preopDICOMDataDirectory,
-                                                 receiveFinishedCallback=self.onPreopDataReceived,
-                                                 statusCallback=self.preopTransferWindow.setText)
-    self.preopDicomReceiver.start(showDots=False)
+    self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
+                                         self.continueWithoutPreopData)
+    self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
+                                         self.onPreopTransferMessageBoxCanceled)
+    self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+                                         self.startPreProcessingPreopData)
     self.preopTransferWindow.show(disableWidget=self.parent)
 
-  def onPreopTransferMessageBoxButtonClicked(self, button):
-    if button is self.preopTransferWindow.cancelButton:
-      self.clearData()
-    else:
-      self.continueWithoutPreopData()
+  def onPreopTransferMessageBoxCanceled(self, caller, event):
+    self.clearData()
 
-  def continueWithoutPreopData(self):
+  def continueWithoutPreopData(self, caller, event):
     self.logic.usePreopData = False
-    self.preopDicomReceiver.stop()
     self.intraopDataDir = self.intraopDICOMDataDirectory
 
-  def onPreopDataReceived(self, **kwargs):
-    self.preopTransferWindow.hide()
-    self.preopDicomReceiver.stop()
-    self.startPreProcessingPreopData()
-
-  def startPreProcessingPreopData(self):
+  def startPreProcessingPreopData(self, caller=None, event=None):
     success = self.invokePreProcessing()
     if success:
       self.setSetting('InputLocation', None, moduleName="mpReview")
@@ -887,9 +922,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     return success
 
   def onOpenCaseButtonClicked(self):
+    if not self.checkAndWarnUserIfCaseInProgress():
+      return
+    path = qt.QFileDialog.getExistingDirectory(self.parent.window(), "Select Case Directory", self.caseRootDir)
+    if not path:
+      return
     self.clearData()
-    self.currentCaseDirectory = self.openCaseButton.directory
-    if not self.logic.isCaseDirectoryValid(self.openCaseButton.directory):
+    self.currentCaseDirectory = path
+    if not self.logic.isCaseDirectoryValid(self.currentCaseDirectory):
       slicer.util.warningDisplay("The selected case directory seems not to be valid", windowTitle="SliceTracker")
       self.closeCase()
       return
@@ -898,12 +938,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def loadCaseData(self):
     from mpReview import mpReviewLogic
-    if self.logic.hasCaseBeenCompleted(self.currentCaseDirectory):
-      if not slicer.util.confirmYesNoDisplay("The selected case has already been completed. Would you like to reopen it?"):
-        return
     savedSessions = self.logic.getSavedSessions(self.currentCaseDirectory)
     if len(savedSessions) > 0: # After registration(s) has been done
-      self.openSavedSession(savedSessions)
+      if not self.openSavedSession(savedSessions):
+        self.clearData()
     else:
       if os.path.exists(self.mpReviewPreprocessedOutput) and \
               mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
@@ -919,11 +957,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           self.startPreopDICOMReceiver()
 
   def openSavedSession(self, sessions):
-    # TODO: provide drop down for user to select saved case data. dropdown should display date and time and sort it like that
-    # TODO: also provide possibility to start a new session for the current case
-    if slicer.util.confirmYesNoDisplay("A session has been found for the selected case. Do you want to continue?"):
+    latestCase = os.path.join(max(sessions, key=os.path.getmtime), "MRgBiopsy")
+    if slicer.util.confirmYesNoDisplay("A session has been found for the selected case. Do you want to continue with "
+                                       "the latest session?"):
       self.continueOldCase = True
-      latestCase = os.path.join(max(sessions, key=os.path.getmtime), "MRgBiopsy")
+      if self.logic.hasCaseBeenCompleted(latestCase):
+        if not slicer.util.confirmYesNoDisplay("The selected case has already been completed. Would you like to reopen it?"):
+          return False
       self.logic.loadFromJSON(latestCase)
       if self.logic.usePreopData:
         self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
@@ -932,6 +972,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           self.setupPreopLoadedTargets()
       self.generatedOutputDirectory = latestCase
       self.intraopDataDir = os.path.join(self.currentCaseDirectory, "DICOM", "Intraop")
+      return True
+    else:
+      return False
 
   def updateCaseWatchBox(self):
     value = self.currentCaseDirectory
@@ -999,14 +1042,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def onLayoutChanged(self):
     # TODO: replace drop down by button group checkable
     self.redCompositeNode.SetLinkedControl(False)
-    self.onCrosshairButtonClicked(False)
-    self.onWindowLevelEffectToggled(self.wlEffectsToolButton.checked)
-    if self.layoutManager.layout in self.ALLOWED_LAYOUTS:
-      self.layoutsMenu.setActiveAction(self.layoutDict[self.layoutManager.layout])
-      self.onLayoutSelectionChanged(self.layoutDict[self.layoutManager.layout])
+    self.onCrosshairToggled(False)
+    isAllowedLayout = self.layoutManager.layout in self.ALLOWED_LAYOUTS
+    self.wlEffectsToolButton.enabled = isAllowedLayout
+    self.wlEffectsToolButton.checked = False
+    if isAllowedLayout:
       self.refreshZFrameTemplateViewNodes()
       if self.currentStep in [self.STEP_EVALUATION, self.STEP_OVERVIEW]:
-        self.onCrosshairButtonClicked(self.layoutManager.layout == self.LAYOUT_FOUR_UP)
+        self.crosshairButton.checked = self.layoutManager.layout == self.LAYOUT_FOUR_UP
         self.disableTargetMovingMode()
         if self.currentStep == self.STEP_EVALUATION:
           self.onRegistrationResultSelected(self.currentResult.name)
@@ -1017,8 +1060,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           selectedSeries = self.intraopSeriesSelector.currentText
           if selectedSeries != "":
             if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
-              volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
-              self.setBackgroundToVolumeID(volume.GetID())
+              result = self.registrationResults.getResult(self.intraopSeriesSelector.currentText)
+              if not result:
+                volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
+                self.setBackgroundToVolumeID(volume.GetID())
+              else:
+                self.onRegistrationResultSelected(result.name)
+                self.setupRegistrationResultView()
             elif self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
               self.onIntraopSeriesSelectionChanged(selectedSeries)
       elif self.currentStep == self.STEP_SEGMENTATION:
@@ -1031,12 +1079,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                      [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
         for node in [n for n in [self.logic.clippingModelNode, self.logic.inputMarkupNode] if n]:
           self.refreshViewNodeIDs(node, sliceNodes)
-    else:
-      self.layoutsMenuButton.setIcon(qt.QIcon())
-      self.layoutsMenuButton.setText("Layouts")
+    self.checkLayoutButtonByLayout(self.layoutManager.layout)
 
   def refreshZFrameTemplateViewNodes(self):
-    sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+    sliceNodes = []
     if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
       sliceNodes = [self.yellowSliceNode]
     self.refreshViewNodeIDs(self.logic.pathModelNode, sliceNodes)
@@ -1069,21 +1115,25 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.yellowCompositeNode.SetBackgroundVolumeID(self.logic.currentIntraopVolume.GetID())
     self.setAxialOrientation()
 
-  def onLayoutSelectionChanged(self, action):
-    self.layoutsMenuButton.setIcon(action.icon)
-    self.layoutsMenuButton.setText(action.text)
-    selectedLayout = self.getLayoutByAction(action)
+  def onLayoutSelectionChanged(self, button):
+    self.uncheckLayoutButtons()
+    selectedLayout = self.layoutButtonGroup.id(button)
+    button.checked = True
     if self.layoutManager.layout != selectedLayout:
       self.layoutManager.setLayout(selectedLayout)
 
-  def getLayoutByAction(self, searchedAction):
-    for layout, action in self.layoutDict.iteritems():
-      if action is searchedAction:
-        return layout
+  def checkLayoutButtonByLayout(self, layout):
+    self.uncheckLayoutButtons()
+    for button in self.layoutButtonGroup.buttons():
+      if self.layoutButtonGroup.id(button) == layout:
+        self.onLayoutSelectionChanged(button)
 
-  def onCrosshairButtonClicked(self, enabled):
-    self.crosshairButton.checked = enabled
-    if enabled:
+  def uncheckLayoutButtons(self):
+    for button in self.layoutButtonGroup.buttons():
+      button.checked = False
+
+  def onCrosshairToggled(self, checked):
+    if checked:
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
       self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
     else:
@@ -1112,16 +1162,33 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if self.currentStep != self.STEP_OVERVIEW:
       return
     self.removeSliceAnnotations()
+    trackingPossible = False
     if selectedSeries:
       trackingPossible = self.logic.isTrackingPossible(selectedSeries)
-      self.trackTargetsButton.setEnabled(trackingPossible)
       self.showTemplatePathButton.checked = trackingPossible and self.config.COVER_PROSTATE in selectedSeries
-      self.skipIntraopSeriesButton.setEnabled(trackingPossible)
+      self.setIntraopSeriesButtons(trackingPossible)
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
-      self.updateIntraopSeriesSelectorColor(selectedSeries)
       self.updateSliceAnnotations(selectedSeries)
+    self.updateIntraopSeriesSelectorColor(selectedSeries)
+    self.updateLayoutButtons(trackingPossible, selectedSeries)
+
+  def setIntraopSeriesButtons(self, trackingPossible):
+    trackingPossible = trackingPossible if not self.logic.caseCompleted else False
+    self.trackTargetsButton.setEnabled(trackingPossible)
+    self.skipIntraopSeriesButton.setEnabled(trackingPossible)
+
+  def updateLayoutButtons(self, trackingPossible, selectedSeries=None):
+    self.redOnlyLayoutButton.enabled = True
+    self.sideBySideLayoutButton.enabled = True
+    if selectedSeries:
+      isApprovedOrRejected = self.registrationResults.registrationResultWasApprovedOrRejected(selectedSeries)
+      self.redOnlyLayoutButton.enabled = not trackingPossible and not isApprovedOrRejected
+      self.sideBySideLayoutButton.enabled = not trackingPossible and isApprovedOrRejected
 
   def updateIntraopSeriesSelectorColor(self, selectedSeries):
+    if selectedSeries is None:
+      self.intraopSeriesSelector.setStyleSheet("")
+      return
     style = STYLE.YELLOW_BACKGROUND
     if not self.logic.isTrackingPossible(selectedSeries):
       if self.registrationResults.registrationResultWasApproved(selectedSeries) or \
@@ -1145,6 +1212,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       if self.registrationResults.registrationResultWasSkipped(selectedSeries):
         self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.SKIPPED_RESULT_TEXT_ANNOTATION,
                                                        fontSize=15, yPos=20))
+    self.onShowAnnotationsToggled(self.showAnnotationsButton.checked)
 
   def configureViewersForSelectedIntraopSeries(self, selectedSeries):
     firstRun = self.intraopWatchBox.sourceFile is None
@@ -1175,6 +1243,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def setupRedSlicePreview(self, selectedSeries):
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
+    self.hideAllTargets()
     try:
       result = self.registrationResults.getResultsBySeries(selectedSeries)[0]
       volume = result.fixedVolume
@@ -1183,7 +1252,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
 
     if result and self.config.COVER_PROSTATE in selectedSeries and not self.logic.usePreopData:
-      self.hideAllTargets()
       self.currentResult = selectedSeries
       registrationType = self.currentResult.approvedRegistrationType
       self.targetTableModel.targetList = self.currentResult.getTargets(registrationType)
@@ -1193,12 +1261,18 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.showCurrentTargets(registrationType=registrationType)
       if self.lastSelectedModelIndex:
         self.targetTable.clicked(self.lastSelectedModelIndex)
+    elif self.config.VIBE_IMAGE in selectedSeries:
+      mostRecentApprovedTargets = self.registrationResults.getMostRecentApprovedTargets()
+      if mostRecentApprovedTargets:
+        self.targetTable.enabled = True
+        self.targetTableModel.targetList = mostRecentApprovedTargets
+        self.setTargetVisibility(mostRecentApprovedTargets, show=True)
+        self.currentTargets = mostRecentApprovedTargets
     else:
       self.disableTargetTable()
     self.setBackgroundToVolumeID(volume.GetID())
 
   def setupSideBySideRegistrationView(self):
-    # TODO: shall we add a selector for viewing different registration results that has been rejected?
     self.targetTable.enabled = True
     for result in self.registrationResults.getResultsBySeries(self.intraopSeriesSelector.currentText):
       if result.approved or result.rejected:
@@ -1222,11 +1296,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.updateNeedleModel()
 
   def jumpSliceNodesToNthTarget(self, targetIndex):
+    currentTargetsSliceNodes = []
     if self.layoutManager.layout in [self.LAYOUT_RED_SLICE_ONLY, self.LAYOUT_SIDE_BY_SIDE]:
-      self.jumpSliceNodeToTarget(self.redSliceNode, self.logic.preopTargets, targetIndex)
-      self.setTargetSelected(self.logic.preopTargets, selected=False)
-      self.logic.preopTargets.SetNthFiducialSelected(targetIndex, True)
-      currentTargetsSliceNodes = []
+      targets = self.logic.preopTargets
+      if self.config.VIBE_IMAGE in self.intraopSeriesSelector.currentText:
+        targets = self.targetTableModel.targetList
+      self.jumpSliceNodeToTarget(self.redSliceNode, targets, targetIndex)
+      self.setTargetSelected(targets, selected=False)
+      targets.SetNthFiducialSelected(targetIndex, True)
 
     if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
       currentTargetsSliceNodes = [self.yellowSliceNode]
@@ -1299,7 +1376,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     rast = sliceNode.GetXYToRAS().MultiplyPoint(xyPoint + (0,1,))
     return rast[:3]
 
-  def updateNeedleModel(self):
+  def updateNeedleModel(self, caller=None, event=None):
     if self.showNeedlePathButton.checked and self.logic.zFrameRegistrationSuccessful:
       modelIndex = self.lastSelectedModelIndex
       try:
@@ -1322,12 +1399,20 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     for annotation in self.sliceAnnotations:
       annotation.remove()
     self.sliceAnnotations = []
+    for attr in ["zFrameInstructionAnnotation", "registrationResultOldImageAnnotation",
+                 "registrationResultNewImageAnnotation"]:
+      try:
+        annotation = getattr(self, attr)
+        if annotation:
+          annotation.remove()
+          setattr(self, attr, None)
+      except AttributeError:
+        pass
     self.removeZFrameInstructionAnnotation()
     self.clearTargetMovementObserverAndAnnotations()
     self.removeMissingPreopDataAnnotation()
 
   def addSideBySideSliceAnnotations(self):
-    self.removeSliceAnnotations()
     self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, fontSize=30,
                                                  yPos=55))
     self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=55,
@@ -1335,24 +1420,21 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.registrationResultNewImageAnnotation = SliceAnnotation(self.yellowWidget,
                                                                 self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, yPos=35,
                                                                 opacity=0.0, color=(0,0.5,0))
-    self.sliceAnnotations.append(self.registrationResultNewImageAnnotation)
     self.registrationResultOldImageAnnotation = SliceAnnotation(self.yellowWidget,
                                                                 self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, yPos=35)
-    self.sliceAnnotations.append(self.registrationResultOldImageAnnotation)
     self.registrationResultStatusAnnotation = None
+    self.onShowAnnotationsToggled(self.showAnnotationsButton.checked)
 
   def addFourUpSliceAnnotations(self):
-    self.removeSliceAnnotations()
     self.sliceAnnotations.append(SliceAnnotation(self.redWidget, self.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=50, fontSize=20))
     self.registrationResultNewImageAnnotation = SliceAnnotation(self.redWidget,
                                                                 self.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT,
                                                                 yPos=35, opacity=0.0, color=(0,0.5,0), fontSize=15)
-    self.sliceAnnotations.append(self.registrationResultNewImageAnnotation)
     self.registrationResultOldImageAnnotation = SliceAnnotation(self.redWidget,
                                                                 self.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT,
                                                                 yPos=35, fontSize=15)
-    self.sliceAnnotations.append(self.registrationResultOldImageAnnotation)
     self.registrationResultStatusAnnotation = None
+    self.onShowAnnotationsToggled(self.showAnnotationsButton.checked)
 
   def onRedoButtonClicked(self):
     numberOfDeletedTargets = self.deletedMarkups.GetNumberOfFiducials()
@@ -1468,20 +1550,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     else:
       stopFlickering()
 
-  def closeCase(self):
-    if self.preopDicomReceiver:
-      self.preopDicomReceiver.stop()
-    self.logic.closeCase(self.currentCaseDirectory)
-    self.caseCompletedButton.enabled = False
-    self.patientWatchBox.sourceFile = None
-    self.intraopWatchBox.sourceFile = None
-    self.caseWatchBox.reset()
-    self.logic.stopSmartDICOMReceiver()
-    self.currentCaseDirectory = None
-
-  def onCaseCompletedButtonClicked(self):
+  def onCompleteCaseButtonClicked(self):
+    self.logic.caseCompleted = True
     self.save(showDialog=True)
-    self.logic.completeCase(self.currentCaseDirectory)
     self.clearData()
 
   def save(self, showDialog=False):
@@ -1489,7 +1560,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       slicer.util.infoDisplay("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
                               "sure to select one.", windowTitle="SliceTracker")
     else:
-      message = self.logic.save(self.generatedOutputDirectory)
+      message = self.logic.saveSession(self.generatedOutputDirectory)
       if showDialog:
         slicer.util.infoDisplay(message, windowTitle="SliceTracker")
 
@@ -1529,8 +1600,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       if substring in series:
         index = self.intraopSeriesSelector.findText(series)
         break
-    if index != -1:
-      self.intraopSeriesSelector.setCurrentIndex(index)
+    rowCount = self.intraopSeriesSelector.model().rowCount()
+    self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
     self.intraopSeriesSelector.blockSignals(False)
 
   def onRegistrationResultSelected(self, seriesText, registrationType=None, showApproved=False):
@@ -1584,13 +1655,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if self.lastSelectedModelIndex:
       self.targetTable.clicked(self.lastSelectedModelIndex)
 
-  def setDefaultFOV(self, sliceLogic, volume, factor=0.5):
+  def setDefaultFOV(self, sliceLogic, factor=0.5):
     slicer.app.processEvents()
     sliceLogic.FitSliceToAll()
     FOV = sliceLogic.GetSliceNode().GetFieldOfView()
     self.setFOV(sliceLogic, [FOV[0] * factor, FOV[1] * factor, FOV[2]])
-    sliceNode = sliceLogic.GetSliceNode()
-    sliceNode.RotateToVolumePlane(volume)
 
   def setupRegistrationResultSliceViews(self, registrationType):
     if self.layoutManager.layout in [self.LAYOUT_SIDE_BY_SIDE, self.LAYOUT_RED_SLICE_ONLY]:
@@ -1610,11 +1679,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       compositeNode.SetForegroundVolumeID(self.currentResult.fixedVolume.GetID())
       compositeNode.SetBackgroundVolumeID(bgVolume.GetID())
 
-    self.setDefaultFOV(self.redSliceLogic, self.logic.preopVolume if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE
+    self.setDefaultFOV(self.redSliceLogic)
+    self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE
                                                             else bgVolume)
+
     if self.layoutManager.layout in [self.LAYOUT_SIDE_BY_SIDE, self.LAYOUT_FOUR_UP]:
-      self.setDefaultFOV(self.yellowSliceLogic, self.currentResult.getVolume(registrationType))
-      self.setDefaultFOV(self.greenSliceLogic, self.currentResult.getVolume(registrationType))
+      self.setDefaultFOV(self.yellowSliceLogic)
+      self.setDefaultFOV(self.greenSliceLogic)
+      volume = self.currentResult.getVolume(registrationType)
+      self.yellowSliceNode.RotateToVolumePlane(volume)
+      self.greenSliceNode.RotateToVolumePlane(volume)
 
   def showCurrentTargets(self, registrationType):
     self.currentTargets = self.currentResult.getTargets(registrationType)
@@ -1651,7 +1725,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.promptUserAndApplyBiasCorrectionIfNeeded()
 
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
-    self.setDefaultFOV(self.redSliceLogic, self.logic.preopVolume)
+    self.setDefaultFOV(self.redSliceLogic)
+    self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume)
     self.setupPreopLoadedTargets()
 
   def loadMpReviewProcessedData(self):
@@ -1824,13 +1899,17 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       (self.currentStep != self.STEP_EVALUATION and sliceNode is self.yellowSliceNode):
       self.targetTableModel.cursorPosition = ras
 
-  def openOverviewStep(self, ratingResult=None):
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onRatingDone(self, caller, event, callData):
+    rating = int(callData)
+    print rating
+    self.currentResult.score = rating
+    self.openOverviewStep()
+
+  def openOverviewStep(self):
     self.currentStep = self.STEP_OVERVIEW
     self.logic.removeNeedleModelNode()
     self.targetTableModel.computeCursorDistances = False
-
-    if ratingResult:
-      self.currentResult.score = ratingResult
     self.save()
     self.disconnectCrosshairNode()
     self.hideAllLabels()
@@ -1852,7 +1931,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentResult.approve(registrationType=self.registrationButtonGroup.checkedButton().name)
 
     if self.ratingWindow.isRatingEnabled():
-      self.ratingWindow.show(disableWidget=self.parent, callback=self.openOverviewStep)
+      self.ratingWindow.show(disableWidget=self.parent)
     else:
       self.openOverviewStep()
 
@@ -2014,6 +2093,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                                        opacity=0.6, color=(0,0.6,0))
     self.zFrameClickObserver = self.redSliceViewInteractor.AddObserver(vtk.vtkCommand.LeftButtonReleaseEvent,
                                                       self.onZFrameStepAccomplished)
+    self.onShowAnnotationsToggled(self.showAnnotationsButton.checked)
 
   def onZFrameStepAccomplished(self, observee, event):
     self.removeZFrameInstructionAnnotation()
@@ -2103,8 +2183,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     return ijk
 
   def getStartEndWithConnectedComponents(self, volume, center):
-    import SimpleITK as sitk
-    import sitkUtils
     address = sitkUtils.GetSlicerITKReadWriteAddress(volume.GetName())
     image = sitk.ReadImage(address)
     start = self.getStartSliceUsingConnectedComponents(center, image)
@@ -2135,7 +2213,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   @staticmethod
   def getIslandCount(image, index):
-    import SimpleITK as sitk
     imageSize = image.GetSize()
     index = [0, 0, index]
     extractor = sitk.ExtractImageFilter()
@@ -2185,7 +2262,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     else:
       self.editorWidgetParent.show()
       displayNode = self.currentIntraopLabel.GetDisplayNode()
-      displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+      displayNode.SetAndObserveColorNodeID(self.logic.mpReviewColorNode.GetID())
       self.editorParameterNode.SetParameter('effect', 'DrawEffect')
       self.editUtil.setLabel(8)
       self.editUtil.setLabelOutline(1)
@@ -2224,19 +2301,25 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.layoutManager.setLayout(layout)
     self.hideAllLabels()
     self.refreshViewNodeIDs(self.logic.preopTargets, [self.redSliceNode])
+    self.addSliceAnnotationsBasedOnLayoutAndSetOrientation()
+    self.setupViewNodesForCurrentTargets()
 
-    def setupViewNodes(sliceNodes):
-      for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
-        self.refreshViewNodeIDs(targetNode, sliceNodes)
-
+  def addSliceAnnotationsBasedOnLayoutAndSetOrientation(self):
+    self.removeSliceAnnotations()
     if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.addFourUpSliceAnnotations()
       self.setDefaultOrientation()
-      setupViewNodes([self.redSliceNode, self.yellowSliceNode, self.greenSliceNode])
     else:
       self.addSideBySideSliceAnnotations()
       self.setAxialOrientation()
-      setupViewNodes([self.yellowSliceNode])
+
+  def setupViewNodesForCurrentTargets(self):
+    if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+      sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+    else:
+      sliceNodes = [self.yellowSliceNode]
+    for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
+      self.refreshViewNodeIDs(targetNode, sliceNodes)
 
   def openEvaluationStep(self):
     self.currentStep = self.STEP_EVALUATION
@@ -2284,14 +2367,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         return
 
       if self.currentStep == self.STEP_OVERVIEW and selectedSeriesNumber in newSeriesNumbers and \
-              any(seriesText in self.intraopSeriesSelector.currentText for seriesText in [self.config.COVER_TEMPLATE,
-                                                                                          self.config.COVER_PROSTATE,
-                                                                                          self.config.NEEDLE_IMAGE]):
-        if self.notifyUserAboutNewData:
+              self.logic.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
+        if self.notifyUserAboutNewData and not self.logic.caseCompleted:
           dialog = IncomingDataMessageBox()
           self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
           self.notifyUserAboutNewData = not checked
-        if self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
+        if hasattr(self, "notifyUserAboutNewDataAnswer") and self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
           self.onTrackTargetsButtonClicked()
 
 
@@ -2312,7 +2393,20 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
   @intraopDataDir.setter
   def intraopDataDir(self, path):
     self._intraopDataDir = path
-    self.startSmartDICOMReceiver()
+    self.stopSmartDICOMReceiver()
+    self.importDICOMSeries(self.getFileList(self.intraopDataDir))
+    if not self.caseCompleted:
+      self.startSmartDICOMReceiver()
+
+  @property
+  def caseCompleted(self):
+    return self._caseCompleted
+
+  @caseCompleted.setter
+  def caseCompleted(self, value):
+    self._caseCompleted = value
+    if value is True:
+      self.stopSmartDICOMReceiver()
 
   @property
   def currentResult(self):
@@ -2385,16 +2479,31 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     self.clearOldNodes()
     self.loadZFrameModel()
     self.loadTemplateConfigFile()
+    self._caseCompleted = False
     self.stopSmartDICOMReceiver()
-
-  def getParameterNode(self):
-    return ScriptedLoadableModuleLogic.getParameterNode(self)
 
   def clearOldNodes(self):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_PATH_NAME)
     self.clearOldNodesByName(self.ZFRAME_MODEL_NAME)
     self.clearOldNodesByName(self.COMPUTED_NEEDLE_MODEL_NAME)
+
+  def getCentroidForLabel(self, label, index):
+    ls = sitk.LabelShapeStatisticsImageFilter()
+    dstLabelAddress = sitkUtils.GetSlicerITKReadWriteAddress(label.GetName())
+    dstLabelImage = sitk.ReadImage(dstLabelAddress)
+    ls.Execute(dstLabelImage)
+    centroid = ls.GetCentroid(index)
+    IJKtoRAS = vtk.vtkMatrix4x4()
+    label.GetIJKToRASMatrix(IJKtoRAS)
+    order = label.ComputeScanOrderFromIJKToRAS(IJKtoRAS)
+    if order == 'IS':
+      centroid = [-centroid[0], -centroid[1], centroid[2]]
+    elif order == 'AP':
+      centroid = [-centroid[0], -centroid[2], -centroid[1]]
+    elif order == 'LR':
+      centroid = [centroid[0], -centroid[2], -centroid[1]]
+    return centroid
 
   def setupDisplayNode(self, displayNode=None, starBurst=False):
     if not displayNode:
@@ -2424,9 +2533,11 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     return newCaseDirectory
 
   def isInGeneralTrackable(self, series):
-    return any(seriesType in series for seriesType in [self.config.COVER_TEMPLATE,
-                                                       self.config.COVER_PROSTATE,
-                                                       self.config.NEEDLE_IMAGE])
+    return self.isAnyListItemInString(series, [self.config.COVER_TEMPLATE, self.config.COVER_PROSTATE,
+                                               self.config.NEEDLE_IMAGE])
+
+  def isAnyListItemInString(self, string, listItem):
+    return any(item in string for item in listItem)
 
   def resultHasNotBeenProcessed(self, series):
     return not (self.registrationResults.registrationResultWasApproved(series) or
@@ -2448,8 +2559,14 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
            and os.path.exists(os.path.join(directory, "DICOM", "Intraop"))
 
   def hasCaseBeenCompleted(self, directory):
-    #TODO: should better explore SliceTrackerOutputs
-    return ".completed" in os.listdir(directory)
+    self.caseCompleted = False
+    filename = os.path.join(directory, self.DEFAULT_JSON_FILE_NAME)
+    if not os.path.exists(filename):
+      return
+    with open(filename) as data_file:
+      data = json.load(data_file)
+      self.caseCompleted = data["completed"]
+    return self.caseCompleted
 
   def getSavedSessions(self, caseDirectory):
     outputDir = os.path.join(caseDirectory, "SliceTrackerOutputs")
@@ -2472,14 +2589,10 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
       caseNumber = "0" + caseNumber
     return caseNumber
 
-  def completeCase(self, directory):
+  def closeCase(self, directory):
     self.stopSmartDICOMReceiver()
     if os.path.exists(directory):
-      if self.getDirectorySize(directory) > 0:
-        open(os.path.join(directory, ".completed"), 'a').close()
-
-  def closeCase(self, directory):
-    if os.path.exists(directory):
+      self.caseCompleted = False
       if self.getDirectorySize(directory) == 0:
         shutil.rmtree(directory)
 
@@ -2580,7 +2693,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     success, self.preopVolume = slicer.util.loadVolume(n4File, returnNode=True)
     return success
 
-  def save(self, outputDir):
+  def saveSession(self, outputDir):
     if not os.path.exists(outputDir):
       self.createDirectory(outputDir)
 
@@ -2639,8 +2752,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     successfullySavedData += savedSuccessfully
     failedSaveOfData += failedToSave
 
-    saveJSON({"usedPreopData": self.usePreopData, "results": createResultsDict(),
-              "VOLUME-PREOP-N4": saveBiasCorrectionResult(), "zFrameTransform": saveZFrameTransformation()})
+    saveJSON({"completed":self.caseCompleted, "usedPreopData":self.usePreopData, "results":createResultsDict(),
+              "VOLUME-PREOP-N4":saveBiasCorrectionResult(), "zFrameTransform":saveZFrameTransformation()})
 
     messageOutput = ""
     for messageList in [successfullySavedData, failedSaveOfData] :
@@ -2717,10 +2830,9 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     return name, suffix
 
   def startSmartDICOMReceiver(self):
-    self.importDICOMSeries(newFileList=self.getFileList(self.intraopDataDir))
-    if self.smartDicomReceiver:
-      self.smartDicomReceiver.stop()
-    self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir, self.importDICOMSeries)
+    self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir)
+    self.smartDicomReceiver.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+                                        self.onDICOMSeriesReceived)
     self.smartDicomReceiver.start()
 
   def stopSmartDICOMReceiver(self):
@@ -2728,8 +2840,12 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
       self.smartDicomReceiver.stop()
       self.smartDicomReceiver = None
 
-  def importDICOMSeries(self, **kwargs):
-    newFileList = kwargs.pop('newFileList')
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onDICOMSeriesReceived(self, caller, event, callData):
+    newFileList = ast.literal_eval(callData)
+    self.importDICOMSeries(newFileList)
+
+  def importDICOMSeries(self, newFileList):
     indexer = ctk.ctkDICOMIndexer()
     db = slicer.dicomDatabase
 

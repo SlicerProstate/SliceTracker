@@ -68,6 +68,7 @@ class RegistrationResults(object):
             result.modifiedTargets[approvedRegType] = value["userModified"]
           else:
             setattr(result, attribute, value)
+    self._registrationResults = OrderedDict(sorted(self._registrationResults.items()))
 
   def _loadResultFileData(self, dictionary, directory, loadFunction, setFunction):
     for regType, filename in dictionary.iteritems():
@@ -108,6 +109,10 @@ class RegistrationResults(object):
 
   def registrationResultWasRejected(self, series):
     return self._registrationResultHasStatus(series, RegistrationResult.REJECTED_STATUS)
+
+  def registrationResultWasApprovedOrRejected(self, series):
+    return self._registrationResultHasStatus(series, RegistrationResult.REJECTED_STATUS) or \
+           self._registrationResultHasStatus(series, RegistrationResult.APPROVED_STATUS)
 
   def getResultsAsList(self):
     return self._registrationResults.values()
@@ -187,6 +192,10 @@ class RegistrationResults(object):
   @onExceptionReturnNone
   def getMostRecentTargets(self):
     return self.getMostRecentResult().targets
+
+  @onExceptionReturnNone
+  def getMostRecentApprovedTargets(self):
+    return self.getMostRecentApprovedResult().approvedTargets
 
 
 class RegistrationResult(ModuleLogicMixin):
