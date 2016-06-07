@@ -955,6 +955,19 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           self.intraopDataDir = self.intraopDICOMDataDirectory
         else:
           self.startPreopDICOMReceiver()
+    self.configureAllTargetDisplayNodes()
+
+  def configureAllTargetDisplayNodes(self):
+    allTargets = []
+    if self.logic.preopTargets:
+      allTargets.append(self.logic.preopTargets)
+    for result in self.registrationResults.getResultsAsList():
+      for targets in [t for t in result.targets.values() if t]:
+        allTargets.append(targets)
+      if result.approvedTargets:
+        allTargets.append(result.approvedTargets)
+    for targetNode in allTargets:
+      self.logic.applyDefaultTargetDisplayNode(targetNode)
 
   def openSavedSession(self, sessions):
     latestCase = os.path.join(max(sessions, key=os.path.getmtime), "MRgBiopsy")
