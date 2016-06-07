@@ -1954,7 +1954,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         results = self.registrationResults.getResultsBySeriesNumber(currentSeriesNumber)
         if len(results) == 0:
           self.skipSeries(series)
-      else:
+      elif currentSeriesNumber >= selectedSeriesNumber:
         break
 
   def skipSeries(self, seriesText):
