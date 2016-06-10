@@ -122,6 +122,7 @@ class RegistrationResults(object):
     for result in self._registrationResults.values():
       if self.config.COVER_PROSTATE in result.name and result.approved:
         mostRecent = result
+        break
     return mostRecent
 
   def getLastApprovedRigidTransformation(self):
