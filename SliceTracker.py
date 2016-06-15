@@ -1652,8 +1652,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     for item in list(reversed(range(len(self.logic.seriesList)))):
       series = self.seriesModel.item(item).text()
       if substring in series:
+        if index != -1:
+          if self.registrationResults.registrationResultWasApprovedOrRejected(series) or self.registrationResults.registrationResultWasSkipped(series):
+            break
         index = self.intraopSeriesSelector.findText(series)
         break
+      elif self.config.VIBE_IMAGE in series and index == -1:
+        index = self.intraopSeriesSelector.findText(series)
     rowCount = self.intraopSeriesSelector.model().rowCount()
     self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
     self.intraopSeriesSelector.blockSignals(False)
@@ -1780,6 +1785,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
     self.setAxialOrientation()
+    self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume)
     self.setupPreopLoadedTargets()
 
   def loadMpReviewProcessedData(self):
@@ -2935,7 +2941,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     except KeyError:
       files = self.loadableList[series]
       loadables = self.scalarVolumePlugin.examine([files])
-      volume = self.scalarVolumePlugin.load(loadables[0])
+      success, volume = slicer.util.loadVolume(files[0], returnNode=True)
       volume.SetName(loadables[0].name)
       self.alreadyLoadedSeries[series] = volume
     return volume
