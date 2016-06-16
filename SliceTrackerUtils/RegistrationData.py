@@ -183,6 +183,15 @@ class RegistrationResults(object):
     return None
 
   @onExceptionReturnNone
+  def getMostRecentApprovedResultPriorTo(self, seriesNumber):
+    results = sorted(self._registrationResults.values(), key=lambda s: s.seriesNumber)
+    results = [result for result in results if result.seriesNumber < seriesNumber]
+    for result in reversed(results):
+      if result.approved:
+        return result
+    return None
+
+  @onExceptionReturnNone
   def getMostRecentVolumes(self):
     return self.getMostRecentResult().volumes
 
@@ -197,6 +206,10 @@ class RegistrationResults(object):
   @onExceptionReturnNone
   def getMostRecentApprovedTargets(self):
     return self.getMostRecentApprovedResult().approvedTargets
+
+  @onExceptionReturnNone
+  def getMostRecentApprovedTargetsPriorTo(self, seriesNumber):
+    return self.getMostRecentApprovedResultPriorTo(seriesNumber).approvedTargets
 
 
 class RegistrationResult(ModuleLogicMixin):

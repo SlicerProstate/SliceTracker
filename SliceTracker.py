@@ -1325,7 +1325,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.showCurrentTargets()
       self.selectLastSelectedTarget()
     elif self.config.VIBE_IMAGE in selectedSeries:
-      mostRecentApprovedTargets = self.registrationResults.getMostRecentApprovedTargets()
+      seriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+      mostRecentApprovedTargets = self.registrationResults.getMostRecentApprovedTargetsPriorTo(seriesNumber)
       if mostRecentApprovedTargets:
         self.currentTargets = mostRecentApprovedTargets
         self.refreshViewNodeIDs(self.currentTargets, [])
