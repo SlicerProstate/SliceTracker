@@ -581,8 +581,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def setTargetTableSizeConstraints(self):
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
     self.targetTable.horizontalHeader().setResizeMode(0, qt.QHeaderView.Fixed)
+    self.targetTable.horizontalHeader().setResizeMode(1, qt.QHeaderView.Stretch)
+    self.targetTable.horizontalHeader().setResizeMode(2, qt.QHeaderView.ResizeToContents)
     self.targetTable.horizontalHeader().setResizeMode(3, qt.QHeaderView.ResizeToContents)
-    self.targetTable.horizontalHeader().setResizeMode(4, qt.QHeaderView.ResizeToContents)
 
   def setupIntraopSeriesSelector(self):
     self.intraopSeriesSelector = qt.QComboBox()
@@ -3357,12 +3358,11 @@ class SliceTrackerTest(ScriptedLoadableModuleTest):
 class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMixin):
 
   COLUMN_NAME = 'Name'
-  COLUMN_2D_DISTANCE = 'Distance 2D[mm]'
-  COLUMN_3D_DISTANCE = 'Distance 3D[mm]'
+  COLUMN_DISTANCE = 'Distance[mm]'
   COLUMN_HOLE = 'Hole'
   COLUMN_DEPTH = 'Depth[mm]'
 
-  headers = [COLUMN_NAME, COLUMN_2D_DISTANCE, COLUMN_3D_DISTANCE, COLUMN_HOLE, COLUMN_DEPTH]
+  headers = [COLUMN_NAME, COLUMN_DISTANCE, COLUMN_HOLE, COLUMN_DEPTH]
 
   @property
   def targetList(self):
@@ -3404,7 +3404,6 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
     self.needleStartEndPositions = {}
     self.targetList = targets
     self.computeCursorDistances = False
-    self.zFrameDepths = {}
     self.zFrameHole = {}
     self.observer = None
 
@@ -3429,40 +3428,42 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
 
     if role in [qt.Qt.BackgroundRole, qt.Qt.ToolTipRole] \
             and self.coverProstateTargetList and not self.coverProstateTargetList is self.targetList:
-      if col == 3:
-        targetPosition = [0.0, 0.0, 0.0]
-        self.targetList.GetNthFiducialPosition(row, targetPosition)
-        coverProstateTargetPosition = [0.0, 0.0, 0.0]
-        self.coverProstateTargetList.GetNthFiducialPosition(row, coverProstateTargetPosition)
-        coverProstateHole = self.computeZFrameHole(row, coverProstateTargetPosition)
-        currentHole = self.computeZFrameHole(row, targetPosition)
+      coverProstateTargetPosition = self.getTargetPosition(row, self.coverProstateTargetList)
+      targetPosition = self.getTargetPosition(row, self.targetList)
+      if col == 2:
+        coverProstateHole = self.computeZFrameHole(coverProstateTargetPosition)
+        currentHole = self.computeZFrameHole(targetPosition)
         if currentHole == coverProstateHole:
           return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else ""
         else:
-          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Hole changed: was %s" % coverProstateHole
+          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: %s" % coverProstateHole
+      elif col == 3:
+        currentDepth = self.computeZFrameDepth(targetPosition, returnAsString=False)
+        coverProstateDepth = self.computeZFrameDepth(coverProstateTargetPosition, returnAsString=False)
+        if abs(currentDepth-coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 5.0 ):
+          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.3f'" % coverProstateDepth
+        else:
+          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.3f'" % coverProstateDepth
 
     if not index.isValid() or role not in [qt.Qt.DisplayRole, qt.Qt.ToolTipRole]:
       return None
 
-    targetPosition = [0.0, 0.0, 0.0]
-    if col in [1,2,3,4]:
-      self.targetList.GetNthFiducialPosition(row, targetPosition)
-
     if col == 0:
       return self.targetList.GetNthFiducialLabel(row)
-    elif (col == 1 or col == 2) and self.cursorPosition and self.computeCursorDistances:
-      if col == 1:
-        distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
-        distance2D = [str(round(distance2D[0], 2)), str(round(distance2D[1], 2)), str(round(distance2D[2], 2))]
-        return 'x=' + distance2D[0] + ' y=' + distance2D[1] + ' z=' + distance2D[2]
-      distance3D = self.logic.get3DEuclideanDistance(targetPosition, self.cursorPosition)
-      return str(round(distance3D, 2))
 
-    elif (col == 3 or col == 4) and self.logic.zFrameRegistrationSuccessful:
-      if col == 3:
+    targetPosition = self.getTargetPosition(row, self.targetList)
+
+    if col == 1 and self.cursorPosition and self.computeCursorDistances:
+      distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
+      distance2D = [str(round(distance2D[0], 2)), str(round(distance2D[1], 2)), str(round(distance2D[2], 2))]
+      distance3D = self.logic.get3DEuclideanDistance(targetPosition, self.cursorPosition)
+      text = 'x= ' + distance2D[0] + '  y= ' + distance2D[1] + '  z= ' + distance2D[2] + '  (3D= ' + str(round(distance3D, 2)) + ')'
+      return text
+    elif (col == 2 or col == 3) and self.logic.zFrameRegistrationSuccessful:
+      if col == 2:
         return self.computeZFrameHoleAndSave(row, targetPosition)
       else:
-        return self.computeZFrameDepth(row, targetPosition)
+        return self.computeZFrameDepth(targetPosition)
     return ""
 
   def computeZFrameHoleAndSave(self, index, targetPosition):
@@ -3472,18 +3473,26 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
       self.zFrameHole[index] = '(%s, %s)' % (indexX, indexY)
     return self.zFrameHole[index]
 
-  def computeZFrameHole(self, index, targetPosition):
+  def computeZFrameHole(self, targetPosition, returnAsString=True):
     (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
-    return'(%s, %s)' % (indexX, indexY)
+    if returnAsString:
+      return'(%s, %s)' % (indexX, indexY)
+    else:
+      return [indexX, indexY]
 
-  def computeZFrameDepth(self, index, targetPosition):
-    if index not in self.zFrameDepths.keys():
-      (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
-      self.zFrameDepths[index] = '%.3f' % depth if inRange else '(%.3f)' % depth
-    return self.zFrameDepths[index]
+  def computeZFrameDepth(self, targetPosition, returnAsString=True):
+    (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
+    if returnAsString:
+      return '%.3f' % depth if inRange else '(%.3f)' % depth
+    else:
+      return depth
+
+  def getTargetPosition(self, index, targetList):
+    position = [0.0, 0.0, 0.0]
+    targetList.GetNthFiducialPosition(index, position)
+    return position
 
   def computeNewDepthAndHole(self, observer=None, caller=None):
-    self.zFrameDepths = {}
     self.zFrameHole = {}
     if not self.targetList or not self.logic.zFrameRegistrationSuccessful:
       return
