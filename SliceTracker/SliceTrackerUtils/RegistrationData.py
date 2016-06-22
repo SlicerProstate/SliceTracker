@@ -177,7 +177,8 @@ class RegistrationResults(object):
 
   @onExceptionReturnNone
   def getMostRecentApprovedResult(self):
-    for result in reversed(self._registrationResults.values()):
+    results = sorted(self._registrationResults.values(), key=lambda s: s.seriesNumber)
+    for result in reversed(results):
       if result.approved:
         return result
     return None
