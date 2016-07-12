@@ -48,10 +48,6 @@ class SliceTracker(ScriptedLoadableModule):
 class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoadableModuleWidget):
 
   @property
-  def config(self):
-    return self.logic.config
-
-  @property
   def registrationResults(self):
     return self.logic.registrationResults
 
@@ -127,10 +123,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.overviewGroupBox.hide()
       self.zFrameRegistrationGroupBox.show()
 
-      self.zFrameRegistrationManualIndexesGroupBox.visible = self.config.zFrameRegistrationClass is OpenSourceZFrameRegistration
+      self.zFrameRegistrationManualIndexesGroupBox.visible = self.zFrameRegistrationClass is OpenSourceZFrameRegistration
       self.zFrameRegistrationManualIndexesGroupBox.checked = False
-      self.applyZFrameRegistrationButton.enabled = self.config.zFrameRegistrationClass is LineMarkerRegistration
-      self.retryZFrameRegistrationButton.visible = self.config.zFrameRegistrationClass is OpenSourceZFrameRegistration
+      self.applyZFrameRegistrationButton.enabled = self.zFrameRegistrationClass is LineMarkerRegistration
+      self.retryZFrameRegistrationButton.visible = self.zFrameRegistrationClass is OpenSourceZFrameRegistration
 
       self.showZFrameModelButton.checked = True
       self.showTemplateButton.checked = True
@@ -166,7 +162,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.useRevealCursorButton.enabled = True
       self.visualEffectsGroupBox.enabled = True
       self.registrationEvaluationButtonsGroupBox.enabled = True
-      self.rejectRegistrationResultButton.enabled = not self.config.COVER_PROSTATE in self.currentResult.name
+      self.rejectRegistrationResultButton.enabled = not self.getSetting("COVER_PROSTATE") in self.currentResult.name
 
   @property
   def mpReviewPreprocessedOutput(self):
@@ -228,11 +224,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
+    self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
+    SliceTrackerConfiguration(self.moduleName, os.path.join(self.modulePath, 'Resources', "default.cfg"))
+    self.zFrameRegistrationClass = getattr(sys.modules[__name__], self.getSetting("ZFrame_Registration_Class_Name"))
     self.logic = SliceTrackerLogic()
     self.markupsLogic = slicer.modules.markups.logic()
     self.volumesLogic = slicer.modules.volumes.logic()
     self.annotationLogic = slicer.modules.annotations.logic()
-    self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
     self.setupIcons()
 
@@ -348,8 +346,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       return slicer.util.warningDisplay("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and install "
                                 "VolumeClip.", "Missing Extension")
 
-    self.ratingWindow = RatingWindow(self.config.maximumRatingScore)
-    self.ratingWindow.disableWidgetCheckbox.checked = not self.config.ratingEnabled
+    self.ratingWindow = RatingWindow(int(self.getSetting("Maximum_Rating_Score")))
+    self.ratingWindow.disableWidgetCheckbox.checked = not self.getSetting("Rating_Enabled")
     self.sliceAnnotations = []
     self.mouseReleaseEventObservers = {}
     self.revealCursor = None
@@ -495,7 +493,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.updateFOV()
 
   def updateFOV(self):
-    if self.logic.config.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
+    if self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
       self.setDefaultFOV(self.redSliceLogic, 1.0)
       self.setDefaultFOV(self.yellowSliceLogic, 1.0)
       self.setDefaultFOV(self.greenSliceLogic, 1.0)
@@ -1228,7 +1226,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     trackingPossible = False
     if selectedSeries:
       trackingPossible = self.logic.isTrackingPossible(selectedSeries)
-      self.showTemplatePathButton.checked = trackingPossible and self.config.COVER_PROSTATE in selectedSeries
+      self.showTemplatePathButton.checked = trackingPossible and self.getSetting("COVER_PROSTATE") in selectedSeries
       self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
       self.updateSliceAnnotations(selectedSeries)
@@ -1247,7 +1245,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
       hasResult = len(self.registrationResults.getResultsBySeriesNumber(currentSeriesNumber)) > 0
       isApprovedOrRejected = self.registrationResults.registrationResultWasApprovedOrRejected(selectedSeries)
-      isCoverProstateAndNoPreop = self.config.COVER_PROSTATE in selectedSeries and not self.logic.usePreopData
+      isCoverProstateAndNoPreop = self.getSetting("COVER_PROSTATE") in selectedSeries and not self.logic.usePreopData
       self.redOnlyLayoutButton.enabled = not (trackingPossible or isApprovedOrRejected) or not hasResult or isCoverProstateAndNoPreop
       self.sideBySideLayoutButton.enabled = not trackingPossible and isApprovedOrRejected and not isCoverProstateAndNoPreop
 
@@ -1258,7 +1256,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     style = STYLE.YELLOW_BACKGROUND
     if not self.logic.isTrackingPossible(selectedSeries):
       if self.registrationResults.registrationResultWasApproved(selectedSeries) or \
-              (self.logic.zFrameRegistrationSuccessful and self.config.COVER_TEMPLATE in selectedSeries):
+              (self.logic.zFrameRegistrationSuccessful and self.getSetting("COVER_TEMPLATE") in selectedSeries):
         style = STYLE.GREEN_BACKGROUND
       elif self.registrationResults.registrationResultWasSkipped(selectedSeries):
         style = STYLE.RED_BACKGROUND
@@ -1289,7 +1287,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.updateOutputFolder()
     if self.registrationResults.registrationResultWasApproved(selectedSeries) or \
             self.registrationResults.registrationResultWasRejected(selectedSeries):
-      if self.config.COVER_PROSTATE in selectedSeries and not self.logic.usePreopData:
+      if self.getSetting("COVER_PROSTATE") in selectedSeries and not self.logic.usePreopData:
         self.setupRedSlicePreview(selectedSeries)
       else:
         self.setupSideBySideRegistrationView()
@@ -1318,13 +1316,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
     self.setBackgroundToVolumeID(volume.GetID())
 
-    if result and self.config.COVER_PROSTATE in selectedSeries and not self.logic.usePreopData:
+    if result and self.getSetting("COVER_PROSTATE") in selectedSeries and not self.logic.usePreopData:
       self.currentResult = selectedSeries
       self.currentTargets = self.currentResult.approvedTargets
       self.refreshViewNodeIDs(self.currentTargets, [self.redSliceNode])
       self.showCurrentTargets()
       self.selectLastSelectedTarget()
-    elif self.config.VIBE_IMAGE in selectedSeries:
+    elif self.getSetting("VIBE_IMAGE") in selectedSeries:
       seriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
       mostRecentApprovedTargets = self.registrationResults.getMostRecentApprovedTargetsPriorTo(seriesNumber)
       if mostRecentApprovedTargets:
@@ -1363,7 +1361,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     currentTargetsSliceNodes = []
     if self.layoutManager.layout in [self.LAYOUT_RED_SLICE_ONLY, self.LAYOUT_SIDE_BY_SIDE]:
       targets = self.logic.preopTargets
-      if self.config.VIBE_IMAGE in self.intraopSeriesSelector.currentText:
+      if self.getSetting("VIBE_IMAGE") in self.intraopSeriesSelector.currentText:
         targets = self.targetTableModel.targetList
       self.jumpSliceNodeToTarget(self.redSliceNode, targets, targetIndex)
       self.setTargetSelected(targets, selected=False)
@@ -1641,7 +1639,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.seriesModel.appendRow(sItem)
       color = COLOR.YELLOW
       if self.registrationResults.registrationResultWasApproved(series) or \
-        (self.config.COVER_TEMPLATE in series and self.logic.zFrameRegistrationSuccessful):
+        (self.getSetting("COVER_TEMPLATE") in series and self.logic.zFrameRegistrationSuccessful):
         color = COLOR.GREEN
       elif self.registrationResults.registrationResultWasSkipped(series):
         color = COLOR.RED
@@ -1655,10 +1653,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def selectMostRecentEligibleSeries(self):
     if self.currentStep != self.STEP_OVERVIEW:
       self.intraopSeriesSelector.blockSignals(True)
-    substring = self.config.NEEDLE_IMAGE
+    substring = self.getSetting("NEEDLE_IMAGE")
     index = -1
     if not self.registrationResults.getMostRecentApprovedCoverProstateRegistration():
-      substring = self.config.COVER_TEMPLATE if not self.logic.zFrameRegistrationSuccessful else self.config.COVER_PROSTATE
+      substring = self.getSetting("COVER_TEMPLATE") if not self.logic.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
     for item in list(reversed(range(len(self.logic.seriesList)))):
       series = self.seriesModel.item(item).text()
       if substring in series:
@@ -1667,7 +1665,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
             break
         index = self.intraopSeriesSelector.findText(series)
         break
-      elif self.config.VIBE_IMAGE in series and index == -1:
+      elif self.getSetting("VIBE_IMAGE") in series and index == -1:
         index = self.intraopSeriesSelector.findText(series)
     rowCount = self.intraopSeriesSelector.model().rowCount()
     self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
@@ -2017,7 +2015,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def skipAllUnregisteredPreviousSeries(self, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-    for series in [series for series in self.logic.seriesList if not self.config.COVER_TEMPLATE in series]:
+    for series in [series for series in self.logic.seriesList if not self.getSetting("COVER_TEMPLATE") in series]:
       currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
       if currentSeriesNumber < selectedSeriesNumber and self.logic.isTrackingPossible(series):
         results = self.registrationResults.getResultsBySeriesNumber(currentSeriesNumber)
@@ -2106,13 +2104,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.targetTableModel.computeCursorDistances = False
     volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
     if volume:
-      if not self.logic.zFrameRegistrationSuccessful and self.config.COVER_TEMPLATE in self.intraopSeriesSelector.currentText:
+      if not self.logic.zFrameRegistrationSuccessful and self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
         self.openZFrameRegistrationStep(volume)
         return
       else:
         if self.currentResult is None or \
            self.registrationResults.getMostRecentApprovedCoverProstateRegistration() is None or \
-           self.logic.retryMode or self.config.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
+           self.logic.retryMode or self.getSetting("COVER_PROSTATE") in self.intraopSeriesSelector.currentText:
           self.openSegmentationStep(volume)
         else:
           self.repeatRegistrationForCurrentSelection(volume)
@@ -2122,7 +2120,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentStep = self.STEP_ZFRAME_REGISTRATION
     self.setupFourUpView(volume)
     self.redSliceNode.SetSliceVisible(True)
-    if self.logic.config.zFrameRegistrationClass is OpenSourceZFrameRegistration:
+    if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
       self.addROIObserver()
       self.activateCreateROIMode()
       self.addZFrameInstructions()
@@ -2182,7 +2180,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentStep = self.STEP_SEGMENTATION
     self.logic.currentIntraopVolume = volume
     self.fixedVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
-    if self.config.COVER_PROSTATE in self.intraopSeriesSelector.currentText:
+    if self.getSetting("COVER_PROSTATE") in self.intraopSeriesSelector.currentText:
       self.showTemplatePathButton.checked = False
     self.setupFourUpView(self.logic.currentIntraopVolume)
     self.onQuickSegmentationButtonClicked()
@@ -2196,7 +2194,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     zFrameTemplateVolume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
 
     try:
-      if self.logic.config.zFrameRegistrationClass is OpenSourceZFrameRegistration:
+      if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
         self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
         self.zFrameCroppedVolume = self.logic.createCroppedVolume(zFrameTemplateVolume, self.coverTemplateROI)
         self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume)
@@ -2214,9 +2212,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           start = self.zFrameRegistrationStartIndex.value
           end = self.zFrameRegistrationEndIndex.value
 
-        self.logic.runZFrameRegistration(self.zFrameMaskedVolume, startSlice=start, endSlice=end)
+        self.logic.runZFrameRegistration(self.zFrameMaskedVolume, self.zFrameRegistrationClass, startSlice=start, endSlice=end)
       else:
-        self.logic.runZFrameRegistration(zFrameTemplateVolume)
+        self.logic.runZFrameRegistration(zFrameTemplateVolume, self.zFrameRegistrationClass, )
     except AttributeError as exc:
       progress.close()
       slicer.util.errorDisplay("An error occurred. For further information click 'Show Details...'",
@@ -2310,7 +2308,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.showZFrameModelButton.checked = False
     self.showTemplateButton.checked = False
     self.showTemplatePathButton.checked = False
-    if self.logic.config.zFrameRegistrationClass is OpenSourceZFrameRegistration:
+    if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
       self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
     self.openOverviewStep()
 
@@ -2433,7 +2431,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     selectedSeries = self.intraopSeriesSelector.currentText
     if selectedSeries != "" and self.logic.isTrackingPossible(selectedSeries):
       selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-      if not self.logic.zFrameRegistrationSuccessful and self.config.COVER_TEMPLATE in selectedSeries and \
+      if not self.logic.zFrameRegistrationSuccessful and self.getSetting("COVER_TEMPLATE") in selectedSeries and \
                       selectedSeriesNumber in newSeriesNumbers:
         self.onTrackTargetsButtonClicked()
         return
@@ -2448,7 +2446,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           self.onTrackTargetsButtonClicked()
 
 
-class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, ScriptedLoadableModuleLogic):
+class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObservationMixin, ScriptedLoadableModuleLogic):
 
   ZFRAME_MODEL_PATH = 'Resources/zframe/zframe-model.vtk'
   ZFRAME_TEMPLATE_CONFIG_FILE_NAME = 'Resources/zframe/ProstateTemplate.csv'
@@ -2505,9 +2503,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     self.registrationLogic = SliceTrackerRegistrationLogic()
     self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.defaultTemplateFile = os.path.join(self.modulePath, self.ZFRAME_TEMPLATE_CONFIG_FILE_NAME)
-    # TODO: provide UI possibility to select alternative config file at the beginning
-    self.config = SliceTrackerConfiguration(os.path.join(self.modulePath, 'Resources', "default.cfg"),
-                                            scope=sys.modules[__name__])
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
@@ -2525,7 +2520,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     self.biasCorrectionDone = False
     self.preopLabel = None
     self.preopTargets = None
-    self.registrationResults = RegistrationResults(self.config)
+    self.registrationResults = RegistrationResults()
 
     self._intraopDataDir = ""
     self.smartDicomReceiver = None
@@ -2547,7 +2542,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     self.pathVectors = []  ## Normal vectors of needle paths (after transformation by parent transform node)
 
     from mpReview import mpReviewLogic
-    self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.config.colorFile)
+    self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name",
+                                                                                               "SliceTracker"))
     self.clearOldNodes()
     self.loadZFrameModel()
     self.loadTemplateConfigFile()
@@ -2605,8 +2601,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     return newCaseDirectory
 
   def isInGeneralTrackable(self, series):
-    return self.isAnyListItemInString(series, [self.config.COVER_TEMPLATE, self.config.COVER_PROSTATE,
-                                               self.config.NEEDLE_IMAGE])
+    return self.isAnyListItemInString(series, [self.getSetting("COVER_TEMPLATE"), self.getSetting("COVER_PROSTATE"),
+                                               self.getSetting("NEEDLE_IMAGE")])
 
   def isAnyListItemInString(self, string, listItem):
     return any(item in string for item in listItem)
@@ -2618,16 +2614,16 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
 
   def isTrackingPossible(self, series):
     if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
-      if self.config.NEEDLE_IMAGE in series:
+      if self.getSetting("NEEDLE_IMAGE") in series:
         return self.registrationResults.getMostRecentApprovedCoverProstateRegistration() or not self.usePreopData
-      elif self.config.COVER_PROSTATE in series:
+      elif self.getSetting("COVER_PROSTATE") in series:
         return self.zFrameRegistrationSuccessful
-      elif self.config.COVER_TEMPLATE in series:
+      elif self.getSetting("COVER_TEMPLATE") in series:
         return not self.zFrameRegistrationSuccessful
     return False
 
   def isEligibleForSkipping(self, series):
-    return not self.isAnyListItemInString(series, [self.config.COVER_PROSTATE, self.config.COVER_TEMPLATE])
+    return not self.isAnyListItemInString(series, [self.getSetting("COVER_PROSTATE"), self.getSetting("COVER_TEMPLATE")])
 
   def isCaseDirectoryValid(self, directory):
     return os.path.exists(os.path.join(directory, "DICOM", "Preop")) \
@@ -2859,7 +2855,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
   def applyInitialRegistration(self, fixedVolume, movingVolume, fixedLabel, movingLabel, targets, progressCallback=None):
 
     if not self.retryMode:
-      self.registrationResults = RegistrationResults(self.config)
+      self.registrationResults = RegistrationResults()
     self.retryMode = False
 
     self.generateNameAndCreateRegistrationResult(fixedVolume)
@@ -3112,8 +3108,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
     slicer.cli.run(slicer.modules.maskscalarvolume, None, params, wait_for_completion=True)
     return maskedVolume
 
-  def runZFrameRegistration(self, inputVolume, **kwargs):
-    registration = self.config.zFrameRegistrationClass(inputVolume)
+  def runZFrameRegistration(self, inputVolume, algorithm, **kwargs):
+    registration = algorithm(inputVolume)
     if isinstance(registration, OpenSourceZFrameRegistration):
       registration.runRegistration(start=kwargs.pop("startSlice"), end=kwargs.pop("endSlice"))
     elif isinstance(registration, LineMarkerRegistration):
