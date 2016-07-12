@@ -2010,6 +2010,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.openOverviewStep()
 
   def onSkipIntraopSeriesButtonClicked(self):
+    self.skipAllUnregisteredPreviousSeries(self.intraopSeriesSelector.currentText)
     self.skipSeries(self.intraopSeriesSelector.currentText)
     self.save()
     self.updateIntraopSeriesSelectorTable()
