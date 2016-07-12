@@ -1,34 +1,3 @@
-cmake_minimum_required(VERSION 2.8.7)
-
-#set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/../CMake)
-
-#-----------------------------------------------------------------------------
-# See http://cmake.org/cmake/help/cmake-2-8-docs.html#section_Policies for details
-#-----------------------------------------------------------------------------
-
-if(POLICY CMP0017)
-  cmake_policy(SET CMP0017 OLD)
-endif()
-if(POLICY CMP0042)
-  cmake_policy(SET CMP0042 NEW) # CMake 3.0.0
-endif()
-
-#-----------------------------------------------------------------------------
-# Extension meta-information
-set(EXTENSION_NAME ZFrameCalibration)
-set(EXTENSION_HOMEPAGE "http://www.example.com/Slicer/Extensions/Registration")
-set(EXTENSION_CATEGORY "Radiology")
-set(EXTENSION_CONTRIBUTORS "")
-set(EXTENSION_DESCRIPTION " ")
-set(EXTENSION_ICONURL "http://www.example.com/Slicer/Extensions/Registration.png")
-set(EXTENSION_SCREENSHOTURLS "http://www.example.com/Slicer/Extensions/Registration/Screenshots/1.png")
-
-#-----------------------------------------------------------------------------
-if(NOT Slicer_SOURCE_DIR)
-  find_package(Slicer REQUIRED)
-  include(${Slicer_USE_FILE})
-endif()
-
 #-----------------------------------------------------------------------------
 set(MODULE_NAME ZFrameCalibration)
 
