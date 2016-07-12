@@ -3,9 +3,9 @@ cmake_minimum_required(VERSION 2.8.9)
 #-----------------------------------------------------------------------------
 # Extension meta-information
 set(EXTENSION_NAME SliceTracker)
-set(EXTENSION_HOMEPAGE "http://www.example.com/Slicer/Extensions/Registration")
-set(EXTENSION_CATEGORY "Radiology")
-set(EXTENSION_CONTRIBUTORS "Peter Behringer (SPL), Christian Herz (SPL), Andriy Fedorov (SPL)")
+set(EXTENSION_HOMEPAGE "https://github.com/SlicerProstate/SliceTracker")
+set(EXTENSION_CATEGORY "IGT")
+set(EXTENSION_CONTRIBUTORS "Christian Herz (SPL), Peter Behringer (SPL), Andriy Fedorov (SPL)")
 set(EXTENSION_DESCRIPTION "This extension provides an easy to use registration interface for image, target and mask selection. Registration results are visible step-wise. ")
 set(EXTENSION_ICONURL "http://www.example.com/Slicer/Extensions/Registration.png")
 set(EXTENSION_SCREENSHOTURLS "http://www.example.com/Slicer/Extensions/Registration/Screenshots/1.png")
