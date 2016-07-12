@@ -19,7 +19,6 @@ from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatch
 from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ParameterNodeObservationMixin
 from SlicerProstateUtils.events import SlicerProstateEvents
 
-# from SliceTrackerUtils.helpers import CustomTargetTableModel
 from SliceTrackerUtils.events import SliceTrackerEvents
 from SliceTrackerUtils.constants import SliceTrackerConstants
 from SliceTrackerUtils.exceptions import DICOMValueError
@@ -167,6 +166,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.useRevealCursorButton.enabled = True
       self.visualEffectsGroupBox.enabled = True
       self.registrationEvaluationButtonsGroupBox.enabled = True
+      self.rejectRegistrationResultButton.enabled = not self.config.COVER_PROSTATE in self.currentResult.name
 
   @property
   def mpReviewPreprocessedOutput(self):
@@ -1229,16 +1229,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if selectedSeries:
       trackingPossible = self.logic.isTrackingPossible(selectedSeries)
       self.showTemplatePathButton.checked = trackingPossible and self.config.COVER_PROSTATE in selectedSeries
-      self.setIntraopSeriesButtons(trackingPossible)
+      self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
       self.updateSliceAnnotations(selectedSeries)
     self.updateIntraopSeriesSelectorColor(selectedSeries)
     self.updateLayoutButtons(trackingPossible, selectedSeries)
 
-  def setIntraopSeriesButtons(self, trackingPossible):
+  def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
     trackingPossible = trackingPossible if not self.logic.caseCompleted else False
     self.trackTargetsButton.setEnabled(trackingPossible)
-    self.skipIntraopSeriesButton.setEnabled(trackingPossible)
+    self.skipIntraopSeriesButton.setEnabled(trackingPossible and self.logic.isEligibleForSkipping(selectedSeries))
 
   def updateLayoutButtons(self, trackingPossible, selectedSeries=None):
     self.redOnlyLayoutButton.enabled = True
@@ -2624,6 +2624,9 @@ class SliceTrackerLogic(ModuleLogicMixin, ParameterNodeObservationMixin, Scripte
       elif self.config.COVER_TEMPLATE in series:
         return not self.zFrameRegistrationSuccessful
     return False
+
+  def isEligibleForSkipping(self, series):
+    return not self.isAnyListItemInString(series, [self.config.COVER_PROSTATE, self.config.COVER_TEMPLATE])
 
   def isCaseDirectoryValid(self, directory):
     return os.path.exists(os.path.join(directory, "DICOM", "Preop")) \
