@@ -6,9 +6,10 @@ from collections import OrderedDict
 from SlicerProstateUtils.constants import FileExtension
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 from SlicerProstateUtils.decorators import onExceptionReturnNone
+from SlicerProstateUtils.mixins import ModuleWidgetMixin
 
 
-class RegistrationResults(object):
+class RegistrationResults(ModuleWidgetMixin):
 
   @property
   def activeResult(self):
@@ -29,8 +30,7 @@ class RegistrationResults(object):
   def intraopLabel(self):
     return self.getMostRecentApprovedCoverProstateRegistration().fixedLabel
 
-  def __init__(self, configuration):
-    self.config = configuration
+  def __init__(self):
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
@@ -120,7 +120,7 @@ class RegistrationResults(object):
   def getMostRecentApprovedCoverProstateRegistration(self):
     mostRecent = None
     for result in self._registrationResults.values():
-      if self.config.COVER_PROSTATE in result.name and result.approved:
+      if self.getSetting("COVER_PROSTATE", "SliceTracker") in result.name and result.approved:
         mostRecent = result
         break
     return mostRecent
@@ -177,7 +177,8 @@ class RegistrationResults(object):
 
   @onExceptionReturnNone
   def getMostRecentApprovedResult(self):
-    for result in reversed(self._registrationResults.values()):
+    results = sorted(self._registrationResults.values(), key=lambda s: s.seriesNumber)
+    for result in reversed(results):
       if result.approved:
         return result
     return None
