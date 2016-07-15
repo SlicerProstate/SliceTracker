@@ -1,6 +1,6 @@
 __author__ = 'Christian'
 
-import sys, getopt, os
+import sys, getopt, os, dicom
 import time
 
 class NotDirectoryError(Exception):
@@ -16,9 +16,21 @@ class DICOMDirectoryObserver(object):
     self.port = port
     self.files = set()
 
+  def listdirRecursive(self, rootDir):
+    files = []
+    for root, subFolders, dirFiles in os.walk(rootDir):
+      for f in dirFiles:
+        try:
+          fileName = os.path.join(root,f)
+          dicom.read_file(fileName)
+          files.append(fileName)
+        except:
+          pass
+    return files
+
   def watch(self, secondsToWait=1):
     while True:
-      currentFiles = os.listdir(self.directory)
+      currentFiles = self.listdirRecursive(self.directory)
       if len(self.files) < len(currentFiles):
         print "Number of files changed"
         for newFile in self.getNewFiles(currentFiles):
@@ -28,9 +40,8 @@ class DICOMDirectoryObserver(object):
   def getNewFiles(self, files):
     newFiles = []
     for currentFile in files:
-      filePath = os.path.join(self.directory, currentFile)
-      if filePath not in self.files:
-        newFiles.append(filePath)
+      if currentFile not in self.files:
+        newFiles.append(currentFile)
     return newFiles
 
   def storeSCU(self, fileName):
@@ -41,8 +52,8 @@ class DICOMDirectoryObserver(object):
 
 def main(argv):
    watchDirectory = ''
-   host = ''
-   port = ''
+   host = 'localhost'
+   port = '11112'
    interval = 1
    try:
       opts, args = getopt.getopt(argv,"i:d:h:p:?",["help","directory=","host=","port=","interval="])
@@ -67,6 +78,7 @@ def main(argv):
      print 'Port to send DICOM files to is: ', port
 
      watcher = DICOMDirectoryObserver(directory=watchDirectory, host=host, port=port)
+     print "Will watch!"
      watcher.watch(interval)
 
 if __name__ == "__main__":
