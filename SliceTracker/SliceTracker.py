@@ -2880,16 +2880,24 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
 
     coverProstateRegResult = self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
     lastRigidTfm = self.registrationResults.getLastApprovedRigidTransformation()
+    lastApprovedTfm = self.registrationResults.getMostRecentApprovedTransform()
+    initialTransform = lastApprovedTfm if lastApprovedTfm else lastRigidTfm
 
     self.generateNameAndCreateRegistrationResult(self.currentIntraopVolume)
     parameterNode = slicer.vtkMRMLScriptedModuleNode()
     parameterNode.SetAttribute('FixedImageNodeID', self.currentIntraopVolume.GetID())
-    parameterNode.SetAttribute('FixedLabelNodeID', coverProstateRegResult.fixedLabel.GetID())
+
+    fixedLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.currentIntraopVolume,
+                                                           self.currentIntraopVolume.GetName() + '-label')
+
+    self.runBRAINSResample(inputVolume=coverProstateRegResult.fixedLabel, referenceVolume=self.currentIntraopVolume,
+                           outputVolume=fixedLabel, warpTransform=initialTransform)
+
+    parameterNode.SetAttribute('FixedLabelNodeID', fixedLabel.GetID())
     parameterNode.SetAttribute('MovingImageNodeID', coverProstateRegResult.fixedVolume.GetID())
     parameterNode.SetAttribute('MovingLabelNodeID', coverProstateRegResult.fixedLabel.GetID())
     parameterNode.SetAttribute('TargetsNodeID', coverProstateRegResult.approvedTargets.GetID())
-    if lastRigidTfm:
-      parameterNode.SetAttribute('InitialTransformNodeID', lastRigidTfm.GetID())
+    parameterNode.SetAttribute('InitialTransformNodeID', initialTransform.GetID())
 
     self.registrationLogic.runReRegistration(parameterNode, progressCallback=progressCallback)
 
@@ -2899,6 +2907,16 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     if nOccurrences:
       suffix = "_Retry_" + str(nOccurrences)
     return name, suffix
+
+  def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
+
+    params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
+              'warpTransform': warpTransform, 'interpolationMode': 'NearestNeighbor'}
+
+    logging.debug('About to run BRAINSResample CLI with those params: %s' % params)
+    slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
+    logging.debug('resample labelmap through')
+    slicer.mrmlScene.AddNode(outputVolume)
 
   def startSmartDICOMReceiver(self):
     self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir)

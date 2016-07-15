@@ -126,15 +126,22 @@ class RegistrationResults(ModuleWidgetMixin):
     return mostRecent
 
   def getLastApprovedRigidTransformation(self):
-    nApprovedRegistrations = sum([1 for result in self._registrationResults.values() if result.approved])
-    if nApprovedRegistrations == 1:
+    if sum([1 for result in self._registrationResults.values() if result.approved]) == 1:
       lastRigidTfm = None
     else:
-      try:
-        lastRigidTfm = self.getMostRecentApprovedResult().rigidTransform
-      except AttributeError:
-        lastRigidTfm = None
+      lastRigidTfm = self.getMostRecentApprovedResult().rigidTransform
+    if not lastRigidTfm:
+      lastRigidTfm = slicer.vtkMRMLLinearTransformNode()
+      slicer.mrmlScene.AddNode(lastRigidTfm)
     return lastRigidTfm
+
+  @onExceptionReturnNone
+  def getMostRecentApprovedTransform(self):
+    results = sorted(self._registrationResults.values(), key=lambda s: s.seriesNumber)
+    for result in reversed(results):
+      if result.approved and self.getSetting("COVER_PROSTATE", "SliceTracker") not in result.name:
+        return result.transforms[result.approvedRegistrationType]
+    return None
 
   def getOrCreateResult(self, series):
     result = self.getResult(series)
