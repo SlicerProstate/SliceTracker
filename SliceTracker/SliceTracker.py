@@ -2893,13 +2893,15 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     self.runBRAINSResample(inputVolume=coverProstateRegResult.fixedLabel, referenceVolume=self.currentIntraopVolume,
                            outputVolume=fixedLabel, warpTransform=initialTransform)
 
+    self.dilateMask(fixedLabel, dilateValue=8)
+
     parameterNode.SetAttribute('FixedLabelNodeID', fixedLabel.GetID())
     parameterNode.SetAttribute('MovingImageNodeID', coverProstateRegResult.fixedVolume.GetID())
     parameterNode.SetAttribute('MovingLabelNodeID', coverProstateRegResult.fixedLabel.GetID())
     parameterNode.SetAttribute('TargetsNodeID', coverProstateRegResult.approvedTargets.GetID())
     parameterNode.SetAttribute('InitialTransformNodeID', initialTransform.GetID())
 
-    self.registrationLogic.runReRegistration(parameterNode, progressCallback=progressCallback)
+    self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
 
   def getRegistrationResultNameAndGeneratedSuffix(self, name):
     nOccurrences = sum([1 for result in self.registrationResults.getResultsAsList() if name in result.name])
