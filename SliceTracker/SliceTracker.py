@@ -3550,7 +3550,7 @@ class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
     self.setText("Please select a case number for the new case.")
     self.setIcon(qt.QMessageBox.Question)
     self.spinbox = qt.QSpinBox()
-    self.spinbox.setRange(self.minimum, 10000000)
+    self.spinbox.setRange(self.minimum, int("9"*self.CASE_NUMBER_DIGITS))
     self.preview = qt.QLabel()
     self.notice = qt.QLabel()
     self.layout().addWidget(self.createVLayout([self.createHLayout([qt.QLabel("Proposed Case Number"), self.spinbox]),
