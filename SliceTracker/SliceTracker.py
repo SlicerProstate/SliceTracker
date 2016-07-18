@@ -2410,7 +2410,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if not self.logic.isVolumeExtentValid(self.currentResult.bSplineVolume):
       slicer.util.infoDisplay(
         "One or more empty volume were created during registration process. You have three options:\n"
-        "1. Skip the registration result \n"
+        "1. Reject the registration result \n"
         "2. Retry with creating a new segmentation \n"
         "3. Set targets to your preferred position (in Four-Up layout)",
         title="Action needed: Registration created empty volume(s)", windowTitle="SliceTracker")
