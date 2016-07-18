@@ -2765,33 +2765,36 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
       intraopLabel = self.registrationResults.intraopLabel
       if intraopLabel:
         seriesNumber = intraopLabel.GetName().split(":")[0]
-        success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL")
+        success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL",
+                                          overwrite=True)
         self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
         if self.clippingModelNode:
-          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK, name=seriesNumber+"-MODEL")
+          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
+                                            name=seriesNumber+"-MODEL", overwrite=True)
           self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
         if self.inputMarkupNode:
           success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
-                                            name=seriesNumber+"-VolumeClip_points")
+                                            name=seriesNumber+"-VolumeClip_points", overwrite=True)
           self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     def saveOriginalTargets():
       originalTargets = self.registrationResults.originalTargets
       if originalTargets:
-        success, name = self.saveNodeData(originalTargets, outputDir, FileExtension.FCSV, name="PreopTargets")
+        success, name = self.saveNodeData(originalTargets, outputDir, FileExtension.FCSV, name="PreopTargets",
+                                          overwrite=True)
         self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
 
     def saveBiasCorrectionResult():
       if not self.biasCorrectionDone:
         return None
-      success, name = self.saveNodeData(self.preopVolume, outputDir, FileExtension.NRRD)
+      success, name = self.saveNodeData(self.preopVolume, outputDir, FileExtension.NRRD, overwrite=True)
       self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
       return name+FileExtension.NRRD
 
     def saveZFrameTransformation():
-      success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5)
+      success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5, overwrite=True)
       self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
       return name+FileExtension.H5
 
