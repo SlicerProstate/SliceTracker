@@ -3369,9 +3369,9 @@ class SliceTrackerTest(ScriptedLoadableModuleTest):
 class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMixin):
 
   COLUMN_NAME = 'Name'
-  COLUMN_DISTANCE = 'Distance[mm]'
+  COLUMN_DISTANCE = 'Distance[cm]'
   COLUMN_HOLE = 'Hole'
-  COLUMN_DEPTH = 'Depth[mm]'
+  COLUMN_DEPTH = 'Depth[cm]'
 
   headers = [COLUMN_NAME, COLUMN_DISTANCE, COLUMN_HOLE, COLUMN_DEPTH]
 
@@ -3451,10 +3451,10 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
       elif col == 3:
         currentDepth = self.computeZFrameDepth(targetPosition, returnAsString=False)
         coverProstateDepth = self.computeZFrameDepth(coverProstateTargetPosition, returnAsString=False)
-        if abs(currentDepth-coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 5.0 ):
-          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.3f'" % coverProstateDepth
+        if abs(currentDepth-coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 0.5 ):
+          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
         else:
-          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.3f'" % coverProstateDepth
+          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
 
     if not index.isValid() or role not in [qt.Qt.DisplayRole, qt.Qt.ToolTipRole]:
       return None
@@ -3466,9 +3466,9 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
 
     if col == 1 and self.cursorPosition and self.computeCursorDistances:
       distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
-      distance2D = [str(round(distance2D[0], 2)), str(round(distance2D[1], 2)), str(round(distance2D[2], 2))]
+      distance2D = [str(round(distance2D[0]/10, 1)), str(round(distance2D[1]/10, 1)), str(round(distance2D[2]/10, 1))]
       distance3D = self.logic.get3DEuclideanDistance(targetPosition, self.cursorPosition)
-      text = 'x= ' + distance2D[0] + '  y= ' + distance2D[1] + '  z= ' + distance2D[2] + '  (3D= ' + str(round(distance3D, 2)) + ')'
+      text = 'x= ' + distance2D[0] + '  y= ' + distance2D[1] + '  z= ' + distance2D[2] + '  (3D= ' + str(round(distance3D/10, 1)) + ')'
       return text
     elif (col == 2 or col == 3) and self.logic.zFrameRegistrationSuccessful:
       if col == 2:
@@ -3493,8 +3493,9 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
 
   def computeZFrameDepth(self, targetPosition, returnAsString=True):
     (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
+    depth = round(depth/10,1)
     if returnAsString:
-      return '%.3f' % depth if inRange else '(%.3f)' % depth
+      return '%.1f' % depth if inRange else '(%.1f)' % depth
     else:
       return depth
 
