@@ -884,8 +884,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if not self.checkAndWarnUserIfCaseInProgress():
       return
     self.clearData()
-    self.currentCaseDirectory = self.logic.createNewCase(self.caseRootDir)
-    self.startPreopDICOMReceiver()
+    self.caseDialog = NewCaseSelectionNameWidget(self.caseRootDir)
+    selectedButton = self.caseDialog.exec_()
+    if selectedButton == qt.QMessageBox.Ok:
+      self.currentCaseDirectory = self.logic.createNewCase(self.caseDialog.newCaseDirectory)
+      self.startPreopDICOMReceiver()
 
   def checkAndWarnUserIfCaseInProgress(self):
     proceed = True
@@ -2588,10 +2591,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     modifiedDisplayNode = self.setupDisplayNode(displayNode, True)
     targetNode.SetAndObserveDisplayNodeID(modifiedDisplayNode.GetID())
 
-  def createNewCase(self, destinationDir):
+  def createNewCase(self, newCaseDirectory):
     self.continueOldCase = False
-    newCaseDirectoryName = "Case"+self.getNextCaseNumber(destinationDir)+datetime.date.today().strftime("-%Y%m%d")
-    newCaseDirectory = os.path.join(destinationDir, newCaseDirectoryName)
     os.mkdir(newCaseDirectory)
     os.mkdir(os.path.join(newCaseDirectory, "DICOM"))
     os.mkdir(os.path.join(newCaseDirectory, "DICOM", "Preop"))
@@ -2648,17 +2649,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
       if self.getDirectorySize(d) > 0:
         validDirectories.append(d)
     return validDirectories
-
-  def getNextCaseNumber(self, destinationDir):
-    caseNumber = 0
-    for dirName in [dirName for dirName in os.listdir(destinationDir)
-                     if os.path.isdir(os.path.join(destinationDir, dirName)) and dirName.startswith("Case")]:
-      number = int(dirName.split("-")[0].replace("Case",""))
-      caseNumber = caseNumber if caseNumber > number else number
-    caseNumber = str(caseNumber+1)
-    while len(caseNumber) < 3 :
-      caseNumber = "0" + caseNumber
-    return caseNumber
 
   def closeCase(self, directory):
     self.stopSmartDICOMReceiver()
@@ -3525,3 +3515,65 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
 
     self.dataChanged(self.index(0, 3), self.index(self.rowCount()-1, 4))
     self.invokeEvent(vtk.vtkCommand.ModifiedEvent)
+
+
+class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
+
+  PREFIX = "Case"
+  SUFFIX = "-" + datetime.date.today().strftime("%Y%m%d")
+  SUFFIX_PATTERN = "-[0-9]{8}"
+  CASE_NUMBER_DIGITS = 3
+  PATTERN = PREFIX+"[0-9]{"+str(CASE_NUMBER_DIGITS-1)+"}[1-9]{1}"+SUFFIX_PATTERN
+
+  def __init__(self, destination, parent=None):
+    super(NewCaseSelectionNameWidget, self).__init__(parent)
+    if not os.path.exists(destination):
+      raise
+    self.destinationRoot = destination
+    self.newCaseDirectory = None
+    self.minimum = self.getNextCaseNumber()
+    self.setupUI()
+    self.setupConnections()
+    self.onCaseNumberChanged(self.minimum)
+
+  def getNextCaseNumber(self):
+    import re
+    caseNumber = 0
+    for dirName in [dirName for dirName in os.listdir(self.destinationRoot)
+                     if os.path.isdir(os.path.join(self.destinationRoot, dirName)) and re.match(self.PATTERN, dirName)]:
+      number = int(re.split(self.SUFFIX_PATTERN, dirName)[0].split(self.PREFIX)[1])
+      caseNumber = caseNumber if caseNumber > number else number
+    return caseNumber+1
+
+  def setupUI(self):
+    self.setWindowTitle("Case Number Selection")
+    self.setText("Please select a case number for the new case.")
+    self.setIcon(qt.QMessageBox.Question)
+    self.spinbox = qt.QSpinBox()
+    self.spinbox.setRange(self.minimum, 10000000)
+    self.preview = qt.QLabel()
+    self.notice = qt.QLabel()
+    self.layout().addWidget(self.createVLayout([self.createHLayout([qt.QLabel("Proposed Case Number"), self.spinbox]),
+                                                self.preview, self.notice]), 2, 1)
+    self.okButton = self.addButton(self.Ok)
+    self.okButton.enabled = False
+    self.cancelButton = self.addButton(self.Cancel)
+    self.setDefaultButton(self.okButton)
+
+  def setupConnections(self):
+    self.spinbox.valueChanged.connect(self.onCaseNumberChanged)
+
+  def onCaseNumberChanged(self, caseNumber):
+    while len(str(caseNumber)) < self.CASE_NUMBER_DIGITS:
+      caseNumber = "0" + caseNumber
+    directory = self.PREFIX+str(caseNumber)+self.SUFFIX
+    self.newCaseDirectory = os.path.join(self.destinationRoot, directory)
+    self.preview.setText("New case directory: " + self.newCaseDirectory)
+    self.okButton.enabled = not os.path.exists(self.newCaseDirectory)
+    self.notice.text = "" if not os.path.exists(self.newCaseDirectory) else "Note: Directory already exists."
+
+  def validate(self):
+    return False
+
+  def getSelectedNumber(self):
+    return self.spinbox.value
