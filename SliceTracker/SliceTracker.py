@@ -3572,9 +3572,3 @@ class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
     self.preview.setText("New case directory: " + self.newCaseDirectory)
     self.okButton.enabled = not os.path.exists(self.newCaseDirectory)
     self.notice.text = "" if not os.path.exists(self.newCaseDirectory) else "Note: Directory already exists."
-
-  def validate(self):
-    return False
-
-  def getSelectedNumber(self):
-    return self.spinbox.value
