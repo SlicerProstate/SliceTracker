@@ -14,7 +14,7 @@ from Editor import EditorWidget
 
 from SlicerProstateUtils.constants import DICOMTAGS, COLOR, STYLE, FileExtension
 from SlicerProstateUtils.helpers import SmartDICOMReceiver, SliceAnnotation, TargetCreationWidget
-from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow, CustomStatusProgressbar
+from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ParameterNodeObservationMixin
 from SlicerProstateUtils.events import SlicerProstateEvents
@@ -93,6 +93,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def intraopDataDir(self, path):
     if os.path.exists(path):
       self.intraopWatchBox.sourceFile = None
+      self.logic.removeObservers()
       self.logic.addObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
       self.logic.addObserver(SliceTrackerEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
       self.logic.addObserver(SliceTrackerEvents.NewFileIndexedEvent, self.onNewFileIndexed)
@@ -241,7 +242,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
       self.clearData()
       if self.customStatusProgressBar:
-        self.customStatusProgressBar.hide()
+        slicer.util.mainWindow().statusBar().removeWidget(self.customStatusProgressBar)
     except:
       pass
     ScriptedLoadableModuleWidget.onReload(self)
@@ -302,10 +303,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.registrationDetailsButton = self.createButton("", icon=self.settingsIcon, styleSheet="border:none;",
                                                        maximumWidth=16)
     self.layout.addWidget(self.intraopWatchBox)
-
-  def createStatusProgressbar(self):
-    self.customStatusProgressBar = CustomStatusProgressbar()
-    self.customStatusProgressBar.hide()
 
   def createCaseInformationArea(self):
     self.casesRootDirectoryButton = self.createDirectoryButton(text="Choose cases root location",
@@ -379,7 +376,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.notifyUserAboutNewData = True
 
     self.createPatientWatchBox()
-    self.createStatusProgressbar()
+    self.customStatusProgressBar = self.getOrCreateCustomProgressBar()
     self.setupViewSettingGroupBox()
     self.createCaseInformationArea()
     self.setupRegistrationWatchBox()
@@ -983,6 +980,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def loadCaseData(self):
     from mpReview import mpReviewLogic
+    # TODO: improve performance here
     savedSessions = self.logic.getSavedSessions(self.currentCaseDirectory)
     if len(savedSessions) > 0: # After registration(s) has been done
       if not self.openSavedSession(savedSessions):
@@ -2497,7 +2495,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
   @intraopDataDir.setter
   def intraopDataDir(self, path):
     self._intraopDataDir = path
-    self.stopSmartDICOMReceiver()
     self.importDICOMSeries(self.getFileList(self.intraopDataDir))
     if not self.caseCompleted:
       self.startSmartDICOMReceiver()
@@ -2945,6 +2942,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     slicer.mrmlScene.AddNode(outputVolume)
 
   def startSmartDICOMReceiver(self):
+    self.stopSmartDICOMReceiver()
     self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir)
     self.smartDicomReceiver.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                         self.onDICOMSeriesReceived)
@@ -2974,6 +2972,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     size = len(newFileList)
     for currentIndex, currentFile in enumerate(newFileList, start=1):
       self.invokeEvent(SliceTrackerEvents.NewFileIndexedEvent, ["Indexing file %s" % currentFile, size, currentIndex].__str__())
+      slicer.app.processEvents()
       currentFile = os.path.join(self._intraopDataDir, currentFile)
       indexer.addFile(db, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)

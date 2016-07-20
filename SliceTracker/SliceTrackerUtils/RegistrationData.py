@@ -38,14 +38,19 @@ class RegistrationResults(ModuleWidgetMixin):
     self.preopTargets = None
     self._savedRegistrationResults = []
     self._registrationResults = OrderedDict()
+    self.customProgressBar = self.getOrCreateCustomProgressBar()
 
   def loadFromJSON(self, directory, filename):
     self.resetAndInitializeData()
     self.alreadyLoadedFileNames = {}
     with open(filename) as data_file:
       data = json.load(data_file)
-      for name, jsonResult in data["results"].iteritems():
+      for index, (name, jsonResult) in enumerate(data["results"].iteritems()):
         result = self.createResult(name)
+        self.customProgressBar.visible = True
+        self.customProgressBar.maximum = len(data["results"])
+        self.customProgressBar.updateStatus("Loading series registration result %s" % result.name, index+1)
+        slicer.app.processEvents()
         for attribute, value in jsonResult.iteritems():
           if attribute == 'volumes':
             self._loadResultFileData(value, directory, slicer.util.loadVolume, result.setVolume)
@@ -71,6 +76,7 @@ class RegistrationResults(ModuleWidgetMixin):
             setattr(result, attribute, value)
         if result not in self._savedRegistrationResults:
           self._savedRegistrationResults.append(result)
+      self.customProgressBar.text = "Finished loading registration results"
     self._registrationResults = OrderedDict(sorted(self._registrationResults.items()))
 
   def _loadResultFileData(self, dictionary, directory, loadFunction, setFunction):
