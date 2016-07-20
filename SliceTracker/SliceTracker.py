@@ -14,7 +14,7 @@ from Editor import EditorWidget
 
 from SlicerProstateUtils.constants import DICOMTAGS, COLOR, STYLE, FileExtension
 from SlicerProstateUtils.helpers import SmartDICOMReceiver, SliceAnnotation, TargetCreationWidget
-from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
+from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow, CustomStatusProgressbar
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ParameterNodeObservationMixin
 from SlicerProstateUtils.events import SlicerProstateEvents
@@ -93,7 +93,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def intraopDataDir(self, path):
     if os.path.exists(path):
       self.intraopWatchBox.sourceFile = None
+      self.logic.addObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
       self.logic.addObserver(SliceTrackerEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+      self.logic.addObserver(SliceTrackerEvents.NewFileIndexedEvent, self.onNewFileIndexed)
       self.logic.intraopDataDir = path
       self.closeCaseButton.enabled = True
 
@@ -238,6 +240,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     try:
       self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
       self.clearData()
+      if self.customStatusProgressBar:
+        self.customStatusProgressBar.hide()
     except:
       pass
     ScriptedLoadableModuleWidget.onReload(self)
@@ -262,6 +266,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.patientWatchBox.sourceFile = None
     self.intraopWatchBox.sourceFile = None
     self.continueOldCase = False
+    if self.customStatusProgressBar:
+      self.customStatusProgressBar.reset()
+      self.customStatusProgressBar.hide()
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -295,6 +302,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.registrationDetailsButton = self.createButton("", icon=self.settingsIcon, styleSheet="border:none;",
                                                        maximumWidth=16)
     self.layout.addWidget(self.intraopWatchBox)
+
+  def createStatusProgressbar(self):
+    self.customStatusProgressBar = CustomStatusProgressbar()
+    self.customStatusProgressBar.hide()
 
   def createCaseInformationArea(self):
     self.casesRootDirectoryButton = self.createDirectoryButton(text="Choose cases root location",
@@ -368,6 +379,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.notifyUserAboutNewData = True
 
     self.createPatientWatchBox()
+    self.createStatusProgressbar()
     self.setupViewSettingGroupBox()
     self.createCaseInformationArea()
     self.setupRegistrationWatchBox()
@@ -2423,7 +2435,26 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.resultSelector.visible = len(results) > 1
 
   @vtk.calldata_type(vtk.VTK_STRING)
+  def onDICOMReceiverStatusChanged(self, caller, event, callData):
+    text, steps, currentStep = ast.literal_eval(callData)
+    self.customStatusProgressBar.maximum = steps
+    if not self.customStatusProgressBar.visible:
+      self.customStatusProgressBar.show()
+    self.customStatusProgressBar.text = text
+    if currentStep:
+      self.customStatusProgressBar.value = currentStep
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onNewFileIndexed(self, caller, event, callData):
+    text, size, currentIndex = ast.literal_eval(callData)
+    if not self.customStatusProgressBar.visible:
+      self.customStatusProgressBar.show()
+    self.customStatusProgressBar.maximum = size
+    self.customStatusProgressBar.updateStatus(text, currentIndex)
+
+  @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageDataReceived(self, caller, event, callData):
+    self.customStatusProgressBar.text = "New image data has been received."
     newFileList = ast.literal_eval(callData)
     seriesNumberPatientIDs = self.getAllNewSeriesNumbersIncludingPatientIDs(newFileList)
     if self.logic.usePreopData:
@@ -2917,12 +2948,18 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir)
     self.smartDicomReceiver.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                         self.onDICOMSeriesReceived)
+    self.smartDicomReceiver.addObserver(SlicerProstateEvents.StatusChangedEvent,
+                                        self.onDICOMReceiverStatusChanged)
     self.smartDicomReceiver.start()
 
   def stopSmartDICOMReceiver(self):
     if self.smartDicomReceiver:
       self.smartDicomReceiver.stop()
       self.smartDicomReceiver = None
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onDICOMReceiverStatusChanged(self, caller, event, callData):
+    self.invokeEvent(SlicerProstateEvents.StatusChangedEvent, callData)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onDICOMSeriesReceived(self, caller, event, callData):
@@ -2934,7 +2971,9 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     db = slicer.dicomDatabase
 
     eligibleSeriesFiles = []
-    for currentFile in newFileList:
+    size = len(newFileList)
+    for currentIndex, currentFile in enumerate(newFileList, start=1):
+      self.invokeEvent(SliceTrackerEvents.NewFileIndexedEvent, ["Indexing file %s" % currentFile, size, currentIndex].__str__())
       currentFile = os.path.join(self._intraopDataDir, currentFile)
       indexer.addFile(db, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
