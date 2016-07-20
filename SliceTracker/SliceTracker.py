@@ -93,7 +93,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def intraopDataDir(self, path):
     if os.path.exists(path):
       self.intraopWatchBox.sourceFile = None
+      self.logic.removeObservers()
+      self.logic.addObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
       self.logic.addObserver(SliceTrackerEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+      self.logic.addObserver(SliceTrackerEvents.NewFileIndexedEvent, self.onNewFileIndexed)
       self.logic.intraopDataDir = path
       self.closeCaseButton.enabled = True
 
@@ -238,6 +241,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     try:
       self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
       self.clearData()
+      if self.customStatusProgressBar:
+        slicer.util.mainWindow().statusBar().removeWidget(self.customStatusProgressBar)
     except:
       pass
     ScriptedLoadableModuleWidget.onReload(self)
@@ -262,6 +267,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.patientWatchBox.sourceFile = None
     self.intraopWatchBox.sourceFile = None
     self.continueOldCase = False
+    if self.customStatusProgressBar:
+      self.customStatusProgressBar.reset()
+      self.customStatusProgressBar.hide()
 
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
@@ -368,6 +376,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.notifyUserAboutNewData = True
 
     self.createPatientWatchBox()
+    self.customStatusProgressBar = self.getOrCreateCustomProgressBar()
     self.setupViewSettingGroupBox()
     self.createCaseInformationArea()
     self.setupRegistrationWatchBox()
@@ -884,8 +893,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if not self.checkAndWarnUserIfCaseInProgress():
       return
     self.clearData()
-    self.currentCaseDirectory = self.logic.createNewCase(self.caseRootDir)
-    self.startPreopDICOMReceiver()
+    self.caseDialog = NewCaseSelectionNameWidget(self.caseRootDir)
+    selectedButton = self.caseDialog.exec_()
+    if selectedButton == qt.QMessageBox.Ok:
+      self.currentCaseDirectory = self.logic.createNewCase(self.caseDialog.newCaseDirectory)
+      self.startPreopDICOMReceiver()
 
   def checkAndWarnUserIfCaseInProgress(self):
     proceed = True
@@ -968,6 +980,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def loadCaseData(self):
     from mpReview import mpReviewLogic
+    # TODO: improve performance here
     savedSessions = self.logic.getSavedSessions(self.currentCaseDirectory)
     if len(savedSessions) > 0: # After registration(s) has been done
       if not self.openSavedSession(savedSessions):
@@ -1622,7 +1635,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       slicer.util.infoDisplay("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
                               "sure to select one.", windowTitle="SliceTracker")
     else:
-      message = self.logic.saveSession(self.generatedOutputDirectory)
+      if self.logic.saveSession(self.generatedOutputDirectory):
+        message = "Case data has been save successfully."
+      else:
+        message = "Case data could not be saved successfully. Please see log for further information."
       if showDialog:
         slicer.util.infoDisplay(message, windowTitle="SliceTracker")
 
@@ -2407,7 +2423,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if not self.logic.isVolumeExtentValid(self.currentResult.bSplineVolume):
       slicer.util.infoDisplay(
         "One or more empty volume were created during registration process. You have three options:\n"
-        "1. Skip the registration result \n"
+        "1. Reject the registration result \n"
         "2. Retry with creating a new segmentation \n"
         "3. Set targets to your preferred position (in Four-Up layout)",
         title="Action needed: Registration created empty volume(s)", windowTitle="SliceTracker")
@@ -2420,7 +2436,26 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.resultSelector.visible = len(results) > 1
 
   @vtk.calldata_type(vtk.VTK_STRING)
+  def onDICOMReceiverStatusChanged(self, caller, event, callData):
+    text, steps, currentStep = ast.literal_eval(callData)
+    self.customStatusProgressBar.maximum = steps
+    if not self.customStatusProgressBar.visible:
+      self.customStatusProgressBar.show()
+    self.customStatusProgressBar.text = text
+    if currentStep:
+      self.customStatusProgressBar.value = currentStep
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onNewFileIndexed(self, caller, event, callData):
+    text, size, currentIndex = ast.literal_eval(callData)
+    if not self.customStatusProgressBar.visible:
+      self.customStatusProgressBar.show()
+    self.customStatusProgressBar.maximum = size
+    self.customStatusProgressBar.updateStatus(text, currentIndex)
+
+  @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageDataReceived(self, caller, event, callData):
+    self.customStatusProgressBar.text = "New image data has been received."
     newFileList = ast.literal_eval(callData)
     seriesNumberPatientIDs = self.getAllNewSeriesNumbersIncludingPatientIDs(newFileList)
     if self.logic.usePreopData:
@@ -2463,7 +2498,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
   @intraopDataDir.setter
   def intraopDataDir(self, path):
     self._intraopDataDir = path
-    self.stopSmartDICOMReceiver()
     self.importDICOMSeries(self.getFileList(self.intraopDataDir))
     if not self.caseCompleted:
       self.startSmartDICOMReceiver()
@@ -2588,10 +2622,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     modifiedDisplayNode = self.setupDisplayNode(displayNode, True)
     targetNode.SetAndObserveDisplayNodeID(modifiedDisplayNode.GetID())
 
-  def createNewCase(self, destinationDir):
+  def createNewCase(self, newCaseDirectory):
     self.continueOldCase = False
-    newCaseDirectoryName = "Case"+self.getNextCaseNumber(destinationDir)+datetime.date.today().strftime("-%Y%m%d")
-    newCaseDirectory = os.path.join(destinationDir, newCaseDirectoryName)
     os.mkdir(newCaseDirectory)
     os.mkdir(os.path.join(newCaseDirectory, "DICOM"))
     os.mkdir(os.path.join(newCaseDirectory, "DICOM", "Preop"))
@@ -2648,17 +2680,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
       if self.getDirectorySize(d) > 0:
         validDirectories.append(d)
     return validDirectories
-
-  def getNextCaseNumber(self, destinationDir):
-    caseNumber = 0
-    for dirName in [dirName for dirName in os.listdir(destinationDir)
-                     if os.path.isdir(os.path.join(destinationDir, dirName)) and dirName.startswith("Case")]:
-      number = int(dirName.split("-")[0].replace("Case",""))
-      caseNumber = caseNumber if caseNumber > number else number
-    caseNumber = str(caseNumber+1)
-    while len(caseNumber) < 3 :
-      caseNumber = "0" + caseNumber
-    return caseNumber
 
   def closeCase(self, directory):
     self.stopSmartDICOMReceiver()
@@ -2768,41 +2789,44 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     if not os.path.exists(outputDir):
       self.createDirectory(outputDir)
 
-    successfullySavedData = ["The following data was successfully saved:\n"]
-    failedSaveOfData = ["The following data failed to saved:\n"]
+    successfullySavedFileNames = []
+    failedSaveOfFileNames = []
 
     def saveIntraopSegmentation():
       intraopLabel = self.registrationResults.intraopLabel
       if intraopLabel:
         seriesNumber = intraopLabel.GetName().split(":")[0]
-        success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL")
-        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+        success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL",
+                                          overwrite=True)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
         if self.clippingModelNode:
-          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK, name=seriesNumber+"-MODEL")
-          self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
+                                            name=seriesNumber+"-MODEL", overwrite=True)
+          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
         if self.inputMarkupNode:
           success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
-                                            name=seriesNumber+"-VolumeClip_points")
-          self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+                                            name=seriesNumber+"-VolumeClip_points", overwrite=True)
+          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
     def saveOriginalTargets():
       originalTargets = self.registrationResults.originalTargets
       if originalTargets:
-        success, name = self.saveNodeData(originalTargets, outputDir, FileExtension.FCSV, name="PreopTargets")
-        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+        success, name = self.saveNodeData(originalTargets, outputDir, FileExtension.FCSV, name="PreopTargets",
+                                          overwrite=True)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
     def saveBiasCorrectionResult():
       if not self.biasCorrectionDone:
         return None
-      success, name = self.saveNodeData(self.preopVolume, outputDir, FileExtension.NRRD)
-      self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+      success, name = self.saveNodeData(self.preopVolume, outputDir, FileExtension.NRRD, overwrite=True)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
       return name+FileExtension.NRRD
 
     def saveZFrameTransformation():
-      success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5)
-      self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+      success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5, overwrite=True)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
       return name+FileExtension.H5
 
     def createResultsDict():
@@ -2820,18 +2844,24 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     saveBiasCorrectionResult()
 
     savedSuccessfully, failedToSave = self.registrationResults.save(outputDir)
-    successfullySavedData += savedSuccessfully
-    failedSaveOfData += failedToSave
+    successfullySavedFileNames += savedSuccessfully
+    failedSaveOfFileNames += failedToSave
 
     saveJSON({"completed":self.caseCompleted, "usedPreopData":self.usePreopData, "results":createResultsDict(),
               "VOLUME-PREOP-N4":saveBiasCorrectionResult(), "zFrameTransform":saveZFrameTransformation()})
 
-    messageOutput = ""
-    for messageList in [successfullySavedData, failedSaveOfData] :
-      if len(messageList) > 1:
-        for message in messageList:
-          messageOutput += message + "\n"
-    return messageOutput if messageOutput != "" else "There is nothing to be saved yet."
+    if len(failedSaveOfFileNames):
+      messageOutput = "The following data failed to saved:\n"
+      for filename in failedSaveOfFileNames:
+        messageOutput += filename + "\n"
+      logging.debug(messageOutput)
+
+    if len(successfullySavedFileNames):
+      messageOutput = "The following data was successfully saved:\n"
+      for filename in successfullySavedFileNames:
+        messageOutput += filename + "\n"
+      logging.debug(messageOutput)
+    return len(failedSaveOfFileNames) == 0
 
   def getMostRecentWholeGlandSegmentation(self, path):
     return self.getMostRecentFile(path, FileExtension.NRRD, filter="WholeGland")
@@ -2880,18 +2910,27 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
 
     coverProstateRegResult = self.registrationResults.getMostRecentApprovedCoverProstateRegistration()
     lastRigidTfm = self.registrationResults.getLastApprovedRigidTransformation()
+    lastApprovedTfm = self.registrationResults.getMostRecentApprovedTransform()
+    initialTransform = lastApprovedTfm if lastApprovedTfm else lastRigidTfm
 
     self.generateNameAndCreateRegistrationResult(self.currentIntraopVolume)
     parameterNode = slicer.vtkMRMLScriptedModuleNode()
     parameterNode.SetAttribute('FixedImageNodeID', self.currentIntraopVolume.GetID())
-    parameterNode.SetAttribute('FixedLabelNodeID', coverProstateRegResult.fixedLabel.GetID())
+
+    fixedLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.currentIntraopVolume,
+                                                           self.currentIntraopVolume.GetName() + '-label')
+
+    self.runBRAINSResample(inputVolume=coverProstateRegResult.fixedLabel, referenceVolume=self.currentIntraopVolume,
+                           outputVolume=fixedLabel, warpTransform=initialTransform)
+
+    self.dilateMask(fixedLabel, dilateValue=8)
+
+    parameterNode.SetAttribute('FixedLabelNodeID', fixedLabel.GetID())
     parameterNode.SetAttribute('MovingImageNodeID', coverProstateRegResult.fixedVolume.GetID())
     parameterNode.SetAttribute('MovingLabelNodeID', coverProstateRegResult.fixedLabel.GetID())
     parameterNode.SetAttribute('TargetsNodeID', coverProstateRegResult.approvedTargets.GetID())
-    if lastRigidTfm:
-      parameterNode.SetAttribute('InitialTransformNodeID', lastRigidTfm.GetID())
 
-    self.registrationLogic.runReRegistration(parameterNode, progressCallback=progressCallback)
+    self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
 
   def getRegistrationResultNameAndGeneratedSuffix(self, name):
     nOccurrences = sum([1 for result in self.registrationResults.getResultsAsList() if name in result.name])
@@ -2900,16 +2939,33 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
       suffix = "_Retry_" + str(nOccurrences)
     return name, suffix
 
+  def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
+
+    params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
+              'warpTransform': warpTransform, 'interpolationMode': 'NearestNeighbor'}
+
+    logging.debug('About to run BRAINSResample CLI with those params: %s' % params)
+    slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
+    logging.debug('resample labelmap through')
+    slicer.mrmlScene.AddNode(outputVolume)
+
   def startSmartDICOMReceiver(self):
+    self.stopSmartDICOMReceiver()
     self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir)
     self.smartDicomReceiver.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                         self.onDICOMSeriesReceived)
+    self.smartDicomReceiver.addObserver(SlicerProstateEvents.StatusChangedEvent,
+                                        self.onDICOMReceiverStatusChanged)
     self.smartDicomReceiver.start()
 
   def stopSmartDICOMReceiver(self):
     if self.smartDicomReceiver:
       self.smartDicomReceiver.stop()
       self.smartDicomReceiver = None
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onDICOMReceiverStatusChanged(self, caller, event, callData):
+    self.invokeEvent(SlicerProstateEvents.StatusChangedEvent, callData)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onDICOMSeriesReceived(self, caller, event, callData):
@@ -2921,7 +2977,10 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     db = slicer.dicomDatabase
 
     eligibleSeriesFiles = []
-    for currentFile in newFileList:
+    size = len(newFileList)
+    for currentIndex, currentFile in enumerate(newFileList, start=1):
+      self.invokeEvent(SliceTrackerEvents.NewFileIndexedEvent, ["Indexing file %s" % currentFile, size, currentIndex].__str__())
+      slicer.app.processEvents()
       currentFile = os.path.join(self._intraopDataDir, currentFile)
       indexer.addFile(db, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
@@ -3359,9 +3418,9 @@ class SliceTrackerTest(ScriptedLoadableModuleTest):
 class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMixin):
 
   COLUMN_NAME = 'Name'
-  COLUMN_DISTANCE = 'Distance[mm]'
+  COLUMN_DISTANCE = 'Distance[cm]'
   COLUMN_HOLE = 'Hole'
-  COLUMN_DEPTH = 'Depth[mm]'
+  COLUMN_DEPTH = 'Depth[cm]'
 
   headers = [COLUMN_NAME, COLUMN_DISTANCE, COLUMN_HOLE, COLUMN_DEPTH]
 
@@ -3441,10 +3500,10 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
       elif col == 3:
         currentDepth = self.computeZFrameDepth(targetPosition, returnAsString=False)
         coverProstateDepth = self.computeZFrameDepth(coverProstateTargetPosition, returnAsString=False)
-        if abs(currentDepth-coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 5.0 ):
-          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.3f'" % coverProstateDepth
+        if abs(currentDepth-coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 0.5 ):
+          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
         else:
-          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.3f'" % coverProstateDepth
+          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
 
     if not index.isValid() or role not in [qt.Qt.DisplayRole, qt.Qt.ToolTipRole]:
       return None
@@ -3456,9 +3515,9 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
 
     if col == 1 and self.cursorPosition and self.computeCursorDistances:
       distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
-      distance2D = [str(round(distance2D[0], 2)), str(round(distance2D[1], 2)), str(round(distance2D[2], 2))]
+      distance2D = [str(round(distance2D[0]/10, 1)), str(round(distance2D[1]/10, 1)), str(round(distance2D[2]/10, 1))]
       distance3D = self.logic.get3DEuclideanDistance(targetPosition, self.cursorPosition)
-      text = 'x= ' + distance2D[0] + '  y= ' + distance2D[1] + '  z= ' + distance2D[2] + '  (3D= ' + str(round(distance3D, 2)) + ')'
+      text = 'x= ' + distance2D[0] + '  y= ' + distance2D[1] + '  z= ' + distance2D[2] + '  (3D= ' + str(round(distance3D/10, 1)) + ')'
       return text
     elif (col == 2 or col == 3) and self.logic.zFrameRegistrationSuccessful:
       if col == 2:
@@ -3483,8 +3542,9 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
 
   def computeZFrameDepth(self, targetPosition, returnAsString=True):
     (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
+    depth = round(depth/10,1)
     if returnAsString:
-      return '%.3f' % depth if inRange else '(%.3f)' % depth
+      return '%.1f' % depth if inRange else '(%.1f)' % depth
     else:
       return depth
 
@@ -3505,3 +3565,59 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
 
     self.dataChanged(self.index(0, 3), self.index(self.rowCount()-1, 4))
     self.invokeEvent(vtk.vtkCommand.ModifiedEvent)
+
+
+class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
+
+  PREFIX = "Case"
+  SUFFIX = "-" + datetime.date.today().strftime("%Y%m%d")
+  SUFFIX_PATTERN = "-[0-9]{8}"
+  CASE_NUMBER_DIGITS = 3
+  PATTERN = PREFIX+"[0-9]{"+str(CASE_NUMBER_DIGITS-1)+"}[1-9]{1}"+SUFFIX_PATTERN
+
+  def __init__(self, destination, parent=None):
+    super(NewCaseSelectionNameWidget, self).__init__(parent)
+    if not os.path.exists(destination):
+      raise
+    self.destinationRoot = destination
+    self.newCaseDirectory = None
+    self.minimum = self.getNextCaseNumber()
+    self.setupUI()
+    self.setupConnections()
+    self.onCaseNumberChanged(self.minimum)
+
+  def getNextCaseNumber(self):
+    import re
+    caseNumber = 0
+    for dirName in [dirName for dirName in os.listdir(self.destinationRoot)
+                     if os.path.isdir(os.path.join(self.destinationRoot, dirName)) and re.match(self.PATTERN, dirName)]:
+      number = int(re.split(self.SUFFIX_PATTERN, dirName)[0].split(self.PREFIX)[1])
+      caseNumber = caseNumber if caseNumber > number else number
+    return caseNumber+1
+
+  def setupUI(self):
+    self.setWindowTitle("Case Number Selection")
+    self.setText("Please select a case number for the new case.")
+    self.setIcon(qt.QMessageBox.Question)
+    self.spinbox = qt.QSpinBox()
+    self.spinbox.setRange(self.minimum, int("9"*self.CASE_NUMBER_DIGITS))
+    self.preview = qt.QLabel()
+    self.notice = qt.QLabel()
+    self.layout().addWidget(self.createVLayout([self.createHLayout([qt.QLabel("Proposed Case Number"), self.spinbox]),
+                                                self.preview, self.notice]), 2, 1)
+    self.okButton = self.addButton(self.Ok)
+    self.okButton.enabled = False
+    self.cancelButton = self.addButton(self.Cancel)
+    self.setDefaultButton(self.okButton)
+
+  def setupConnections(self):
+    self.spinbox.valueChanged.connect(self.onCaseNumberChanged)
+
+  def onCaseNumberChanged(self, caseNumber):
+    while len(str(caseNumber)) < self.CASE_NUMBER_DIGITS:
+      caseNumber = "0" + caseNumber
+    directory = self.PREFIX+str(caseNumber)+self.SUFFIX
+    self.newCaseDirectory = os.path.join(self.destinationRoot, directory)
+    self.preview.setText("New case directory: " + self.newCaseDirectory)
+    self.okButton.enabled = not os.path.exists(self.newCaseDirectory)
+    self.notice.text = "" if not os.path.exists(self.newCaseDirectory) else "Note: Directory already exists."

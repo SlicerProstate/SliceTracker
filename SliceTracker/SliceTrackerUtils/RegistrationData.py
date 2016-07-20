@@ -36,15 +36,21 @@ class RegistrationResults(ModuleWidgetMixin):
   def resetAndInitializeData(self):
     self._activeResult = None
     self.preopTargets = None
+    self._savedRegistrationResults = []
     self._registrationResults = OrderedDict()
+    self.customProgressBar = self.getOrCreateCustomProgressBar()
 
   def loadFromJSON(self, directory, filename):
     self.resetAndInitializeData()
     self.alreadyLoadedFileNames = {}
     with open(filename) as data_file:
       data = json.load(data_file)
-      for name, jsonResult in data["results"].iteritems():
+      for index, (name, jsonResult) in enumerate(data["results"].iteritems()):
         result = self.createResult(name)
+        self.customProgressBar.visible = True
+        self.customProgressBar.maximum = len(data["results"])
+        self.customProgressBar.updateStatus("Loading series registration result %s" % result.name, index+1)
+        slicer.app.processEvents()
         for attribute, value in jsonResult.iteritems():
           if attribute == 'volumes':
             self._loadResultFileData(value, directory, slicer.util.loadVolume, result.setVolume)
@@ -68,6 +74,9 @@ class RegistrationResults(ModuleWidgetMixin):
             result.modifiedTargets[approvedRegType] = value["userModified"]
           else:
             setattr(result, attribute, value)
+        if result not in self._savedRegistrationResults:
+          self._savedRegistrationResults.append(result)
+      self.customProgressBar.text = "Finished loading registration results"
     self._registrationResults = OrderedDict(sorted(self._registrationResults.items()))
 
   def _loadResultFileData(self, dictionary, directory, loadFunction, setFunction):
@@ -88,11 +97,17 @@ class RegistrationResults(ModuleWidgetMixin):
   def save(self, outputDir):
     savedSuccessfully = []
     failedToSave = []
-
-    for result in self._registrationResults.values():
-      successfulList, failedList = result.save(outputDir)
-      savedSuccessfully += successfulList
-      failedToSave += failedList
+    self.customProgressBar.visible = True
+    for index, result in enumerate(self._registrationResults.values()):
+      self.customProgressBar.maximum = len(self._registrationResults)
+      self.customProgressBar.updateStatus("Saving registration result for series %s" % result.name, index + 1)
+      slicer.app.processEvents()
+      if result not in self._savedRegistrationResults:
+        successfulList, failedList = result.save(outputDir)
+        savedSuccessfully += successfulList
+        failedToSave += failedList
+        self._savedRegistrationResults.append(result)
+    self.customProgressBar.text = "Registration data successfully saved" if len(failedToSave) == 0 else "Error/s occurred during saving"
     return savedSuccessfully, failedToSave
 
   def _registrationResultHasStatus(self, series, status):
@@ -126,15 +141,22 @@ class RegistrationResults(ModuleWidgetMixin):
     return mostRecent
 
   def getLastApprovedRigidTransformation(self):
-    nApprovedRegistrations = sum([1 for result in self._registrationResults.values() if result.approved])
-    if nApprovedRegistrations == 1:
+    if sum([1 for result in self._registrationResults.values() if result.approved]) == 1:
       lastRigidTfm = None
     else:
-      try:
-        lastRigidTfm = self.getMostRecentApprovedResult().rigidTransform
-      except AttributeError:
-        lastRigidTfm = None
+      lastRigidTfm = self.getMostRecentApprovedResult().rigidTransform
+    if not lastRigidTfm:
+      lastRigidTfm = slicer.vtkMRMLLinearTransformNode()
+      slicer.mrmlScene.AddNode(lastRigidTfm)
     return lastRigidTfm
+
+  @onExceptionReturnNone
+  def getMostRecentApprovedTransform(self):
+    results = sorted(self._registrationResults.values(), key=lambda s: s.seriesNumber)
+    for result in reversed(results):
+      if result.approved and self.getSetting("COVER_PROSTATE", "SliceTracker") not in result.name:
+        return result.transforms[result.approvedRegistrationType]
+    return None
 
   def getOrCreateResult(self, series):
     result = self.getResult(series)

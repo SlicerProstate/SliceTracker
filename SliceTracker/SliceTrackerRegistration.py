@@ -1,8 +1,9 @@
 import argparse, sys, os, logging
-import vtk, qt, slicer
+import qt, slicer
 from slicer.ScriptedLoadableModule import *
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from SliceTrackerUtils.RegistrationData import RegistrationResult
+from SliceTrackerUtils.constants import SliceTrackerConstants
 
 
 class SliceTrackerRegistration(ScriptedLoadableModule):
@@ -37,29 +38,42 @@ class SliceTrackerRegistrationWidget(ScriptedLoadableModuleWidget, ModuleWidgetM
     ScriptedLoadableModuleWidget.__init__(self, parent)
     self.logic = SliceTrackerRegistrationLogic()
 
+  def createSliceWidgetClassMembers(self, name):
+    widget = self.layoutManager.sliceWidget(name)
+    setattr(self, name.lower()+"Widget", widget)
+    setattr(self, name.lower()+"CompositeNode", widget.mrmlSliceCompositeNode())
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
+    self.createSliceWidgetClassMembers("Red")
+    self.createSliceWidgetClassMembers("Yellow")
     self.registrationGroupBox = qt.QGroupBox()
     self.registrationGroupBoxLayout = qt.QFormLayout()
     self.registrationGroupBox.setLayout(self.registrationGroupBoxLayout)
-    self.preopVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], showChildNodeTypes=False,
-                                                   selectNodeUponCreation=True, toolTip="Pick algorithm input.")
-    self.preopLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""], showChildNodeTypes=False,
-                                                  selectNodeUponCreation=False, toolTip="Pick algorithm input.")
-    self.intraopVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled=True,
-                                                     showChildNodeTypes=False, selectNodeUponCreation=True,
-                                                     toolTip="Pick algorithm input.")
-    self.intraopLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""],
-                                                    showChildNodeTypes=False,
+    self.movingVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], showChildNodeTypes=False,
                                                     selectNodeUponCreation=True, toolTip="Pick algorithm input.")
+    self.movingLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""], showChildNodeTypes=False,
+                                                   selectNodeUponCreation=False, toolTip="Pick algorithm input.")
+    self.fixedVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], noneEnabled=True,
+                                                   showChildNodeTypes=False, selectNodeUponCreation=True,
+                                                   toolTip="Pick algorithm input.")
+    self.fixedLabelSelector = self.createComboBox(nodeTypes=["vtkMRMLLabelMapVolumeNode", ""],
+                                                  showChildNodeTypes=False,
+                                                  selectNodeUponCreation=True, toolTip="Pick algorithm input.")
     self.fiducialSelector = self.createComboBox(nodeTypes=["vtkMRMLMarkupsFiducialNode", ""], noneEnabled=True,
                                                 showChildNodeTypes=False, selectNodeUponCreation=False,
                                                 toolTip="Select the Targets")
+    self.initialTransformSelector = self.createComboBox(nodeTypes=["vtkMRMLTransformNode", "vtkMRMLBSplineTransformNode",
+                                                                   "vtkMRMLLinearTransformNode", ""],
+                                                        noneEnabled=True,
+                                                        showChildNodeTypes=False, selectNodeUponCreation=False,
+                                                        toolTip="Select the initial transform")
     self.applyRegistrationButton = self.createButton("Run Registration")
-    self.registrationGroupBoxLayout.addRow("Preop Image Volume: ", self.preopVolumeSelector)
-    self.registrationGroupBoxLayout.addRow("Preop Label Volume: ", self.preopLabelSelector)
-    self.registrationGroupBoxLayout.addRow("Intraop Image Volume: ", self.intraopVolumeSelector)
-    self.registrationGroupBoxLayout.addRow("Intraop Label Volume: ", self.intraopLabelSelector)
+    self.registrationGroupBoxLayout.addRow("Moving Image Volume: ", self.movingVolumeSelector)
+    self.registrationGroupBoxLayout.addRow("Moving Label Volume: ", self.movingLabelSelector)
+    self.registrationGroupBoxLayout.addRow("Fixed Image Volume: ", self.fixedVolumeSelector)
+    self.registrationGroupBoxLayout.addRow("Fixed Label Volume: ", self.fixedLabelSelector)
+    self.registrationGroupBoxLayout.addRow("Initial Transform: ", self.initialTransformSelector)
     self.registrationGroupBoxLayout.addRow("Targets: ", self.fiducialSelector)
     self.registrationGroupBoxLayout.addRow(self.applyRegistrationButton)
     self.layout.addWidget(self.registrationGroupBox)
@@ -69,30 +83,47 @@ class SliceTrackerRegistrationWidget(ScriptedLoadableModuleWidget, ModuleWidgetM
 
   def setupConnections(self):
     self.applyRegistrationButton.clicked.connect(self.runRegistration)
-    self.preopVolumeSelector.connect('currentNodeChanged(bool)', self.updateButton)
-    self.intraopVolumeSelector.connect('currentNodeChanged(bool)', self.updateButton)
-    self.intraopLabelSelector.connect('currentNodeChanged(bool)', self.updateButton)
-    self.preopLabelSelector.connect('currentNodeChanged(bool)', self.updateButton)
+    self.movingVolumeSelector.connect('currentNodeChanged(bool)', self.updateButton)
+    self.movingVolumeSelector.connect('currentNodeChanged(bool)', self.updateButton)
+    self.fixedVolumeSelector.connect('currentNodeChanged(bool)', self.updateButton)
+    self.fixedLabelSelector.connect('currentNodeChanged(bool)', self.updateButton)
+    self.movingLabelSelector.connect('currentNodeChanged(bool)', self.updateButton)
     self.fiducialSelector.connect('currentNodeChanged(bool)', self.updateButton)
 
   def updateButton(self):
+    if not self.layoutManager.layout == SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE:
+      self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE)
+    if self.movingVolumeSelector.currentNode():
+      self.redCompositeNode.SetForegroundVolumeID(None)
+      self.redCompositeNode.SetBackgroundVolumeID(self.movingVolumeSelector.currentNode().GetID())
+    if self.movingLabelSelector.currentNode():
+      self.redCompositeNode.SetLabelVolumeID(self.movingLabelSelector.currentNode().GetID())
+    if self.fixedVolumeSelector.currentNode():
+      self.yellowCompositeNode.SetForegroundVolumeID(None)
+      self.yellowCompositeNode.SetBackgroundVolumeID(self.fixedVolumeSelector.currentNode().GetID())
+    if self.fixedLabelSelector.currentNode():
+      self.yellowCompositeNode.SetLabelVolumeID(self.fixedLabelSelector.currentNode().GetID())
     self.applyRegistrationButton.enabled = self.isRegistrationPossible()
 
   def isRegistrationPossible(self):
-    return self.preopVolumeSelector.currentNode() and self.intraopVolumeSelector.currentNode() and \
-           self.intraopLabelSelector.currentNode() and self.preopLabelSelector.currentNode()
+    return self.movingVolumeSelector.currentNode() and self.fixedVolumeSelector.currentNode() and \
+           self.fixedLabelSelector.currentNode() and self.movingLabelSelector.currentNode()
 
   def runRegistration(self):
-    self.progress = self.makeProgressIndicator(4, 1)
+    logging.debug("Starting Registration")
+    self.progress = slicer.util.createProgressDialog(value=1, maximum=4)
     parameterNode = slicer.vtkMRMLScriptedModuleNode()
-    parameterNode.SetAttribute('FixedImageNodeID', self.intraopVolumeSelector.currentNode().GetID())
-    parameterNode.SetAttribute('FixedLabelNodeID', self.intraopLabelSelector.currentNode().GetID())
-    parameterNode.SetAttribute('MovingImageNodeID', self.preopVolumeSelector.currentNode().GetID())
-    parameterNode.SetAttribute('MovingLabelNodeID', self.preopLabelSelector.currentNode().GetID())
+    parameterNode.SetAttribute('FixedImageNodeID', self.fixedVolumeSelector.currentNode().GetID())
+    parameterNode.SetAttribute('FixedLabelNodeID', self.fixedLabelSelector.currentNode().GetID())
+    parameterNode.SetAttribute('MovingImageNodeID', self.movingVolumeSelector.currentNode().GetID())
+    parameterNode.SetAttribute('MovingLabelNodeID', self.movingLabelSelector.currentNode().GetID())
     if self.fiducialSelector.currentNode():
       parameterNode.SetAttribute('TargetsNodeID', self.fiducialSelector.currentNode().GetID())
-
-    self.logic.run(parameterNode, progressCallback=self.updateProgressBar)
+    if self.initialTransformSelector.currentNode():
+      parameterNode.SetAttribute('InitialTransformNodeID', self.initialTransformSelector.currentNode().GetID())
+      self.logic.runReRegistration(parameterNode, progressCallback=self.updateProgressBar)
+    else:
+      self.logic.run(parameterNode, progressCallback=self.updateProgressBar)
     self.progress.close()
 
   def updateProgressBar(self, **kwargs):
@@ -100,9 +131,11 @@ class SliceTrackerRegistrationWidget(ScriptedLoadableModuleWidget, ModuleWidgetM
       for key, value in kwargs.iteritems():
         if hasattr(self.progress, key):
           setattr(self.progress, key, value)
-
+    slicer.app.processEvents()
 
 class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
+
+  counter = 1
 
   def __init__(self):
     ScriptedLoadableModuleLogic.__init__(self)
@@ -110,10 +143,7 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     self.markupsLogic = slicer.modules.markups.logic()
     self.registrationResult = None
 
-  def run(self, parameterNode, progressCallback=None):
-    self.progressCallback = progressCallback
-    registrationTypes = ['rigid', 'affine', 'bSpline']
-
+  def _processParameterNode(self, parameterNode):
     if not self.registrationResult:
       self.registrationResult = RegistrationResult("01: RegistrationResult")
     result = self.registrationResult
@@ -121,8 +151,24 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     result.fixedLabel = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('FixedLabelNodeID'))
     result.movingLabel = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingLabelNodeID'))
     movingVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingImageNodeID'))
-    result.movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, movingVolume, "temp-movingVolume")
+    result.movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, movingVolume, "temp-movingVolume_" + str(self.counter))
+    self.counter += 1
 
+    logging.debug("Fixed Image Name: %s" % result.fixedVolume.GetName())
+    logging.debug("Fixed Label Name: %s" % result.fixedLabel.GetName())
+    logging.debug("Moving Image Name: %s" % movingVolume.GetName())
+    logging.debug("Moving Label Name: %s" % result.movingLabel.GetName())
+    initialTransform = parameterNode.GetAttribute('InitialTransformNodeID')
+    if initialTransform:
+      initialTransform = slicer.mrmlScene.GetNodeByID(initialTransform)
+      logging.debug("Initial Registration Name: %s" % initialTransform.GetName())
+    return result
+
+  def run(self, parameterNode, progressCallback=None):
+    self.progressCallback = progressCallback
+    result = self._processParameterNode(parameterNode)
+
+    registrationTypes = ['rigid', 'affine', 'bSpline']
     self.createVolumeAndTransformNodes(registrationTypes, prefix=str(result.seriesNumber), suffix=result.suffix)
 
     self.doRigidRegistration(movingBinaryVolume=result.movingLabel, initializeTransformMode="useCenterOfROIAlign")
@@ -133,58 +179,35 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     if targetsNodeID:
       result.originalTargets = slicer.mrmlScene.GetNodeByID(targetsNodeID)
       self.transformTargets(registrationTypes, result.originalTargets, str(result.seriesNumber), suffix=result.suffix)
-    result.movingVolume = movingVolume
+    result.movingVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingImageNodeID'))
 
   def runReRegistration(self, parameterNode, progressCallback=None):
+    logging.debug("Starting Re-Registration")
+
     self.progressCallback = progressCallback
-    registrationTypes = ['rigid', 'bSpline']
 
-    if not self.registrationResult:
-      self.registrationResult = RegistrationResult("01: RegistrationResult")
+    self._processParameterNode(parameterNode)
     result = self.registrationResult
-    result.fixedVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('FixedImageNodeID'))
-    fixedLabel = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('FixedLabelNodeID'))
-    result.fixedLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, result.fixedVolume,
-                                                                  result.fixedVolume.GetName() + '-label')
-    result.movingLabel = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingLabelNodeID'))
-    movingVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingImageNodeID'))
-    result.movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, movingVolume, "temp-movingVolume")
 
+    registrationTypes = ['rigid', 'bSpline']
     self.createVolumeAndTransformNodes(registrationTypes, prefix=str(result.seriesNumber), suffix=result.suffix)
-
     initialTransform = parameterNode.GetAttribute('InitialTransformNodeID')
+
     if initialTransform:
       initialTransform = slicer.mrmlScene.GetNodeByID(initialTransform)
 
-    self.runBRAINSResample(inputVolume=fixedLabel, referenceVolume=result.fixedVolume, outputVolume=result.fixedLabel,
-                           warpTransform=initialTransform)
-    if initialTransform:
-      self.doRigidRegistration(movingBinaryVolume=result.movingLabel, initialTransform=initialTransform)
-    else:
-      self.doRigidRegistration(movingBinaryVolume=result.movingLabel)
-
-    self.dilateMask(result.fixedLabel)
-    self.doBSplineRegistration(initialTransform=result.rigidTransform, useScaleVersor3D=True,
-                             useScaleSkewVersor3D=True, useAffine=True)
+    # TODO: label value should be delivered by parameterNode
+    self.dilateMask(result.fixedLabel, dilateValue=8)
+    self.doRigidRegistration(movingBinaryVolume=result.movingLabel,
+                             initialTransform=initialTransform if initialTransform else None)
+    self.doBSplineRegistration(initialTransform=result.rigidTransform, useScaleVersor3D=True, useScaleSkewVersor3D=True,
+                               useAffine=True)
 
     targetsNodeID = parameterNode.GetAttribute('TargetsNodeID')
     if targetsNodeID:
       result.originalTargets = slicer.mrmlScene.GetNodeByID(targetsNodeID)
       self.transformTargets(registrationTypes, result.originalTargets, str(result.seriesNumber), suffix=result.suffix)
-    result.movingVolume = movingVolume
-
-  def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
-
-    params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
-              'interpolationMode': 'NearestNeighbor'}
-    if warpTransform:
-      params['warpTransform'] = warpTransform,
-
-    logging.debug('about to run BRAINSResample CLI with those params: ')
-    logging.debug(params)
-    slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
-    logging.debug('resample labelmap through')
-    slicer.mrmlScene.AddNode(outputVolume)
+    result.movingVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingImageNodeID'))
 
   def createVolumeAndTransformNodes(self, registrationTypes, prefix, suffix=""):
     for regType in registrationTypes:
