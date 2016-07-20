@@ -2929,7 +2929,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     parameterNode.SetAttribute('MovingImageNodeID', coverProstateRegResult.fixedVolume.GetID())
     parameterNode.SetAttribute('MovingLabelNodeID', coverProstateRegResult.fixedLabel.GetID())
     parameterNode.SetAttribute('TargetsNodeID', coverProstateRegResult.approvedTargets.GetID())
-    parameterNode.SetAttribute('InitialTransformNodeID', initialTransform.GetID())
 
     self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
 
