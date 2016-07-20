@@ -36,6 +36,7 @@ class RegistrationResults(ModuleWidgetMixin):
   def resetAndInitializeData(self):
     self._activeResult = None
     self.preopTargets = None
+    self._savedRegistrationResults = []
     self._registrationResults = OrderedDict()
 
   def loadFromJSON(self, directory, filename):
@@ -68,6 +69,8 @@ class RegistrationResults(ModuleWidgetMixin):
             result.modifiedTargets[approvedRegType] = value["userModified"]
           else:
             setattr(result, attribute, value)
+        if result not in self._savedRegistrationResults:
+          self._savedRegistrationResults.append(result)
     self._registrationResults = OrderedDict(sorted(self._registrationResults.items()))
 
   def _loadResultFileData(self, dictionary, directory, loadFunction, setFunction):
@@ -90,9 +93,11 @@ class RegistrationResults(ModuleWidgetMixin):
     failedToSave = []
 
     for result in self._registrationResults.values():
-      successfulList, failedList = result.save(outputDir)
-      savedSuccessfully += successfulList
-      failedToSave += failedList
+      if result not in self._savedRegistrationResults:
+        successfulList, failedList = result.save(outputDir)
+        savedSuccessfully += successfulList
+        failedToSave += failedList
+        self._savedRegistrationResults.append(result)
     return savedSuccessfully, failedToSave
 
   def _registrationResultHasStatus(self, series, status):
