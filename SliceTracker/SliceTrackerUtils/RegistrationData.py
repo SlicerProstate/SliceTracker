@@ -98,8 +98,8 @@ class RegistrationResults(ModuleWidgetMixin):
     savedSuccessfully = []
     failedToSave = []
     self.customProgressBar.visible = True
-    self.customProgressBar.maximum = len(self._registrationResults)
     for index, result in enumerate(self._registrationResults.values()):
+      self.customProgressBar.maximum = len(self._registrationResults)
       self.customProgressBar.updateStatus("Saving registration result for series %s" % result.name, index + 1)
       slicer.app.processEvents()
       if result not in self._savedRegistrationResults:

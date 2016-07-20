@@ -1635,7 +1635,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       slicer.util.infoDisplay("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
                               "sure to select one.", windowTitle="SliceTracker")
     else:
-      message = self.logic.saveSession(self.generatedOutputDirectory)
+      if self.logic.saveSession(self.generatedOutputDirectory):
+        message = "Case data has been save successfully."
+      else:
+        message = "Case data could not be saved successfully. Please see log for further information."
       if showDialog:
         slicer.util.infoDisplay(message, windowTitle="SliceTracker")
 
@@ -2786,8 +2789,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     if not os.path.exists(outputDir):
       self.createDirectory(outputDir)
 
-    successfullySavedData = ["The following data was successfully saved:\n"]
-    failedSaveOfData = ["The following data failed to saved:\n"]
+    successfullySavedFileNames = []
+    failedSaveOfFileNames = []
 
     def saveIntraopSegmentation():
       intraopLabel = self.registrationResults.intraopLabel
@@ -2795,35 +2798,35 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
         seriesNumber = intraopLabel.GetName().split(":")[0]
         success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL",
                                           overwrite=True)
-        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
         if self.clippingModelNode:
           success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
                                             name=seriesNumber+"-MODEL", overwrite=True)
-          self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
         if self.inputMarkupNode:
           success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
                                             name=seriesNumber+"-VolumeClip_points", overwrite=True)
-          self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
     def saveOriginalTargets():
       originalTargets = self.registrationResults.originalTargets
       if originalTargets:
         success, name = self.saveNodeData(originalTargets, outputDir, FileExtension.FCSV, name="PreopTargets",
                                           overwrite=True)
-        self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
     def saveBiasCorrectionResult():
       if not self.biasCorrectionDone:
         return None
       success, name = self.saveNodeData(self.preopVolume, outputDir, FileExtension.NRRD, overwrite=True)
-      self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
       return name+FileExtension.NRRD
 
     def saveZFrameTransformation():
       success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5, overwrite=True)
-      self.handleSaveNodeDataReturn(success, name, successfullySavedData, failedSaveOfData)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
       return name+FileExtension.H5
 
     def createResultsDict():
@@ -2841,18 +2844,24 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     saveBiasCorrectionResult()
 
     savedSuccessfully, failedToSave = self.registrationResults.save(outputDir)
-    successfullySavedData += savedSuccessfully
-    failedSaveOfData += failedToSave
+    successfullySavedFileNames += savedSuccessfully
+    failedSaveOfFileNames += failedToSave
 
     saveJSON({"completed":self.caseCompleted, "usedPreopData":self.usePreopData, "results":createResultsDict(),
               "VOLUME-PREOP-N4":saveBiasCorrectionResult(), "zFrameTransform":saveZFrameTransformation()})
 
-    messageOutput = ""
-    for messageList in [successfullySavedData, failedSaveOfData] :
-      if len(messageList) > 1:
-        for message in messageList:
-          messageOutput += message + "\n"
-    return messageOutput if messageOutput != "" else "There is nothing to be saved yet."
+    if len(failedSaveOfFileNames):
+      messageOutput = "The following data failed to saved:\n"
+      for filename in failedSaveOfFileNames:
+        messageOutput += filename + "\n"
+      logging.debug(messageOutput)
+
+    if len(successfullySavedFileNames):
+      messageOutput = "The following data was successfully saved:\n"
+      for filename in successfullySavedFileNames:
+        messageOutput += filename + "\n"
+      logging.debug(messageOutput)
+    return len(failedSaveOfFileNames) == 0
 
   def getMostRecentWholeGlandSegmentation(self, path):
     return self.getMostRecentFile(path, FileExtension.NRRD, filter="WholeGland")
