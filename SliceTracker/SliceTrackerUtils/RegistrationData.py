@@ -97,13 +97,17 @@ class RegistrationResults(ModuleWidgetMixin):
   def save(self, outputDir):
     savedSuccessfully = []
     failedToSave = []
-
-    for result in self._registrationResults.values():
+    self.customProgressBar.visible = True
+    self.customProgressBar.maximum = len(self._registrationResults)
+    for index, result in enumerate(self._registrationResults.values()):
+      self.customProgressBar.updateStatus("Saving registration result for series %s" % result.name, index + 1)
+      slicer.app.processEvents()
       if result not in self._savedRegistrationResults:
         successfulList, failedList = result.save(outputDir)
         savedSuccessfully += successfulList
         failedToSave += failedList
         self._savedRegistrationResults.append(result)
+    self.customProgressBar.text = "Registration data successfully saved" if len(failedToSave) == 0 else "Error/s occurred during saving"
     return savedSuccessfully, failedToSave
 
   def _registrationResultHasStatus(self, series, status):
