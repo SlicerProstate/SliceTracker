@@ -3614,9 +3614,9 @@ class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
     self.spinbox.valueChanged.connect(self.onCaseNumberChanged)
 
   def onCaseNumberChanged(self, caseNumber):
-    while len(str(caseNumber)) < self.CASE_NUMBER_DIGITS:
-      caseNumber = "0" + caseNumber
-    directory = self.PREFIX+str(caseNumber)+self.SUFFIX
+    formatString = '%0'+str(self.CASE_NUMBER_DIGITS)+'d'
+    caseNumber = formatString % caseNumber
+    directory = self.PREFIX+caseNumber+self.SUFFIX
     self.newCaseDirectory = os.path.join(self.destinationRoot, directory)
     self.preview.setText("New case directory: " + self.newCaseDirectory)
     self.okButton.enabled = not os.path.exists(self.newCaseDirectory)
