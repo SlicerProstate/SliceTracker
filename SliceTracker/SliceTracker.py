@@ -38,7 +38,7 @@ class SliceTracker(ScriptedLoadableModule):
     self.parent.categories = ["Radiology"]
     self.parent.dependencies = ["SlicerProstate", "mpReview", "mpReviewPreprocessor"]
     self.parent.contributors = ["Christian Herz (SPL), Peter Behringer (SPL), Andriy Fedorov (SPL)"]
-    self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy. """
+    self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy. See <a href=\"https://www.gitbook.com/read/book/fedorov/slicetracker\">the documentation</a> for details."""
     self.parent.acknowledgementText = """Surgical Planning Laboratory, Brigham and Women's Hospital, Harvard
                                           Medical School, Boston, USA This work was supported in part by the National
                                           Institutes of Health through grants U24 CA180918,
