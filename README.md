@@ -15,7 +15,7 @@ Capabilities of SliceTracker include:
 * structured collection of the relevant data during the course of the procedure (images, results of segmentation and registration, target tracking)
 * visualization of the intra-procedural images and support of specialized hanging protocols to facilitate needle tracking, biopsy template and calibration device visualization, assessment of the image registration results, etc.
 
-For more details, please read [SliceTracker user guide](https://www.gitbook.com/read/book/slicerprostate/slicetracker).
+For more details, please read [SliceTracker user guide](https://www.gitbook.com/read/book/fedorov/slicetracker).
 
 ![](Screenshots/Slicetracker.gif)
 
