@@ -1,59 +1,29 @@
-![Alt text](SliceTracker/Resources/Icons/SliceTracker.png)
+![Alt text](SliceTracker.png)
 
+### Overview
 
-### Intro
+SliceTracker is a [3D Slicer](http://slicer.org) extension designed to support the workflow of the in-bore MRI-guided targeted prostate biopsy (MRgBx) (see references below for [clinical context](http://ncigt.org/prostate-biopsy)). SliceTracker was developed and tested to support transperineal MRgBx procedure in the [Advanced Multimodality Image Guided Operating (AMIGO)](http://www.brighamandwomens.org/research/amigo/default.aspx) at the Brigham and Women's Hospital, Boston. Its applicability to other types of procedures has not been evaluated.
 
-SliceTracker is a 3D Slicer (see http://slicer.org) extension designed to support in-bore MRI-guided targeted prostate biopsy, as further elaborated in the following sections:
-
-* planning of the procedure
-* calibration of the intra-procedural image frame of reference with the biopsy template
-* re-identification of the pre-procedurally defined targets in the intra-procedural images
-* automated segmentation of the prostate gland to facilitate image registration
-* automated, continuous tracking of the identified targets during the course of the procedure by means of deformable intensity-based registration
-* consistent collection of the relevant data during the course of the procedure (images, results of segmentation and registration, target tracking)
+Capabilities of SliceTracker include:
+* automatic processing of the patient DICOM images
+* planning of the procedure (biopsy target localization)
+* calibration of the intra-procedural image frame of reference with the transperineal biopsy template
+* automated segmentation of the prostate gland
+* deformable intensity-based registration to support
+ * re-identification of the pre-procedurally defined targets in the intra-procedural images
+ * automated, continuous tracking of the biopsy targets during the course of the procedure
+* structured collection of the relevant data during the course of the procedure (images, results of segmentation and registration, target tracking)
 * visualization of the intra-procedural images and support of specialized hanging protocols to facilitate needle tracking, biopsy template and calibration device visualization, assessment of the image registration results, etc.
-* ...
 
-Video demonstration of the extension capabilities will be linked from here shortly.
+For more details, please read [SliceTracker user guide](https://www.gitbook.com/read/book/slicerprostate/slicetracker).
 
-This module is a work in progress and is not currently released as a 3D Slicer extension, and thus is not available in the 3D Slicer ExtensionManager.
+![](docs/images/needle_tracking.png)
 
-### Functionality
+### Disclaimer
 
-The content below is outdated and will be updated at the time of the official release of the extension ...
+SlicerTracker, same as 3D Slicer, is a research software. **SliceTracker is NOT an FDA-approved medical device**. It is not intended for clinical use. The user assumes full responsibility to comply with the appropriate regulations.  
 
-The module guides the user through a workflow that consists of the following steps:
-
-**1. Select incoming DICOM-series**
-  
-  The user is supposed to start with choosing the patient ID. The modules expects that the patient is already loaded into       local slicer dicom database. Relevant patient information (ID, Name, Date of Birth, Date of Study) are shown above the        module for easy inspection. Once the patient is selected, the preprocedural directory should be chosen, containing the        diagnstoic pre-procedural scan, the label of the prostate gland and the targets (see section [*Data                           conventions*](https://github.com/PeterBehringer/Registration/blob/master/README.md#data-conventions) to learn about what      type of strucutre and formats are expected). The last step is selecting the intra-procedural directory where new DICOM        series are supposed to be detected and presented to the user if they are relevant to the procedure. The user can select the   series that is incoming and importing it to slicer using the *load and segment*-button. In case of arriving patient data      that does not correlate to the choosed patient, the software will warn the user. 
-
-**2. Create intra-procedural label**
-
-  For minimizing the computation time that is required by deformable registration, the user can specify regions of interest of   the structure to be registred. Therefore, two different modes (quick mode, label mode) are provided. Once the label is        created, the user is supposed to proceed by clicking the registration tab. 
-  
-**3. Perform B-Spline registration**
-
-  By following previous steps of the workflow, the user only needs to check visually if the input parameters are set            correctly. Registration parameters have been optimized in previous studies [1] and are not configuratable by the end-user.    Registration is performed using rigid, affine and deformable B-Spline stages applied in sequence.                             [BRAINSFit](https://github.com/BRAINSia/BRAINSTools/tree/master/BRAINSFit) with ITKv4 is used as underlaying library. 
-  
-**4. Visual evaluation of registration result**
-
-  Showing the result of all three registration stages enables quick troubleshooting in a very comprehensible way. The user can   switch between the results and compare the registered pre-procedural image with the intra-procedural. There are four          different tools and different visualization modes provided to compare the resulting image volume and target. Furthermore, a   needle tip can be set to measure the distance between each registered target and the needle tip. 
-
-### Prerequisites, conventions and testing
-
-If you want to test the module, please follow these steps:
-
-1. make sure to install [VolumeClip](https://www.slicer.org/slicerWiki/index.php/Documentation/Nightly/Extensions/VolumeClip) from the slicer extension manager. (view -> Extension Manager)
-2. make sure to install [mpReview](https://github.com/SlicerProstate/mpReview) from the slicer extension manager. (view -> Extension Manager)
-3. you will need to preprocess your pre-op data with [mpReview](https://github.com/SlicerProstate/mpReview)
-4. after preprocessing is done, run SliceTracker and select the output directory for your mpReview preprocessed data
-5. select intra-op data directory (where incoming DICOM data will be or already has been received)
-6. click "Track targets"
-7. segment the whole gland and start registration
-8. result can be viewed and retried, skipped or approved
-
-### Contact
+### Support
 
 Please feel free to contact us for questions, feedback, suggestions, bugs, or you can create issues in the issue tracker: https://github.com/SlicerProstate/SliceTracker/issues
 
@@ -65,14 +35,19 @@ Please feel free to contact us for questions, feedback, suggestions, bugs, or yo
 
 ### Acknowledgments
 
-This work is supported in part by NIH grants 
+Development of SliceTracker is supported in part by the following NIH grants: 
 
 * P41 EB015898 National Center for Image Guided Therapy (NCIGT), http://ncigt.org
 * U24 CA180918 Quantitative Image Informatics for Cancer Research (QIICR), http://qiicr.org
+* R01 CA111288 Enabling Technologies for MRI-guided prostate interventions
 
+### References
 
-### Literature
+The following publications cover different aspects of work that led to the development of SliceTracker.
 
-1. Fedorov A, Tuncali K, Fennessy FM, et al. Image Registration for Targeted MRI-guided Transperineal Prostate Biopsy. Journal of magnetic resonance imaging : JMRI. 2012;36(4):987-992. doi:10.1002/jmri.23688.
-2. Behringer PA, Herz C, Penzkofer T, Tuncali K, Tempany CM, Fedorov A. Open-­source Platform for Prostate Motion Tracking during in­-bore Targeted MRI­-guided Biopsy. Int Conf Med Image Comput Comput Assist Interv. 2015 Oct;18(WS). Workshop on Clinical Image-based Procedures: Translational Research in Medical Imaging.
-3. http://slicerprostate.github.io/ProstateMotionStudy/
+1. Behringer P., Herz C., Penzkofer T., Tuncali K., Tempany C., Fedorov A. 2015. Open-­source Platform for Prostate Motion Tracking during in­-bore Targeted MRI­-guided Biopsy. In: MICCAI Workshop on Clinical Image-based Procedures: Translational Research in Medical Imaging. DOI: [10.1007/978-3-319-31808-0_15](http://doi.org/10.1007/978-3-319-31808-0_15) (also see the [accompanying web site](http://slicerprostate.github.io/ProstateMotionStudy/)): **software development, prostate motion tracking**.
+2. Fedorov A., Beichel R., Kalpathy-Cramer J., Finet J., Fillion-Robin J-CC., Pujol S., Bauer C., Jennings D., Fennessy F., Sonka M., Buatti J., Aylward S., Miller J V., Pieper S., Kikinis R. 2012. 3D Slicer as an image computing platform for the Quantitative Imaging Network. Magnetic resonance imaging 30:1323–1341. DOI: [10.1016/j.mri.2012.05.001](http://doi.org/10.1016/j.mri.2012.05.001): **3D Slicer platform**.
+3. Fedorov A., Tuncali K., Fennessy FM., Tokuda J., Hata N., Wells WM., Kikinis R., Tempany CM. 2012. Image registration for targeted MRI-guided transperineal prostate biopsy. Journal of magnetic resonance imaging: JMRI 36:987–992. DOI: [10.1002/jmri.23688](http://doi.org/10.1002/jmri.23688): **deformable registration approach**.
+4. Penzkofer T., Tuncali K., Fedorov A., Song S-E., Tokuda J., Fennessy FM., Vangel MG., Kibel AS., Mulkern RV., Wells WM., Hata N., Tempany CMC. 2015. Transperineal in-bore 3-T MR imaging-guided prostate biopsy: a prospective clinical observational study. Radiology 274:170–180. DOI: [10.1148/radiol.14140221](http://doi.org/10.1148/radiol.14140221): **clinical results**.
+5. Tokuda J., Tuncali K., Iordachita I., Song S-EE., Fedorov A., Oguro S., Lasso A., Fennessy FM., Tempany CM., Hata N. 2012. In-bore setup and software for 3T MRI-guided transperineal prostate biopsy. Physics in medicine and biology 57:5823–5840. DOI: [10.1088/0031-9155/57/18/5823](http://doi.org/10.1088/0031-9155/57/18/5823): **procedure technical setup**.
+
