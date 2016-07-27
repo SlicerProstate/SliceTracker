@@ -17,7 +17,7 @@ Capabilities of SliceTracker include:
 
 For more details, please read [SliceTracker user guide](https://www.gitbook.com/read/book/slicerprostate/slicetracker).
 
-![](docs/images/needle_tracking.png)
+![](Screenshots/Slicetracker.gif)
 
 ### Disclaimer
 
