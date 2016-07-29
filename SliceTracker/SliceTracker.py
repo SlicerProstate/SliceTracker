@@ -1,4 +1,4 @@
-import csv, re, numpy, json, ast
+import csv, re, numpy, json, ast, re
 import shutil, datetime, logging
 import ctk, vtk, qt
 from collections import OrderedDict
@@ -82,6 +82,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   @preopDataDir.setter
   def preopDataDir(self, path):
     self._preopDataDir = path
+    if path is None:
+      return
     if os.path.exists(path):
       self.loadPreopData()
 
@@ -236,6 +238,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.annotationLogic = slicer.modules.annotations.logic()
     self.iconPath = os.path.join(self.modulePath, 'Resources/Icons')
     self.setupIcons()
+    self.initSampleData()
+
+  def initSampleData(self):
+    import SampleData
+    try:
+      self.sampleDataLogic = SampleData.SampleDataLogic(self.updateDownloadProgressBar)
+      self.preopSampleDataURI = 'http://slicer.kitware.com/midas3/download/item/246404/Preop-deid.zip'
+      self.intraopSampleDataURI = 'http://slicer.kitware.com/midas3/download/item/246405/Intraop-deid.zip'
+    except Exception as exc:
+      pass
 
   def onReload(self):
     try:
@@ -412,7 +424,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.preopTransferWindow = None
     self._generatedOutputDirectory = ""
     self.continueOldCase = False
-    self._preopDataDir = None
+    self.preopDataDir = None
 
     self.registrationResultOldImageAnnotation = None
     self.registrationResultNewImageAnnotation = None
@@ -548,10 +560,24 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.zFrameRegistrationGroupBoxGroupBoxLayout.setRowStretch(1, 1)
     self.layout.addWidget(self.zFrameRegistrationGroupBox)
 
+  def setupTrainingSectionUIElements(self):
+    self.collapsibleTrainingArea = ctk.ctkCollapsibleButton()
+    self.collapsibleTrainingArea.collapsed = True
+    self.collapsibleTrainingArea.text = "Training"
+
+    self.simulatePreopPhaseButton = self.createButton("Simulate preop phase")
+    self.simulateIntraopPhaseButton = self.createButton("Simulate intraop phase")
+
+    self.trainingsAreaLayout = qt.QGridLayout(self.collapsibleTrainingArea)
+    self.trainingsAreaLayout.addWidget(self.createHLayout([self.simulatePreopPhaseButton,
+                                                           self.simulateIntraopPhaseButton]))
+
   def setupOverviewStepUIElements(self):
     self.overviewGroupBox = qt.QGroupBox()
     self.overviewGroupBoxLayout = qt.QGridLayout()
     self.overviewGroupBox.setLayout(self.overviewGroupBoxLayout)
+
+    self.setupTrainingSectionUIElements()
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series", enabled=False)
@@ -571,6 +597,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.overviewGroupBoxLayout.addWidget(self.trackTargetsButton, 4, 0, 1, 2)
     self.overviewGroupBoxLayout.addWidget(self.closeCaseButton, 5, 0, 1, 2)
     self.overviewGroupBoxLayout.addWidget(self.completeCaseButton, 6, 0, 1, 2)
+    self.overviewGroupBoxLayout.addWidget(self.collapsibleTrainingArea, 7, 0, 1, 2)
+
     self.overviewGroupBoxLayout.setRowStretch(6, 1)
     self.layout.addWidget(self.overviewGroupBox)
 
@@ -773,6 +801,52 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     slider = self.createHLayout([self.opacitySpinBox, self.animaHolderLayout])
     self.visualEffectsGroupBoxLayout.addWidget(self.createVLayout([slider, self.useRevealCursorButton]))
 
+  def startPreopPhaseSimulation(self):
+    if self.preopSampleDataURI and self.preopDICOMDataDirectory:
+      filename = os.path.basename(self.preopSampleDataURI)
+      preopZipFile = self.sampleDataLogic.downloadFileIntoCache(self.preopSampleDataURI, filename)
+      unzippedOutput = self.unzipFile(preopZipFile)
+      self.copyDirectory(unzippedOutput, self.preopDICOMDataDirectory)
+
+  def startIntraopPhaseSimulation(self):
+    if self.intraopSampleDataURI and self.intraopDataDir:
+      filename = os.path.basename(self.intraopSampleDataURI)
+      intraopZipFile = self.sampleDataLogic.downloadFileIntoCache(self.intraopSampleDataURI, filename)
+      unzippedOutput = self.unzipFile(intraopZipFile)
+      self.copyDirectory(unzippedOutput, self.intraopDICOMDataDirectory)
+
+  def unzipFile(self, filepath):
+    import zipfile
+    zip_ref = zipfile.ZipFile(filepath, 'r')
+    destination = filepath.replace(os.path.basename(filepath), "")
+    print "extracting to %s " % destination
+    zip_ref.extractall(destination)
+    zip_ref.close()
+    return filepath.replace(".zip", "")
+
+  def copyDirectory(self, source, destination, recursive=True):
+    print source
+    assert os.path.isdir(source)
+    for listObject in os.listdir(source):
+      current = os.path.join(source, listObject)
+      if os.path.isdir(current) and recursive:
+        self.copyDirectory(current, destination, recursive)
+      else:
+        shutil.copy(current, destination)
+
+  def updateDownloadProgressBar(self, message):
+
+    pattern = re.compile('<.*?>')
+    message = re.sub(pattern, '', message)
+    try:
+      parts = message.split(" ")
+      percent = int(parts[3].replace('(', "").replace('%', ""))
+    except (ValueError, IndexError):
+      percent = 0
+    self.customStatusProgressBar.maximum = 100
+    self.customStatusProgressBar.updateStatus(message, percent)
+    slicer.app.processEvents()
+
   def setupConnections(self):
 
     def setupButtonConnections():
@@ -785,6 +859,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
         self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
         self.closeCaseButton.clicked.connect(self.clearData)
+
+        self.simulatePreopPhaseButton.clicked.connect(self.startPreopPhaseSimulation)
+        self.simulateIntraopPhaseButton.clicked.connect(self.startIntraopPhaseSimulation)
 
       def setupSegmentationStepButtonConnections():
         self.quickSegmentationButton.clicked.connect(self.onQuickSegmentationButtonClicked)
@@ -915,7 +992,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                          self.onPreopTransferMessageBoxCanceled)
     self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                          self.startPreProcessingPreopData)
-    self.preopTransferWindow.show(disableWidget=self.parent)
+    self.preopTransferWindow.show()
 
   def onPreopTransferMessageBoxCanceled(self, caller, event):
     self.clearData()
@@ -2556,7 +2633,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ModuleWidgetMixin, ParameterNodeObserv
     self.preopTargets = None
     self.registrationResults = RegistrationResults()
 
-    self._intraopDataDir = ""
+    self._intraopDataDir = None
     self.smartDicomReceiver = None
 
     self.retryMode = False
