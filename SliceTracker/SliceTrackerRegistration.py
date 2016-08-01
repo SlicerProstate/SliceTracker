@@ -4,6 +4,7 @@ from slicer.ScriptedLoadableModule import *
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from SliceTrackerUtils.RegistrationData import RegistrationResult
 from SliceTrackerUtils.constants import SliceTrackerConstants
+from SlicerProstateUtils.decorators import onReturnProcessEvents
 
 
 class SliceTrackerRegistration(ScriptedLoadableModule):
@@ -126,12 +127,13 @@ class SliceTrackerRegistrationWidget(ScriptedLoadableModuleWidget, ModuleWidgetM
       self.logic.run(parameterNode, progressCallback=self.updateProgressBar)
     self.progress.close()
 
+  @onReturnProcessEvents
   def updateProgressBar(self, **kwargs):
     if self.progress:
       for key, value in kwargs.iteritems():
         if hasattr(self.progress, key):
           setattr(self.progress, key, value)
-    slicer.app.processEvents()
+
 
 class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
