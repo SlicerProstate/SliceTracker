@@ -3561,8 +3561,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
     self._guidanceComputations = []
     self.currentGuidanceComputation = None
     self.targetList = targets
-    self.computeCursorDistances = True
-    self.zFrameHole = {}
+    self.computeCursorDistances = False
     self.observer = None
 
   def getOrCreateNewGuidanceComputation(self, targetList):
