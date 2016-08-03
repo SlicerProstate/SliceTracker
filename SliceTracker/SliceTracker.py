@@ -1539,7 +1539,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if self.showNeedlePathButton.checked and self.logic.zFrameRegistrationSuccessful:
       modelIndex = self.lastSelectedModelIndex
       try:
-        start, end = self.targetTableModel.needleStartEndPositions[modelIndex.row()]
+        start, end = self.targetTableModel.currentGuidanceComputation.needleStartEndPositions[modelIndex.row()]
         self.logic.createNeedleModelNode(start, end)
       except KeyError:
         self.logic.removeNeedleModelNode()
@@ -3528,13 +3528,12 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
 
   @targetList.setter
   def targetList(self, targetList):
-    self.needleStartEndPositions = {}
-    if self._targetList and self.observer:
-      self._targetList.RemoveObserver(self.observer)
     self._targetList = targetList
-    if self._targetList:
-      self.observer = self._targetList.AddObserver(self._targetList.PointModifiedEvent, self.computeNewDepthAndHole)
-    self.computeNewDepthAndHole()
+    if self.currentGuidanceComputation and self.observer:
+      self.self.currentGuidanceComputation.RemoveObserver(self.observer)
+    self.currentGuidanceComputation = self.getOrCreateNewGuidanceComputation(targetList)
+    if self.currentGuidanceComputation:
+      self.observer = self.currentGuidanceComputation.addObserver(vtk.vtkCommand.ModifiedEvent, self.updateHoleAndDepth)
     self.reset()
 
   @property
@@ -3559,11 +3558,31 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
     self.logic = logic
     self._cursorPosition = None
     self._targetList = None
-    self.needleStartEndPositions = {}
+    self._guidanceComputations = []
+    self.currentGuidanceComputation = None
     self.targetList = targets
-    self.computeCursorDistances = False
+    self.computeCursorDistances = True
     self.zFrameHole = {}
     self.observer = None
+
+  def getOrCreateNewGuidanceComputation(self, targetList):
+    if not targetList:
+      return None
+    guidance = None
+    for crntGuidance in self._guidanceComputations:
+      if crntGuidance.targetList is targetList:
+        guidance = crntGuidance
+        break
+    if not guidance:
+      self._guidanceComputations.append(ZFrameGuidanceComputation(targetList, self))
+      guidance = self._guidanceComputations[-1]
+    if self._targetList is targetList:
+      self.updateHoleAndDepth()
+    return guidance
+
+  def updateHoleAndDepth(self, caller=None, event=None):
+    self.dataChanged(self.index(0, 3), self.index(self.rowCount() - 1, 4))
+    self.invokeEvent(vtk.vtkCommand.ModifiedEvent)
 
   def headerData(self, col, orientation, role):
     if orientation == qt.Qt.Horizontal and role in [qt.Qt.DisplayRole, qt.Qt.ToolTipRole]:
@@ -3581,27 +3600,12 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
     return len(self.headers)
 
   def data(self, index, role):
+    result = self.getBackgroundOrToolTipData(index, role)
+    if result:
+      return result
+
     row = index.row()
     col = index.column()
-
-    if role in [qt.Qt.BackgroundRole, qt.Qt.ToolTipRole] \
-            and self.coverProstateTargetList and not self.coverProstateTargetList is self.targetList:
-      coverProstateTargetPosition = self.getTargetPosition(row, self.coverProstateTargetList)
-      targetPosition = self.getTargetPosition(row, self.targetList)
-      if col == 2:
-        coverProstateHole = self.computeZFrameHole(coverProstateTargetPosition)
-        currentHole = self.computeZFrameHole(targetPosition)
-        if currentHole == coverProstateHole:
-          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else ""
-        else:
-          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: %s" % coverProstateHole
-      elif col == 3:
-        currentDepth = self.computeZFrameDepth(targetPosition, returnAsString=False)
-        coverProstateDepth = self.computeZFrameDepth(coverProstateTargetPosition, returnAsString=False)
-        if abs(currentDepth-coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 0.5 ):
-          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
-        else:
-          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
 
     if not index.isValid() or role not in [qt.Qt.DisplayRole, qt.Qt.ToolTipRole]:
       return None
@@ -3619,50 +3623,95 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
       return text
     elif (col == 2 or col == 3) and self.logic.zFrameRegistrationSuccessful:
       if col == 2:
-        return self.computeZFrameHoleAndSave(row, targetPosition)
+        return self.currentGuidanceComputation.getZFrameHole(row)
       else:
-        return self.computeZFrameDepth(targetPosition)
+        return self.currentGuidanceComputation.getZFrameDepth(row)
     return ""
 
-  def computeZFrameHoleAndSave(self, index, targetPosition):
-    if index not in self.zFrameHole.keys():
-      (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
-      self.needleStartEndPositions[index] = (start, end)
-      self.zFrameHole[index] = '(%s, %s)' % (indexX, indexY)
-    return self.zFrameHole[index]
-
-  def computeZFrameHole(self, targetPosition, returnAsString=True):
-    (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
-    if returnAsString:
-      return'(%s, %s)' % (indexX, indexY)
-    else:
-      return [indexX, indexY]
-
-  def computeZFrameDepth(self, targetPosition, returnAsString=True):
-    (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
-    depth = round(depth/10,1)
-    if returnAsString:
-      return '%.1f' % depth if inRange else '(%.1f)' % depth
-    else:
-      return depth
+  def getBackgroundOrToolTipData(self, index, role):
+    if role not in [qt.Qt.BackgroundRole, qt.Qt.ToolTipRole]:
+      return None
+    if self.coverProstateTargetList and not self.coverProstateTargetList is self.targetList:
+      row = index.row()
+      col = index.column()
+      if col == 2:
+        coverProstateGuidance = self.getOrCreateNewGuidanceComputation(self.coverProstateTargetList)
+        coverProstateHole = coverProstateGuidance.getZFrameHole(row)
+        if self.currentGuidanceComputation.getZFrameHole(row) == coverProstateHole:
+          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else ""
+        else:
+          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: %s" % coverProstateHole
+      elif col == 3:
+        coverProstateGuidance = self.getOrCreateNewGuidanceComputation(self.coverProstateTargetList)
+        currentDepth = self.currentGuidanceComputation.getZFrameDepth(row, asString=False)
+        coverProstateDepth = coverProstateGuidance.getZFrameDepth(row, asString=False)
+        if abs(currentDepth - coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 0.5):
+          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
+        else:
+          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
+    return None
 
   def getTargetPosition(self, index, targetList):
     position = [0.0, 0.0, 0.0]
     targetList.GetNthFiducialPosition(index, position)
     return position
 
-  def computeNewDepthAndHole(self, observer=None, caller=None):
-    self.zFrameHole = {}
+
+class ZFrameGuidanceComputation(ParameterNodeObservationMixin):
+
+  SUPPORTED_EVENTS = [vtk.vtkCommand.ModifiedEvent]
+
+  @property
+  def logic(self):
+    return self.parent.logic
+
+  def __init__(self, targetList, parent):
+    self.targetList = targetList
+    self.parent = parent
+    self.observer = self.targetList.AddObserver(self.targetList.PointModifiedEvent, self.calculate)
+    self.reset()
+    self.calculate()
+
+  def __del__(self):
+    if self.targetList and self.observer:
+      self.targetList.RemoveObserver(self.observer)
+
+  def reset(self):
+    self.needleStartEndPositions = {}
+    self.computedHoles = {}
+    self.computedDepth = {}
+
+  def calculate(self, caller=None, event=None):
     if not self.targetList or not self.logic.zFrameRegistrationSuccessful:
       return
-
     for index in range(self.targetList.GetNumberOfFiducials()):
-      pos = [0.0, 0.0, 0.0]
-      self.targetList.GetNthFiducialPosition(index, pos)
-      self.computeZFrameHoleAndSave(index, pos)
-
-    self.dataChanged(self.index(0, 3), self.index(self.rowCount()-1, 4))
+      self.calculateZFrameHoleAndDepth(index)
     self.invokeEvent(vtk.vtkCommand.ModifiedEvent)
+
+  def getZFrameHole(self, index):
+    if index not in self.computedHoles.keys():
+      self.calculateZFrameHoleAndDepth(index)
+    return '(%s, %s)' % (self.computedHoles[index][0], self.computedHoles[index][1])
+
+  def getZFrameDepth(self, index, asString=True):
+    if index not in self.computedHoles.keys():
+      self.calculateZFrameHoleAndDepth(index)
+    if asString:
+      return '%.1f' % self.computedDepth[index][1] if self.computedDepth[index][0] else '(%.1f)' % self.computedDepth[index][1]
+    else:
+      return self.computedDepth[index][1]
+
+  def calculateZFrameHoleAndDepth(self, index):
+    targetPosition = self.getTargetPosition(index)
+    (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
+    self.needleStartEndPositions[index] = (start, end)
+    self.computedHoles[index] = [indexX, indexY]
+    self.computedDepth[index] = [inRange, round(depth/10, 1)]
+
+  def getTargetPosition(self, index):
+    pos = [0.0, 0.0, 0.0]
+    self.targetList.GetNthFiducialPosition(index, pos)
+    return pos
 
 
 class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
