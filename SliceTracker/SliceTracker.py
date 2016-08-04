@@ -1058,7 +1058,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentCaseDirectory = path
     if not self.logic.isCaseDirectoryValid(self.currentCaseDirectory):
       slicer.util.warningDisplay("The selected case directory seems not to be valid", windowTitle="SliceTracker")
-      self.closeCase()
+      self.clearData()
     else:
       self.loadCaseData()
 
