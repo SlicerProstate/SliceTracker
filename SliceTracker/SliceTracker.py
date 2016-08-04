@@ -608,7 +608,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.targetTableModel = CustomTargetTableModel(self.logic)
     self.targetTableModel.addObserver(vtk.vtkCommand.ModifiedEvent, self.updateNeedleModel)
     self.targetTable.setModel(self.targetTableModel)
-    self.targetTable.setSelectionBehavior(qt.QTableView.SelectRows)
+    self.targetTable.setSelectionBehavior(qt.QTableView.SelectItems)
     self.setTargetTableSizeConstraints()
     self.targetTable.verticalHeader().hide()
     self.targetTable.minimumHeight = 150
@@ -1058,7 +1058,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentCaseDirectory = path
     if not self.logic.isCaseDirectoryValid(self.currentCaseDirectory):
       slicer.util.warningDisplay("The selected case directory seems not to be valid", windowTitle="SliceTracker")
-      self.closeCase()
+      self.clearData()
     else:
       self.loadCaseData()
 
@@ -1438,8 +1438,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           self.onRegistrationResultSelected(result.name, registrationType='bSpline')
         elif result.approved and result.approvedTargets:
           self.onRegistrationResultSelected(result.name, showApproved=True)
-        if self.targetTableModel.targetList:
-          self.selectLastSelectedTarget()
         break
 
   def onTargetTableSelectionChanged(self, modelIndex=None):
@@ -1453,6 +1451,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.currentTargets = self.logic.preopTargets
     self.jumpSliceNodesToNthTarget(modelIndex.row())
     self.updateNeedleModel()
+    self.targetTableModel.currentTargetIndex = self.lastSelectedModelIndex.row()
+    self.updateSelection(self.lastSelectedModelIndex.row())
+
+  def updateSelection(self, row):
+    self.targetTable.clearSelection()
+    first = self.targetTable.model().index(row, 0)
+    second = self.targetTable.model().index(row, 1)
+
+    selection = qt.QItemSelection(first, second)
+    self.targetTable.selectionModel().select(selection, qt.QItemSelectionModel.Select)
 
   def jumpSliceNodesToNthTarget(self, targetIndex):
     currentTargetsSliceNodes = []
@@ -1647,8 +1655,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.revealCursor = CompareVolumes.LayerReveal()
 
   def setOldNewIndicatorAnnotationOpacity(self, value):
-    self.registrationResultNewImageAnnotation.opacity = value
-    self.registrationResultOldImageAnnotation.opacity = 1.0 - value
+    if self.registrationResultNewImageAnnotation:
+      self.registrationResultNewImageAnnotation.opacity = value
+    if self.registrationResultOldImageAnnotation:
+      self.registrationResultOldImageAnnotation.opacity = 1.0 - value
 
   def showOpacitySliderPopup(self, show):
     if show:
@@ -1786,7 +1796,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.onRegistrationButtonChecked(self.registrationButtonGroup.checkedId())
     else:
       self.showBSplineResultButton.click()
-    self.selectLastSelectedTarget()
 
   def checkButtonByRegistrationType(self, registrationType):
     for button in self.registrationButtonGroup.buttons():
@@ -1819,7 +1828,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def selectLastSelectedTarget(self):
     if not self.lastSelectedModelIndex:
       self.lastSelectedModelIndex = self.targetTableModel.index(0, 0)
-    self.targetTable.selectRow(self.lastSelectedModelIndex.row())
     self.targetTable.clicked(self.lastSelectedModelIndex)
 
   def setPreopTargetVisibility(self):
@@ -1934,6 +1942,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.logic.applyDefaultTargetDisplayNode(self.logic.preopTargets)
     self.markupsLogic.JumpSlicesToNthPointInMarkup(self.logic.preopTargets.GetID(), 0)
     self.targetTable.selectRow(0)
+    self.targetTable.enabled = True
 
   def promptUserAndApplyBiasCorrectionIfNeeded(self):
     if not self.continueOldCase:
@@ -2501,7 +2510,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.updateRegistrationResultSelector()
     self.setupRegistrationResultView(layout=self.LAYOUT_SIDE_BY_SIDE)
 
-    self.showBSplineResultButton.click()
     self.currentResult.printSummary()
     self.connectCrosshairNode()
     if not self.logic.isVolumeExtentValid(self.currentResult.bSplineVolume):
@@ -2793,20 +2801,24 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     for series in seriesMap:
       seriesName = str(seriesMap[series]['LongName'])
       logging.debug('series Number ' + series + ' ' + seriesName)
-      if re.search("ax", str(seriesName), re.IGNORECASE) and re.search("t2", str(seriesName), re.IGNORECASE):
-        logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
-        logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
 
-        path = os.path.join(seriesMap[series]['NRRDLocation'])
-        logging.debug(' LOCATION OF IMAGE path : ' + str(path))
+      imagePath = os.path.join(seriesMap[series]['NRRDLocation'])
+      segmentationPath = os.path.dirname(os.path.dirname(imagePath))
+      segmentationPath = os.path.join(segmentationPath, 'Segmentations')
 
-        segmentationPath = os.path.dirname(os.path.dirname(path))
-        segmentationPath = os.path.join(segmentationPath, 'Segmentations')
-        logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
+      if not os.path.exists(segmentationPath):
+        continue
+      else:
+        if any("WholeGland" in name for name in os.listdir(segmentationPath)):
+          logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
+          logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
+          logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))
 
-        if not self.preopSegmentationPath and os.path.exists(segmentationPath) and os.listdir(segmentationPath):
+          logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
+
           self.preopImagePath = seriesMap[series]['NRRDLocation']
           self.preopSegmentationPath = segmentationPath
+          break
 
   def loadT2Label(self):
     if self.preopLabel:
@@ -3563,6 +3575,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
     self.currentGuidanceComputation = None
     self.targetList = targets
     self.computeCursorDistances = False
+    self.currentTargetIndex = -1
     self.observer = None
 
   def getOrCreateNewGuidanceComputation(self, targetList):
@@ -3613,7 +3626,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
     if col == 0:
       return self.targetList.GetNthFiducialLabel(row)
 
-    if col == 1 and self.cursorPosition and self.computeCursorDistances:
+    if col == 1 and self.cursorPosition and self.computeCursorDistances and self.currentTargetIndex == row:
       targetPosition = self.logic.getTargetPosition(row, self.targetList)
       distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
       distance2D = [str(round(distance2D[0]/10, 1)), str(round(distance2D[1]/10, 1)), str(round(distance2D[2]/10, 1))]
@@ -3716,6 +3729,11 @@ class ZFrameGuidanceComputation(ParameterNodeObservationMixin):
     self.needleStartEndPositions[index] = (start, end)
     self.computedHoles[index] = [indexX, indexY]
     self.computedDepth[index] = [inRange, round(depth/10, 1)]
+#
+# class CustomSelectionModel(qt.QItemSelectionModel)
+#
+#
+#
 
 
 class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
