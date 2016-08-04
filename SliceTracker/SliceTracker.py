@@ -1942,6 +1942,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.logic.applyDefaultTargetDisplayNode(self.logic.preopTargets)
     self.markupsLogic.JumpSlicesToNthPointInMarkup(self.logic.preopTargets.GetID(), 0)
     self.targetTable.selectRow(0)
+    self.targetTable.enabled = True
 
   def promptUserAndApplyBiasCorrectionIfNeeded(self):
     if not self.continueOldCase:
