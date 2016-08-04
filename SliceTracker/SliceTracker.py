@@ -2800,20 +2800,24 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     for series in seriesMap:
       seriesName = str(seriesMap[series]['LongName'])
       logging.debug('series Number ' + series + ' ' + seriesName)
-      if re.search("ax", str(seriesName), re.IGNORECASE) and re.search("t2", str(seriesName), re.IGNORECASE):
-        logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
-        logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
 
-        path = os.path.join(seriesMap[series]['NRRDLocation'])
-        logging.debug(' LOCATION OF IMAGE path : ' + str(path))
+      imagePath = os.path.join(seriesMap[series]['NRRDLocation'])
+      segmentationPath = os.path.dirname(os.path.dirname(imagePath))
+      segmentationPath = os.path.join(segmentationPath, 'Segmentations')
 
-        segmentationPath = os.path.dirname(os.path.dirname(path))
-        segmentationPath = os.path.join(segmentationPath, 'Segmentations')
-        logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
+      if not os.path.exists(segmentationPath):
+        continue
+      else:
+        if any("WholeGland" in name for name in os.listdir(segmentationPath)):
+          logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
+          logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
+          logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))
 
-        if not self.preopSegmentationPath and os.path.exists(segmentationPath) and os.listdir(segmentationPath):
+          logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
+
           self.preopImagePath = seriesMap[series]['NRRDLocation']
           self.preopSegmentationPath = segmentationPath
+          break
 
   def loadT2Label(self):
     if self.preopLabel:
