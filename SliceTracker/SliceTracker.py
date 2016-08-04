@@ -3331,12 +3331,13 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   def createNeedleModelNode(self, start, end):
     self.removeNeedleModelNode()
-    self.needleModelNode = self.createModelNode(self.COMPUTED_NEEDLE_MODEL_NAME)
-    modelDisplayNode = self.setAndObserveDisplayNode(self.needleModelNode)
-    modelDisplayNode.SetColor(0, 1, 0)
-    pathTubeFilter = self.createTubeFilter(start, end, radius=1.0, numSides=18)
-    self.needleModelNode.SetAndObservePolyData(pathTubeFilter.GetOutput())
-    self.setNeedlePathVisibility(self.showNeedlePath)
+    if start is not None and end is not None:
+      self.needleModelNode = self.createModelNode(self.COMPUTED_NEEDLE_MODEL_NAME)
+      modelDisplayNode = self.setAndObserveDisplayNode(self.needleModelNode)
+      modelDisplayNode.SetColor(0, 1, 0)
+      pathTubeFilter = self.createTubeFilter(start, end, radius=1.0, numSides=18)
+      self.needleModelNode.SetAndObservePolyData(pathTubeFilter.GetOutput())
+      self.setNeedlePathVisibility(self.showNeedlePath)
 
   def removeNeedleModelNode(self):
     if self.needleModelNode:
