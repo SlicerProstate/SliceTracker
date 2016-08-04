@@ -3629,10 +3629,11 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
   def getBackgroundOrToolTipData(self, index, role):
     if role not in [qt.Qt.BackgroundRole, qt.Qt.ToolTipRole]:
       return None
+    backgroundRequested = role == qt.Qt.BackgroundRole
+    row = index.row()
+    col = index.column()
+    outOfRangeText = "" if self.currentGuidanceComputation.getZFrameDepthInRange(row) else "Current depth: out of range"
     if self.coverProstateTargetList and not self.coverProstateTargetList is self.targetList:
-      backgroundRequested = role == qt.Qt.BackgroundRole
-      row = index.row()
-      col = index.column()
       if col in [2, 3]:
         coverProstateGuidance = self.getOrCreateNewGuidanceComputation(self.coverProstateTargetList)
         if col == 2:
@@ -3644,15 +3645,19 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
         elif col == 3:
           currentDepth = self.currentGuidanceComputation.getZFrameDepth(row, asString=False)
           coverProstateDepth = coverProstateGuidance.getZFrameDepth(row, asString=False)
-          outOfRangeText = "" if self.currentGuidanceComputation.getZFrameDepthInRange(row) else "\nCurrent depth: out of range"
           if abs(currentDepth - coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 0.5):
             if backgroundRequested:
               return qt.QColor(qt.Qt.red) if len(outOfRangeText) else qt.QColor(qt.Qt.green)
-            return "%s depth: '%.1f' %s" % (self.PLANNING_IMAGE_NAME, coverProstateDepth, outOfRangeText)
+            return "%s depth: '%.1f' %s" % (self.PLANNING_IMAGE_NAME, coverProstateDepth, "\n"+outOfRangeText)
           else:
             if backgroundRequested:
               return qt.QColor(qt.Qt.red)
-            return "%s depth: '%.1f' %s" % (self.PLANNING_IMAGE_NAME, coverProstateDepth, outOfRangeText)
+            return "%s depth: '%.1f' %s" % (self.PLANNING_IMAGE_NAME, coverProstateDepth, "\n"+outOfRangeText)
+    elif self.coverProstateTargetList is self.targetList and col == 3:
+      if backgroundRequested and len(outOfRangeText):
+        return qt.QColor(qt.Qt.red)
+      elif len(outOfRangeText):
+        return outOfRangeText
     return None
 
 
