@@ -3138,10 +3138,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   def getTargetPositions(self, targets):
     target_positions = []
-    for target in range(targets.GetNumberOfFiducials()):
-      target_position = [0.0, 0.0, 0.0]
-      targets.GetNthFiducialPosition(target, target_position)
-      target_positions.append(target_position)
+    for index in range(targets.GetNumberOfFiducials()):
+      target_positions.append(self.getTargetPosition(index, targets))
     logging.debug('target_positions are ' + str(target_positions))
     return target_positions
 
@@ -3166,12 +3164,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   def getMarkupSlicePositions(self):
     nOfControlPoints = self.inputMarkupNode.GetNumberOfFiducials()
-    positions = []
-    pos = [0, 0, 0]
-    for i in range(nOfControlPoints):
-      self.inputMarkupNode.GetNthFiducialPosition(i, pos)
-      positions.append(pos[2])
-    return positions
+    return [self.getTargetPosition(index, self.inputMarkupNode)[2] for index in range(nOfControlPoints)]
 
   def deleteClippingData(self):
     slicer.mrmlScene.RemoveNode(self.clippingModelNode)
@@ -3481,6 +3474,11 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     end = start + l * n
     return start, end
 
+  def getTargetPosition(self, index, targetList):
+    position = [0.0, 0.0, 0.0]
+    targetList.GetNthFiducialPosition(index, position)
+    return position
+
 
 class SliceTrackerTest(ScriptedLoadableModuleTest):
   """
@@ -3515,6 +3513,8 @@ class SliceTrackerTest(ScriptedLoadableModuleTest):
 
 
 class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMixin):
+
+  PLANNING_IMAGE_NAME = "Initial registration"
 
   COLUMN_NAME = 'Name'
   COLUMN_DISTANCE = 'Distance[cm]'
@@ -3613,48 +3613,47 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
     if col == 0:
       return self.targetList.GetNthFiducialLabel(row)
 
-    targetPosition = self.getTargetPosition(row, self.targetList)
-
     if col == 1 and self.cursorPosition and self.computeCursorDistances:
+      targetPosition = self.logic.getTargetPosition(row, self.targetList)
       distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
       distance2D = [str(round(distance2D[0]/10, 1)), str(round(distance2D[1]/10, 1)), str(round(distance2D[2]/10, 1))]
       distance3D = self.logic.get3DEuclideanDistance(targetPosition, self.cursorPosition)
       text = 'x= ' + distance2D[0] + '  y= ' + distance2D[1] + '  z= ' + distance2D[2] + '  (3D= ' + str(round(distance3D/10, 1)) + ')'
       return text
-    elif (col == 2 or col == 3) and self.logic.zFrameRegistrationSuccessful:
-      if col == 2:
-        return self.currentGuidanceComputation.getZFrameHole(row)
-      else:
-        return self.currentGuidanceComputation.getZFrameDepth(row)
+    elif col == 2 and self.logic.zFrameRegistrationSuccessful:
+      return self.currentGuidanceComputation.getZFrameHole(row)
+    elif col == 3 and self.logic.zFrameRegistrationSuccessful:
+      return self.currentGuidanceComputation.getZFrameDepth(row)
     return ""
 
   def getBackgroundOrToolTipData(self, index, role):
     if role not in [qt.Qt.BackgroundRole, qt.Qt.ToolTipRole]:
       return None
     if self.coverProstateTargetList and not self.coverProstateTargetList is self.targetList:
+      backgroundRequested = role == qt.Qt.BackgroundRole
       row = index.row()
       col = index.column()
-      if col == 2:
+      if col in [2, 3]:
         coverProstateGuidance = self.getOrCreateNewGuidanceComputation(self.coverProstateTargetList)
-        coverProstateHole = coverProstateGuidance.getZFrameHole(row)
-        if self.currentGuidanceComputation.getZFrameHole(row) == coverProstateHole:
-          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else ""
-        else:
-          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: %s" % coverProstateHole
-      elif col == 3:
-        coverProstateGuidance = self.getOrCreateNewGuidanceComputation(self.coverProstateTargetList)
-        currentDepth = self.currentGuidanceComputation.getZFrameDepth(row, asString=False)
-        coverProstateDepth = coverProstateGuidance.getZFrameDepth(row, asString=False)
-        if abs(currentDepth - coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 0.5):
-          return qt.QColor(qt.Qt.green) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
-        else:
-          return qt.QColor(qt.Qt.red) if role == qt.Qt.BackgroundRole else "Cover Prostate: '%.1f'" % coverProstateDepth
+        if col == 2:
+          coverProstateHole = coverProstateGuidance.getZFrameHole(row)
+          if self.currentGuidanceComputation.getZFrameHole(row) == coverProstateHole:
+            return qt.QColor(qt.Qt.green) if backgroundRequested else ""
+          else:
+            return qt.QColor(qt.Qt.red) if backgroundRequested else "{} hole: {}".format(self.PLANNING_IMAGE_NAME, coverProstateHole)
+        elif col == 3:
+          currentDepth = self.currentGuidanceComputation.getZFrameDepth(row, asString=False)
+          coverProstateDepth = coverProstateGuidance.getZFrameDepth(row, asString=False)
+          outOfRangeText = "" if self.currentGuidanceComputation.getZFrameDepthInRange(row) else "\nCurrent depth: out of range"
+          if abs(currentDepth - coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 0.5):
+            if backgroundRequested:
+              return qt.QColor(qt.Qt.red) if len(outOfRangeText) else qt.QColor(qt.Qt.green)
+            return "%s depth: '%.1f' %s" % (self.PLANNING_IMAGE_NAME, coverProstateDepth, outOfRangeText)
+          else:
+            if backgroundRequested:
+              return qt.QColor(qt.Qt.red)
+            return "%s depth: '%.1f' %s" % (self.PLANNING_IMAGE_NAME, coverProstateDepth, outOfRangeText)
     return None
-
-  def getTargetPosition(self, index, targetList):
-    position = [0.0, 0.0, 0.0]
-    targetList.GetNthFiducialPosition(index, position)
-    return position
 
 
 class ZFrameGuidanceComputation(ParameterNodeObservationMixin):
@@ -3701,17 +3700,17 @@ class ZFrameGuidanceComputation(ParameterNodeObservationMixin):
     else:
       return self.computedDepth[index][1]
 
+  def getZFrameDepthInRange(self, index):
+    if index not in self.computedHoles.keys():
+      self.calculateZFrameHoleAndDepth(index)
+    return self.computedDepth[index][0]
+
   def calculateZFrameHoleAndDepth(self, index):
-    targetPosition = self.getTargetPosition(index)
+    targetPosition = self.logic.getTargetPosition(index, self.targetList)
     (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
     self.needleStartEndPositions[index] = (start, end)
     self.computedHoles[index] = [indexX, indexY]
     self.computedDepth[index] = [inRange, round(depth/10, 1)]
-
-  def getTargetPosition(self, index):
-    pos = [0.0, 0.0, 0.0]
-    self.targetList.GetNthFiducialPosition(index, pos)
-    return pos
 
 
 class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
