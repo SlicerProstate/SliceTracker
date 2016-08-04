@@ -608,7 +608,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.targetTableModel = CustomTargetTableModel(self.logic)
     self.targetTableModel.addObserver(vtk.vtkCommand.ModifiedEvent, self.updateNeedleModel)
     self.targetTable.setModel(self.targetTableModel)
-    self.targetTable.setSelectionBehavior(qt.QTableView.SelectRows)
+    self.targetTable.setSelectionBehavior(qt.QTableView.SelectItems)
     self.setTargetTableSizeConstraints()
     self.targetTable.verticalHeader().hide()
     self.targetTable.minimumHeight = 150
