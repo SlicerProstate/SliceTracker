@@ -1438,8 +1438,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           self.onRegistrationResultSelected(result.name, registrationType='bSpline')
         elif result.approved and result.approvedTargets:
           self.onRegistrationResultSelected(result.name, showApproved=True)
-        if self.targetTableModel.targetList:
-          self.selectLastSelectedTarget()
         break
 
   def onTargetTableSelectionChanged(self, modelIndex=None):
@@ -1453,6 +1451,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.currentTargets = self.logic.preopTargets
     self.jumpSliceNodesToNthTarget(modelIndex.row())
     self.updateNeedleModel()
+    self.targetTableModel.currentTargetIndex = self.lastSelectedModelIndex.row()
+    self.updateSelection(self.lastSelectedModelIndex.row())
+
+  def updateSelection(self, row):
+    self.targetTable.clearSelection()
+    first = self.targetTable.model().index(row, 0)
+    second = self.targetTable.model().index(row, 1)
+
+    selection = qt.QItemSelection(first, second)
+    self.targetTable.selectionModel().select(selection, qt.QItemSelectionModel.Select)
 
   def jumpSliceNodesToNthTarget(self, targetIndex):
     currentTargetsSliceNodes = []
@@ -1647,8 +1655,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.revealCursor = CompareVolumes.LayerReveal()
 
   def setOldNewIndicatorAnnotationOpacity(self, value):
-    self.registrationResultNewImageAnnotation.opacity = value
-    self.registrationResultOldImageAnnotation.opacity = 1.0 - value
+    if self.registrationResultNewImageAnnotation:
+      self.registrationResultNewImageAnnotation.opacity = value
+    if self.registrationResultOldImageAnnotation:
+      self.registrationResultOldImageAnnotation.opacity = 1.0 - value
 
   def showOpacitySliderPopup(self, show):
     if show:
@@ -1786,7 +1796,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.onRegistrationButtonChecked(self.registrationButtonGroup.checkedId())
     else:
       self.showBSplineResultButton.click()
-    self.selectLastSelectedTarget()
 
   def checkButtonByRegistrationType(self, registrationType):
     for button in self.registrationButtonGroup.buttons():
@@ -1819,7 +1828,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def selectLastSelectedTarget(self):
     if not self.lastSelectedModelIndex:
       self.lastSelectedModelIndex = self.targetTableModel.index(0, 0)
-    self.targetTable.selectRow(self.lastSelectedModelIndex.row())
     self.targetTable.clicked(self.lastSelectedModelIndex)
 
   def setPreopTargetVisibility(self):
@@ -2501,7 +2509,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.updateRegistrationResultSelector()
     self.setupRegistrationResultView(layout=self.LAYOUT_SIDE_BY_SIDE)
 
-    self.showBSplineResultButton.click()
     self.currentResult.printSummary()
     self.connectCrosshairNode()
     if not self.logic.isVolumeExtentValid(self.currentResult.bSplineVolume):
@@ -3563,6 +3570,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
     self.currentGuidanceComputation = None
     self.targetList = targets
     self.computeCursorDistances = False
+    self.currentTargetIndex = -1
     self.observer = None
 
   def getOrCreateNewGuidanceComputation(self, targetList):
@@ -3613,7 +3621,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
     if col == 0:
       return self.targetList.GetNthFiducialLabel(row)
 
-    if col == 1 and self.cursorPosition and self.computeCursorDistances:
+    if col == 1 and self.cursorPosition and self.computeCursorDistances and self.currentTargetIndex == row:
       targetPosition = self.logic.getTargetPosition(row, self.targetList)
       distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
       distance2D = [str(round(distance2D[0]/10, 1)), str(round(distance2D[1]/10, 1)), str(round(distance2D[2]/10, 1))]
@@ -3716,6 +3724,11 @@ class ZFrameGuidanceComputation(ParameterNodeObservationMixin):
     self.needleStartEndPositions[index] = (start, end)
     self.computedHoles[index] = [indexX, indexY]
     self.computedDepth[index] = [inRange, round(depth/10, 1)]
+#
+# class CustomSelectionModel(qt.QItemSelectionModel)
+#
+#
+#
 
 
 class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
