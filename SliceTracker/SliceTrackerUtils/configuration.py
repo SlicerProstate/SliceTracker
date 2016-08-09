@@ -36,3 +36,6 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
       colorFilename = config.get('Color File', 'Filename')
       self.setSetting("Color_File_Name", os.path.join(os.path.dirname(inspect.getfile(self.__class__)),
                                                       '../Resources/Colors', colorFilename))
+
+    if not self.getSetting("DEFAULT_EVALUATION_LAYOUT"):
+      self.setSetting("DEFAULT_EVALUATION_LAYOUT", config.get('Evaluation', 'Default_Layout'))

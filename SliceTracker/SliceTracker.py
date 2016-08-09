@@ -2508,7 +2508,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.addNewTargetsToScene()
 
     self.updateRegistrationResultSelector()
-    self.setupRegistrationResultView(layout=self.LAYOUT_SIDE_BY_SIDE)
+    defaultLayout = self.getSetting("DEFAULT_EVALUATION_LAYOUT")
+    self.setupRegistrationResultView(layout=getattr(SliceTrackerConstants, defaultLayout, self.LAYOUT_SIDE_BY_SIDE))
 
     self.currentResult.printSummary()
     self.connectCrosshairNode()
