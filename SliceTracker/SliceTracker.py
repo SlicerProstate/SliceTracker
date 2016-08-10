@@ -277,7 +277,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.resetViewSettingButtons()
     self.resetVisualEffects()
     self.disconnectKeyEventObservers()
-    self.disconnectCrosshairNode()
     self.patientWatchBox.sourceFile = None
     self.intraopWatchBox.sourceFile = None
     self.continueOldCase = False
@@ -2098,13 +2097,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def onKeyPressedEvent(self, caller, event):
     if not caller.GetKeySym() == 'd':
       return
-    self.targetTableModel.computeCursorDistances = True
-    self.calcCursorTargetsDistance()
+    if not self.targetTableModel.computeCursorDistances:
+      self.targetTableModel.computeCursorDistances = True
+      self.calcCursorTargetsDistance()
+      self.connectCrosshairNode()
 
   def onKeyReleasedEvent(self, caller, event):
     if not caller.GetKeySym() == 'd':
       return
     self.targetTableModel.computeCursorDistances = False
+    self.disconnectCrosshairNode()
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onRatingDone(self, caller, event, callData):
@@ -2117,7 +2119,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.logic.removeNeedleModelNode()
     self.targetTableModel.computeCursorDistances = False
     self.save()
-    self.disconnectCrosshairNode()
+    self.disconnectKeyEventObservers()
     self.hideAllLabels()
     self.updateIntraopSeriesSelectorTable()
     self.removeSliceAnnotations()
@@ -2542,7 +2544,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.setupRegistrationResultView(layout=getattr(SliceTrackerConstants, defaultLayout, self.LAYOUT_SIDE_BY_SIDE))
 
     self.currentResult.printSummary()
-    self.connectCrosshairNode()
     self.connectKeyEventObservers()
     if not self.logic.isVolumeExtentValid(self.currentResult.bSplineVolume):
       slicer.util.infoDisplay(
@@ -3761,11 +3762,6 @@ class ZFrameGuidanceComputation(ParameterNodeObservationMixin):
     self.needleStartEndPositions[index] = (start, end)
     self.computedHoles[index] = [indexX, indexY]
     self.computedDepth[index] = [inRange, round(depth/10, 1)]
-#
-# class CustomSelectionModel(qt.QItemSelectionModel)
-#
-#
-#
 
 
 class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
