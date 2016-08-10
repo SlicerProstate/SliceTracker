@@ -276,6 +276,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentTargets = None
     self.resetViewSettingButtons()
     self.resetVisualEffects()
+    self.disconnectKeyEventObservers()
     self.disconnectCrosshairNode()
     self.patientWatchBox.sourceFile = None
     self.intraopWatchBox.sourceFile = None
@@ -380,6 +381,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.crosshairNodeObserverTag = None
 
     self.wlEffects = {}
+
+    self.keyPressEventObservers = {}
+    self.keyReleaseEventObservers = {}
 
     self.logic.retryMode = False
     self.logic.zFrameRegistrationSuccessful = False
@@ -2055,12 +2059,28 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.crosshairNodeObserverTag = self.crosshairNode.AddObserver(slicer.vtkMRMLCrosshairNode.CursorPositionModifiedEvent,
                                                                      self.calcCursorTargetsDistance)
 
+  def connectKeyEventObservers(self):
+    interactors = [self.yellowSliceViewInteractor]
+    if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+      interactors += [self.redSliceViewInteractor, self.greenSliceViewInteractor]
+    for interactor in interactors:
+      self.keyPressEventObservers[interactor] = interactor.AddObserver("KeyPressEvent", self.onKeyPressedEvent)
+      self.keyReleaseEventObservers[interactor] = interactor.AddObserver("KeyReleaseEvent", self.onKeyReleasedEvent)
+
+  def disconnectKeyEventObservers(self):
+    for interactor, tag in self.keyPressEventObservers.iteritems():
+      interactor.RemoveObserver(tag)
+    for interactor, tag in self.keyReleaseEventObservers.iteritems():
+      interactor.RemoveObserver(tag)
+
   def disconnectCrosshairNode(self):
     if self.crosshairNode and self.crosshairNodeObserverTag:
       self.crosshairNode.RemoveObserver(self.crosshairNodeObserverTag)
     self.crosshairNodeObserverTag = None
 
-  def calcCursorTargetsDistance(self, observee, event):
+  def calcCursorTargetsDistance(self, observee=None, event=None):
+    if not self.targetTableModel.computeCursorDistances:
+      return
     ras = [0.0,0.0,0.0]
     xyz = [0.0,0.0,0.0]
     insideView = self.crosshairNode.GetCursorPositionRAS(ras)
@@ -2074,6 +2094,17 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
        (self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE and sliceNode is self.yellowSliceNode))) or \
       (self.currentStep != self.STEP_EVALUATION and sliceNode is self.yellowSliceNode):
       self.targetTableModel.cursorPosition = ras
+
+  def onKeyPressedEvent(self, caller, event):
+    if not caller.GetKeySym() == 'd':
+      return
+    self.targetTableModel.computeCursorDistances = True
+    self.calcCursorTargetsDistance()
+
+  def onKeyReleasedEvent(self, caller, event):
+    if not caller.GetKeySym() == 'd':
+      return
+    self.targetTableModel.computeCursorDistances = False
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onRatingDone(self, caller, event, callData):
@@ -2504,7 +2535,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentStep = self.STEP_EVALUATION
     self.currentResult.save(self.generatedOutputDirectory)
     self.targetTable.connect('doubleClicked(QModelIndex)', self.onMoveTargetRequest)
-    self.targetTableModel.computeCursorDistances = True
     self.addNewTargetsToScene()
 
     self.updateRegistrationResultSelector()
@@ -2513,6 +2543,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.currentResult.printSummary()
     self.connectCrosshairNode()
+    self.connectKeyEventObservers()
     if not self.logic.isVolumeExtentValid(self.currentResult.bSplineVolume):
       slicer.util.infoDisplay(
         "One or more empty volume were created during registration process. You have three options:\n"
