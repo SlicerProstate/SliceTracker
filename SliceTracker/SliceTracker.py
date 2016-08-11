@@ -1005,16 +1005,20 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def onPreopTransferMessageBoxCanceled(self, caller, event):
     self.clearData()
+    self.preopTransferWindow.removeObservers()
 
   def continueWithoutPreopData(self, caller, event):
     self.logic.usePreopData = False
+    self.preopTransferWindow.removeObservers()
     self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def startPreProcessingPreopData(self, caller=None, event=None):
+    self.preopTransferWindow.removeObservers()
+    self.logic.intraopDataDir = self.intraopDICOMDataDirectory
     success = self.invokePreProcessing()
     if success:
       self.setSetting('InputLocation', None, moduleName="mpReview")
-      slicer.modules.mpreview.widgetRepresentation()
+      self.layoutManager.selectModule("mpReview")
       mpReview = slicer.modules.mpReviewWidget
       self.setSetting('InputLocation', self.mpReviewPreprocessedOutput, moduleName="mpReview")
       mpReview.onReload()
@@ -1029,6 +1033,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.layoutManager.selectModule(self.moduleName)
     slicer.mrmlScene.Clear(0)
     trainingMode = self.logic.trainingMode
+    self.logic.stopSmartDICOMReceiver()
     self.logic.resetAndInitializeData()
     self.logic.trainingMode = trainingMode
     self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
@@ -2689,7 +2694,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.registrationResults = RegistrationResults()
 
     self._intraopDataDir = None
-    self.smartDicomReceiver = None
 
     self.retryMode = False
     self.zFrameRegistrationSuccessful = False
@@ -3102,8 +3106,10 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.invokeEvent(SlicerProstateEvents.DICOMReceiverStoppedEvent)
 
   def stopSmartDICOMReceiver(self):
+    self.smartDicomReceiver = getattr(self, "smartDicomReceiver", None)
     if self.smartDicomReceiver:
       self.smartDicomReceiver.stop()
+      self.smartDicomReceiver.removeObservers()
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onDICOMReceiverStatusChanged(self, caller, event, callData):
@@ -3770,7 +3776,7 @@ class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
   SUFFIX = "-" + datetime.date.today().strftime("%Y%m%d")
   SUFFIX_PATTERN = "-[0-9]{8}"
   CASE_NUMBER_DIGITS = 3
-  PATTERN = PREFIX+"[0-9]{"+str(CASE_NUMBER_DIGITS-1)+"}[1-9]{1}"+SUFFIX_PATTERN
+  PATTERN = PREFIX+"[0-9]{"+str(CASE_NUMBER_DIGITS-1)+"}[0-9]{1}"+SUFFIX_PATTERN
 
   def __init__(self, destination, parent=None):
     super(NewCaseSelectionNameWidget, self).__init__(parent)
