@@ -261,8 +261,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def clearData(self):
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = False
-    if self.preopTransferWindow:
-      self.preopTransferWindow.hide()
+    self.cleanupPreopDICOMReceiver()
     if self.currentCaseDirectory:
       self.logic.closeCase(self.currentCaseDirectory)
       self.currentCaseDirectory = None
@@ -993,6 +992,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     return proceed
 
   def startPreopDICOMReceiver(self):
+    self.cleanupPreopDICOMReceiver()
     self.preopTransferWindow = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDataDirectory,
                                                   skipText="No Preop available")
     self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
@@ -1002,6 +1002,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                          self.startPreProcessingPreopData)
     self.preopTransferWindow.show()
+
+  def cleanupPreopDICOMReceiver(self):
+    if self.preopTransferWindow:
+      self.preopTransferWindow.hide()
+      self.preopTransferWindow.removeObservers()
+      self.preopTransferWindow = None
 
   def onPreopTransferMessageBoxCanceled(self, caller, event):
     self.clearData()
@@ -1013,7 +1019,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def startPreProcessingPreopData(self, caller=None, event=None):
-    self.preopTransferWindow.removeObservers()
+    self.cleanupPreopDICOMReceiver()
     self.logic.intraopDataDir = self.intraopDICOMDataDirectory
     success = self.invokePreProcessing()
     if success:
