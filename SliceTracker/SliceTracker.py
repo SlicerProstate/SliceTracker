@@ -1688,50 +1688,45 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.opacitySliderPopup. autoHide = True
 
   def onRockToggled(self):
-
-    def startRocking():
-      self.showOpacitySliderPopup(True)
-      self.flickerCheckBox.enabled = False
-      self.wlEffectsToolButton.checked = False
-      self.wlEffectsToolButton.enabled = False
-      self.disableWindowLevelEffects()
-      self.rockTimer.start()
-      self.opacitySpinBox.value = 0.5 + numpy.sin(self.rockCount / 10.) / 2.
-      self.rockCount += 1
-
-    def stopRocking():
-      self.wlEffectsToolButton.enabled = True
-      self.showOpacitySliderPopup(False)
-      self.flickerCheckBox.enabled  = True
-      self.rockTimer.stop()
-
     if self.rockCheckBox.checked:
-      startRocking()
+      self.startRocking()
     else:
-      stopRocking()
+      self.stopRocking()
+
+  def startRocking(self):
+    if self.flickerCheckBox.checked:
+      self.flickerCheckBox.checked = False
+    self.wlEffectsToolButton.checked = False
+    self.wlEffectsToolButton.enabled = False
+    self.disableWindowLevelEffects()
+    self.rockTimer.start()
+    self.opacitySpinBox.value = 0.5 + numpy.sin(self.rockCount / 10.) / 2.
+    self.rockCount += 1
+
+  def stopRocking(self):
+    self.wlEffectsToolButton.enabled = True
+    self.rockTimer.stop()
+    self.opacitySpinBox.value = 1.0
 
   def onFlickerToggled(self):
-
-    def startFlickering():
-      self.showOpacitySliderPopup(True)
-      self.rockCheckBox.setEnabled(False)
-      self.wlEffectsToolButton.checked = False
-      self.wlEffectsToolButton.enabled = False
-      self.disableWindowLevelEffects()
-      self.flickerTimer.start()
-      self.opacitySpinBox.value = 1.0 if self.opacitySpinBox.value == 0.0 else 0.0
-
-    def stopFlickering():
-      self.wlEffectsToolButton.enabled = True
-      self.showOpacitySliderPopup(False)
-      self.rockCheckBox.setEnabled(True)
-      self.flickerTimer.stop()
-      self.opacitySpinBox.value = 0.0
-
     if self.flickerCheckBox.checked:
-      startFlickering()
+      self.startFlickering()
     else:
-      stopFlickering()
+      self.stopFlickering()
+
+  def startFlickering(self):
+    if self.rockCheckBox.checked:
+      self.rockCheckBox.checked = False
+    self.wlEffectsToolButton.checked = False
+    self.wlEffectsToolButton.enabled = False
+    self.disableWindowLevelEffects()
+    self.flickerTimer.start()
+    self.opacitySpinBox.value = 1.0 if self.opacitySpinBox.value == 0.0 else 0.0
+
+  def stopFlickering(self):
+    self.wlEffectsToolButton.enabled = True
+    self.flickerTimer.stop()
+    self.opacitySpinBox.value = 1.0
 
   def onCompleteCaseButtonClicked(self):
     self.logic.caseCompleted = True
