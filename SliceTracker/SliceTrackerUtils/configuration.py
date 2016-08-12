@@ -39,3 +39,6 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
 
     if not self.getSetting("DEFAULT_EVALUATION_LAYOUT"):
       self.setSetting("DEFAULT_EVALUATION_LAYOUT", config.get('Evaluation', 'Default_Layout'))
+
+    if not self.getSetting("Demo_Mode"):
+      self.setSetting("Demo_Mode", config.get('Modes', 'Demo_Mode'))

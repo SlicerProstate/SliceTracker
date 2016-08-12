@@ -261,8 +261,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def clearData(self):
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = False
-    if self.preopTransferWindow:
-      self.preopTransferWindow.hide()
+    self.cleanupPreopDICOMReceiver()
     if self.currentCaseDirectory:
       self.logic.closeCase(self.currentCaseDirectory)
       self.currentCaseDirectory = None
@@ -302,11 +301,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.generatedOutputDirectory = ""
 
   def createPatientWatchBox(self):
-    watchBoxInformation = [WatchBoxAttribute('PatientID', 'Patient ID: ', DICOMTAGS.PATIENT_ID),
-                           WatchBoxAttribute('PatientName', 'Patient Name: ', DICOMTAGS.PATIENT_NAME),
-                           WatchBoxAttribute('DOB', 'Date of Birth: ', DICOMTAGS.PATIENT_BIRTH_DATE),
-                           WatchBoxAttribute('StudyDate', 'Preop Study Date: ', DICOMTAGS.STUDY_DATE)]
-    self.patientWatchBox = DICOMBasedInformationWatchBox(watchBoxInformation)
+    self.patientWatchBoxInformation = [WatchBoxAttribute('PatientID', 'Patient ID: ', DICOMTAGS.PATIENT_ID, self.demoMode),
+                                       WatchBoxAttribute('PatientName', 'Patient Name: ', DICOMTAGS.PATIENT_NAME, self.demoMode),
+                                       WatchBoxAttribute('DOB', 'Date of Birth: ', DICOMTAGS.PATIENT_BIRTH_DATE, self.demoMode),
+                                       WatchBoxAttribute('StudyDate', 'Preop Study Date: ', DICOMTAGS.STUDY_DATE)]
+    self.patientWatchBox = DICOMBasedInformationWatchBox(self.patientWatchBoxInformation)
     self.layout.addWidget(self.patientWatchBox)
 
     intraopWatchBoxInformation = [WatchBoxAttribute('StudyDate', 'Intraop Study Date: ', DICOMTAGS.STUDY_DATE),
@@ -368,7 +367,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                 "VolumeClip.", "Missing Extension")
 
     self.ratingWindow = RatingWindow(int(self.getSetting("Maximum_Rating_Score")))
-    self.ratingWindow.disableWidgetCheckbox.checked = not bool(self.getSetting("Rating_Enabled"))
+    self.ratingWindow.disableWidgetCheckbox.checked = not self.getSetting("Rating_Enabled") == "true"
+    self.demoMode = self.getSetting("Demo_Mode") == "true"
     self.sliceAnnotations = []
     self.mouseReleaseEventObservers = {}
     self.revealCursor = None
@@ -993,6 +993,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     return proceed
 
   def startPreopDICOMReceiver(self):
+    self.cleanupPreopDICOMReceiver()
     self.preopTransferWindow = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDataDirectory,
                                                   skipText="No Preop available")
     self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
@@ -1002,6 +1003,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                          self.startPreProcessingPreopData)
     self.preopTransferWindow.show()
+
+  def cleanupPreopDICOMReceiver(self):
+    if self.preopTransferWindow:
+      self.preopTransferWindow.hide()
+      self.preopTransferWindow.removeObservers()
+      self.preopTransferWindow = None
 
   def onPreopTransferMessageBoxCanceled(self, caller, event):
     self.clearData()
@@ -1013,7 +1020,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def startPreProcessingPreopData(self, caller=None, event=None):
-    self.preopTransferWindow.removeObservers()
+    self.cleanupPreopDICOMReceiver()
     self.logic.intraopDataDir = self.intraopDICOMDataDirectory
     success = self.invokePreProcessing()
     if success:
@@ -1682,50 +1689,45 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.opacitySliderPopup. autoHide = True
 
   def onRockToggled(self):
-
-    def startRocking():
-      self.showOpacitySliderPopup(True)
-      self.flickerCheckBox.enabled = False
-      self.wlEffectsToolButton.checked = False
-      self.wlEffectsToolButton.enabled = False
-      self.disableWindowLevelEffects()
-      self.rockTimer.start()
-      self.opacitySpinBox.value = 0.5 + numpy.sin(self.rockCount / 10.) / 2.
-      self.rockCount += 1
-
-    def stopRocking():
-      self.wlEffectsToolButton.enabled = True
-      self.showOpacitySliderPopup(False)
-      self.flickerCheckBox.enabled  = True
-      self.rockTimer.stop()
-
     if self.rockCheckBox.checked:
-      startRocking()
+      self.startRocking()
     else:
-      stopRocking()
+      self.stopRocking()
+
+  def startRocking(self):
+    if self.flickerCheckBox.checked:
+      self.flickerCheckBox.checked = False
+    self.wlEffectsToolButton.checked = False
+    self.wlEffectsToolButton.enabled = False
+    self.disableWindowLevelEffects()
+    self.rockTimer.start()
+    self.opacitySpinBox.value = 0.5 + numpy.sin(self.rockCount / 10.) / 2.
+    self.rockCount += 1
+
+  def stopRocking(self):
+    self.wlEffectsToolButton.enabled = True
+    self.rockTimer.stop()
+    self.opacitySpinBox.value = 1.0
 
   def onFlickerToggled(self):
-
-    def startFlickering():
-      self.showOpacitySliderPopup(True)
-      self.rockCheckBox.setEnabled(False)
-      self.wlEffectsToolButton.checked = False
-      self.wlEffectsToolButton.enabled = False
-      self.disableWindowLevelEffects()
-      self.flickerTimer.start()
-      self.opacitySpinBox.value = 1.0 if self.opacitySpinBox.value == 0.0 else 0.0
-
-    def stopFlickering():
-      self.wlEffectsToolButton.enabled = True
-      self.showOpacitySliderPopup(False)
-      self.rockCheckBox.setEnabled(True)
-      self.flickerTimer.stop()
-      self.opacitySpinBox.value = 0.0
-
     if self.flickerCheckBox.checked:
-      startFlickering()
+      self.startFlickering()
     else:
-      stopFlickering()
+      self.stopFlickering()
+
+  def startFlickering(self):
+    if self.rockCheckBox.checked:
+      self.rockCheckBox.checked = False
+    self.wlEffectsToolButton.checked = False
+    self.wlEffectsToolButton.enabled = False
+    self.disableWindowLevelEffects()
+    self.flickerTimer.start()
+    self.opacitySpinBox.value = 1.0 if self.opacitySpinBox.value == 0.0 else 0.0
+
+  def stopFlickering(self):
+    self.wlEffectsToolButton.enabled = True
+    self.flickerTimer.stop()
+    self.opacitySpinBox.value = 1.0
 
   def onCompleteCaseButtonClicked(self):
     self.logic.caseCompleted = True
