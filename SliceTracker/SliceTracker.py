@@ -301,11 +301,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.generatedOutputDirectory = ""
 
   def createPatientWatchBox(self):
-    watchBoxInformation = [WatchBoxAttribute('PatientID', 'Patient ID: ', DICOMTAGS.PATIENT_ID),
-                           WatchBoxAttribute('PatientName', 'Patient Name: ', DICOMTAGS.PATIENT_NAME),
-                           WatchBoxAttribute('DOB', 'Date of Birth: ', DICOMTAGS.PATIENT_BIRTH_DATE),
-                           WatchBoxAttribute('StudyDate', 'Preop Study Date: ', DICOMTAGS.STUDY_DATE)]
-    self.patientWatchBox = DICOMBasedInformationWatchBox(watchBoxInformation)
+    self.patientWatchBoxInformation = [WatchBoxAttribute('PatientID', 'Patient ID: ', DICOMTAGS.PATIENT_ID, self.demoMode),
+                                       WatchBoxAttribute('PatientName', 'Patient Name: ', DICOMTAGS.PATIENT_NAME, self.demoMode),
+                                       WatchBoxAttribute('DOB', 'Date of Birth: ', DICOMTAGS.PATIENT_BIRTH_DATE, self.demoMode),
+                                       WatchBoxAttribute('StudyDate', 'Preop Study Date: ', DICOMTAGS.STUDY_DATE)]
+    self.patientWatchBox = DICOMBasedInformationWatchBox(self.patientWatchBoxInformation)
     self.layout.addWidget(self.patientWatchBox)
 
     intraopWatchBoxInformation = [WatchBoxAttribute('StudyDate', 'Intraop Study Date: ', DICOMTAGS.STUDY_DATE),
@@ -367,7 +367,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                 "VolumeClip.", "Missing Extension")
 
     self.ratingWindow = RatingWindow(int(self.getSetting("Maximum_Rating_Score")))
-    self.ratingWindow.disableWidgetCheckbox.checked = not bool(self.getSetting("Rating_Enabled"))
+    self.ratingWindow.disableWidgetCheckbox.checked = not self.getSetting("Rating_Enabled") == "true"
+    self.demoMode = self.getSetting("Demo_Mode") == "true"
     self.sliceAnnotations = []
     self.mouseReleaseEventObservers = {}
     self.revealCursor = None
