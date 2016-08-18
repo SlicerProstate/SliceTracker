@@ -96,7 +96,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   @intraopDataDir.setter
   def intraopDataDir(self, path):
     if os.path.exists(path):
-      self.simulateIntraopPhaseButton.enabled = self.logic.trainingMode
       self.intraopWatchBox.sourceFile = None
       self.logic.removeObservers()
       self.logic.addObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
@@ -812,26 +811,37 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.preopTransferWindow.dicomReceiver.stopStoreSCP()
       self.simulatePreopPhaseButton.enabled = False
       filename = os.path.basename(self.PREOP_SAMPLE_DATA_URL)
+      self.customStatusProgressBar.show()
       preopZipFile = self.sampleDataLogic.downloadFileIntoCache(self.PREOP_SAMPLE_DATA_URL, filename)
-      unzippedOutput = self.unzipFile(preopZipFile)
-      self.copyDirectory(unzippedOutput, self.preopDICOMDataDirectory)
+      # TODO: if cancel, don't continue
+      self.customStatusProgressBar.hide()
+      self.unzipFileAndCopyToDirectory(preopZipFile, self.preopDICOMDataDirectory)
 
   def startIntraopPhaseSimulation(self):
     if self.INTRAOP_SAMPLE_DATA_URL and self.intraopDataDir:
+      if not self.logic.trainingMode:
+        self.logic.smartDicomReceiver.stopStoreSCP()
+        self.logic.trainingMode = True
       self.simulateIntraopPhaseButton.enabled = False
       filename = os.path.basename(self.INTRAOP_SAMPLE_DATA_URL)
+      self.customStatusProgressBar.show()
       intraopZipFile = self.sampleDataLogic.downloadFileIntoCache(self.INTRAOP_SAMPLE_DATA_URL, filename)
-      unzippedOutput = self.unzipFile(intraopZipFile)
-      self.copyDirectory(unzippedOutput, self.intraopDICOMDataDirectory)
+      self.customStatusProgressBar.hide()
+      self.unzipFileAndCopyToDirectory(intraopZipFile, self.intraopDICOMDataDirectory)
 
-  def unzipFile(self, filepath):
+  def unzipFileAndCopyToDirectory(self, filepath, copyToDirectory):
     import zipfile
-    zip_ref = zipfile.ZipFile(filepath, 'r')
-    destination = filepath.replace(os.path.basename(filepath), "")
-    print "extracting to %s " % destination
-    zip_ref.extractall(destination)
-    zip_ref.close()
-    return filepath.replace(".zip", "")
+    try:
+      zip_ref = zipfile.ZipFile(filepath, 'r')
+      destination = filepath.replace(os.path.basename(filepath), "")
+      logging.debug("extracting to %s " % destination)
+      zip_ref.extractall(destination)
+      zip_ref.close()
+      self.copyDirectory(filepath.replace(".zip", ""), copyToDirectory)
+    except zipfile.BadZipfile as exc:
+      self.preopTransferWindow.hide()
+      slicer.util.errorDisplay("An error appeared while extracting %s" % filepath, detailedText=str(exc.message))
+      self.clearData()
 
   def copyDirectory(self, source, destination, recursive=True):
     print source
@@ -845,6 +855,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   @onReturnProcessEvents
   def updateDownloadProgressBar(self, message):
+    print message
     pattern = re.compile('<.*?>')
     message = re.sub(pattern, '', message)
     try:
@@ -1012,11 +1023,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def onPreopTransferMessageBoxCanceled(self, caller, event):
     self.clearData()
-    self.preopTransferWindow.removeObservers()
 
   def continueWithoutPreopData(self, caller, event):
     self.logic.usePreopData = False
-    self.preopTransferWindow.removeObservers()
+    self.cleanupPreopDICOMReceiver()
+    self.simulatePreopPhaseButton.enabled = False
+    self.simulateIntraopPhaseButton.enabled = True
     self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def startPreProcessingPreopData(self, caller=None, event=None):
@@ -1044,6 +1056,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.logic.resetAndInitializeData()
     self.logic.trainingMode = trainingMode
     self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
+    self.simulateIntraopPhaseButton.enabled = self.logic.trainingMode
     self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def invokePreProcessing(self):
@@ -2594,6 +2607,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if self.logic.usePreopData:
       newSeriesNumbers = self.verifyPatientIDEquality(seriesNumberPatientIDs)
     else:
+      self.simulateIntraopPhaseButton.enabled = False
       newSeriesNumbers = seriesNumberPatientIDs.keys()
     self.updateIntraopSeriesSelectorTable()
     selectedSeries = self.intraopSeriesSelector.currentText

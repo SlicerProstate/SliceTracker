@@ -3,8 +3,8 @@ import slicer
 
 class SliceTrackerConstants(object):
 
-  PREOP_SAMPLE_DATA_URL = 'http://slicer.kitware.com/midas3/download/item/246404/Preop-deid.zip'
-  INTRAOP_SAMPLE_DATA_URL = 'http://slicer.kitware.com/midas3/download/item/246405/Intraop-deid.zip'
+  PREOP_SAMPLE_DATA_URL = 'https://github.com/SlicerProstate/SliceTracker/releases/download/test-data/Preop-deid.zip'
+  INTRAOP_SAMPLE_DATA_URL = 'https://github.com/SlicerProstate/SliceTracker/releases/download/test-data/Intraop-deid.zip'
 
   STEP_OVERVIEW = "Overview"
   STEP_ZFRAME_REGISTRATION = "OpenSourceZFrameRegistration"
