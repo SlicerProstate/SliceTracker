@@ -11,17 +11,14 @@ from slicer.ScriptedLoadableModule import *
 import EditorLib
 from Editor import EditorWidget
 
-import SampleData
-
 from SlicerProstateUtils.constants import DICOMTAGS, COLOR, STYLE, FileExtension
-from SlicerProstateUtils.helpers import SmartDICOMReceiver, SliceAnnotation, TargetCreationWidget
+from SlicerProstateUtils.helpers import SampleDataDownloader, SmartDICOMReceiver, SliceAnnotation, TargetCreationWidget
 from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin, ParameterNodeObservationMixin
 from SlicerProstateUtils.events import SlicerProstateEvents
 from SlicerProstateUtils.decorators import onReturnProcessEvents, beforeRunProcessEvents
 
-from SliceTrackerUtils.events import SliceTrackerEvents
 from SliceTrackerUtils.constants import SliceTrackerConstants
 from SliceTrackerUtils.exceptions import DICOMValueError
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
@@ -100,8 +97,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.logic.removeObservers()
       self.logic.addObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
       self.logic.addObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
-      self.logic.addObserver(SliceTrackerEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
-      self.logic.addObserver(SliceTrackerEvents.NewFileIndexedEvent, self.onNewFileIndexed)
+      self.logic.addObserver(SlicerProstateEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+      self.logic.addObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
       self.logic.intraopDataDir = path
       self.closeCaseButton.enabled = True
 
@@ -236,7 +233,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     SliceTrackerConfiguration(self.moduleName, os.path.join(self.modulePath, 'Resources', "default.cfg"))
     self.zFrameRegistrationClass = getattr(sys.modules[__name__], self.getSetting("ZFrame_Registration_Class_Name"))
     self.logic = SliceTrackerLogic()
-    self.sampleDataLogic = SampleData.SampleDataLogic(self.updateDownloadProgressBar)
+    self.sampleDownloader = SampleDataDownloader(True)
     self.markupsLogic = slicer.modules.markups.logic()
     self.volumesLogic = slicer.modules.volumes.logic()
     self.annotationLogic = slicer.modules.annotations.logic()
@@ -261,6 +258,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = False
     self.cleanupPreopDICOMReceiver()
+    self.sampleDownloader.resetAndInitialize()
     if self.currentCaseDirectory:
       self.logic.closeCase(self.currentCaseDirectory)
       self.currentCaseDirectory = None
@@ -810,12 +808,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       if self.preopTransferWindow.dicomReceiver.isRunning():
         self.preopTransferWindow.dicomReceiver.stopStoreSCP()
       self.simulatePreopPhaseButton.enabled = False
-      filename = os.path.basename(self.PREOP_SAMPLE_DATA_URL)
-      self.customStatusProgressBar.show()
-      preopZipFile = self.sampleDataLogic.downloadFileIntoCache(self.PREOP_SAMPLE_DATA_URL, filename)
-      # TODO: if cancel, don't continue
-      self.customStatusProgressBar.hide()
-      self.unzipFileAndCopyToDirectory(preopZipFile, self.preopDICOMDataDirectory)
+      preopZipFile = self.initiateSampleDataDownload(self.PREOP_SAMPLE_DATA_URL)
+      if not self.sampleDownloader.wasCanceled and preopZipFile:
+        self.unzipFileAndCopyToDirectory(preopZipFile, self.preopDICOMDataDirectory)
 
   def startIntraopPhaseSimulation(self):
     if self.INTRAOP_SAMPLE_DATA_URL and self.intraopDataDir:
@@ -823,11 +818,24 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.logic.smartDicomReceiver.stopStoreSCP()
         self.logic.trainingMode = True
       self.simulateIntraopPhaseButton.enabled = False
-      filename = os.path.basename(self.INTRAOP_SAMPLE_DATA_URL)
-      self.customStatusProgressBar.show()
-      intraopZipFile = self.sampleDataLogic.downloadFileIntoCache(self.INTRAOP_SAMPLE_DATA_URL, filename)
-      self.customStatusProgressBar.hide()
-      self.unzipFileAndCopyToDirectory(intraopZipFile, self.intraopDICOMDataDirectory)
+      intraopZipFile = self.initiateSampleDataDownload(self.INTRAOP_SAMPLE_DATA_URL)
+      if not self.sampleDownloader.wasCanceled and intraopZipFile:
+        self.unzipFileAndCopyToDirectory(intraopZipFile, self.intraopDICOMDataDirectory)
+
+  def initiateSampleDataDownload(self, url):
+    filename = os.path.basename(url)
+    self.sampleDownloader.resetAndInitialize()
+    self.sampleDownloader.addObserver(self.sampleDownloader.EVENTS['status_changed'], self.onDownloadProgressUpdated)
+    self.customStatusProgressBar.show()
+    downloadedFile = self.sampleDownloader.downloadFileIntoCache(url, filename)
+    self.customStatusProgressBar.hide()
+    return None if self.sampleDownloader.wasCanceled else downloadedFile
+
+  @onReturnProcessEvents
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onDownloadProgressUpdated(self, caller, event, callData):
+    message, percent = ast.literal_eval(callData)
+    self.customStatusProgressBar.updateStatus(message, percent)
 
   def unzipFileAndCopyToDirectory(self, filepath, copyToDirectory):
     import zipfile
@@ -839,8 +847,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       zip_ref.close()
       self.copyDirectory(filepath.replace(".zip", ""), copyToDirectory)
     except zipfile.BadZipfile as exc:
-      self.preopTransferWindow.hide()
-      slicer.util.errorDisplay("An error appeared while extracting %s" % filepath, detailedText=str(exc.message))
+      if self.preopTransferWindow:
+        self.preopTransferWindow.hide()
+      slicer.util.errorDisplay("An error appeared while extracting %s. If the file is corrupt, please delete it and try "
+                               "again." % filepath, detailedText=str(exc.message))
       self.clearData()
 
   def copyDirectory(self, source, destination, recursive=True):
@@ -852,19 +862,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.copyDirectory(current, destination, recursive)
       else:
         shutil.copy(current, destination)
-
-  @onReturnProcessEvents
-  def updateDownloadProgressBar(self, message):
-    print message
-    pattern = re.compile('<.*?>')
-    message = re.sub(pattern, '', message)
-    try:
-      parts = message.split(" ")
-      percent = int(parts[3].replace('(', "").replace('%', ""))
-    except (ValueError, IndexError):
-      percent = 0
-    self.customStatusProgressBar.maximum = 100
-    self.customStatusProgressBar.updateStatus(message, percent)
 
   def setupConnections(self):
 
@@ -3144,7 +3141,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     eligibleSeriesFiles = []
     size = len(newFileList)
     for currentIndex, currentFile in enumerate(newFileList, start=1):
-      self.invokeEvent(SliceTrackerEvents.NewFileIndexedEvent, ["Indexing file %s" % currentFile, size, currentIndex].__str__())
+      self.invokeEvent(SlicerProstateEvents.NewFileIndexedEvent, ["Indexing file %s" % currentFile, size, currentIndex].__str__())
       slicer.app.processEvents()
       currentFile = os.path.join(self._intraopDataDir, currentFile)
       indexer.addFile(slicer.dicomDatabase, currentFile, None)
@@ -3158,7 +3155,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
 
     if len(eligibleSeriesFiles):
-      self.invokeEvent(SliceTrackerEvents.NewImageDataReceivedEvent, eligibleSeriesFiles.__str__())
+      self.invokeEvent(SlicerProstateEvents.NewImageDataReceivedEvent, eligibleSeriesFiles.__str__())
 
   def createLoadableFileListForSeries(self, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
