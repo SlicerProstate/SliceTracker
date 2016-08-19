@@ -12,7 +12,6 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/ZFrameRegistration.py
   SliceTrackerUtils/WindowLevelEffect.py
   SliceTrackerUtils/helpers.py
-  SliceTrackerUtils/events.py
   SliceTrackerUtils/watch.py
   )
 
