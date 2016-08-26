@@ -1,6 +1,7 @@
 import qt, vtk
 import os, sys
 
+
 class WindowLevelEffect(object):
 
   EVENTS = [vtk.vtkCommand.LeftButtonPressEvent,

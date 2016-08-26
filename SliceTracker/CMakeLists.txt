@@ -10,7 +10,6 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/exceptions.py
   SliceTrackerUtils/RegistrationData.py
   SliceTrackerUtils/ZFrameRegistration.py
-  SliceTrackerUtils/WindowLevelEffect.py
   SliceTrackerUtils/helpers.py
   SliceTrackerUtils/watch.py
   )
@@ -25,7 +24,6 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-quickSegmentation.png
   Resources/Icons/icon-settings.png
   Resources/Icons/icon-infoBox.png
-  Resources/Icons/cursor-window-level.png
   Resources/Icons/icon-crosshair.png
   Resources/Icons/icon-four-up.png
   Resources/Icons/icon-needle.png
