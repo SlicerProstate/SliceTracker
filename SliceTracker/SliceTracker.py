@@ -11,6 +11,7 @@ from slicer.ScriptedLoadableModule import *
 import EditorLib
 from Editor import EditorWidget
 
+from SlicerProstateUtils.widgets import WindowLevelEffectsButton
 from SlicerProstateUtils.constants import DICOMTAGS, COLOR, STYLE, FileExtension
 from SlicerProstateUtils.helpers import SampleDataDownloader, SmartDICOMReceiver, SliceAnnotation, TargetCreationWidget
 from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
@@ -24,7 +25,6 @@ from SliceTrackerUtils.exceptions import DICOMValueError
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
 from SliceTrackerUtils.ZFrameRegistration import *
 from SliceTrackerUtils.configuration import SliceTrackerConfiguration
-from SliceTrackerUtils.WindowLevelEffect import WindowLevelEffect
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
@@ -376,7 +376,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
     self.crosshairNodeObserverTag = None
 
-    self.wlEffects = {}
+    self.sliceWidgets = []
 
     self.keyPressEventObservers = {}
     self.keyReleaseEventObservers = {}
@@ -453,8 +453,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, iconSize=iconSize, checkable=True, toolTip="Display needle path")
     self.showTemplatePathButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template paths")
     self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, iconSize=iconSize, checkable=True, toolTip="Display annotations", checked=True)
-    self.wlEffectsToolButton = self.createButton("", icon=self.wlIcon, iconSize=iconSize, checkable=True,
-                                                 toolTip="Use this tool for changing W/L with respect to FG and BG opacity")
+    self.wlEffectsToolButton = self.createButton("", buttonClass=WindowLevelEffectsButton,
+                                                 icon=self.wlIcon, iconSize=iconSize, checkable=True,
+                                                 toolTip="Change W/L with respect to FG and BG opacity")
 
     self.resetViewSettingButtons()
     self.layout.addWidget(self.createHLayout([self.redOnlyLayoutButton, self.sideBySideLayoutButton,
@@ -491,16 +492,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     setattr(self, name.lower()+"SliceLogic", logic)
     setattr(self, name.lower()+"SliceNode", logic.GetSliceNode())
     setattr(self, name.lower()+"FOV", [])
-    self.wlEffects[widget] = WindowLevelEffect(widget)
-
-  def enableWindowLevelEffects(self, sliceWidgets):
-    for sliceWidget in sliceWidgets:
-      if self.wlEffects.has_key(sliceWidget):
-        self.wlEffects[sliceWidget].enable()
-
-  def disableWindowLevelEffects(self):
-    for wlEffect in self.wlEffects.values():
-      wlEffect.disable()
+    if widget not in self.sliceWidgets:
+      self.sliceWidgets.append(widget)
 
   def setDefaultOrientation(self):
     self.redSliceNode.SetOrientationToAxial()
@@ -905,7 +898,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
         self.showAnnotationsButton.connect('toggled(bool)', self.onShowAnnotationsToggled)
         self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
-        self.wlEffectsToolButton.connect('toggled(bool)', self.onWindowLevelEffectToggled)
 
       def setupZFrameRegistrationStepButtonConnections():
         self.retryZFrameRegistrationButton.clicked.connect(self.onRetryZFrameRegistrationButtonClicked)
@@ -1165,19 +1157,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def onShowNeedlePathToggled(self, checked):
     self.logic.setNeedlePathVisibility(checked)
-
-  def onWindowLevelEffectToggled(self, checked):
-    if not checked:
-      self.disableWindowLevelEffects()
-    else:
-      widgets = []
-      if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
-        widgets = [self.redWidget, self.yellowWidget, self.greenWidget]
-      elif self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
-        widgets = [self.redWidget, self.yellowWidget]
-      elif self.layoutManager.layout == self.LAYOUT_RED_SLICE_ONLY:
-        widgets = [self.redWidget]
-      self.enableWindowLevelEffects(widgets)
 
   def onShowAnnotationsToggled(self, checked):
     allSliceAnnotations = self.sliceAnnotations[:]
@@ -1709,7 +1688,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.flickerCheckBox.checked = False
     self.wlEffectsToolButton.checked = False
     self.wlEffectsToolButton.enabled = False
-    self.disableWindowLevelEffects()
     self.rockTimer.start()
     self.opacitySpinBox.value = 0.5 + numpy.sin(self.rockCount / 10.) / 2.
     self.rockCount += 1
@@ -1730,7 +1708,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.rockCheckBox.checked = False
     self.wlEffectsToolButton.checked = False
     self.wlEffectsToolButton.enabled = False
-    self.disableWindowLevelEffects()
     self.flickerTimer.start()
     self.opacitySpinBox.value = 1.0 if self.opacitySpinBox.value == 0.0 else 0.0
 
@@ -2112,6 +2089,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.targetTableModel.cursorPosition = ras
 
   def onKeyPressedEvent(self, caller, event):
+    print caller.GetKeySym()
     if not caller.GetKeySym() == 'd':
       return
     if not self.targetTableModel.computeCursorDistances:
