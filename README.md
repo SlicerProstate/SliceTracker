@@ -41,6 +41,22 @@ Development of SliceTracker is supported in part by the following NIH grants:
 * U24 CA180918 Quantitative Image Informatics for Cancer Research (QIICR), http://qiicr.org
 * R01 CA111288 Enabling Technologies for MRI-guided prostate interventions
 
+Several components of SliceTracker were adopted from other open source projects
+as follows:
+* Needle guidance core functionality was adopted from
+  https://github.com/ProstateBRP/NeedleGuideTemplate, courtesy Junichi
+  Tokuda @tokjun
+* [Z-frame
+  calibration](https://github.com/SlicerProstate/SliceTracker/commits/master/ZFrameCalibration)
+  was adopted from the [ProstateNav module of 3D Slicer version
+  3](https://www.slicer.org/slicerWiki/index.php/Modules:ProstateNav-Documentation-3.6) (see source
+  code [here](https://github.com/SlicerProstate/ProstateNav), no revision
+  history); although we
+  do not have the precise record of contribution to that functionality in the
+  ProstateNav module, we believe main contributors were Junichi Tokuda and
+  Simon Di Maio (while at BWH, now at [Intuitive
+  Surgical](http://www.intuitivesurgical.com/))
+
 ### References
 
 The following publications cover different aspects of work that led to the development of SliceTracker.
