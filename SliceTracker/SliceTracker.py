@@ -2089,7 +2089,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.targetTableModel.cursorPosition = ras
 
   def onKeyPressedEvent(self, caller, event):
-    print caller.GetKeySym()
     if not caller.GetKeySym() == 'd':
       return
     if not self.targetTableModel.computeCursorDistances:
