@@ -11,7 +11,7 @@ from slicer.ScriptedLoadableModule import *
 import EditorLib
 from Editor import EditorWidget
 
-from SlicerProstateUtils.widgets import WindowLevelEffectsButton
+from SlicerProstateUtils.buttons import *
 from SlicerProstateUtils.constants import DICOMTAGS, COLOR, STYLE, FileExtension
 from SlicerProstateUtils.helpers import SampleDataDownloader, SmartDICOMReceiver, SliceAnnotation, TargetCreationWidget
 from SlicerProstateUtils.helpers import RatingWindow, IncomingDataMessageBox, IncomingDataWindow
@@ -342,17 +342,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.settingsIcon = self.createIcon('icon-settings.png')
     self.undoIcon = self.createIcon('icon-undo.png')
     self.redoIcon = self.createIcon('icon-redo.png')
-    self.redOnlyIcon = self.createIcon('icon-red-only.png')
-    self.fourUpIcon = self.createIcon('icon-four-up.png')
-    self.sideBySideIcon = self.createIcon('icon-side-by-side.png')
-    self.crosshairIcon = self.createIcon('icon-crosshair.png')
     self.zFrameIcon = self.createIcon('icon-zframe.png')
     self.needleIcon = self.createIcon('icon-needle.png')
     self.templateIcon = self.createIcon('icon-template.png')
     self.textInfoIcon = self.createIcon('icon-text-info.png')
     self.revealCursorIcon = self.createIcon('icon-revealCursor.png')
     self.skipIcon = self.createIcon('icon-skip.png')
-    self.wlIcon = self.createIcon('icon-WindowLevelEffect.png')
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -372,9 +367,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self._currentTargets = None
     self.moveTargetMode = False
     self.currentlyMovedTargetModelIndex = None
-
-    self.crosshairNode = slicer.mrmlScene.GetNthNodeByClass(0, 'vtkMRMLCrosshairNode')
-    self.crosshairNodeObserverTag = None
 
     self.sliceWidgets = []
 
@@ -431,31 +423,21 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.registrationResultNewImageAnnotation = None
 
     self.currentStep = self.STEP_OVERVIEW
-    self.checkLayoutButtonByLayout(self.layoutManager.layout)
+    self.layoutManager.setLayout(self.layoutManager.layout)
 
   def setupViewSettingGroupBox(self):
     iconSize = qt.QSize(24, 24)
-    self.redOnlyLayoutButton = self.createButton("", checkable=True, icon=self.redOnlyIcon, iconSize=iconSize,
-                                                    toolTip="Red Slice Only Layout")
-    self.sideBySideLayoutButton = self.createButton("", checkable=True, icon=self.sideBySideIcon, iconSize=iconSize,
-                                                    toolTip="Side by Side Layout")
-    self.fourUpLayoutButton = self.createButton("", checkable=True, icon=self.fourUpIcon, iconSize=iconSize,
-                                                toolTip="FourUp Layout")
-    self.layoutButtonGroup = qt.QButtonGroup()
-    self.layoutButtonGroup.addButton(self.redOnlyLayoutButton, self.LAYOUT_RED_SLICE_ONLY)
-    self.layoutButtonGroup.addButton(self.fourUpLayoutButton, self.LAYOUT_FOUR_UP)
-    self.layoutButtonGroup.addButton(self.sideBySideLayoutButton, self.LAYOUT_SIDE_BY_SIDE)
-    self.layoutButtonGroup.setExclusive(False)
+    self.redOnlyLayoutButton = RedSliceLayoutButton()
+    self.sideBySideLayoutButton = SideBySideLayoutButton()
+    self.fourUpLayoutButton = FourUpLayoutButton()
+    self.crosshairButton = CrosshairButton()
+    self.wlEffectsToolButton = WindowLevelEffectsButton()
 
-    self.crosshairButton = self.createButton("", checkable=True, icon=self.crosshairIcon, iconSize=iconSize, toolTip="Show crosshair")
     self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, iconSize=iconSize, checkable=True, toolTip="Display zFrame model")
     self.showTemplateButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template")
     self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, iconSize=iconSize, checkable=True, toolTip="Display needle path")
     self.showTemplatePathButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template paths")
     self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, iconSize=iconSize, checkable=True, toolTip="Display annotations", checked=True)
-    self.wlEffectsToolButton = self.createButton("", buttonClass=WindowLevelEffectsButton,
-                                                 icon=self.wlIcon, iconSize=iconSize, checkable=True,
-                                                 toolTip="Change W/L with respect to FG and BG opacity")
 
     self.resetViewSettingButtons()
     self.layout.addWidget(self.createHLayout([self.redOnlyLayoutButton, self.sideBySideLayoutButton,
@@ -890,8 +872,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
 
       def setupViewSettingsButtonConnections():
-        self.layoutButtonGroup.connect('buttonClicked(QAbstractButton*)', self.onLayoutSelectionChanged)
-        self.crosshairButton.connect('toggled(bool)', self.onCrosshairToggled)
         self.useRevealCursorButton.connect('toggled(bool)', self.onRevealToggled)
         self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
         self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
@@ -1197,7 +1177,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.onLayoutChangedInOverviewStep()
       elif self.currentStep == self.STEP_SEGMENTATION:
         self.onLayoutChangedInSegmentationStep()
-    self.checkLayoutButtonByLayout(self.layoutManager.layout)
 
   def onLayoutChangedInEvaluationStep(self):
     self.disableTargetMovingMode()
@@ -1277,29 +1256,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.redSliceNode.SetUseLabelOutline(True)
       self.redSliceNode.RotateToVolumePlane(redVolume)
 
-  def onLayoutSelectionChanged(self, button):
-    self.uncheckLayoutButtons()
-    selectedLayout = self.layoutButtonGroup.id(button)
-    button.checked = True
-    if self.layoutManager.layout != selectedLayout:
-      self.layoutManager.setLayout(selectedLayout)
-
-  def checkLayoutButtonByLayout(self, layout):
-    self.uncheckLayoutButtons()
-    for button in self.layoutButtonGroup.buttons():
-      if self.layoutButtonGroup.id(button) == layout:
-        self.onLayoutSelectionChanged(button)
-
   def uncheckLayoutButtons(self):
     for button in self.layoutButtonGroup.buttons():
       button.checked = False
-
-  def onCrosshairToggled(self, checked):
-    if checked:
-      self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
-      self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.ShowSmallBasic)
-    else:
-      self.crosshairNode.SetCrosshairMode(slicer.vtkMRMLCrosshairNode.NoCrosshair)
 
   def onRegistrationButtonChecked(self, buttonId):
     self.disableTargetMovingMode()
@@ -2047,11 +2006,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.yellowCompositeNode.SetForegroundOpacity(value)
     self.setOldNewIndicatorAnnotationOpacity(value)
 
-  def connectCrosshairNode(self):
-    if not self.crosshairNodeObserverTag:
-      self.crosshairNodeObserverTag = self.crosshairNode.AddObserver(slicer.vtkMRMLCrosshairNode.CursorPositionModifiedEvent,
-                                                                     self.calcCursorTargetsDistance)
-
   def connectKeyEventObservers(self):
     interactors = [self.yellowSliceViewInteractor]
     if self.layoutManager.layout == self.LAYOUT_FOUR_UP:
@@ -2066,18 +2020,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     for interactor, tag in self.keyReleaseEventObservers.iteritems():
       interactor.RemoveObserver(tag)
 
-  def disconnectCrosshairNode(self):
-    if self.crosshairNode and self.crosshairNodeObserverTag:
-      self.crosshairNode.RemoveObserver(self.crosshairNodeObserverTag)
-    self.crosshairNodeObserverTag = None
-
-  def calcCursorTargetsDistance(self, observee=None, event=None):
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def calcCursorTargetsDistance(self, caller, event, callData):
     if not self.targetTableModel.computeCursorDistances:
       return
     ras = [0.0,0.0,0.0]
     xyz = [0.0,0.0,0.0]
-    insideView = self.crosshairNode.GetCursorPositionRAS(ras)
-    sliceNode = self.crosshairNode.GetCursorPositionXYZ(xyz)
+    insideView = callData.GetCursorPositionRAS(ras)
+    sliceNode = callData.GetCursorPositionXYZ(xyz)
 
     if not insideView or sliceNode not in [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]:
       self.targetTableModel.cursorPosition = None
@@ -2093,14 +2043,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       return
     if not self.targetTableModel.computeCursorDistances:
       self.targetTableModel.computeCursorDistances = True
-      self.calcCursorTargetsDistance()
-      self.connectCrosshairNode()
+      # self.calcCursorTargetsDistance()
+      self.crosshairButton.addObserver(self.crosshairButton.CursorPositionModifiedEvent, self.calcCursorTargetsDistance)
 
   def onKeyReleasedEvent(self, caller, event):
     if not caller.GetKeySym() == 'd':
       return
     self.targetTableModel.computeCursorDistances = False
-    self.disconnectCrosshairNode()
+    self.crosshairButton.removeObserver(self.crosshairButton.CursorPositionModifiedEvent, self.calcCursorTargetsDistance)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onRatingDone(self, caller, event, callData):
