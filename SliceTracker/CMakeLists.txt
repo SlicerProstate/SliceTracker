@@ -24,16 +24,11 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-quickSegmentation.png
   Resources/Icons/icon-settings.png
   Resources/Icons/icon-infoBox.png
-  Resources/Icons/icon-crosshair.png
-  Resources/Icons/icon-four-up.png
   Resources/Icons/icon-needle.png
-  Resources/Icons/icon-red-only.png
   Resources/Icons/icon-revealCursor.png
-  Resources/Icons/icon-side-by-side.png
   Resources/Icons/icon-skip.png
   Resources/Icons/icon-template.png
   Resources/Icons/icon-text-info.png
-  Resources/Icons/icon-WindowLevelEffect.png
   Resources/Icons/icon-zframe.png
   Resources/Icons/SliceTracker.png
   Resources/Icons/${MODULE_NAME}.png
