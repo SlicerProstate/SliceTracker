@@ -2474,8 +2474,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       sliceNodes = [self.yellowSliceNode]
     for targetNode in [targets for targets in self.currentResult.targets.values() if targets]:
       self.refreshViewNodeIDs(targetNode, sliceNodes)
+      targetNode.SetLocked(True)
     if self.currentResult.approvedTargets:
       self.refreshViewNodeIDs(self.currentResult.approvedTargets, sliceNodes)
+      self.currentResult.approvedTargets.SetLocked(True)
 
   def openEvaluationStep(self):
     self.currentStep = self.STEP_EVALUATION
@@ -2827,7 +2829,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
       success, self.preopTargets = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
       if success:
         self.preopTargets.SetName('targets-PREOP')
-        self.markupsLogic.SetAllMarkupsLocked(self.preopTargets, True)
+        self.preopTargets.SetLocked(True)
     return success
 
   def loadFromJSON(self, directory):
@@ -2848,6 +2850,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
       self.preopTargets = coverProstate.originalTargets
       if self.usePreopData:
         self.preopLabel = coverProstate.movingLabel
+    self.preopTargets.SetLocked(True)
     return True
 
   def loadZFrameTransform(self, transformFile):
