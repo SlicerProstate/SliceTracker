@@ -481,13 +481,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.redSliceNode.SetOrientationToAxial()
     self.yellowSliceNode.SetOrientationToSagittal()
     self.greenSliceNode.SetOrientationToCoronal()
-    self.updateFOV()
+    self.updateFOV() # TODO: shall not be called here
 
   def setAxialOrientation(self):
     self.redSliceNode.SetOrientationToAxial()
     self.yellowSliceNode.SetOrientationToAxial()
     self.greenSliceNode.SetOrientationToAxial()
-    self.updateFOV()
+    self.updateFOV() # TODO: shall not be called here
 
   def updateFOV(self):
     if self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
@@ -1818,10 +1818,29 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
       self.setAxialOrientation()
-      self.setTargetVisibility(self.logic.preopTargets, show=True)
     elif self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.setDefaultOrientation()
       self.setTargetVisibility(self.logic.preopTargets, show=False)
+    self.centerViewsToProstate()
+
+  def centerViewsToProstate(self):
+    if self.layoutManager.layout in [self.LAYOUT_SIDE_BY_SIDE, self.LAYOUT_FOUR_UP]:
+      fixedCentroid = self.logic.getCentroidForLabel(self.currentResult.fixedLabel, self.logic.segmentedLabelValue)
+      if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE:
+        movingCentroid = self.logic.getCentroidForLabel(self.logic.preopLabel, self.logic.segmentedLabelValue)
+        if movingCentroid:
+          self.redSliceNode.JumpSliceByCentering(movingCentroid[0], movingCentroid[1], movingCentroid[2])
+        if fixedCentroid:
+          self.yellowSliceNode.JumpSliceByCentering(fixedCentroid[0], fixedCentroid[1], fixedCentroid[2])
+        self.setTargetVisibility(self.logic.preopTargets, show=True)
+      elif self.layoutManager.layout == self.LAYOUT_FOUR_UP:
+        if fixedCentroid:
+          for sliceNode in [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]:
+            sliceNode.JumpSliceByCentering(fixedCentroid[0], fixedCentroid[1], fixedCentroid[2])
+    elif self.layoutManager.layout == self.LAYOUT_RED_SLICE_ONLY:
+      movingLabelValue = self.getLabelValue(self.logic.preopVolume, self.logic.preopLabel)
+      movingCentroid = self.logic.getCentroidForLabel(self.logic.preopLabel, movingLabelValue)
+      self.redSliceNode.JumpSliceByCentering(movingCentroid[0], movingCentroid[1], movingCentroid[2])
 
   def showCurrentTargets(self):
     self.logic.applyDefaultTargetDisplayNode(self.currentTargets)
@@ -1890,6 +1909,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.redSliceNode.SetUseLabelOutline(True)
     self.redSliceNode.SetOrientationToAxial()
     self.redCompositeNode.SetLabelOpacity(1)
+    self.centerViewsToProstate()
 
   def setupPreopLoadedTargets(self):
     self.setTargetVisibility(self.logic.preopTargets, show=True)
@@ -2418,7 +2438,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       displayNode = self.currentIntraopLabel.GetDisplayNode()
       displayNode.SetAndObserveColorNodeID(self.logic.mpReviewColorNode.GetID())
       self.editorParameterNode.SetParameter('effect', 'DrawEffect')
-      self.editUtil.setLabel(8)
+      self.editUtil.setLabel(self.logic.segmentedLabelValue)
       self.editUtil.setLabelOutline(1)
 
   def onInvokeRegistration(self, initial=True):
@@ -2654,8 +2674,9 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.pathVectors = []  ## Normal vectors of needle paths (after transformation by parent transform node)
 
     from mpReview import mpReviewLogic
-    self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name",
-                                                                                               "SliceTracker"))
+    self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name"))
+    self.segmentedColorName = self.getSetting("Segmentation_Color_Name")
+    self.segmentedLabelValue = self.mpReviewColorNode.GetColorIndexByName(self.segmentedColorName)
     self.clearOldNodes()
     self.loadZFrameModel()
     self.loadTemplateConfigFile()
@@ -2667,23 +2688,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_PATH_NAME)
     self.clearOldNodesByName(self.ZFRAME_MODEL_NAME)
     self.clearOldNodesByName(self.COMPUTED_NEEDLE_MODEL_NAME)
-
-  def getCentroidForLabel(self, label, index):
-    ls = sitk.LabelShapeStatisticsImageFilter()
-    dstLabelAddress = sitkUtils.GetSlicerITKReadWriteAddress(label.GetName())
-    dstLabelImage = sitk.ReadImage(dstLabelAddress)
-    ls.Execute(dstLabelImage)
-    centroid = ls.GetCentroid(index)
-    IJKtoRAS = vtk.vtkMatrix4x4()
-    label.GetIJKToRASMatrix(IJKtoRAS)
-    order = label.ComputeScanOrderFromIJKToRAS(IJKtoRAS)
-    if order == 'IS':
-      centroid = [-centroid[0], -centroid[1], centroid[2]]
-    elif order == 'AP':
-      centroid = [-centroid[0], -centroid[2], -centroid[1]]
-    elif order == 'LR':
-      centroid = [centroid[0], -centroid[2], -centroid[1]]
-    return centroid
 
   def setupDisplayNode(self, displayNode=None, starBurst=False):
     if not displayNode:
@@ -2788,7 +2792,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
       if not os.path.exists(segmentationPath):
         continue
       else:
-        if any("WholeGland" in name for name in os.listdir(segmentationPath)):
+        if any(self.segmentedColorName in name for name in os.listdir(segmentationPath)):
           logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
           logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
           logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))
@@ -3008,7 +3012,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.runBRAINSResample(inputVolume=coverProstateRegResult.fixedLabel, referenceVolume=self.currentIntraopVolume,
                            outputVolume=fixedLabel, warpTransform=initialTransform)
 
-    self.dilateMask(fixedLabel, dilateValue=8)
+    self.dilateMask(fixedLabel, dilateValue=self.segmentedLabelValue)
 
     parameterNode.SetAttribute('FixedLabelNodeID', fixedLabel.GetID())
     parameterNode.SetAttribute('MovingImageNodeID', coverProstateRegResult.fixedVolume.GetID())
@@ -3027,7 +3031,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
   def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
 
     params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
-              'warpTransform': warpTransform, 'interpolationMode': 'NearestNeighbor'}
+              'warpTransform': warpTransform, 'interpolationMode': 'NearestNeighbor', 'pixelType':'short'}
 
     logging.debug('About to run BRAINSResample CLI with those params: %s' % params)
     slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
@@ -3195,7 +3199,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     outputLabelMap = slicer.vtkMRMLLabelMapVolumeNode()
     slicer.mrmlScene.AddNode(outputLabelMap)
 
-    params = {'sampleDistance': 0.1, 'labelValue': 8, 'InputVolume': inputVolume.GetID(),
+    params = {'sampleDistance': 0.1, 'labelValue': self.segmentedLabelValue, 'InputVolume': inputVolume.GetID(),
               'surface': self.clippingModelNode.GetID(), 'OutputVolume': outputLabelMap.GetID()}
 
     logging.debug(params)

@@ -33,12 +33,17 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
       self.setSetting("Maximum_Rating_Score", config.getint('Rating', 'Maximum_Score'))
 
     if not self.getSetting("Color_File_Name") or not os.path.exists(self.getSetting("Color_File_Name")):
-      colorFilename = config.get('Color File', 'Filename')
+      colorFilename = config.get('Color File', 'FileName')
       self.setSetting("Color_File_Name", os.path.join(os.path.dirname(inspect.getfile(self.__class__)),
                                                       '../Resources/Colors', colorFilename))
+
+    if not self.getSetting("Segmentation_Color_Name"):
+      segmentedColorName = config.get('Color File', 'SegmentedColorName')
+      self.setSetting("Segmentation_Color_Name", segmentedColorName)
 
     if not self.getSetting("DEFAULT_EVALUATION_LAYOUT"):
       self.setSetting("DEFAULT_EVALUATION_LAYOUT", config.get('Evaluation', 'Default_Layout'))
 
     if not self.getSetting("Demo_Mode"):
       self.setSetting("Demo_Mode", config.get('Modes', 'Demo_Mode'))
+
