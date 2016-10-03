@@ -1,5 +1,224 @@
-from SlicerProstateUtils.mixins import ParameterNodeObservationMixin
-import vtk, qt
+from SlicerProstateUtils.mixins import ParameterNodeObservationMixin, ModuleLogicMixin, ModuleWidgetMixin
+from SlicerProstateUtils.constants import FileExtension
+from SlicerProstateUtils.decorators import multimethod
+
+
+from data import RegistrationResults
+from constants import SliceTrackerConstants
+
+import vtk, qt, slicer
+from collections import OrderedDict
+import os, json, logging
+
+
+class SliceTrackerStep(qt.QGroupBox, ModuleWidgetMixin):
+
+  @property
+  def active(self):
+    return self._active
+
+  @active.setter
+  def active(self, value):
+    self._active = value
+
+  def __init__(self, parent=None):
+    qt.QGroupBox.__init__(self, parent)
+    self._active = False
+    self.setLayout(qt.QGridLayout())
+    self.setup()
+
+  def cleanup(self):
+    pass
+
+  def setup(self):
+    raise NotImplementedError("This method needs to be implemented by all deriving classes")
+
+  def setupConnections(self):
+    self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
+
+  def onLayoutChanged(self):
+    raise NotImplementedError("This method needs to be implemented by all deriving classes")
+
+
+class SessionBase(ModuleLogicMixin):
+
+  @property
+  def directory(self):
+    return self._directory
+
+  @directory.setter
+  def directory(self, value):
+    if not value:
+      raise ValueError("You cannot assign None to the session directory")
+    if not os.path.exists(value):
+      self.createDirectory(value)
+    self._directory = value
+
+  def __init__(self, directory):
+    self.directory = directory
+
+  def load(self):
+    raise NotImplementedError
+
+  def save(self):
+    raise NotImplementedError
+
+  def close(self):
+    self.save()
+
+
+class SliceTrackerSession(SessionBase):
+
+  def __init__(self, directory):
+    super(SliceTrackerSession, self).__init__(directory)
+    self.regResults = RegistrationResults()
+    self.completed = False
+    self.usePreopData = None
+    self.preopVolume = None
+    self.preopLabel = None
+    self.preopTargets = None
+
+    self.clippingModelNode = None
+    self.inputMarkupNode = None
+
+    self.biasCorrectionDone = False
+
+    self.steps = []
+
+  def __del__(self):
+    pass
+
+  @multimethod(SliceTrackerStep)
+  def register(self, step):
+    if step not in self.steps:
+      self.steps.append(step)
+
+  def save(self):
+    for step in self.steps:
+      step.save(self.directory)
+
+
+  def saveSession(self, outputDir):
+    if not os.path.exists(outputDir):
+      self.createDirectory(outputDir)
+
+    successfullySavedFileNames = []
+    failedSaveOfFileNames = []
+
+    def saveIntraopSegmentation():
+      intraopLabel = self.regResults.intraopLabel
+      if intraopLabel:
+        seriesNumber = intraopLabel.GetName().split(":")[0]
+        success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL",
+                                          overwrite=True)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+
+        if self.clippingModelNode:
+          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
+                                            name=seriesNumber+"-MODEL", overwrite=True)
+          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+
+        if self.inputMarkupNode:
+          success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
+                                            name=seriesNumber+"-VolumeClip_points", overwrite=True)
+          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+
+    def saveOriginalTargets():
+      originalTargets = self.regResults.originalTargets
+      if originalTargets:
+        success, name = self.saveNodeData(originalTargets, outputDir, FileExtension.FCSV, name="PreopTargets",
+                                          overwrite=True)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+
+    def saveBiasCorrectionResult():
+      if not self.biasCorrectionDone:
+        return None
+      success, name = self.saveNodeData(self.preopVolume, outputDir, FileExtension.NRRD, overwrite=True)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+      return name+FileExtension.NRRD
+
+    def saveZFrameTransformation():
+      success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5, overwrite=True)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+      return name+FileExtension.H5
+
+    def createResultsDict():
+      resultDict = OrderedDict()
+      for result in self.regResults.getResultsAsList():
+        resultDict.update(result.toDict())
+      return resultDict
+
+    def saveJSON(dictString):
+      with open(os.path.join(outputDir, SliceTrackerConstants.JSON_FILENAME), 'w') as outfile:
+        json.dump(dictString, outfile, indent=2)
+
+    saveIntraopSegmentation()
+    saveOriginalTargets()
+    saveBiasCorrectionResult()
+
+    savedSuccessfully, failedToSave = self.regResults.save(outputDir)
+    successfullySavedFileNames += savedSuccessfully
+    failedSaveOfFileNames += failedToSave
+
+    saveJSON({"completed":self.completed,
+              "usedPreopData":self.usePreopData,
+              "VOLUME-PREOP-N4": saveBiasCorrectionResult(),
+              "zFrameTransform": saveZFrameTransformation(),
+              "results":createResultsDict()})
+
+    if len(failedSaveOfFileNames):
+      messageOutput = "The following data failed to saved:\n"
+      for filename in failedSaveOfFileNames:
+        messageOutput += filename + "\n"
+      logging.debug(messageOutput)
+
+    if len(successfullySavedFileNames):
+      messageOutput = "The following data was successfully saved:\n"
+      for filename in successfullySavedFileNames:
+        messageOutput += filename + "\n"
+      logging.debug(messageOutput)
+    return len(failedSaveOfFileNames) == 0
+
+  def complete(self):
+    self.completed = True
+    self.close()
+
+  def load(self):
+    filename = os.path.join(self.directory, SliceTrackerConstants.JSON_FILENAME)
+    if not os.path.exists(filename):
+      return
+    with open(filename) as data_file:
+      data = json.load(data_file)
+      self.usePreopData = data["usedPreopData"]
+      if data["VOLUME-PREOP-N4"]:
+        self.loadBiasCorrectedImage(os.path.join(self.directory, data["VOLUME-PREOP-N4"]))
+      self.loadZFrameTransform(os.path.join(self.directory, data["zFrameTransform"]))
+    self.regResults.load(os.path.join(self.directory, SliceTrackerConstants.JSON_FILENAME))
+    coverProstate = self.regResults.getMostRecentApprovedCoverProstateRegistration()
+    if coverProstate:
+      if not self.preopVolume:
+        self.preopVolume = coverProstate.movingVolume if self.usePreopData else coverProstate.fixedVolume
+      self.preopTargets = coverProstate.originalTargets
+      if self.usePreopData:
+        self.preopLabel = coverProstate.movingLabel
+    return True
+
+  def loadZFrameTransform(self, transformFile):
+    self.zFrameRegistrationSuccessful = False
+    if not os.path.exists(transformFile):
+      return False
+    success, self.zFrameTransform = slicer.util.loadTransform(transformFile, returnNode=True)
+    self.zFrameRegistrationSuccessful = success
+    # self.applyZFrameTransform(self.zFrameTransform)
+    return success
+
+  def loadBiasCorrectedImage(self, n4File):
+    self.biasCorrectionDone = False
+    if not os.path.exists(n4File):
+      return False
+    self.biasCorrectionDone = True
+    success, self.preopVolume = slicer.util.loadVolume(n4File, returnNode=True)
+    return success
 
 
 class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMixin):

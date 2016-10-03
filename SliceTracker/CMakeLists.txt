@@ -8,7 +8,7 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/configuration.py
   SliceTrackerUtils/constants.py
   SliceTrackerUtils/exceptions.py
-  SliceTrackerUtils/RegistrationData.py
+  SliceTrackerUtils/data.py
   SliceTrackerUtils/ZFrameRegistration.py
   SliceTrackerUtils/helpers.py
   SliceTrackerUtils/watch.py

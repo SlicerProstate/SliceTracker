@@ -40,7 +40,8 @@ class RegistrationResults(ModuleWidgetMixin):
     self._registrationResults = OrderedDict()
     self.customProgressBar = self.getOrCreateCustomProgressBar()
 
-  def loadFromJSON(self, directory, filename):
+  # TODO: add a decortator here for checking if file is json
+  def load(self, directory, filename):
     self.resetAndInitializeData()
     self.alreadyLoadedFileNames = {}
     with open(filename) as data_file:
