@@ -464,19 +464,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.createSliceWidgetClassMembers("Green")
     self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
 
-  def createSliceWidgetClassMembers(self, name):
-    widget = self.layoutManager.sliceWidget(name)
-    setattr(self, name.lower()+"Widget", widget)
-    setattr(self, name.lower()+"CompositeNode", widget.mrmlSliceCompositeNode())
-    setattr(self, name.lower()+"SliceView", widget.sliceView())
-    setattr(self, name.lower()+"SliceViewInteractor", widget.sliceView().interactorStyle().GetInteractor())
-    logic = widget.sliceLogic()
-    setattr(self, name.lower()+"SliceLogic", logic)
-    setattr(self, name.lower()+"SliceNode", logic.GetSliceNode())
-    setattr(self, name.lower()+"FOV", [])
-    if widget not in self.sliceWidgets:
-      self.sliceWidgets.append(widget)
-
   def setDefaultOrientation(self):
     self.redSliceNode.SetOrientationToAxial()
     self.yellowSliceNode.SetOrientationToSagittal()
@@ -3134,13 +3121,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
                                                                                                               seriesDescription))
     return "{}: {}".format(seriesNumber, seriesDescription)
 
-  def getTargetPositions(self, targets):
-    target_positions = []
-    for index in range(targets.GetNumberOfFiducials()):
-      target_positions.append(self.getTargetPosition(index, targets))
-    logging.debug('target_positions are ' + str(target_positions))
-    return target_positions
-
   def run(self):
     return True
 
@@ -3162,7 +3142,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   def getMarkupSlicePositions(self):
     nOfControlPoints = self.inputMarkupNode.GetNumberOfFiducials()
-    return [self.getTargetPosition(index, self.inputMarkupNode)[2] for index in range(nOfControlPoints)]
+    return [self.getTargetPosition(self.inputMarkupNode, index)[2] for index in range(nOfControlPoints)]
 
   def deleteClippingData(self):
     slicer.mrmlScene.RemoveNode(self.clippingModelNode)
@@ -3472,11 +3452,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     end = start + l * n
     return start, end
 
-  def getTargetPosition(self, index, targetList):
-    position = [0.0, 0.0, 0.0]
-    targetList.GetNthFiducialPosition(index, position)
-    return position
-
 
 class SliceTrackerTest(ScriptedLoadableModuleTest):
   """
@@ -3613,7 +3588,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
       return self.targetList.GetNthFiducialLabel(row)
 
     if col == 1 and self.cursorPosition and self.computeCursorDistances and self.currentTargetIndex == row:
-      targetPosition = self.logic.getTargetPosition(row, self.targetList)
+      targetPosition = self.logic.getTargetPosition(self.targetList, row)
       distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
       distance2D = [str(round(distance2D[0]/10, 1)), str(round(distance2D[1]/10, 1)), str(round(distance2D[2]/10, 1))]
       distance3D = self.logic.get3DEuclideanDistance(targetPosition, self.cursorPosition)
@@ -3710,7 +3685,7 @@ class ZFrameGuidanceComputation(ParameterNodeObservationMixin):
     return self.computedDepth[index][0]
 
   def calculateZFrameHoleAndDepth(self, index):
-    targetPosition = self.logic.getTargetPosition(index, self.targetList)
+    targetPosition = self.logic.getTargetPosition(self.targetList, index)
     (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
     self.needleStartEndPositions[index] = (start, end)
     self.computedHoles[index] = [indexX, indexY]
