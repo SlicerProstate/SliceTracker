@@ -25,6 +25,8 @@ class VolumeClipToLabel(ScriptedLoadableModule):
 class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   SegmentationFinishedEvent = vtk.vtkCommand.UserEvent + 101
+  SegmentationStartedEvent = vtk.vtkCommand.UserEvent + 102
+  SegmentationCanceledEvent = vtk.vtkCommand.UserEvent + 103
 
   @property
   def imageVolume(self):
@@ -92,7 +94,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.colorSpin.setToolTip( "Click colored patch at right to bring up color selection pop up window." )
     self.colorGroupBoxLayout.addWidget(self.colorSpin)
 
-    self.colorPatch = self.createButton("", objectName="ColorPatchButton", enabled=False)
+    self.colorPatch = self.createButton("", objectName="ColorPatchButton")
     self.colorGroupBoxLayout.addWidget(self.colorPatch)
     self.layout.addWidget(self.colorGroupBox)
 
@@ -127,8 +129,8 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.imageVolumeSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onImageVolumeSelected)
     self.quickSegmentationButton.connect('toggled(bool)', self.onQuickSegmentationButtonToggled)
 
-    self.colorSpin.connect( 'valueChanged(int)', self.onColorSpinChanged)
-    self.colorPatch.connect( 'clicked()', self.showColorBox )
+    self.colorSpin.valueChanged.connect(self.onColorSpinChanged)
+    self.colorPatch.clicked.connect(self.showColorBox)
 
     self.applySegmentationButton.clicked.connect(self.onQuickSegmentationFinished)
     self.cancelSegmentationButton.clicked.connect(self.onCancelSegmentationButtonClicked)
@@ -186,6 +188,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def onQuickSegmentationFinished(self):
     if not self.logic.isSegmentationValid():
       if self.promptOnInvalidSegmentationDetected():
+        self.invokeEvent(self.SegmentationCanceledEvent)
         return
       self.deactivateQuickSegmentationMode(canceled=True)
       self.quickSegmentationButton.checked = False
@@ -207,6 +210,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.logic.runQuickSegmentationMode()
     self.undoRedoEventObserver = self.logic.addObserver(self.logic.UndoRedoEvent, self.updateUndoRedoButtons)
     self.markupNodeObserver = self.logic.addObserver(vtk.vtkCommand.ModifiedEvent, self.updateUndoRedoButtons)
+    self.invokeEvent(self.SegmentationStartedEvent)
 
   def deactivateQuickSegmentationMode(self, canceled=False):
     self.quickSegmentationButton.checked = False
@@ -223,6 +227,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     if slicer.util.confirmYesNoDisplay("Do you really want to cancel the segmentation process?",
                                        windowTitle="SliceTracker"):
       self.deactivateQuickSegmentationMode(canceled=True)
+      self.invokeEvent(self.SegmentationCanceledEvent)
 
   def processValidQuickSegmentationResult(self):
     self.deactivateQuickSegmentationMode()
@@ -233,12 +238,6 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.logic.markupsLogic.SetAllMarkupsVisibility(self.logic.inputMarkupNode, False)
     self.logic.clippingModelNode.SetDisplayVisibility(False)
     self.invokeEvent(self.SegmentationFinishedEvent, outputLabel)
-
-    # slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
-    # slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
-    #
-    # slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(outputLabelMap)
-    # slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(outputLabelMap)
 
 
 class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
@@ -261,7 +260,7 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   @colorNode.setter
   def colorNode(self, value):
-    self._colorNode = None
+    self._colorNode = value
 
   @property
   def outputLabelValue(self):
