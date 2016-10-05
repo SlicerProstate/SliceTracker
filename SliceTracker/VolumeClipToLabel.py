@@ -167,15 +167,12 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     compositeNode.SetBackgroundVolumeID(volumeNode.GetID() if volumeNode else None)
 
   def setBackgroundVolumeForAllVisibleSliceViews(self, volume):
-    sliceLogics = self.layoutManager.mrmlSliceLogics()
-    for n in range(sliceLogics.GetNumberOfItems()):
-      sliceLogic = sliceLogics.GetItemAsObject(n)
-      widget = self.layoutManager.sliceWidget(sliceLogic.GetName())
-      if widget.sliceView().visible:
-        self.setBackgroundToVolumeID(widget, volume)
+    for widget in [w for w in self.getAllVisibleWidgets() if w.sliceView().visible]:
+      self.setBackgroundToVolumeID(widget, volume)
 
   def onQuickSegmentationButtonToggled(self, enabled):
     self.updateSegmentationButtons()
+    self.imageVolumeSelector.enabled = not enabled
     if enabled:
       self.setBackgroundVolumeForAllVisibleSliceViews(self.imageVolume)
       self.activateQuickSegmentationMode()
