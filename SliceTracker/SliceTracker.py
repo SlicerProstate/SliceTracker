@@ -28,6 +28,8 @@ from SliceTrackerUtils.configuration import SliceTrackerConfiguration
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
+from VolumeClipToLabel import VolumeClipToLabelWidget
+
 
 class SliceTracker(ScriptedLoadableModule):
 
@@ -144,10 +146,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.registrationResultsGroupBox.hide()
       self.overviewGroupBox.hide()
       self.segmentationGroupBox.show()
-
       self.editorWidgetButton.enabled = False
       self.applyRegistrationButton.enabled = False
-      self.quickSegmentationButton.enabled = self.logic.currentIntraopVolume is not None
     elif name == self.STEP_TARGETING:
       self.segmentationGroupBox.hide()
       self.targetingGroupBox.show()
@@ -335,13 +335,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.caseWatchBox = BasicInformationWatchBox(watchBoxInformation, title="Current Case")
 
   def setupIcons(self):
-    self.cancelSegmentationIcon = self.createIcon('icon-cancelSegmentation.png')
     self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
-    self.quickSegmentationIcon = self.createIcon('icon-quickSegmentation.png')
     self.newImageDataIcon = self.createIcon('icon-newImageData.png')
     self.settingsIcon = self.createIcon('icon-settings.png')
-    self.undoIcon = self.createIcon('icon-undo.png')
-    self.redoIcon = self.createIcon('icon-redo.png')
     self.zFrameIcon = self.createIcon('icon-zframe.png')
     self.needleIcon = self.createIcon('icon-needle.png')
     self.templateIcon = self.createIcon('icon-template.png')
@@ -591,14 +587,17 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def setupSegmentationUIElements(self):
     iconSize = qt.QSize(24, 24)
 
-    self.quickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=iconSize,
-                                                     styleSheet=STYLE.WHITE_BACKGROUND)
-    self.applySegmentationButton = self.createButton("", icon=self.greenCheckIcon, iconSize=iconSize,
-                                                     styleSheet=STYLE.WHITE_BACKGROUND, enabled=False)
-    self.cancelSegmentationButton = self.createButton("", icon=self.cancelSegmentationIcon,
-                                                      iconSize=iconSize, enabled=False)
-    self.undoButton = self.createButton("", icon=self.undoIcon, iconSize=iconSize, enabled=False)
-    self.redoButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False)
+    self.volumeClipGroupBox = qt.QWidget()
+    self.volumeClipGroupBoxLayout = qt.QVBoxLayout()
+    self.volumeClipGroupBox.setLayout(self.volumeClipGroupBoxLayout)
+
+    self.volumeClipToLabelWidget = VolumeClipToLabelWidget(self.volumeClipGroupBox)
+    self.volumeClipToLabelWidget.setup()
+    self.volumeClipToLabelWidget.reloadCollapsibleButton.hide()
+    self.volumeClipToLabelWidget.selectorsGroupBox.hide()
+    self.volumeClipToLabelWidget.colorGroupBox.hide()
+    self.volumeClipToLabelWidget.logic.colorNode = self.logic.mpReviewColorNode
+    self.volumeClipToLabelWidget.onColorSelected(self.logic.segmentedLabelValue)
 
     self.applyRegistrationButton = self.createButton("Apply Registration", icon=self.greenCheckIcon, iconSize=iconSize,
                                                      toolTip="Run Registration.")
@@ -607,15 +606,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.editorWidgetButton = self.createButton("", icon=self.settingsIcon, toolTip="Show Label Editor",
                                                 enabled=False, iconSize=iconSize)
 
-    segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
-                                              self.cancelSegmentationButton, self.undoButton, self.redoButton,
-                                              self.editorWidgetButton])
     self.setupEditorWidget()
-
     self.segmentationGroupBox = qt.QGroupBox()
     self.segmentationGroupBoxLayout = qt.QGridLayout()
     self.segmentationGroupBox.setLayout(self.segmentationGroupBoxLayout)
-    self.segmentationGroupBoxLayout.addWidget(segmentationButtons, 0, 0)
+    self.segmentationGroupBoxLayout.addWidget(self.volumeClipGroupBox, 0, 0)
     self.segmentationGroupBoxLayout.addWidget(self.editorWidgetParent, 1, 0)
     self.segmentationGroupBoxLayout.addWidget(self.applyRegistrationButton, 2, 0)
     self.segmentationGroupBoxLayout.setRowStretch(3, 1)
@@ -842,11 +837,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.simulateIntraopPhaseButton.clicked.connect(self.startIntraopPhaseSimulation)
 
       def setupSegmentationStepButtonConnections():
-        self.quickSegmentationButton.clicked.connect(self.onQuickSegmentationButtonClicked)
-        self.applySegmentationButton.clicked.connect(self.onApplySegmentationButtonClicked)
-        self.cancelSegmentationButton.clicked.connect(self.onCancelSegmentationButtonClicked)
-        self.redoButton.clicked.connect(self.onRedoButtonClicked)
-        self.undoButton.clicked.connect(self.onUndoButtonClicked)
         self.editorWidgetButton.clicked.connect(self.onEditorGearIconClicked)
         self.applyRegistrationButton.clicked.connect(lambda: self.onInvokeRegistration(initial=True))
 
@@ -1197,13 +1187,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     elif self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.removeMissingPreopDataAnnotation()
       self.setBackgroundToVolumeID(self.logic.currentIntraopVolume.GetID())
-    self.refreshClippingModelViewNodes()
+    # self.refreshClippingModelViewNodes()
 
-  def refreshClippingModelViewNodes(self):
-    sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE else \
-      [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
-    for node in [n for n in [self.logic.clippingModelNode, self.logic.inputMarkupNode] if n]:
-      self.refreshViewNodeIDs(node, sliceNodes)
+  # def refreshClippingModelViewNodes(self):
+  #   sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE else \
+  #     [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+  #   for node in [n for n in [self.logic.clippingModelNode, self.logic.inputMarkupNode] if n]:
+  #     self.refreshViewNodeIDs(node, sliceNodes)
 
   def refreshZFrameTemplateViewNodes(self):
     sliceNodes = []
@@ -1257,14 +1247,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.displayRegistrationResultsByType(registrationType="affine")
     elif buttonId == 3:
       self.displayRegistrationResultsByType(registrationType="bSpline")
-
-  def deactivateUndoRedoButtons(self):
-    self.redoButton.setEnabled(0)
-    self.undoButton.setEnabled(0)
-
-  def updateUndoRedoButtons(self, observer=None, caller=None):
-    self.redoButton.setEnabled(self.deletedMarkups.GetNumberOfFiducials() > 0)
-    self.undoButton.setEnabled(self.logic.inputMarkupNode.GetNumberOfFiducials() > 0)
 
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
     if self.currentStep != self.STEP_OVERVIEW:
@@ -1553,50 +1535,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.registrationResultStatusAnnotation = None
     self.onShowAnnotationsToggled(self.showAnnotationsButton.checked)
 
-  def onRedoButtonClicked(self):
-    numberOfDeletedTargets = self.deletedMarkups.GetNumberOfFiducials()
-    logging.debug(('numberOfTargets in deletedMarkups is' + str(numberOfDeletedTargets)))
-    pos = [0.0, 0.0, 0.0]
-
-    if numberOfDeletedTargets > 0:
-      self.deletedMarkups.GetNthFiducialPosition(numberOfDeletedTargets - 1, pos)
-
-    logging.debug(('deletedMarkups.position = ' + str(pos)))
-
-    if pos == [0.0, 0.0, 0.0]:
-      logging.debug('pos was 0,0,0 -> go on')
-    else:
-      self.logic.inputMarkupNode.AddFiducialFromArray(pos)
-      self.deletedMarkups.RemoveMarkup(numberOfDeletedTargets - 1)
-
-    self.updateUndoRedoButtons()
-
-  def onUndoButtonClicked(self):
-    activeFiducials = self.logic.inputMarkupNode
-    numberOfTargets = activeFiducials.GetNumberOfFiducials()
-    logging.debug('numberOfTargets is' + str(numberOfTargets))
-    pos = [0.0, 0.0, 0.0]
-    activeFiducials.GetNthFiducialPosition(numberOfTargets - 1, pos)
-    logging.debug('activeFiducials.position = ' + str(pos))
-
-    if numberOfTargets > 0:
-      self.deletedMarkups.GetNthFiducialPosition(numberOfTargets - 1, pos)
-
-    activeFiducials.GetNthFiducialPosition(numberOfTargets - 1, pos)
-    logging.debug('POS BEFORE ENTRY = ' + str(pos))
-    if pos == [0.0, 0.0, 0.0]:
-      logging.debug('pos was 0,0,0 -> go on')
-    else:
-      # add it to deletedMarkups
-      activeFiducials.GetNthFiducialPosition(numberOfTargets - 1, pos)
-      # logging.debug(('pos = '+str(pos))
-      self.deletedMarkups.AddFiducialFromArray(pos)
-      logging.debug('added Markup with position ' + str(pos) + ' to the deletedMarkupsList')
-      # delete it in activeFiducials
-      activeFiducials.RemoveMarkup(numberOfTargets - 1)
-
-    self.updateUndoRedoButtons()
-
   def onRevealToggled(self, checked):
     if self.revealCursor:
       self.revealCursor.tearDown()
@@ -1825,9 +1763,19 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
           for sliceNode in [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]:
             sliceNode.JumpSliceByCentering(fixedCentroid[0], fixedCentroid[1], fixedCentroid[2])
     elif self.layoutManager.layout == self.LAYOUT_RED_SLICE_ONLY:
-      movingLabelValue = self.getLabelValue(self.logic.preopVolume, self.logic.preopLabel)
-      movingCentroid = self.logic.getCentroidForLabel(self.logic.preopLabel, movingLabelValue)
+      movingCentroid = self.logic.getCentroidForLabel(self.logic.preopLabel, self.logic.segmentedLabelValue)
       self.redSliceNode.JumpSliceByCentering(movingCentroid[0], movingCentroid[1], movingCentroid[2])
+
+  def centerLabelsOnVisibleSliceWidgets(self):
+    for widget in self.getAllVisibleWidgets():
+      compositeNode = widget.mrmlSliceCompositeNode()
+      sliceNode = widget.sliceLogic().GetSliceNode()
+      labelID = compositeNode.GetLabelVolumeID()
+      if labelID:
+        label =  slicer.mrmlScene.GetNodeByID(labelID)
+        centroid = self.logic.getCentroidForLabel(label, self.logic.segmentedLabelValue)
+        if centroid:
+          sliceNode.JumpSliceByCentering(centroid[0], centroid[1], centroid[2])
 
   def showCurrentTargets(self):
     self.logic.applyDefaultTargetDisplayNode(self.currentTargets)
@@ -1940,17 +1888,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     acceptedSeriesNumbers.sort()
     return acceptedSeriesNumbers
 
-  def onCancelSegmentationButtonClicked(self):
-    if slicer.util.confirmYesNoDisplay("Do you really want to cancel the segmentation process?",
-                                       windowTitle="SliceTracker"):
-      self.setQuickSegmentationModeOFF()
-
-  def onQuickSegmentationButtonClicked(self):
-    self.applyRegistrationButton.enabled = False
-    self.hideAllLabels()
-    self.setBackgroundToVolumeID(self.logic.currentIntraopVolume.GetID())
-    self.setQuickSegmentationModeON()
-
   def setBackgroundToVolumeID(self, volumeID):
     for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
       compositeNode.SetLabelVolumeID(None)
@@ -1962,40 +1899,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
       compositeNode.SetLabelVolumeID(None)
 
-  def setQuickSegmentationModeON(self):
-    self.logic.deleteClippingData()
-    self.setSegmentationButtons(segmentationActive=True)
-    self.deactivateUndoRedoButtons()
-    self.disableEditorWidgetAndResetEditorTool()
-    self.setupQuickModeHistory()
-    self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
-    self.logic.runQuickSegmentationMode()
-    self.inputMarkupNodeObserver = self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,
-                                                                          self.updateUndoRedoButtons)
-
   def disableEditorWidgetAndResetEditorTool(self, enabledButton=False):
     self.editorWidgetParent.hide()
     self.editorParameterNode.SetParameter('effect', 'DefaultTool')
     self.editorWidgetButton.setEnabled(enabledButton)
-
-  def setQuickSegmentationModeOFF(self):
-    self.setSegmentationButtons(segmentationActive=False)
-    self.deactivateUndoRedoButtons()
-    self.resetToRegularViewMode()
-    if self.inputMarkupNodeObserver:
-      self.inputMarkupNodeObserver = self.logic.inputMarkupNode.RemoveObserver(self.inputMarkupNodeObserver)
-
-  def setSegmentationButtons(self, segmentationActive=False):
-    self.quickSegmentationButton.setEnabled(not segmentationActive)
-    self.applySegmentationButton.setEnabled(segmentationActive)
-    self.cancelSegmentationButton.setEnabled(segmentationActive)
-
-  def setupQuickModeHistory(self):
-    try:
-      self.deletedMarkups.Reset(None)
-    except AttributeError:
-      self.deletedMarkups = slicer.vtkMRMLMarkupsFiducialNode()
-      self.deletedMarkups.SetName('deletedMarkups')
 
   def onOpacitySpinBoxChanged(self, value):
     if self.opacitySlider.value != value:
@@ -2124,40 +2031,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     result.fixedVolume = volume
     result.skip()
 
-  def onApplySegmentationButtonClicked(self):
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onSegmentationFinished(self, caller, event, labelNode):
+    self.currentIntraopLabel = labelNode
     if self.logic.usePreopData or self.logic.retryMode:
       self.setAxialOrientation()
-    self.onQuickSegmentationFinished()
-
-  def processValidQuickSegmentationResult(self):
-    self.currentIntraopLabel = self.logic.labelMapFromClippingModel(self.logic.currentIntraopVolume)
-    labelName = self.logic.currentIntraopVolume.GetName() + '-label'
-    self.currentIntraopLabel.SetName(labelName)
-
-    displayNode = self.currentIntraopLabel.GetDisplayNode()
-    displayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
 
     self.fixedLabelSelector.setCurrentNode(self.currentIntraopLabel)
-
-    self.setTargetVisibility(self.logic.inputMarkupNode, show=False)
-    self.logic.clippingModelNode.SetDisplayVisibility(False)
-    self.setQuickSegmentationModeOFF()
     self.openSegmentationComparisonStep()
-    self.setSegmentationButtons(segmentationActive=False)
-
-  def onQuickSegmentationFinished(self):
-    if not self.logic.isSegmentationValid():
-      if slicer.util.confirmYesNoDisplay(
-              "You need to set at least three points with an additional one situated on a distinct slice "
-              "as the algorithm input in order to be able to create a proper segmentation. This step is "
-              "essential for an efficient registration. Do you want to continue using the quick mode?",
-              windowTitle="SliceTracker"):
-        return
-      self.logic.deleteClippingData()
-      self.setQuickSegmentationModeOFF()
-      self.setSegmentationButtons(segmentationActive=False)
-    else:
-      self.processValidQuickSegmentationResult()
 
   def openSegmentationComparisonStep(self):
     self.currentStep = self.STEP_SEGMENTATION_COMPARISON
@@ -2179,10 +2060,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.setupScreenForSegmentationComparison("yellow", self.fixedVolumeSelector.currentNode(),
                                                 self.fixedLabelSelector.currentNode())
       self.setAxialOrientation()
-      self.redSliceNode.RotateToVolumePlane(self.movingVolumeSelector.currentNode())
-      self.redSliceNode.SetUseLabelOutline(True)
       self.applyRegistrationButton.setEnabled(1 if self.inputsAreSet() else 0)
       self.editorWidgetButton.setEnabled(True)
+      self.centerLabelsOnVisibleSliceWidgets()
     else:
       self.openTargetingStep()
 
@@ -2191,6 +2071,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     compositeNode.SetReferenceBackgroundVolumeID(volume.GetID())
     compositeNode.SetLabelVolumeID(label.GetID())
     compositeNode.SetLabelOpacity(1)
+    sliceNode = getattr(self, viewName+"SliceNode")
+    sliceNode.RotateToVolumePlane(volume)
+    sliceNode.SetUseLabelOutline(True)
 
   def onTrackTargetsButtonClicked(self):
     self.removeSliceAnnotations()
@@ -2273,10 +2156,15 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentStep = self.STEP_SEGMENTATION
     self.logic.currentIntraopVolume = volume
     self.fixedVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
+    self.volumeClipToLabelWidget.imageVolumeSelector.setCurrentNode(self.logic.currentIntraopVolume)
     if self.getSetting("COVER_PROSTATE") in self.intraopSeriesSelector.currentText:
       self.showTemplatePathButton.checked = False
+    self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
     self.setupFourUpView(self.logic.currentIntraopVolume)
-    self.onQuickSegmentationButtonClicked()
+    self.volumeClipToLabelWidget.quickSegmentationButton.click()
+    self.volumeClipToLabelWidget.addObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
+                                             self.onSegmentationFinished)
+    self.setDefaultOrientation()
 
   def isRegistrationPossible(self):
     return self.coverTemplateROI is not None
@@ -2627,9 +2515,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
     self.trainingMode = False
     self.caseCompleted = False
-    self.inputMarkupNode = None
-    self.volumeClipFiducialsObserver = None
-    self.clippingModelNode = None
     self.seriesList = []
     self.loadableList = {}
     self.alreadyLoadedSeries = {}
@@ -2841,7 +2726,8 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
       self.preopTargets = coverProstate.originalTargets
       if self.usePreopData:
         self.preopLabel = coverProstate.movingLabel
-    self.preopTargets.SetLocked(True)
+    if self.preopTargets:
+      self.preopTargets.SetLocked(True)
     return True
 
   def loadZFrameTransform(self, transformFile):
@@ -2876,15 +2762,16 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
                                           overwrite=True)
         self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
-        if self.clippingModelNode:
-          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
-                                            name=seriesNumber+"-MODEL", overwrite=True)
-          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-
-        if self.inputMarkupNode:
-          success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
-                                            name=seriesNumber+"-VolumeClip_points", overwrite=True)
-          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+        # TODO: retrieve from volume clip widget
+        # if self.clippingModelNode:
+        #   success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
+        #                                     name=seriesNumber+"-MODEL", overwrite=True)
+        #   self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+        #
+        # if self.inputMarkupNode:
+        #   success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
+        #                                     name=seriesNumber+"-VolumeClip_points", overwrite=True)
+        #   self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
     def saveOriginalTargets():
       originalTargets = self.registrationResults.originalTargets
@@ -3120,78 +3007,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
                                                                                                               seriesNumber,
                                                                                                               seriesDescription))
     return "{}: {}".format(seriesNumber, seriesDescription)
-
-  def run(self):
-    return True
-
-  def runQuickSegmentationMode(self):
-    self.markupsLogic.StartPlaceMode(1)
-    self.placeFiducials()
-
-  def updateModel(self, observer, caller):
-    import VolumeClipWithModel
-    clipLogic = VolumeClipWithModel.VolumeClipWithModelLogic()
-    clipLogic.updateModelFromMarkup(self.inputMarkupNode, self.clippingModelNode)
-
-  def isSegmentationValid(self):
-    return self.inputMarkupNode.GetNumberOfFiducials() > 3 and self.validPointsForQuickModeSet()
-
-  def validPointsForQuickModeSet(self):
-    positions = self.getMarkupSlicePositions()
-    return min(positions) != max(positions)
-
-  def getMarkupSlicePositions(self):
-    nOfControlPoints = self.inputMarkupNode.GetNumberOfFiducials()
-    return [self.getTargetPosition(self.inputMarkupNode, index)[2] for index in range(nOfControlPoints)]
-
-  def deleteClippingData(self):
-    slicer.mrmlScene.RemoveNode(self.clippingModelNode)
-    logging.debug('deleted ModelNode')
-    slicer.mrmlScene.RemoveNode(self.inputMarkupNode)
-    logging.debug('deleted inputMarkupNode')
-
-  def placeFiducials(self):
-    self.clippingModelNode = slicer.vtkMRMLModelNode()
-    self.clippingModelNode.SetName('clipModelNode')
-    slicer.mrmlScene.AddNode(self.clippingModelNode)
-    self.createClippingModelDisplayNode()
-    self.createMarkupAndDisplayNodeForFiducials()
-    self.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateModel)
-    volumeClipPointsDisplayNode = self.setupDisplayNode()
-    self.inputMarkupNode.SetAndObserveDisplayNodeID(volumeClipPointsDisplayNode.GetID())
-
-  def createMarkupAndDisplayNodeForFiducials(self):
-    self.inputMarkupNode = slicer.vtkMRMLMarkupsFiducialNode()
-    self.inputMarkupNode.SetName('inputMarkupNode')
-    slicer.mrmlScene.AddNode(self.inputMarkupNode)
-
-  def createClippingModelDisplayNode(self):
-    clippingModelDisplayNode = slicer.vtkMRMLModelDisplayNode()
-    clippingModelDisplayNode.SetSliceIntersectionThickness(3)
-    clippingModelDisplayNode.SetColor([0.200, 0.800, 0.000]) # green for glant
-    clippingModelDisplayNode.BackfaceCullingOff()
-    clippingModelDisplayNode.SliceIntersectionVisibilityOn()
-    clippingModelDisplayNode.SetOpacity(0.3)
-    slicer.mrmlScene.AddNode(clippingModelDisplayNode)
-    self.clippingModelNode.SetAndObserveDisplayNodeID(clippingModelDisplayNode.GetID())
-
-  def labelMapFromClippingModel(self, inputVolume):
-    outputLabelMap = slicer.vtkMRMLLabelMapVolumeNode()
-    slicer.mrmlScene.AddNode(outputLabelMap)
-
-    params = {'sampleDistance': 0.1, 'labelValue': self.segmentedLabelValue, 'InputVolume': inputVolume.GetID(),
-              'surface': self.clippingModelNode.GetID(), 'OutputVolume': outputLabelMap.GetID()}
-
-    logging.debug(params)
-    slicer.cli.run(slicer.modules.modeltolabelmap, None, params, wait_for_completion=True)
-
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").SetUseLabelOutline(True)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").SetUseLabelOutline(True)
-
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeRed").RotateToVolumePlane(outputLabelMap)
-    slicer.mrmlScene.GetNodeByID("vtkMRMLSliceNodeYellow").RotateToVolumePlane(outputLabelMap)
-
-    return outputLabelMap
 
   def loadZFrameModel(self):
     zFrameModelPath = os.path.join(self.modulePath, self.ZFRAME_MODEL_PATH)
