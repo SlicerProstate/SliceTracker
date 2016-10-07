@@ -96,11 +96,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def intraopDataDir(self, path):
     if os.path.exists(path):
       self.intraopWatchBox.sourceFile = None
-      self.logic.removeObservers()
-      self.logic.addObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
-      self.logic.addObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
-      self.logic.addObserver(SlicerProstateEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
-      self.logic.addObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
+      self.logic.removeEventObservers()
+      self.logic.addEventObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
+      self.logic.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
+      self.logic.addEventObserver(SlicerProstateEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+      self.logic.addEventObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
       self.logic.intraopDataDir = path
       self.closeCaseButton.enabled = True
 
@@ -564,7 +564,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def setupTargetsTable(self):
     self.targetTable = qt.QTableView()
     self.targetTableModel = CustomTargetTableModel(self.logic)
-    self.targetTableModel.addObserver(vtk.vtkCommand.ModifiedEvent, self.updateNeedleModel)
+    self.targetTableModel.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.updateNeedleModel)
     self.targetTable.setModel(self.targetTableModel)
     self.targetTable.setSelectionBehavior(qt.QTableView.SelectItems)
     self.setTargetTableSizeConstraints()
@@ -632,7 +632,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
 
     self.fiducialsWidget = TargetCreationWidget(self.targetingGroupBoxLayout)
-    self.fiducialsWidget.addObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
+    self.fiducialsWidget.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
     self.finishTargetingStepButton = self.createButton("Done setting targets", enabled=True,
                                                        toolTip="Click this button to continue after setting targets")
 
@@ -782,7 +782,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def initiateSampleDataDownload(self, url):
     filename = os.path.basename(url)
     self.sampleDownloader.resetAndInitialize()
-    self.sampleDownloader.addObserver(self.sampleDownloader.EVENTS['status_changed'], self.onDownloadProgressUpdated)
+    self.sampleDownloader.addEventObserver(self.sampleDownloader.EVENTS['status_changed'], self.onDownloadProgressUpdated)
     self.customStatusProgressBar.show()
     downloadedFile = self.sampleDownloader.downloadFileIntoCache(url, filename)
     self.customStatusProgressBar.hide()
@@ -890,7 +890,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.zFrameRegistrationEndIndex.valueChanged.connect(self.onZFrameEndIndexSpinBoxChanged)
 
     def setupEventConnections():
-      self.ratingWindow.addObserver(SlicerProstateEvents.RatingWindowClosedEvent, self.onRatingDone)
+      self.ratingWindow.addEventObserver(SlicerProstateEvents.RatingWindowClosedEvent, self.onRatingDone)
 
     setupCheckBoxConnections()
     setupButtonConnections()
@@ -953,18 +953,18 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.cleanupPreopDICOMReceiver()
     self.preopTransferWindow = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDataDirectory,
                                                   skipText="No Preop available")
-    self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
+    self.preopTransferWindow.addEventObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
                                          self.continueWithoutPreopData)
-    self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
+    self.preopTransferWindow.addEventObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
                                          self.onPreopTransferMessageBoxCanceled)
-    self.preopTransferWindow.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+    self.preopTransferWindow.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                          self.startPreProcessingPreopData)
     self.preopTransferWindow.show()
 
   def cleanupPreopDICOMReceiver(self):
     if self.preopTransferWindow:
       self.preopTransferWindow.hide()
-      self.preopTransferWindow.removeObservers()
+      self.preopTransferWindow.removeEventObservers()
       self.preopTransferWindow = None
 
   def onPreopTransferMessageBoxCanceled(self, caller, event):
@@ -1958,13 +1958,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if not self.targetTableModel.computeCursorDistances:
       self.targetTableModel.computeCursorDistances = True
       # self.calcCursorTargetsDistance()
-      self.crosshairButton.addObserver(self.crosshairButton.CursorPositionModifiedEvent, self.calcCursorTargetsDistance)
+      self.crosshairButton.addEventObserver(self.crosshairButton.CursorPositionModifiedEvent, self.calcCursorTargetsDistance)
 
   def onKeyReleasedEvent(self, caller, event):
     if not caller.GetKeySym() == 'd':
       return
     self.targetTableModel.computeCursorDistances = False
-    self.crosshairButton.removeObserver(self.crosshairButton.CursorPositionModifiedEvent, self.calcCursorTargetsDistance)
+    self.crosshairButton.removeEventObserver(self.crosshairButton.CursorPositionModifiedEvent, self.calcCursorTargetsDistance)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onRatingDone(self, caller, event, callData):
@@ -2162,7 +2162,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.layoutManager.setLayout(self.LAYOUT_FOUR_UP)
     self.setupFourUpView(self.logic.currentIntraopVolume)
     self.volumeClipToLabelWidget.quickSegmentationButton.click()
-    self.volumeClipToLabelWidget.addObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
+    self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
                                              self.onSegmentationFinished)
     self.setDefaultOrientation()
 
@@ -2915,11 +2915,11 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
   def startSmartDICOMReceiver(self, runStoreSCP=True):
     self.stopSmartDICOMReceiver()
     self.smartDicomReceiver = SmartDICOMReceiver(self.intraopDataDir)
-    self.smartDicomReceiver.addObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+    self.smartDicomReceiver.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                         self.onDICOMSeriesReceived)
-    self.smartDicomReceiver.addObserver(SlicerProstateEvents.StatusChangedEvent,
+    self.smartDicomReceiver.addEventObserver(SlicerProstateEvents.StatusChangedEvent,
                                         self.onDICOMReceiverStatusChanged)
-    self.smartDicomReceiver.addObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent,
+    self.smartDicomReceiver.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent,
                                         self.onSmartDICOMReceiverStopped)
     self.smartDicomReceiver.start(runStoreSCP)
 
@@ -2930,7 +2930,7 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.smartDicomReceiver = getattr(self, "smartDicomReceiver", None)
     if self.smartDicomReceiver:
       self.smartDicomReceiver.stop()
-      self.smartDicomReceiver.removeObservers()
+      self.smartDicomReceiver.removeEventObservers()
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onDICOMReceiverStatusChanged(self, caller, event, callData):
@@ -3322,7 +3322,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMix
       self.self.currentGuidanceComputation.RemoveObserver(self.observer)
     self.currentGuidanceComputation = self.getOrCreateNewGuidanceComputation(targetList)
     if self.currentGuidanceComputation:
-      self.observer = self.currentGuidanceComputation.addObserver(vtk.vtkCommand.ModifiedEvent, self.updateHoleAndDepth)
+      self.observer = self.currentGuidanceComputation.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.updateHoleAndDepth)
     self.reset()
 
   @property

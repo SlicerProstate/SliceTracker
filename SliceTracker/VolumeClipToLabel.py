@@ -205,15 +205,15 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   def activateQuickSegmentationMode(self):
     self.logic.runQuickSegmentationMode()
-    self.undoRedoEventObserver = self.logic.addObserver(self.logic.UndoRedoEvent, self.updateUndoRedoButtons)
-    self.markupNodeObserver = self.logic.addObserver(vtk.vtkCommand.ModifiedEvent, self.updateUndoRedoButtons)
+    self.undoRedoEventObserver = self.logic.addEventObserver(self.logic.UndoRedoEvent, self.updateUndoRedoButtons)
+    self.markupNodeObserver = self.logic.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.updateUndoRedoButtons)
     self.invokeEvent(self.SegmentationStartedEvent)
 
   def deactivateQuickSegmentationMode(self, canceled=False):
     self.quickSegmentationButton.checked = False
     self.resetToRegularViewMode()
-    self.undoRedoEventObserver = self.logic.removeObserver(self.logic.UndoRedoEvent, self.undoRedoEventObserver)
-    self.markupNodeObserver = self.logic.removeObserver(vtk.vtkCommand.ModifiedEvent, self.markupNodeObserver)
+    self.undoRedoEventObserver = self.logic.removeEventObserver(self.logic.UndoRedoEvent, self.undoRedoEventObserver)
+    self.markupNodeObserver = self.logic.removeEventObserver(vtk.vtkCommand.ModifiedEvent, self.markupNodeObserver)
     self.logic.stopQuickSegmentationMode(canceled)
 
   def updateUndoRedoButtons(self, observer=None, caller=None):
