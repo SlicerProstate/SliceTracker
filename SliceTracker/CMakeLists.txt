@@ -59,3 +59,10 @@ slicerMacroBuildScriptedModule(
   RESOURCES ""
   WITH_GENERIC_TESTS
   )
+
+slicerMacroBuildScriptedModule(
+  NAME VolumeClipToLabel
+  SCRIPTS VolumeClipToLabel.py
+  RESOURCES ${MODULE_PYTHON_RESOURCES}
+  WITH_GENERIC_TESTS
+  )

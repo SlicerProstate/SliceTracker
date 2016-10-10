@@ -224,7 +224,7 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
       for registration in registrations:
         name = prefix + '-TARGETS-' + registration + suffix
         clone = self.cloneFiducialAndTransform(name, targets, self.registrationResult.getTransform(registration))
-        self.markupsLogic.SetAllMarkupsLocked(clone, True)
+        clone.SetLocked(True)
         self.registrationResult.setTargets(registration, clone)
 
   def cloneFiducialAndTransform(self, cloneName, originalTargets, transformNode):
