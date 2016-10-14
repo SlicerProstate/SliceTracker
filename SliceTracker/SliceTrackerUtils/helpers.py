@@ -1,6 +1,6 @@
 from SlicerProstateUtils.mixins import ParameterNodeObservationMixin, ModuleLogicMixin, ModuleWidgetMixin
 from SlicerProstateUtils.constants import FileExtension
-from SlicerProstateUtils.decorators import multimethod
+from SlicerProstateUtils.decorators import multimethod, onExceptionReturnNone
 
 
 from data import RegistrationResults
@@ -11,21 +11,24 @@ from collections import OrderedDict
 import os, json, logging
 
 
-class SliceTrackerStep(qt.QGroupBox, ModuleWidgetMixin):
+class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
+
+  ActivatedEvent = vtk.vtkCommand.UserEvent + 150
+  DeactivatedEvent = vtk.vtkCommand.UserEvent + 151
 
   @property
-  def active(self):
-    return self._active
-
-  @active.setter
-  def active(self, value):
-    self._active = value
+  @onExceptionReturnNone
+  def session(self):
+    return self.parent.session
 
   def __init__(self, parent=None):
-    qt.QGroupBox.__init__(self, parent)
-    self._active = False
+    qt.QWidget.__init__(self, parent)
     self.setLayout(qt.QGridLayout())
     self.setup()
+    self.deactivate()
+
+  def __del__(self):
+    self.removeEventObservers()
 
   def cleanup(self):
     pass
@@ -35,6 +38,19 @@ class SliceTrackerStep(qt.QGroupBox, ModuleWidgetMixin):
 
   def setupConnections(self):
     self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
+
+  def activate(self):
+    # TODO: whatever is needed to be done
+    self.show()
+    self.invokeEvent(self.ActivatedEvent)
+
+  def deactivate(self):
+    # TODO: whatever is needed to be done
+    self.hide()
+    self.invokeEvent(self.DeactivatedEvent)
+
+  def isActive(self):
+    return self.visible
 
   def onLayoutChanged(self):
     raise NotImplementedError("This method needs to be implemented by all deriving classes")
