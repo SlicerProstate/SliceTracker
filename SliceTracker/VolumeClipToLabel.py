@@ -78,9 +78,9 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.undoButton = self.createButton("", icon=self.undoIcon, iconSize=iconSize, enabled=False, objectName="undoButton")
     self.redoButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False, objectName="redoButton")
 
-    segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
+    self.segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
                                               self.cancelSegmentationButton, self.undoButton, self.redoButton])
-    self.layout.addWidget(segmentationButtons)
+    self.layout.addWidget(self.segmentationButtons)
 
   def setupColorFrame(self):
     self.colorGroupBox = qt.QGroupBox("Color")
