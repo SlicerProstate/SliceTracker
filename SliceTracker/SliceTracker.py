@@ -593,7 +593,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.volumeClipToLabelWidget = VolumeClipToLabelWidget(self.volumeClipGroupBox)
     self.volumeClipToLabelWidget.setup()
-    self.volumeClipToLabelWidget.reloadCollapsibleButton.hide()
+    if self.developerMode:
+      self.volumeClipToLabelWidget.reloadCollapsibleButton.hide()
     self.volumeClipToLabelWidget.selectorsGroupBox.hide()
     self.volumeClipToLabelWidget.colorGroupBox.hide()
     self.volumeClipToLabelWidget.logic.colorNode = self.logic.mpReviewColorNode
