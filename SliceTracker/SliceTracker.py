@@ -611,6 +611,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.segmentationGroupBox = qt.QGroupBox()
     self.segmentationGroupBoxLayout = qt.QGridLayout()
     self.segmentationGroupBox.setLayout(self.segmentationGroupBoxLayout)
+    self.volumeClipToLabelWidget.segmentationButtons.layout().addWidget(self.editorWidgetButton)
     self.segmentationGroupBoxLayout.addWidget(self.volumeClipGroupBox, 0, 0)
     self.segmentationGroupBoxLayout.addWidget(self.editorWidgetParent, 1, 0)
     self.segmentationGroupBoxLayout.addWidget(self.applyRegistrationButton, 2, 0)
