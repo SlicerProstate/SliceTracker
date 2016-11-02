@@ -211,8 +211,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     valid = path is not None
     self.closeCaseButton.enabled = valid
     if valid:
+      self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
       self.updateCaseWatchBox()
     else:
+      self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
       self.caseWatchBox.reset()
 
   @property
@@ -246,7 +248,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def onReload(self):
     try:
-      self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
       self.clearData()
       if self.customStatusProgressBar:
         slicer.util.mainWindow().statusBar().removeWidget(self.customStatusProgressBar)
@@ -887,7 +888,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.rockTimer.connect('timeout()', self.onRockToggled)
       self.flickerTimer.connect('timeout()', self.onFlickerToggled)
       self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
-      self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
       self.zFrameRegistrationStartIndex.valueChanged.connect(self.onZFrameStartIndexSpinBoxChanged)
       self.zFrameRegistrationEndIndex.valueChanged.connect(self.onZFrameEndIndexSpinBoxChanged)
 
@@ -1607,6 +1607,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.logic.caseCompleted = True
     self.save(showDialog=True)
     self.clearData()
+    self.completeCaseButton.enabled = False
 
   def save(self, showDialog=False):
     if not os.path.exists(self.outputDir) or self.generatedOutputDirectory == "":
