@@ -1189,13 +1189,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     elif self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.removeMissingPreopDataAnnotation()
       self.setBackgroundToVolumeID(self.logic.currentIntraopVolume.GetID())
-    # self.refreshClippingModelViewNodes()
+    self.refreshClippingModelViewNodes()
 
-  # def refreshClippingModelViewNodes(self):
-  #   sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE else \
-  #     [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
-  #   for node in [n for n in [self.logic.clippingModelNode, self.logic.inputMarkupNode] if n]:
-  #     self.refreshViewNodeIDs(node, sliceNodes)
+  def refreshClippingModelViewNodes(self):
+    sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE else \
+      [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+    nodes = [self.volumeClipToLabelWidget.logic.clippingModelNode, self.volumeClipToLabelWidget.logic.inputMarkupNode]
+    for node in [n for n in nodes if n]:
+      self.refreshViewNodeIDs(node, sliceNodes)
 
   def refreshZFrameTemplateViewNodes(self):
     sliceNodes = []
