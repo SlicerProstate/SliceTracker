@@ -211,8 +211,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     valid = path is not None
     self.closeCaseButton.enabled = valid
     if valid:
+      self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
       self.updateCaseWatchBox()
     else:
+      self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
       self.caseWatchBox.reset()
 
   @property
@@ -246,7 +248,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def onReload(self):
     try:
-      self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
       self.clearData()
       if self.customStatusProgressBar:
         slicer.util.mainWindow().statusBar().removeWidget(self.customStatusProgressBar)
@@ -887,7 +888,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.rockTimer.connect('timeout()', self.onRockToggled)
       self.flickerTimer.connect('timeout()', self.onFlickerToggled)
       self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
-      self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
       self.zFrameRegistrationStartIndex.valueChanged.connect(self.onZFrameStartIndexSpinBoxChanged)
       self.zFrameRegistrationEndIndex.valueChanged.connect(self.onZFrameEndIndexSpinBoxChanged)
 
@@ -1189,13 +1189,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     elif self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.removeMissingPreopDataAnnotation()
       self.setBackgroundToVolumeID(self.logic.currentIntraopVolume.GetID())
-    # self.refreshClippingModelViewNodes()
+    self.refreshClippingModelViewNodes()
 
-  # def refreshClippingModelViewNodes(self):
-  #   sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE else \
-  #     [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
-  #   for node in [n for n in [self.logic.clippingModelNode, self.logic.inputMarkupNode] if n]:
-  #     self.refreshViewNodeIDs(node, sliceNodes)
+  def refreshClippingModelViewNodes(self):
+    sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == self.LAYOUT_SIDE_BY_SIDE else \
+      [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+    nodes = [self.volumeClipToLabelWidget.logic.clippingModelNode, self.volumeClipToLabelWidget.logic.inputMarkupNode]
+    for node in [n for n in nodes if n]:
+      self.refreshViewNodeIDs(node, sliceNodes)
 
   def refreshZFrameTemplateViewNodes(self):
     sliceNodes = []
@@ -1606,6 +1607,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.logic.caseCompleted = True
     self.save(showDialog=True)
     self.clearData()
+    self.completeCaseButton.enabled = False
 
   def save(self, showDialog=False):
     if not os.path.exists(self.outputDir) or self.generatedOutputDirectory == "":
@@ -2036,6 +2038,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def onSegmentationFinished(self, caller, event, labelNode):
     self.currentIntraopLabel = labelNode
+    fixedVolumeName = self.fixedVolumeSelector.currentNode().GetName()
+    _, suffix = self.logic.getRegistrationResultNameAndGeneratedSuffix(fixedVolumeName)
+    self.currentIntraopLabel.SetName(self.currentIntraopLabel.GetName() + suffix)
     if self.logic.usePreopData or self.logic.retryMode:
       self.setAxialOrientation()
 
@@ -2165,7 +2170,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.setupFourUpView(self.logic.currentIntraopVolume)
     self.volumeClipToLabelWidget.quickSegmentationButton.click()
     self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
-                                             self.onSegmentationFinished)
+                                                  self.onSegmentationFinished)
     self.setDefaultOrientation()
 
   def isRegistrationPossible(self):
