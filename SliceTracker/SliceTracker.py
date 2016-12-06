@@ -429,6 +429,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.fourUpLayoutButton = FourUpLayoutButton()
     self.crosshairButton = CrosshairButton()
     self.wlEffectsToolButton = WindowLevelEffectsButton()
+    self.settingsButton = ModuleSettingsButton(self.moduleName)
 
     self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, iconSize=iconSize, checkable=True, toolTip="Display zFrame model")
     self.showTemplateButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template")
@@ -441,7 +442,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                               self.fourUpLayoutButton, self.showAnnotationsButton,
                                               self.crosshairButton, self.showZFrameModelButton,
                                               self.showTemplatePathButton, self.showNeedlePathButton,
-                                              self.wlEffectsToolButton]))
+                                              self.wlEffectsToolButton, self.settingsButton]))
 
   def resetViewSettingButtons(self):
     self.showTemplateButton.enabled = self.logic.templateSuccessfulLoaded
