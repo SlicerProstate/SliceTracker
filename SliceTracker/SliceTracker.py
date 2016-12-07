@@ -255,6 +255,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       pass
     ScriptedLoadableModuleWidget.onReload(self)
 
+  def enter(self):
+    if not slicer.dicomDatabase:
+      slicer.util.errorDisplay("Slicer DICOMDatabase was not found. In order to be able to use SliceTracker, you will "
+                               "need to set a proper location for the Slicer DICOMDatabase.")
+    self.layout.parent().enabled = slicer.dicomDatabase is not None
+
   def clearData(self):
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = False
