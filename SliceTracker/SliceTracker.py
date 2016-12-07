@@ -486,8 +486,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.setDefaultFOV(self.yellowSliceLogic)
     elif self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.setDefaultFOV(self.redSliceLogic)
-      self.setDefaultFOV(self.yellowSliceLogic, 1.0 if self.currentStep == self.STEP_SEGMENTATION else 0.5)
-      self.setDefaultFOV(self.greenSliceLogic, 1.0 if self.currentStep == self.STEP_SEGMENTATION else 0.5)
+      self.yellowSliceLogic.FitSliceToAll()
+      self.greenSliceLogic.FitSliceToAll()
 
   def setupZFrameRegistrationUIElements(self):
     self.zFrameRegistrationGroupBox = qt.QGroupBox()
