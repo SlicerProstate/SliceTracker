@@ -1615,7 +1615,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       slicer.util.infoDisplay("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
                               "sure to select one.", windowTitle="SliceTracker")
     else:
-      if self.logic.saveSession(self.generatedOutputDirectory):
+      if self.logic.saveSession(self.generatedOutputDirectory) and \
+        self.volumeClipToLabelWidget.logic.save(self.generatedOutputDirectory):
         message = "Case data has been save successfully."
       else:
         message = "Case data could not be saved successfully. Please see log for further information."
@@ -2769,17 +2770,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
         success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL",
                                           overwrite=True)
         self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-
-        # TODO: retrieve from volume clip widget
-        # if self.clippingModelNode:
-        #   success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
-        #                                     name=seriesNumber+"-MODEL", overwrite=True)
-        #   self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-        #
-        # if self.inputMarkupNode:
-        #   success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
-        #                                     name=seriesNumber+"-VolumeClip_points", overwrite=True)
-        #   self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
     def saveOriginalTargets():
       originalTargets = self.registrationResults.originalTargets

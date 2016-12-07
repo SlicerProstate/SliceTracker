@@ -3,6 +3,7 @@ import os, logging
 from slicer.ScriptedLoadableModule import *
 
 from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from SlicerProstateUtils.constants import FileExtension
 
 from EditorLib import ColorBox
 
@@ -204,7 +205,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.cancelSegmentationButton.setEnabled(self.quickSegmentationButton.checked)
 
   def activateQuickSegmentationMode(self):
-    self.logic.runQuickSegmentationMode()
+    self.logic.runQuickSegmentationMode(self.imageVolume.GetName())
     self.undoRedoEventObserver = self.logic.addEventObserver(self.logic.UndoRedoEvent, self.updateUndoRedoButtons)
     self.markupNodeObserver = self.logic.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.updateUndoRedoButtons)
     self.invokeEvent(self.SegmentationStartedEvent)
@@ -277,6 +278,7 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.inputMarkupNode = None
     self.deletedMarkups = None
     self.colorNode = None
+    self.seriesName = None
     self.outputLabelValue = outputLabelValue
     self.deletedMarkupPositions = []
 
@@ -286,6 +288,21 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     if self.inputMarkupNode:
       slicer.mrmlScene.RemoveNode(self.inputMarkupNode)
     self.resetQuickModeHistory()
+    self.seriesName = None
+
+  def save(self, outputDir):
+    if not self.seriesName:
+      return
+
+    seriesNumber = self.seriesName.split(":")[0]
+
+    if self.clippingModelNode:
+      self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK, name=seriesNumber+"-MODEL",
+                        overwrite=True)
+
+    if self.inputMarkupNode:
+      self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV, name=seriesNumber+"-VolumeClip_points",
+                        overwrite=True)
 
   def resetQuickModeHistory(self, caller=None, event=None):
     self.deletedMarkupPositions = []
@@ -307,8 +324,9 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
       displayNode.SetGlyphType(slicer.vtkMRMLAnnotationPointDisplayNode.StarBurst2D)
     return displayNode
 
-  def runQuickSegmentationMode(self):
+  def runQuickSegmentationMode(self, seriesName):
     self.reset()
+    self.seriesName = seriesName
     self.markupsLogic.StartPlaceMode(1)
     self.placeFiducials()
     self.addInputMarkupNodeObserver()
