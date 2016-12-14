@@ -1883,20 +1883,31 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     for currentFile in [os.path.join(self.intraopDataDir, f) for f in fileList]:
       seriesNumber = int(self.logic.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
       if seriesNumber not in seriesNumberPatientID.keys():
-        seriesNumberPatientID[seriesNumber] = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
+        seriesNumberPatientID[seriesNumber]= {"PatientID":
+                                                self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID),
+                                              "PatientName":
+                                                self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)}
     return seriesNumberPatientID
 
   def verifyPatientIDEquality(self, seriesNumberPatientID):
     acceptedSeriesNumbers = []
-    for seriesNumber, patientID in seriesNumberPatientID.iteritems():
-        if patientID is not None and patientID != self.currentID:
-          if not slicer.util.confirmYesNoDisplay('WARNING: Current case patient ID {0} differs from received imaging'
-                                                 ' data which belongs to patient with ID {1}.'
-                                                 '\nDo you want to keep this series? '.format(self.currentID, patientID),
-                                                 title="PatientsID Not Matching", windowTitle="SliceTracker"):
-            self.logic.deleteSeriesFromSeriesList(seriesNumber)
-            continue
-        acceptedSeriesNumbers.append(seriesNumber)
+    for seriesNumber, info in seriesNumberPatientID.iteritems():
+      patientID = info["PatientID"]
+      patientName = info["PatientName"]
+      if patientID is not None and patientID != self.currentID:
+        currentPatientName = self.patientWatchBox.getInformation("PatientName")
+        message = 'WARNING:\n' \
+                  'Current case:\n' \
+                  '  Patient ID: {0}\n' \
+                  '  Patient Name: {1}\n' \
+                  'Received image\n' \
+                  '  Patient ID: {2}\n' \
+                  '  Patient Name : {3}\n\n' \
+                  'Do you want to keep this series? '.format(self.currentID, currentPatientName, patientID, patientName)
+        if not slicer.util.confirmYesNoDisplay(message, title="Patient's ID Not Matching", windowTitle="SliceTracker"):
+          self.logic.deleteSeriesFromSeriesList(seriesNumber)
+          continue
+      acceptedSeriesNumbers.append(seriesNumber)
     acceptedSeriesNumbers.sort()
     return acceptedSeriesNumbers
 
