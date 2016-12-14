@@ -255,6 +255,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       pass
     ScriptedLoadableModuleWidget.onReload(self)
 
+  def enter(self):
+    if not slicer.dicomDatabase:
+      slicer.util.errorDisplay("Slicer DICOMDatabase was not found. In order to be able to use SliceTracker, you will "
+                               "need to set a proper location for the Slicer DICOMDatabase.")
+    self.layout.parent().enabled = slicer.dicomDatabase is not None
+
   def clearData(self):
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = False
@@ -429,6 +435,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.fourUpLayoutButton = FourUpLayoutButton()
     self.crosshairButton = CrosshairButton()
     self.wlEffectsToolButton = WindowLevelEffectsButton()
+    self.settingsButton = ModuleSettingsButton(self.moduleName)
 
     self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, iconSize=iconSize, checkable=True, toolTip="Display zFrame model")
     self.showTemplateButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template")
@@ -441,7 +448,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                               self.fourUpLayoutButton, self.showAnnotationsButton,
                                               self.crosshairButton, self.showZFrameModelButton,
                                               self.showTemplatePathButton, self.showNeedlePathButton,
-                                              self.wlEffectsToolButton]))
+                                              self.wlEffectsToolButton, self.settingsButton]))
 
   def resetViewSettingButtons(self):
     self.showTemplateButton.enabled = self.logic.templateSuccessfulLoaded
@@ -485,8 +492,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.setDefaultFOV(self.yellowSliceLogic)
     elif self.layoutManager.layout == self.LAYOUT_FOUR_UP:
       self.setDefaultFOV(self.redSliceLogic)
-      self.setDefaultFOV(self.yellowSliceLogic, 1.0 if self.currentStep == self.STEP_SEGMENTATION else 0.5)
-      self.setDefaultFOV(self.greenSliceLogic, 1.0 if self.currentStep == self.STEP_SEGMENTATION else 0.5)
+      self.yellowSliceLogic.FitSliceToAll()
+      self.greenSliceLogic.FitSliceToAll()
 
   def setupZFrameRegistrationUIElements(self):
     self.zFrameRegistrationGroupBox = qt.QGroupBox()
@@ -1614,7 +1621,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       slicer.util.infoDisplay("CRITICAL ERROR: You need to provide a valid output directory for saving data. Please make "
                               "sure to select one.", windowTitle="SliceTracker")
     else:
-      if self.logic.saveSession(self.generatedOutputDirectory):
+      if self.logic.saveSession(self.generatedOutputDirectory) and \
+        self.volumeClipToLabelWidget.logic.save(self.generatedOutputDirectory):
         message = "Case data has been save successfully."
       else:
         message = "Case data could not be saved successfully. Please see log for further information."
@@ -1875,20 +1883,31 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     for currentFile in [os.path.join(self.intraopDataDir, f) for f in fileList]:
       seriesNumber = int(self.logic.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
       if seriesNumber not in seriesNumberPatientID.keys():
-        seriesNumberPatientID[seriesNumber] = self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID)
+        seriesNumberPatientID[seriesNumber]= {"PatientID":
+                                                self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID),
+                                              "PatientName":
+                                                self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)}
     return seriesNumberPatientID
 
   def verifyPatientIDEquality(self, seriesNumberPatientID):
     acceptedSeriesNumbers = []
-    for seriesNumber, patientID in seriesNumberPatientID.iteritems():
-        if patientID is not None and patientID != self.currentID:
-          if not slicer.util.confirmYesNoDisplay(message='WARNING: Preop data of Patient ID ' + self.currentID + ' was selected, but '
-                                          ' data of patient with ID ' + patientID + ' just arrived in the folder, which '
-                                          'you selected for incoming data.\nDo you want to keep this series?',
-                                                 title="PatientsID Not Matching", windowTitle="SliceTracker"):
-            self.logic.deleteSeriesFromSeriesList(seriesNumber)
-            continue
-        acceptedSeriesNumbers.append(seriesNumber)
+    for seriesNumber, info in seriesNumberPatientID.iteritems():
+      patientID = info["PatientID"]
+      patientName = info["PatientName"]
+      if patientID is not None and patientID != self.currentID:
+        currentPatientName = self.patientWatchBox.getInformation("PatientName")
+        message = 'WARNING:\n' \
+                  'Current case:\n' \
+                  '  Patient ID: {0}\n' \
+                  '  Patient Name: {1}\n' \
+                  'Received image\n' \
+                  '  Patient ID: {2}\n' \
+                  '  Patient Name : {3}\n\n' \
+                  'Do you want to keep this series? '.format(self.currentID, currentPatientName, patientID, patientName)
+        if not slicer.util.confirmYesNoDisplay(message, title="Patient's ID Not Matching", windowTitle="SliceTracker"):
+          self.logic.deleteSeriesFromSeriesList(seriesNumber)
+          continue
+      acceptedSeriesNumbers.append(seriesNumber)
     acceptedSeriesNumbers.sort()
     return acceptedSeriesNumbers
 
@@ -2768,17 +2787,6 @@ class SliceTrackerLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
         success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL",
                                           overwrite=True)
         self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-
-        # TODO: retrieve from volume clip widget
-        # if self.clippingModelNode:
-        #   success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
-        #                                     name=seriesNumber+"-MODEL", overwrite=True)
-        #   self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-        #
-        # if self.inputMarkupNode:
-        #   success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
-        #                                     name=seriesNumber+"-VolumeClip_points", overwrite=True)
-        #   self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
     def saveOriginalTargets():
       originalTargets = self.registrationResults.originalTargets
