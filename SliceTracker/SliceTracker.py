@@ -1890,9 +1890,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     acceptedSeriesNumbers = []
     for seriesNumber, patientID in seriesNumberPatientID.iteritems():
         if patientID is not None and patientID != self.currentID:
-          if not slicer.util.confirmYesNoDisplay(message='WARNING: Preop data of Patient ID ' + self.currentID + ' was selected, but '
-                                          ' data of patient with ID ' + patientID + ' just arrived in the folder, which '
-                                          'you selected for incoming data.\nDo you want to keep this series?',
+          if not slicer.util.confirmYesNoDisplay('WARNING: Current case patient ID {0} differs from received imaging'
+                                                 ' data which belongs to patient with ID {1}.'
+                                                 '\nDo you want to keep this series? '.format(self.currentID, patientID),
                                                  title="PatientsID Not Matching", windowTitle="SliceTracker"):
             self.logic.deleteSeriesFromSeriesList(seriesNumber)
             continue
