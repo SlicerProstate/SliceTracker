@@ -264,6 +264,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def clearData(self):
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = False
+    self.completeCaseButton.enabled = False
     self.cleanupPreopDICOMReceiver()
     self.sampleDownloader.resetAndInitialize()
     if self.currentCaseDirectory:
@@ -1786,7 +1787,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
             sliceNode.JumpSliceByCentering(fixedCentroid[0], fixedCentroid[1], fixedCentroid[2])
     elif self.layoutManager.layout == self.LAYOUT_RED_SLICE_ONLY:
       movingCentroid = self.logic.getCentroidForLabel(self.logic.preopLabel, self.logic.segmentedLabelValue)
-      self.redSliceNode.JumpSliceByCentering(movingCentroid[0], movingCentroid[1], movingCentroid[2])
+      if movingCentroid:
+        self.redSliceNode.JumpSliceByCentering(movingCentroid[0], movingCentroid[1], movingCentroid[2])
 
   def centerLabelsOnVisibleSliceWidgets(self):
     for widget in self.getAllVisibleWidgets():
