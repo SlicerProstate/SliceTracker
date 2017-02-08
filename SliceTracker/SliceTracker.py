@@ -1066,7 +1066,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         except PreProcessedDataError:
           self.clearData()
           return
-        self.intraopDataDir = self.intraopDICOMDataDirectory
       else:
         if len(os.listdir(self.preopDICOMDataDirectory)):
           self.startPreProcessingPreopData()
@@ -1828,7 +1827,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         raise PreProcessedDataError
     else:
       self.movingLabelSelector.setCurrentNode(self.logic.preopLabel)
-      self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
+      self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID(self.logic.mpReviewColorNode.GetID())
 
       self.configureRedSliceNodeForPreopData()
       self.promptUserAndApplyBiasCorrectionIfNeeded()
@@ -1837,6 +1836,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.setAxialOrientation()
       self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume)
       self.setupPreopLoadedTargets()
+      self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def loadMpReviewProcessedData(self):
     from mpReview import mpReviewLogic
