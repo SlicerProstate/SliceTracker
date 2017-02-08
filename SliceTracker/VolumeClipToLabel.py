@@ -292,17 +292,21 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   def save(self, outputDir):
     if not self.seriesName:
-      return
+      # if case was continued (inputMarkupNode and clippingModelNode won't get initialized)
+      return self.inputMarkupNode is None and self.clippingModelNode is None
 
     seriesNumber = self.seriesName.split(":")[0]
 
+    clippingModelSaved = inputMarkupSaved = False
+
     if self.clippingModelNode:
-      self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK, name=seriesNumber+"-MODEL",
-                        overwrite=True)
+      clippingModelSaved = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
+                                             name=seriesNumber+"-MODEL", overwrite=True)
 
     if self.inputMarkupNode:
-      self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV, name=seriesNumber+"-VolumeClip_points",
-                        overwrite=True)
+      inputMarkupSaved = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
+                                           name=seriesNumber+"-VolumeClip_points", overwrite=True)
+    return clippingModelSaved and inputMarkupSaved
 
   def resetQuickModeHistory(self, caller=None, event=None):
     self.deletedMarkupPositions = []
