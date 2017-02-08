@@ -21,7 +21,7 @@ from SlicerProstateUtils.events import SlicerProstateEvents
 from SlicerProstateUtils.decorators import onReturnProcessEvents, beforeRunProcessEvents
 
 from SliceTrackerUtils.constants import SliceTrackerConstants
-from SliceTrackerUtils.exceptions import DICOMValueError
+from SliceTrackerUtils.exceptions import DICOMValueError, PreProcessedDataError
 from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
 from SliceTrackerUtils.ZFrameRegistration import *
 from SliceTrackerUtils.configuration import SliceTrackerConfiguration
@@ -264,6 +264,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def clearData(self):
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = False
+    self.completeCaseButton.enabled = False
     self.cleanupPreopDICOMReceiver()
     self.sampleDownloader.resetAndInitialize()
     if self.currentCaseDirectory:
@@ -989,28 +990,34 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def startPreProcessingPreopData(self, caller=None, event=None):
     self.cleanupPreopDICOMReceiver()
     self.logic.intraopDataDir = self.intraopDICOMDataDirectory
-    success = self.invokePreProcessing()
-    if success:
-      self.setSetting('InputLocation', None, moduleName="mpReview")
-      self.layoutManager.selectModule("mpReview")
-      mpReview = slicer.modules.mpReviewWidget
-      self.setSetting('InputLocation', self.mpReviewPreprocessedOutput, moduleName="mpReview")
-      mpReview.onReload()
-      slicer.modules.mpReviewWidget.saveButton.clicked.connect(self.onReturnFromMpReview)
-      self.layoutManager.selectModule(mpReview.moduleName)
+    if self.invokePreProcessing():
+      self.startMpReview()
     else:
       slicer.util.infoDisplay("No DICOM data could be processed. Please select another directory.",
                               windowTitle="SliceTracker")
+
+  def startMpReview(self):
+    self.setSetting('InputLocation', None, moduleName="mpReview")
+    self.layoutManager.selectModule("mpReview")
+    mpReview = slicer.modules.mpReviewWidget
+    self.setSetting('InputLocation', self.mpReviewPreprocessedOutput, moduleName="mpReview")
+    mpReview.onReload()
+    slicer.modules.mpReviewWidget.saveButton.clicked.connect(self.onReturnFromMpReview)
+    self.layoutManager.selectModule(mpReview.moduleName)
 
   def onReturnFromMpReview(self):
     slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(self.onReturnFromMpReview)
     self.layoutManager.selectModule(self.moduleName)
     slicer.mrmlScene.Clear(0)
     trainingMode = self.logic.trainingMode
-    self.logic.stopSmartDICOMReceiver()
+    self.logic.stopSmartDICOMReceiver()  # TODO: this is unclean since there is a time gap
     self.logic.resetAndInitializeData()
     self.logic.trainingMode = trainingMode
-    self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
+    try:
+      self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
+    except PreProcessedDataError:
+      self.clearData()
+      return
     self.simulateIntraopPhaseButton.enabled = self.logic.trainingMode
     self.intraopDataDir = self.intraopDICOMDataDirectory
 
@@ -1054,8 +1061,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     else:
       if os.path.exists(self.mpReviewPreprocessedOutput) and \
               mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
-        self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
-        self.intraopDataDir = self.intraopDICOMDataDirectory
+        try:
+          self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
+        except PreProcessedDataError:
+          self.clearData()
+          return
       else:
         if len(os.listdir(self.preopDICOMDataDirectory)):
           self.startPreProcessingPreopData()
@@ -1776,7 +1786,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
             sliceNode.JumpSliceByCentering(fixedCentroid[0], fixedCentroid[1], fixedCentroid[2])
     elif self.layoutManager.layout == self.LAYOUT_RED_SLICE_ONLY:
       movingCentroid = self.logic.getCentroidForLabel(self.logic.preopLabel, self.logic.segmentedLabelValue)
-      self.redSliceNode.JumpSliceByCentering(movingCentroid[0], movingCentroid[1], movingCentroid[2])
+      if movingCentroid:
+        self.redSliceNode.JumpSliceByCentering(movingCentroid[0], movingCentroid[1], movingCentroid[2])
 
   def centerLabelsOnVisibleSliceWidgets(self):
     for widget in self.getAllVisibleWidgets():
@@ -1805,37 +1816,39 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.currentID = self.patientWatchBox.getInformation("PatientID")
 
     message = self.loadMpReviewProcessedData()
-    if message:
-      slicer.util.warningDisplay(message, winowTitle="SliceTracker")
-      return
+    print message
+    if message or not self.logic.loadT2Label() or not self.logic.loadPreopVolume() or not self.logic.loadPreopTargets():
+      if slicer.util.confirmYesNoDisplay("Loading preop data failed.\nMake sure that the correct mpReview directory "
+                                         "structure is used.\n\nSliceTracker expects a T2 volume, WholeGland "
+                                         "segmentation and target(s). Do you want to open/revisit pre-processing for "
+                                         "the current case?", windowTitle="SliceTracker"):
+        self.startMpReview()
+      else:
+        raise PreProcessedDataError
+    else:
+      self.movingLabelSelector.setCurrentNode(self.logic.preopLabel)
+      self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID(self.logic.mpReviewColorNode.GetID())
 
-    success = self.logic.loadT2Label() and self.logic.loadPreopVolume() and self.logic.loadPreopTargets()
-    if not success:
-      slicer.util.warningDisplay("Loading preop data failed.\nMake sure that the correct directory structure like mpReview "
-                                 "explains is used. SliceTracker expects a volume, label and target")
-      return
+      self.configureRedSliceNodeForPreopData()
+      self.promptUserAndApplyBiasCorrectionIfNeeded()
 
-    self.movingLabelSelector.setCurrentNode(self.logic.preopLabel)
-    self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNode1')
-
-    self.configureRedSliceNodeForPreopData()
-    self.promptUserAndApplyBiasCorrectionIfNeeded()
-
-    self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
-    self.setAxialOrientation()
-    self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume)
-    self.setupPreopLoadedTargets()
+      self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
+      self.setAxialOrientation()
+      self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume)
+      self.setupPreopLoadedTargets()
+      self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def loadMpReviewProcessedData(self):
     from mpReview import mpReviewLogic
-    resourcesDir = os.path.join(self.preopDataDir, 'RESOURCES')\
+    resourcesDir = os.path.join(self.preopDataDir, 'RESOURCES')
 
+    print resourcesDir
     if not os.path.exists(resourcesDir):
       message = "The selected directory does not fit the mpReview directory structure. Make sure that you select the " \
                 "study root directory which includes directories RESOURCES"
       return message
 
-    self.progress = slicer.util.createProgressDialog(maxiumu=len(os.listdir(resourcesDir)))
+    self.progress = slicer.util.createProgressDialog(maximum=len(os.listdir(resourcesDir)))
     seriesMap, metaFile = mpReviewLogic.loadMpReviewProcessedData(resourcesDir,
                                                                   updateProgressCallback=self.updateProgressBar)
     self.progress.delete()
