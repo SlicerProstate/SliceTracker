@@ -1026,7 +1026,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.logic.createDirectory(self.mpReviewPreprocessedOutput)
     from mpReviewPreprocessor import mpReviewPreprocessorLogic
     self.mpReviewPreprocessorLogic = mpReviewPreprocessorLogic()
-    self.progress = slicer.util.createProgressDialog()
+    self.progress = self.createProgressDialog()
     self.progress.canceled.connect(self.mpReviewPreprocessorLogic.cancelProcess)
     self.mpReviewPreprocessorLogic.importStudy(self.preopDICOMDataDirectory, progressCallback=self.updateProgressBar)
     success = False
@@ -1848,7 +1848,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                 "study root directory which includes directories RESOURCES"
       return message
 
-    self.progress = slicer.util.createProgressDialog(maximum=len(os.listdir(resourcesDir)))
+    self.progress = self.createProgressDialog(maximum=len(os.listdir(resourcesDir)))
     seriesMap, metaFile = mpReviewLogic.loadMpReviewProcessedData(resourcesDir,
                                                                   updateProgressCallback=self.updateProgressBar)
     self.progress.delete()
@@ -1884,7 +1884,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     if not self.continueOldCase:
       if slicer.util.confirmYesNoDisplay("Was an endorectal coil used for preop image acquisition?",
                                          windowTitle="SliceTracker"):
-        progress = slicer.util.createProgressDialog(maximum=2, value=1)
+        progress = self.createProgressDialog(maximum=2, value=1)
         progress.labelText = '\nBias Correction'
         self.logic.applyBiasCorrection()
         progress.setValue(2)
@@ -2209,7 +2209,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     return self.coverTemplateROI is not None
 
   def onApplyZFrameRegistrationButtonClicked(self):
-    progress = slicer.util.createProgressDialog(maximum=2, value=1)
+    progress = self.createProgressDialog(maximum=2, value=1)
     progress.labelText = '\nZFrame registration'
     zFrameTemplateVolume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
 
@@ -2358,7 +2358,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def onInvokeRegistration(self, initial=True):
     self.disableEditorWidgetAndResetEditorTool()
     self.applyRegistrationButton.setEnabled(False)
-    self.progress = slicer.util.createProgressDialog(maximum=4, value=1)
+    self.progress = self.createProgressDialog(maximum=4, value=1)
     if initial:
       self.logic.applyInitialRegistration(fixedVolume=self.fixedVolumeSelector.currentNode(),
                                           movingVolume=self.movingVolumeSelector.currentNode(),

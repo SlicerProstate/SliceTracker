@@ -112,7 +112,7 @@ class SliceTrackerRegistrationWidget(ScriptedLoadableModuleWidget, ModuleWidgetM
 
   def runRegistration(self):
     logging.debug("Starting Registration")
-    self.progress = slicer.util.createProgressDialog(value=1, maximum=4)
+    self.progress = self.createProgressDialog(value=1, maximum=4)
     parameterNode = slicer.vtkMRMLScriptedModuleNode()
     parameterNode.SetAttribute('FixedImageNodeID', self.fixedVolumeSelector.currentNode().GetID())
     parameterNode.SetAttribute('FixedLabelNodeID', self.fixedLabelSelector.currentNode().GetID())
