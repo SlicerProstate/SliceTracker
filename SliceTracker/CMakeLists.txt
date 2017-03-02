@@ -8,7 +8,7 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/configuration.py
   SliceTrackerUtils/constants.py
   SliceTrackerUtils/exceptions.py
-  SliceTrackerUtils/data.py
+  SliceTrackerUtils/RegistrationData.py
   SliceTrackerUtils/ZFrameRegistration.py
   SliceTrackerUtils/helpers.py
   SliceTrackerUtils/watch.py
@@ -43,26 +43,22 @@ slicerMacroBuildScriptedModule(
   NAME ${MODULE_NAME}
   SCRIPTS ${MODULE_PYTHON_SCRIPTS}
   RESOURCES ${MODULE_PYTHON_RESOURCES}
-  WITH_GENERIC_TESTS
   )
 
 slicerMacroBuildScriptedModule(
   NAME SliceTrackerRegistration
   SCRIPTS SliceTrackerRegistration.py
   RESOURCES ""
-  WITH_GENERIC_TESTS
   )
 
 slicerMacroBuildScriptedModule(
   NAME SliceTrackerZFrameRegistration
   SCRIPTS SliceTrackerZFrameRegistration.py
   RESOURCES ""
-  WITH_GENERIC_TESTS
   )
 
 slicerMacroBuildScriptedModule(
   NAME VolumeClipToLabel
   SCRIPTS VolumeClipToLabel.py
   RESOURCES ${MODULE_PYTHON_RESOURCES}
-  WITH_GENERIC_TESTS
   )

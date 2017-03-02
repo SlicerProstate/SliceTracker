@@ -61,21 +61,22 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
 
 class SessionBase(ModuleLogicMixin):
 
+  DirectoryChangedEvent = vtk.vtkCommand.UserEvent + 203
+
   @property
   def directory(self):
     return self._directory
 
   @directory.setter
   def directory(self, value):
-    if not value:
-      raise ValueError("You cannot assign None to the session directory")
-    if not os.path.exists(value):
-      self.createDirectory(value)
+    if value:
+      if not os.path.exists(value):
+        self.createDirectory(value)
     self._directory = value
+    self.invokeEvent(self.DirectoryChangedEvent, self.directory)
 
   def __init__(self, directory=None):
-    if directory:
-      self.directory = directory
+    self.directory = directory
 
   def load(self):
     raise NotImplementedError
@@ -88,6 +89,8 @@ class SessionBase(ModuleLogicMixin):
 
 
 class SliceTrackerSession(SessionBase):
+
+  # TODO: implement events that are invoked once data changes so that underlying steps can react to it
 
   def __init__(self, directory=None):
     super(SliceTrackerSession, self).__init__(directory)
