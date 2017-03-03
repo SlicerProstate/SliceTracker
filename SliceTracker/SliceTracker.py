@@ -30,7 +30,7 @@ class SliceTracker(ScriptedLoadableModule):
                                           R01 CA111288 and P41 EB015898."""
 
 
-from SliceTrackerUtils.helpers import SliceTrackerStep
+from SliceTrackerUtils.helpers import SliceTrackerStep, SliceTrackerStepLogic
 
 
 class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoadableModuleWidget):
@@ -140,7 +140,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.layout.addWidget(self.tabWidget)
 
     def addStep(className):
-      step = className()
+      step = className(session=self.session)
       self.tabWidget.addTab(step, step.NAME)
       return step
 
@@ -153,12 +153,106 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     # self.tabWidget.tabBar().hide()
 
 
+from SliceTrackerUtils.helpers import NewCaseSelectionNameWidget
+from SlicerProstateUtils.helpers import IncomingDataWindow, SmartDICOMReceiver
+from SliceTrackerUtils.exceptions import DICOMValueError
+from SliceTrackerUtils.RegistrationData import RegistrationResults, RegistrationResult
+
+
+class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
+
+  def __init__(self, session):
+    self.smartDicomReceiver = None
+    self.loadableList = {}
+    self.seriesList = []
+    super(SliceTrackerOverViewStepLogic, self).__init__(session)
+
+  def cleanup(self):
+    self.loadableList = {}
+    self.seriesList = []
+
+  def startIntraopDICOMReceiver(self):
+    # TODO: refactor following line
+    if not self.session.completed:
+      self.startSmartDICOMReceiver(runStoreSCP=not self.session.trainingMode)
+    else:
+      self.invokeEvent(SlicerProstateEvents.DICOMReceiverStoppedEvent)
+    self.importDICOMSeries(self.getFileList(self.session.intraopDICOMDataDirectory))
+    if self.smartDicomReceiver:
+      self.smartDicomReceiver.forceStatusChangeEvent()
+
+  def startSmartDICOMReceiver(self, runStoreSCP=True):
+    self.stopSmartDICOMReceiver()
+    self.smartDicomReceiver = SmartDICOMReceiver(self.session.intraopDICOMDataDirectory)
+    # self.smartDicomReceiver.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+    #                                     self.onDICOMSeriesReceived)
+    # self.smartDicomReceiver.addEventObserver(SlicerProstateEvents.StatusChangedEvent,
+    #                                     self.onDICOMReceiverStatusChanged)
+    # self.smartDicomReceiver.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent,
+    #                                     self.onSmartDICOMReceiverStopped)
+    self.smartDicomReceiver.start(runStoreSCP)
+
+  def stopSmartDICOMReceiver(self):
+    self.smartDicomReceiver = getattr(self, "smartDicomReceiver", None)
+    if self.smartDicomReceiver:
+      self.smartDicomReceiver.stop()
+      self.smartDicomReceiver.removeEventObservers()
+
+  def importDICOMSeries(self, newFileList):
+    indexer = ctk.ctkDICOMIndexer()
+
+    eligibleSeriesFiles = []
+    size = len(newFileList)
+    for currentIndex, currentFile in enumerate(newFileList, start=1):
+      self.invokeEvent(SlicerProstateEvents.NewFileIndexedEvent,
+                       ["Indexing file %s" % currentFile, size, currentIndex].__str__())
+      slicer.app.processEvents()
+      currentFile = os.path.join(self.session.intraopDICOMDataDirectory, currentFile)
+      indexer.addFile(slicer.dicomDatabase, currentFile, None)
+      series = self.makeSeriesNumberDescription(currentFile)
+      if series:
+        eligibleSeriesFiles.append(currentFile)
+        if series not in self.seriesList:
+          self.seriesList.append(series)
+          self.createLoadableFileListForSeries(series)
+
+    self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
+
+    if len(eligibleSeriesFiles):
+      self.invokeEvent(SlicerProstateEvents.NewImageDataReceivedEvent, eligibleSeriesFiles.__str__())
+
+  def makeSeriesNumberDescription(self, dicomFile):
+    seriesDescription = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_DESCRIPTION)
+    seriesNumber = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_NUMBER)
+    if not (seriesNumber and seriesDescription):
+      raise DICOMValueError("Missing Attribute(s):\nFile: {}\nseriesNumber: {}\nseriesDescription: {}".format(dicomFile,
+                                                                                                              seriesNumber,
+                                                                                                              seriesDescription))
+    return "{}: {}".format(seriesNumber, seriesDescription)
+
+  def createLoadableFileListForSeries(self, selectedSeries):
+    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+    self.loadableList[selectedSeries] = []
+    for dcm in self.getFileList(self.session.intraopDICOMDataDirectory):
+      currentFile = os.path.join(self.session.intraopDICOMDataDirectory, dcm)
+      currentSeriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
+      if currentSeriesNumber and currentSeriesNumber == selectedSeriesNumber:
+        self.loadableList[selectedSeries].append(currentFile)
+
+
+
 class SliceTrackerOverviewStep(SliceTrackerStep):
 
   NAME = "Overview"
+  LogicClass = SliceTrackerOverViewStepLogic
 
-  def __init__(self, parent=None):
-    super(SliceTrackerOverviewStep, self).__init__()
+  @property
+  def caseRootDir(self):
+    return self.casesRootDirectoryButton.directory
+
+  def __init__(self, session):
+    self.preopTransferWindow = None
+    super(SliceTrackerOverviewStep, self).__init__(session)
 
   def cleanup(self):
     self.simulatePreopPhaseButton.enabled = False
@@ -249,7 +343,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setupConnections(self):
     super(SliceTrackerOverviewStep, self).setupConnections()
-    # self.createNewCaseButton.clicked.connect(self.onCreateNewCaseButtonClicked)
+    self.createNewCaseButton.clicked.connect(self.onCreateNewCaseButtonClicked)
     # self.openCaseButton.clicked.connect(self.onOpenCaseButtonClicked)
     # self.closeCaseButton.clicked.connect(self.clearData)
     # self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
@@ -264,12 +358,72 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     # TODO: only if is active
     pass
 
+  def onCreateNewCaseButtonClicked(self):
+    if not self.checkAndWarnUserIfCaseInProgress():
+      return
+    self.session.clearData()
+    self.caseDialog = NewCaseSelectionNameWidget(self.caseRootDir)
+    selectedButton = self.caseDialog.exec_()
+    if selectedButton == qt.QMessageBox.Ok:
+      self.session.startNewCase(self.caseDialog.newCaseDirectory)
+      self.startPreopDICOMReceiver()
+      self.simulatePreopPhaseButton.enabled = True
+
+  def checkAndWarnUserIfCaseInProgress(self):
+    if self.session.directory is not None:
+      if not slicer.util.confirmYesNoDisplay("Current case will be closed. Do you want to proceed?"):
+        return False
+    return True
+
+  def startPreopDICOMReceiver(self):
+    self.cleanupPreopDICOMReceiver()
+    self.preopTransferWindow = IncomingDataWindow(incomingDataDirectory=self.session.preopDICOMDataDirectory,
+                                                  skipText="No preoperative images available")
+    self.preopTransferWindow.addEventObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
+                                              self.continueWithoutPreopData)
+    # self.preopTransferWindow.addEventObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
+    #                                           self.onPreopTransferMessageBoxCanceled)
+    # self.preopTransferWindow.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+    #                                           self.startPreProcessingPreopData)
+    self.preopTransferWindow.show()
+
+  def cleanupPreopDICOMReceiver(self):
+    if self.preopTransferWindow:
+      self.preopTransferWindow.hide()
+      self.preopTransferWindow.removeEventObservers()
+      self.preopTransferWindow = None
+
+  def continueWithoutPreopData(self, caller, event):
+    self.session.usePreopData = False
+    self.cleanupPreopDICOMReceiver()
+    self.simulatePreopPhaseButton.enabled = False
+    self.simulateIntraopPhaseButton.enabled = True
+    self.startIntraopDICOMReceiver()
+
+  def startIntraopDICOMReceiver(self):
+    # self.intraopWatchBox.sourceFile = None
+    self.logic.removeEventObservers()
+    # self.logic.addEventObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
+    # self.logic.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
+    # self.logic.addEventObserver(SlicerProstateEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+    # self.logic.addEventObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
+    self.logic.startIntraopDICOMReceiver()
+    self.closeCaseButton.enabled = True
+
+
+class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerStepLogic):
+
+  def __init__(self, session):
+    super(SliceTrackerZFrameRegistrationStepLogic, self).__init__(session)
+
+
 class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
 
   NAME = "ZFrame Registration"
+  LogicClass = SliceTrackerZFrameRegistrationStepLogic
 
-  def __init__(self):
-    super(SliceTrackerZFrameRegistrationStep, self).__init__()
+  def __init__(self, session):
+    super(SliceTrackerZFrameRegistrationStep, self).__init__(session)
 
   def setup(self):
     self.zFrameRegistrationGroupBox = qt.QGroupBox()
@@ -305,19 +459,25 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     pass
 
 
-
 import EditorLib
 from Editor import EditorWidget
 from VolumeClipToLabel import VolumeClipToLabelWidget
 
 
+class SliceTrackerSegmentationStepLogic(SliceTrackerStepLogic):
+
+  def __init__(self, session):
+    super(SliceTrackerSegmentationStepLogic, self).__init__(session)
+
+
 class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   NAME = "Segmentation"
+  LogicClass = SliceTrackerSegmentationStepLogic
 
-  def __init__(self):
+  def __init__(self, session):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
-    super(SliceTrackerSegmentationStep, self).__init__()
+    super(SliceTrackerSegmentationStep, self).__init__(session)
 
   def setup(self):
     self.setupIcons()
@@ -364,7 +524,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.editorWidgetParent.hide()
 
     # TODO: control visibility of target settings table
-    # self.setupTargetingStepUIElements()
+    self.setupTargetingStepUIElements()
 
   def setupIcons(self):
     self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
@@ -400,13 +560,21 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.finishTargetingStepButton.enabled = self.fiducialsWidget.currentNode is not None and \
                                              self.fiducialsWidget.currentNode.GetNumberOfFiducials()
 
+
+class SliceTrackerEvaluationStepLogic(SliceTrackerStepLogic):
+
+  def __init__(self, session):
+    super(SliceTrackerEvaluationStepLogic, self).__init__(session)
+
+
 class SliceTrackerEvaluationStep(SliceTrackerStep):
 
   NAME = "Evaluation"
+  LogicClass = SliceTrackerEvaluationStepLogic
 
-  def __init__(self):
+  def __init__(self, session):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
-    super(SliceTrackerEvaluationStep, self).__init__()
+    super(SliceTrackerEvaluationStep, self).__init__(session)
 
   def setup(self):
     self.setupIcons()

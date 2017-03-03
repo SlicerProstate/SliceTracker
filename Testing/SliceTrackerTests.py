@@ -3,10 +3,10 @@ import unittest
 
 from SliceTrackerUtils.helpers import SliceTrackerSession
 
-__all__ = ['SliceTrackerTest']
+__all__ = ['SliceTrackerSessionTests']
 
 
-class SliceTrackerTest(unittest.TestCase):
+class SliceTrackerSessionTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -15,6 +15,7 @@ class SliceTrackerTest(unittest.TestCase):
 
   def runTest(self):
     self.test_SliceTrackerSessionEvents()
+    self.test_SliceTrackerSessionSingleton()
 
   def test_SliceTrackerSessionEvents(self):
     self.directoryChangedEventCalled = False
@@ -24,3 +25,8 @@ class SliceTrackerTest(unittest.TestCase):
     self.assertFalse(self.directoryChangedEventCalled)
     self.session.directory = self.tempDir
     self.assertTrue(self.directoryChangedEventCalled)
+
+  def test_SliceTrackerSessionSingleton(self):
+    session = SliceTrackerSession()
+    self.assertTrue(self.session is session)
+    self.assertTrue(session.directory == self.session.directory)

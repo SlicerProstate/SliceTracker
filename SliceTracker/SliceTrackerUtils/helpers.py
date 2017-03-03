@@ -11,6 +11,15 @@ import os, json, logging
 import datetime
 
 
+class SliceTrackerStepLogic(ModuleLogicMixin):
+
+  def __init__(self, session):
+    self.session = session
+
+  def cleanup(self):
+    raise NotImplementedError("This method needs to be implemented by all deriving classes")
+
+
 class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
 
   ActivatedEvent = vtk.vtkCommand.UserEvent + 150
@@ -19,15 +28,24 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
   NAME=None
   MODULE_NAME = "SliceTracker"
 
-  @property
-  @onExceptionReturnNone
-  def session(self):
-    return self.parent.session
+  LogicClass = None
 
-  def __init__(self, parent=None):
-    qt.QWidget.__init__(self, parent)
+  @property
+  def session(self):
+    return self._session
+
+  @session.setter
+  def session(self, value):
+    self._session = value
+
+  def __init__(self, session):
+    qt.QWidget.__init__(self)
+    assert self.LogicClass is not None, "Logic class for each SliceTrackerStep needs to be implemented"
+    self.session = session
+    self.logic = self.LogicClass(session)
     self.setLayout(qt.QGridLayout())
     self.setup()
+    self.setupConnections()
     self.deactivate()
 
   def __del__(self):
@@ -44,12 +62,10 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
 
   def activate(self):
     # TODO: whatever is needed to be done
-    self.show()
     self.invokeEvent(self.ActivatedEvent)
 
   def deactivate(self):
     # TODO: whatever is needed to be done
-    self.hide()
     self.invokeEvent(self.DeactivatedEvent)
 
   def isActive(self):
@@ -88,9 +104,37 @@ class SessionBase(ModuleLogicMixin):
     self.save()
 
 
-class SliceTrackerSession(SessionBase):
+class Singleton(object):
+
+  def __new__(cls):
+    if not hasattr(cls, 'instance'):
+      cls.instance = super(Singleton, cls).__new__(cls)
+    return cls.instance
+
+
+class SliceTrackerSession(Singleton, SessionBase):
 
   # TODO: implement events that are invoked once data changes so that underlying steps can react to it
+
+  @property
+  def mpReviewPreprocessedOutput(self):
+    return os.path.join(self.directory, "mpReviewPreprocessed") if self.directory else None
+
+  @property
+  def DICOMDataDirectory(self):
+    return os.path.join(self.directory, "DICOM") if self.directory else None
+
+  @property
+  def preopDICOMDataDirectory(self):
+    return os.path.join(self.directory, "DICOM", "Preop") if self.directory else None
+
+  @property
+  def intraopDICOMDataDirectory(self):
+    return os.path.join(self.directory, "DICOM", "Intraop") if self.directory else None
+
+  @property
+  def outputDir(self):
+    return os.path.join(self.directory, "SliceTrackerOutputs")
 
   def __init__(self, directory=None):
     super(SliceTrackerSession, self).__init__(directory)
@@ -100,6 +144,7 @@ class SliceTrackerSession(SessionBase):
     self.preopVolume = None
     self.preopLabel = None
     self.preopTargets = None
+    self.trainingMode = False
 
     self.clippingModelNode = None
     self.inputMarkupNode = None
@@ -110,6 +155,20 @@ class SliceTrackerSession(SessionBase):
 
   def __del__(self):
     pass
+
+  def clearData(self):
+    #TODO: implement
+    pass
+
+  def startNewCase(self, destination):
+    # TODO: self.continueOldCase = False
+    # TODO: make directory structure flexible
+    self.directory = destination
+    self.createDirectory(self.DICOMDataDirectory)
+    self.createDirectory(self.preopDICOMDataDirectory)
+    self.createDirectory(self.intraopDICOMDataDirectory)
+    self.createDirectory(self.mpReviewPreprocessedOutput)
+    self.createDirectory(self.outputDir)
 
   def registerStep(self, step):
     assert issubclass(step.__class__, SliceTrackerStep)

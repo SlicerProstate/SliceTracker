@@ -9,12 +9,12 @@ macro(getExtensions subdirs directory)
   set(${subdirs} ${dirList})
 endmacro()
 
-if($ENV{SLICER_EXTENSIONS_DIR})
+if(NOT "$ENV{SLICER_EXTENSIONS_DIR}" STREQUAL "")
   getExtensions(possibleExtensions $ENV{SLICER_EXTENSIONS_DIR})
 
   set(ADDITIONAL_MODULE_PATHS)
 
-  FOREACH(subdir ${possibleExtensions})
+  foreach(subdir ${possibleExtensions})
     #message("${EXTENSION_DEPENDS}")
     string(FIND "${EXTENSION_DEPENDS}" "${subdir}" pos)
     if(${pos} GREATER -1)
@@ -22,13 +22,13 @@ if($ENV{SLICER_EXTENSIONS_DIR})
       list(APPEND ADDITIONAL_MODULE_PATHS "$ENV{SLICER_EXTENSIONS_DIR}/${subdir}/${Slicer_QTSCRIPTEDMODULES_LIB_DIR}")
     endif()
     #ADD_SUBDIRECTORY(${subdir})
-  ENDFOREACH()
+  endforeach()
 
   slicer_add_python_unittest(
     SCRIPT SliceTrackerTests.py
     SLICER_ARGS
       --additional-module-paths ${ADDITIONAL_MODULE_PATHS}
-    )
+  )
 else()
   slicer_add_python_unittest(SCRIPT SliceTrackerTests.py)
 endif()
