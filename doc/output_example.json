@@ -31,16 +31,17 @@
         "affine": "3-TARGETS-affine.fcsv",
         "rigid": "3-TARGETS-rigid.fcsv",
         "approved": {
-    	  "derivedFrom": "bSpline",
-    	  "userModified": [
-    		false
-		  ],
-    	"fileName": "3-TARGETS-approved.fcsv"
-	  	}
+          "derivedFrom": "bSpline",
+          "userModified": [
+            false
+          ],
+        "fileName": "3-TARGETS-approved.fcsv"
+	  	  }
       },
       "score": 5
     },
-    { "name": "4: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
+    {
+      "name": "4: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
       "status": "approved",
       "suffix": "",
       "approvedRegistrationType": "bSpline",
@@ -64,25 +65,25 @@
             false
           ],
           "fileName": "4-TARGETS-approved.fcsv"
-        },
+        }
       },
-
-      "score": 5,
       "volumes": {
         "bSpline": "4-VOLUME-bSpline.nrrd",
         "affine": "4-VOLUME-affine.nrrd",
         "rigid": "4-VOLUME-rigid.nrrd",
         "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso.nrrd",
         "fixed": "4-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd"
-      }
+      },
+      "score": 5
     },
-    { "name": "5: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
+    {
+      "name": "5: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
       "status": "approved",
       "suffix": "",
       "approvedRegistrationType": "bSpline",
       "labels": {
         "fixed": "5-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label.nrrd",
-         "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd"
+        "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd"
       },
       "transforms": {
         "bSpline": "5-TRANSFORM-bSpline.h5",
@@ -91,19 +92,17 @@
       },
       "targets": {
         "original": "3-TARGETS-approved.fcsv",
-
         "bSpline": "5-TARGETS-bSpline.fcsv",
         "affine": "5-TARGETS-affine.fcsv",
         "rigid": "5-TARGETS-rigid.fcsv",
         "approved": {
-        "derivedFrom": "bSpline",
-        "userModified": [
-          true
-        ],
-        "fileName": "5-TARGETS-approved.fcsv"
-      }
+          "derivedFrom": "bSpline",
+          "userModified": [
+            true
+          ],
+          "fileName": "5-TARGETS-approved.fcsv"
+        }
       },
-
       "volumes": {
         "bSpline": "5-VOLUME-bSpline.nrrd",
         "affine": "5-VOLUME-affine.nrrd",
@@ -111,14 +110,14 @@
         "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso.nrrd",
         "fixed": "5-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd"
       }
-    },{
+    },
+    {
       "name": "6: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
       "status": "rejected",
       "suffix": "",
       "labels": {
         "fixed": "6-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label.nrrd",
         "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd"
-
       },
       "transforms": {
         "bSpline": "6-TRANSFORM-bSpline.h5",
@@ -129,17 +128,18 @@
         "bSpline": "6-TARGETS-bSpline.fcsv",
         "affine": "6-TARGETS-affine.fcsv",
         "rigid": "6-TARGETS-rigid.fcsv",
-        "original": "3-TARGETS-approved.fcsv",
+        "original": "3-TARGETS-approved.fcsv"
       },
       "volumes": {
         "bSpline": "6-VOLUME-bSpline.nrrd",
         "affine": "6-VOLUME-affine.nrrd",
         "rigid": "6-VOLUME-rigid.nrrd",
         "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso.nrrd",
-        "fixed": "6-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd",
-      },
+        "fixed": "6-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd"
+      }
     },
-    {"name": "9: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
+    {
+      "name": "9: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
       "status": "skipped",
       "suffix": "",
       "volumes": {
