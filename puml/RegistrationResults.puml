@@ -1,0 +1,100 @@
+@startuml
+
+package "RegistrationResults" #DDDDDD {
+
+  class RegistrationResults {
+    .. properties ..
+    + activeResult
+    __
+    + resetAndInitializeData()
+    + load(directory, filename)
+    + save(outputDir)
+
+    # _loadResultFileData(directory, filename, loadFunction, setFunction)
+    # _loadOrGetFileData(directory, filename, loadFunction)
+
+  }
+
+  RegistrationResults "1" *-- "*" RegistrationResult : contains
+
+  class RegistrationResult {
+    + {static} getSeriesNumberFromString
+    # _targets
+    # _volumes
+    # _labels
+    # _transforms
+  }
+
+  RegistrationResult::_volumes --> Volumes
+  RegistrationResult::_targets --> Targets
+  RegistrationResult::_labels --> Labels
+  RegistrationResult::_transforms --> Transforms
+
+
+  class Labels {
+    +fixed
+    +moving
+  }
+
+  class Volumes {
+    + fixed
+    + moving
+  }
+
+  class Transforms {
+  }
+
+  class Targets {
+    + approved
+    + approve(registrationType)
+  }
+
+  class RegistrationData {
+    + FILE_EXTENSION
+    __
+    + rigid
+    + affine
+    + bSpline
+    --
+    + asList(): list
+    + asDict(): dict
+    + getFileName(node): string
+    + getFileNameByAttributeName(name): string
+    + getAllFileNames(): string[]
+    + save(directory)
+  }
+
+  RegistrationData <|-- Labels
+  RegistrationData <|-- Volumes
+  RegistrationData <|-- Transforms
+  RegistrationData <|-- Targets
+
+
+  class RegistrationStatus {
+    + UNDEFINED_STATUS = -1
+    + SKIPPED_STATUS = 0
+    + APPROVED_STATUS = 1
+    + REJECTED_STATUS = 2
+    .. properties ..
+    + approved
+    + skipped
+    + rejected
+    --
+    + status
+    --
+    + hasStatus(expected): bool
+    + approve()
+    + skip()
+    + reject()
+  }
+
+  RegistrationResult --> RegistrationStatus : has
+
+
+  ModuleWidgetMixin <|-- RegistrationResults
+
+
+  RegistrationResults <.. SliceTrackerSession::regResults : use
+}
+
+@enduml

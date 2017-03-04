@@ -1,0 +1,62 @@
+@startuml
+
+package "Session" #DDDDDD {
+
+  abstract class SessionBase {
+    .. events ..
+    DirectoryChangedEvent: vtk.vtkCommand.UserEvent
+    .. properties ..
+    + directory
+    --
+    + {abstract} load()
+    + {abstract} save()
+    + close()
+  }
+
+
+  Singleton <-- SliceTrackerSession
+  SessionBase <-- SliceTrackerSession
+
+  class SliceTrackerSession {
+    .. events ..
+    --
+    .. properties ..
+    + preopDICOMDirectory
+    + intraopDICOMDirectory
+    + preprocessedDirectory
+    + outputDirectory
+    --
+    + steps : SliceTrackerStep [0 .. *]
+    + completed: boolean
+    + trainingMode: boolean
+    --
+    + biasCorrected: boolean
+    + usePreopData
+    + preopVolume
+    + preopTargets
+    --
+    + originalTargets
+    --
+    + preopLabel
+    + intraopLabel
+    --
+    + regResults: RegistrationResults
+    __
+    + createNewCase(destination)
+    + openCase(directory)
+    + closeCase()
+    + completeCase()
+    + registerStep(step)
+    --
+    # _saveCase(): boolean
+    # _loadCaseData(): boolean
+
+  }
+
+
+  note right of SliceTrackerSession::setupSteps
+    All interfaces will be build here
+  end note
+}
+
+@enduml

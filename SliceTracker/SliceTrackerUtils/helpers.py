@@ -31,13 +31,19 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
   LogicClass = None
 
   @property
-  def session(self):
-    return self._session
+  def active(self):
+    return self._activated
 
-  @session.setter
-  def session(self, value):
-    self._session = value
-
+  @active.setter
+  def active(self, value):
+    if self.active == value:
+      return
+    self._activated = value
+    logging.info("%s %s" % ("activated" if self.active else "deactivate", self.NAME))
+    self.invokeEvent(self.ActivatedEvent if self.active else self.DeactivatedEvent)
+    method = "connect" if self.active else "disconnect"
+    getattr(self.layoutManager.layoutChanged, method)(self.onLayoutChanged)
+    logging.info("%s layout changed signal for %s" % (method, self.NAME))
   def __init__(self, session):
     qt.QWidget.__init__(self)
     assert self.LogicClass is not None, "Logic class for each SliceTrackerStep needs to be implemented"
@@ -46,7 +52,7 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
     self.setLayout(qt.QGridLayout())
     self.setup()
     self.setupConnections()
-    self.deactivate()
+    self._activated = False
 
   def __del__(self):
     self.removeEventObservers()
@@ -58,21 +64,11 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
     raise NotImplementedError("This method needs to be implemented by all deriving classes")
 
   def setupConnections(self):
-    self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
-
-  def activate(self):
-    # TODO: whatever is needed to be done
-    self.invokeEvent(self.ActivatedEvent)
-
-  def deactivate(self):
-    # TODO: whatever is needed to be done
-    self.invokeEvent(self.DeactivatedEvent)
-
-  def isActive(self):
-    return self.visible
+    pass
+    # raise NotImplementedError
 
   def onLayoutChanged(self):
-    raise NotImplementedError("This method needs to be implemented by all deriving classes")
+    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
 
 class SessionBase(ModuleLogicMixin):
@@ -117,23 +113,23 @@ class SliceTrackerSession(Singleton, SessionBase):
   # TODO: implement events that are invoked once data changes so that underlying steps can react to it
 
   @property
-  def mpReviewPreprocessedOutput(self):
+  def preprocessedDirectory(self):
+    # was mpReviewPreprocessedOutput
     return os.path.join(self.directory, "mpReviewPreprocessed") if self.directory else None
 
   @property
-  def DICOMDataDirectory(self):
-    return os.path.join(self.directory, "DICOM") if self.directory else None
-
-  @property
-  def preopDICOMDataDirectory(self):
+  def preopDICOMDirectory(self):
+    # was preopDICOMDataDirectory
     return os.path.join(self.directory, "DICOM", "Preop") if self.directory else None
 
   @property
-  def intraopDICOMDataDirectory(self):
+  def intraopDICOMDirectory(self):
+    # was intraopDICOMDataDirectory
     return os.path.join(self.directory, "DICOM", "Intraop") if self.directory else None
 
   @property
-  def outputDir(self):
+  def outputDirectory(self):
+    # was outputDir
     return os.path.join(self.directory, "SliceTrackerOutputs")
 
   def __init__(self, directory=None):
@@ -160,15 +156,17 @@ class SliceTrackerSession(Singleton, SessionBase):
     #TODO: implement
     pass
 
-  def startNewCase(self, destination):
+  def createNewCase(self, destination):
     # TODO: self.continueOldCase = False
     # TODO: make directory structure flexible
     self.directory = destination
-    self.createDirectory(self.DICOMDataDirectory)
-    self.createDirectory(self.preopDICOMDataDirectory)
-    self.createDirectory(self.intraopDICOMDataDirectory)
-    self.createDirectory(self.mpReviewPreprocessedOutput)
-    self.createDirectory(self.outputDir)
+    self.createDirectory(self.preopDICOMDirectory)
+    self.createDirectory(self.intraopDICOMDirectory)
+    self.createDirectory(self.preprocessedDirectory)
+    self.createDirectory(self.outputDirectory)
+
+  def closeCase(self):
+    pass
 
   def registerStep(self, step):
     assert issubclass(step.__class__, SliceTrackerStep)

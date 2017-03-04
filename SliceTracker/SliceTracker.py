@@ -136,22 +136,35 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.crosshairButton.checked = False
 
   def setupTabBarNavigation(self):
-    self.tabWidget = qt.QTabWidget()
+    for step in [SliceTrackerOverviewStep, SliceTrackerZFrameRegistrationStep,
+                 SliceTrackerSegmentationStep, SliceTrackerEvaluationStep]:
+      self.session.registerStep(step(self.session))
+
+    self.tabWidget = SliceTrackerTabWidget(self.session)
     self.layout.addWidget(self.tabWidget)
 
-    def addStep(className):
-      step = className(session=self.session)
-      self.tabWidget.addTab(step, step.NAME)
-      return step
-
-    self.session.registerStep(addStep(SliceTrackerOverviewStep))
-    self.session.registerStep(addStep(SliceTrackerZFrameRegistrationStep))
-    self.session.registerStep(addStep(SliceTrackerSegmentationStep))
-    self.session.registerStep(addStep(SliceTrackerEvaluationStep))
-
     # TODO
-    # self.tabWidget.tabBar().hide()
+    # self.tabWidget.hideTabs()
 
+
+class SliceTrackerTabWidget(qt.QTabWidget):
+
+  def __init__(self, session):
+    super(SliceTrackerTabWidget, self).__init__()
+    self.session = session
+    self._createTabs()
+    self.currentChanged.connect(self.onCurrentTabChanged)
+
+  def hideTabs(self):
+    self.tabBar().hide()
+
+  def _createTabs(self):
+    for step in self.session.steps:
+      self.addTab(step, step.NAME)
+
+  def onCurrentTabChanged(self, index):
+    map(lambda step: setattr(step, "active", False), self.session.steps)
+    self.session.steps[index].active = True
 
 from SliceTrackerUtils.helpers import NewCaseSelectionNameWidget
 from SlicerProstateUtils.helpers import IncomingDataWindow, SmartDICOMReceiver
@@ -177,13 +190,13 @@ class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
       self.startSmartDICOMReceiver(runStoreSCP=not self.session.trainingMode)
     else:
       self.invokeEvent(SlicerProstateEvents.DICOMReceiverStoppedEvent)
-    self.importDICOMSeries(self.getFileList(self.session.intraopDICOMDataDirectory))
+    self.importDICOMSeries(self.getFileList(self.session.intraopDICOMDirectory))
     if self.smartDicomReceiver:
       self.smartDicomReceiver.forceStatusChangeEvent()
 
   def startSmartDICOMReceiver(self, runStoreSCP=True):
     self.stopSmartDICOMReceiver()
-    self.smartDicomReceiver = SmartDICOMReceiver(self.session.intraopDICOMDataDirectory)
+    self.smartDicomReceiver = SmartDICOMReceiver(self.session.intraopDICOMDirectory)
     # self.smartDicomReceiver.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
     #                                     self.onDICOMSeriesReceived)
     # self.smartDicomReceiver.addEventObserver(SlicerProstateEvents.StatusChangedEvent,
@@ -207,7 +220,7 @@ class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
       self.invokeEvent(SlicerProstateEvents.NewFileIndexedEvent,
                        ["Indexing file %s" % currentFile, size, currentIndex].__str__())
       slicer.app.processEvents()
-      currentFile = os.path.join(self.session.intraopDICOMDataDirectory, currentFile)
+      currentFile = os.path.join(self.session.intraopDICOMDirectory, currentFile)
       indexer.addFile(slicer.dicomDatabase, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
       if series:
@@ -233,8 +246,8 @@ class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
   def createLoadableFileListForSeries(self, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
     self.loadableList[selectedSeries] = []
-    for dcm in self.getFileList(self.session.intraopDICOMDataDirectory):
-      currentFile = os.path.join(self.session.intraopDICOMDataDirectory, dcm)
+    for dcm in self.getFileList(self.session.intraopDICOMDirectory):
+      currentFile = os.path.join(self.session.intraopDICOMDirectory, dcm)
       currentSeriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
       if currentSeriesNumber and currentSeriesNumber == selectedSeriesNumber:
         self.loadableList[selectedSeries].append(currentFile)
@@ -365,7 +378,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.caseDialog = NewCaseSelectionNameWidget(self.caseRootDir)
     selectedButton = self.caseDialog.exec_()
     if selectedButton == qt.QMessageBox.Ok:
-      self.session.startNewCase(self.caseDialog.newCaseDirectory)
+      self.session.createNewCase(self.caseDialog.newCaseDirectory)
       self.startPreopDICOMReceiver()
       self.simulatePreopPhaseButton.enabled = True
 
@@ -377,7 +390,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def startPreopDICOMReceiver(self):
     self.cleanupPreopDICOMReceiver()
-    self.preopTransferWindow = IncomingDataWindow(incomingDataDirectory=self.session.preopDICOMDataDirectory,
+    self.preopTransferWindow = IncomingDataWindow(incomingDataDirectory=self.session.preopDICOMDirectory,
                                                   skipText="No preoperative images available")
     self.preopTransferWindow.addEventObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
                                               self.continueWithoutPreopData)
