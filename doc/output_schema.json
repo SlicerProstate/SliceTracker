@@ -7,42 +7,44 @@
     "usedPreopData": { "type": "boolean" },
     "VOLUME-PREOP-N4": { "type": "string" },
     "zFrameTransform": { "type": "string" },
-    "results": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "name": { "type": "string"},
-          "status": {
-            "type": "string",
-            "enum": ["approved", "skipped", "rejected"]
-          },
-          "score": { "type": "number" },
-          "suffix": { "type": "string" },
-          "approvedRegistrationType": { "$ref": "#/definitions/registrationType" },
-          "labels": { "$ref": "#/definitions/volumeTypes" },
-          "transforms": { "$ref": "#/definitions/registrationTypes" },
-          "volumes": {
-            "allOf": [
-	            {	"$ref": "#/definitions/registrationTypes" },
-              {	"$ref": "#/definitions/volumeTypes" }
-            ]
-          },
-          "targets": { "$ref": "#/definitions/targetsDefinition" }
-      	},
-        "required": ["name", "status", "suffix"]
-      }
-    }
+    "results": { "$ref": "#/definitions/RESULTS" }
   },
   "required": ["completed", "usedPreopData", "VOLUME-PREOP-N4", "zFrameTransform", "results"],
   "definitions": {
-    "registrationType": {
+    "RESULTS": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/RESULT" }
+    },
+    "RESULT": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string"},
+        "status": {
+          "type": "string",
+          "enum": ["approved", "skipped", "rejected"]
+        },
+        "registrationType": { "$ref": "#/definitions/REGISTRATION_TYPE" },
+        "score": { "type": "number" },
+        "suffix": { "type": "string" },
+        "labels": { "$ref": "#/definitions/VOLUME_TYPES" },
+        "transforms": { "$ref": "#/definitions/REGISTRATION_TYPES" },
+        "volumes": {
+          "allOf": [
+            {	"$ref": "#/definitions/REGISTRATION_TYPES" },
+            {	"$ref": "#/definitions/VOLUME_TYPES" }
+          ]
+        },
+        "targets": { "$ref": "#/definitions/TARGETS" }
+      },
+      "required": ["name", "status", "suffix"]
+    },
+    "REGISTRATION_TYPE": {
       "type": "string",
       "enum": ["rigid", "affine", "bSpline"
       ]
     },
-    "registrationTypes": {
+    "REGISTRATION_TYPES": {
       "type": "object",
       "properties": {
         "rigid": { "type": "string" },
@@ -50,31 +52,31 @@
         "bSpline": { "type": "string" }
       }
     },
-    "volumeTypes": {
+    "VOLUME_TYPES": {
       "type": "object",
       "properties": {
         "fixed": { "type": "string" },
         "moving": { "type": "string" }
       }
     },
-    "targetsDefinition" : {
+    "TARGETS" : {
       "allOf": [
-        {	"$ref": "#/definitions/registrationTypes" },
+        {	"$ref": "#/definitions/REGISTRATION_TYPES" },
         {
           "properties": {
             "original": { "type": "string" },
             "approved": {
               "type": "object",
+              "additionalProperties": false,
               "properties": {
-                "derivedFrom": { "$ref": "#/definitions/registrationType" },
                 "userModified": {
                   "type": "array",
                   "items": {
                     "type": "boolean"
-                  },
-                  "fileName": { "type": "string" }
-                }
-              }
+                  }
+                },
+                "fileName": { "type": "string" }
+              }, "required": ["userModified"]
             }
           }
         }

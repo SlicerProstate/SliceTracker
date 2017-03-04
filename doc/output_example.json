@@ -8,7 +8,7 @@
       "name": "3: AXIAL T2 COVER PROSTATE 3mm 0gap at iso",
       "status": "approved",
       "suffix": "",
-      "approvedRegistrationType": "bSpline",
+      "registrationType": "bSpline",
       "labels": {
         "fixed": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd",
       	"moving": "t2-label.nrrd"
@@ -31,7 +31,6 @@
         "affine": "3-TARGETS-affine.fcsv",
         "rigid": "3-TARGETS-rigid.fcsv",
         "approved": {
-          "derivedFrom": "bSpline",
           "userModified": [
             false
           ],
@@ -44,7 +43,7 @@
       "name": "4: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
       "status": "approved",
       "suffix": "",
-      "approvedRegistrationType": "bSpline",
+      "registrationType": "bSpline",
       "labels": {
         "fixed": "4-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label.nrrd",
         "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd"
@@ -60,7 +59,6 @@
         "affine": "4-TARGETS-affine.fcsv",
         "rigid": "4-TARGETS-rigid.fcsv",
         "approved": {
-          "derivedFrom": "bSpline",
           "userModified": [
             false
           ],
@@ -80,7 +78,7 @@
       "name": "5: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
       "status": "approved",
       "suffix": "",
-      "approvedRegistrationType": "bSpline",
+      "registrationType": "bSpline",
       "labels": {
         "fixed": "5-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label.nrrd",
         "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd"
@@ -96,7 +94,6 @@
         "affine": "5-TARGETS-affine.fcsv",
         "rigid": "5-TARGETS-rigid.fcsv",
         "approved": {
-          "derivedFrom": "bSpline",
           "userModified": [
             true
           ],
