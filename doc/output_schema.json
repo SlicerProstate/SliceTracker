@@ -1,0 +1,85 @@
+{
+  "id" :"https://raw.githubusercontent.com/slicerprostate/slicetracker/master/doc/output_schema.json#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "completed": { "type": "boolean" },
+    "usedPreopData": { "type": "boolean" },
+    "VOLUME-PREOP-N4": { "type": "string" },
+    "zFrameTransform": { "type": "string" },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string"},
+          "status": {
+            "type": "string",
+            "enum": ["approved", "skipped", "rejected"]
+          },
+          "score": { "type": "number" },
+          "suffix": { "type": "string" },
+          "approvedRegistrationType": { "$ref": "#/definitions/registrationType" },
+          "labels": { "$ref": "#/definitions/volumeTypes" },
+          "transforms": { "$ref": "#/definitions/registrationTypes" },
+          "volumes": {
+            "allOf": [
+	            {	"$ref": "#/definitions/registrationTypes" },
+              {	"$ref": "#/definitions/volumeTypes" }
+            ]
+          },
+          "targets": { "$ref": "#/definitions/targetsDefinition" }
+      	},
+        "required": ["name", "status", "suffix"]
+      }
+    }
+  },
+  "required": ["completed", "usedPreopData", "VOLUME-PREOP-N4", "zFrameTransform", "results"],
+  "definitions": {
+    "registrationType": {
+      "type": "string",
+      "enum": ["rigid", "affine", "bSpline"
+      ]
+    },
+    "registrationTypes": {
+      "type": "object",
+      "properties": {
+        "rigid": { "type": "string" },
+        "affine": { "type": "string" },
+        "bSpline": { "type": "string" }
+      }
+    },
+    "volumeTypes": {
+      "type": "object",
+      "properties": {
+        "fixed": { "type": "string" },
+        "moving": { "type": "string" }
+      }
+    },
+    "targetsDefinition" : {
+      "allOf": [
+        {	"$ref": "#/definitions/registrationTypes" },
+        {
+          "properties": {
+            "original": { "type": "string" },
+            "approved": {
+              "type": "object",
+              "properties": {
+                "derivedFrom": { "$ref": "#/definitions/registrationType" },
+                "userModified": {
+                  "type": "array",
+                  "items": {
+                    "type": "boolean"
+                  },
+                  "fileName": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "required": ["original"]
+    }
+  }
+}
