@@ -12,7 +12,7 @@ endmacro()
 if(NOT "$ENV{SLICER_EXTENSIONS_DIR}" STREQUAL "")
   getExtensions(possibleExtensions $ENV{SLICER_EXTENSIONS_DIR})
 
-  set(ADDITIONAL_MODULE_PATHS)
+  set(ADDITIONAL_MODULE_PATHS "")
 
   foreach(subdir ${possibleExtensions})
     #message("${EXTENSION_DEPENDS}")

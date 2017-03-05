@@ -15,66 +15,13 @@ package "RegistrationResults" #DDDDDD {
 
   }
 
-  RegistrationResults "1" *-- "*" RegistrationResult : contains
-
-  class RegistrationResult {
-    + {static} getSeriesNumberFromString
-    # _targets
-    # _volumes
-    # _labels
-    # _transforms
-  }
-
-  RegistrationResult::_volumes --> Volumes
-  RegistrationResult::_targets --> Targets
-  RegistrationResult::_labels --> Labels
-  RegistrationResult::_transforms --> Transforms
-
-
-  class Labels {
-    +fixed
-    +moving
-  }
-
-  class Volumes {
-    + fixed
-    + moving
-  }
-
-  class Transforms {
-  }
-
-  class Targets {
-    + approved
-    + approve(registrationType)
-  }
-
-  class RegistrationData {
-    + FILE_EXTENSION
-    __
-    + rigid
-    + affine
-    + bSpline
-    --
-    + asList(): list
-    + asDict(): dict
-    + getFileName(node): string
-    + getFileNameByAttributeName(name): string
-    + getAllFileNames(): string[]
-    + save(directory)
-  }
-
-  RegistrationData <|-- Labels
-  RegistrationData <|-- Volumes
-  RegistrationData <|-- Transforms
-  RegistrationData <|-- Targets
-
+  ModuleLogicMixin <|-- RegistrationResults
 
   class RegistrationStatus {
-    + UNDEFINED_STATUS = -1
-    + SKIPPED_STATUS = 0
-    + APPROVED_STATUS = 1
-    + REJECTED_STATUS = 2
+    + UNDEFINED_STATUS = "undefined"
+    + SKIPPED_STATUS = "skipped"
+    + APPROVED_STATUS = "approved"
+    + REJECTED_STATUS = "rejected"
     .. properties ..
     + approved
     + skipped
@@ -88,13 +35,70 @@ package "RegistrationResults" #DDDDDD {
     + reject()
   }
 
-  RegistrationResult --> RegistrationStatus : has
+  class RegistrationResult {
+    + {static} getSeriesNumberFromString
+    # _targets
+    # _volumes
+    # _labels
+    # _transforms
+  }
 
+  RegistrationStatus <|-- RegistrationResult
+  RegistrationResults "0" *-- "*" RegistrationResult : contains
 
-  ModuleLogicMixin <|-- RegistrationResults
+  class AbstractRegistrationData {
+    + FILE_EXTENSION
+    --
+    + {abstract} initializeMembers()
+    + {abstract} asList(): list
+    + {abstract} asDict(): dict
+    --
+    + getFileName(node): string
+    + getFileNameByAttributeName(name): string
+    + getAllFileNames(): string[]
+    + save(directory)
+  }
 
+  AbstractRegistrationData <|-- RegistrationTypeData
 
-  RegistrationResults <.. SliceTrackerSession::regResults : use
+  class RegistrationTypeData {
+    + rigid
+    + affine
+    + bSpline
+  }
+
+  class Labels {
+    + FILE_EXTENSION: FileExtension.NRRD
+    + fixed
+    + moving
+  }
+
+  class Volumes {
+    + FILE_EXTENSION: FileExtension.NRRD
+    + fixed
+    + moving
+  }
+
+  class Transforms {
+    + FILE_EXTENSION: FileExtension.H5
+  }
+
+  class Targets {
+    + FILE_EXTENSION: FileExtension.FCSV
+    + original
+    + approved
+    + approve(registrationType)
+  }
+
+  AbstractRegistrationData <|-- Labels
+  RegistrationTypeData <|-- Volumes
+  RegistrationTypeData <|-- Transforms
+  RegistrationTypeData <|-- Targets
+
+  Volumes <.. RegistrationResult::_volumes
+  Targets <.. RegistrationResult::_targets
+  Labels <.. RegistrationResult::_labels
+  Transforms <.. RegistrationResult::_transforms
 }
 
 @enduml

@@ -136,12 +136,6 @@ class SliceTrackerSession(Singleton, SessionBase):
     super(SliceTrackerSession, self).__init__(directory)
     self.regResults = RegistrationResults()
     self.trainingMode = False
-
-    self.clippingModelNode = None
-    self.inputMarkupNode = None
-
-    self.biasCorrectionDone = False
-
     self.steps = []
 
   def __del__(self):
@@ -172,92 +166,15 @@ class SliceTrackerSession(Singleton, SessionBase):
     return next((x for x in self.steps if x.NAME == stepName), None)
 
   def save(self):
+    # TODO: not sure about each step .... saving its own data
     for step in self.steps:
       step.save(self.directory)
 
   def saveSession(self, outputDir):
-    if not os.path.exists(outputDir):
-      self.createDirectory(outputDir)
-
-    successfullySavedFileNames = []
-    failedSaveOfFileNames = []
-
-    def saveIntraopSegmentation():
-      intraopLabel = self.regResults.intraopLabel
-      if intraopLabel:
-        seriesNumber = intraopLabel.GetName().split(":")[0]
-        success, name = self.saveNodeData(intraopLabel, outputDir, FileExtension.NRRD, name=seriesNumber+"-LABEL",
-                                          overwrite=True)
-        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-
-        if self.clippingModelNode:
-          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
-                                            name=seriesNumber+"-MODEL", overwrite=True)
-          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-
-        if self.inputMarkupNode:
-          success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
-                                            name=seriesNumber+"-VolumeClip_points", overwrite=True)
-          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-
-    def saveOriginalTargets():
-      originalTargets = self.regResults.originalTargets
-      if originalTargets:
-        success, name = self.saveNodeData(originalTargets, outputDir, FileExtension.FCSV, name="PreopTargets",
-                                          overwrite=True)
-        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-
-    def saveBiasCorrectionResult():
-      if not self.biasCorrectionDone:
-        return None
-      success, name = self.saveNodeData(self.preopVolume, outputDir, FileExtension.NRRD, overwrite=True)
-      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-      return name+FileExtension.NRRD
-
-    def saveZFrameTransformation():
-      success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5, overwrite=True)
-      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-      return name+FileExtension.H5
-
-    def createResultsDict():
-      resultDict = OrderedDict()
-      for result in self.regResults.getResultsAsList():
-        resultDict.update(result.toDict())
-      return resultDict
-
-    def saveJSON(dictString):
-      with open(os.path.join(outputDir, SliceTrackerConstants.JSON_FILENAME), 'w') as outfile:
-        json.dump(dictString, outfile, indent=2)
-
-    saveIntraopSegmentation()
-    saveOriginalTargets()
-    saveBiasCorrectionResult()
-
-    savedSuccessfully, failedToSave = self.regResults.save(outputDir)
-    successfullySavedFileNames += savedSuccessfully
-    failedSaveOfFileNames += failedToSave
-
-    saveJSON({"completed":self.completed,
-              "usedPreopData":self.usePreopData,
-              "VOLUME-PREOP-N4": saveBiasCorrectionResult(),
-              "zFrameTransform": saveZFrameTransformation(),
-              "results":createResultsDict()})
-
-    if len(failedSaveOfFileNames):
-      messageOutput = "The following data failed to saved:\n"
-      for filename in failedSaveOfFileNames:
-        messageOutput += filename + "\n"
-      logging.debug(messageOutput)
-
-    if len(successfullySavedFileNames):
-      messageOutput = "The following data was successfully saved:\n"
-      for filename in successfullySavedFileNames:
-        messageOutput += filename + "\n"
-      logging.debug(messageOutput)
-    return len(failedSaveOfFileNames) == 0
+    self.regResults.save(outputDir)
 
   def complete(self):
-    self.completed = True
+    self.regResults.completed = True
     self.close()
 
   def load(self):
@@ -267,8 +184,8 @@ class SliceTrackerSession(Singleton, SessionBase):
     self.regResults.load(filename)
     coverProstate = self.regResults.getMostRecentApprovedCoverProstateRegistration()
     if coverProstate:
-      if not self.regResults.preopVolume:
-        self.regResults.preopVolume = coverProstate.movingVolume if self.regResults.usePreopData else coverProstate.fixedVolume
+      if not self.regResults.preopN4Volume:
+        self.regResults.preopN4Volume = coverProstate.movingVolume if self.regResults.usePreopData else coverProstate.fixedVolume
       self.regResults.preopTargets = coverProstate.originalTargets
       if self.regResults.usePreopData:
         self.regResults.preopLabel = coverProstate.movingLabel

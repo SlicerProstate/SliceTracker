@@ -81,7 +81,7 @@
                 "fileName": { "$ref": "#/definitions/FIDUCIALS_FILE" }
               }, "required": ["userModified"]
             }
-          }
+          }, "required": ["original", "rigid", "affine", "bSpline"]
         }
       ],
       "required": ["original"]

@@ -7,6 +7,8 @@ from SlicerProstateUtils.constants import FileExtension
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 from SlicerProstateUtils.decorators import onExceptionReturnNone, logmethod
 
+from constants import SliceTrackerConstants
+
 
 class RegistrationResults(ModuleLogicMixin):
 
@@ -38,9 +40,13 @@ class RegistrationResults(ModuleLogicMixin):
   def resetAndInitializeData(self):
     self.completed = False
     self.usePreopData = False
+    self.biasCorrectionDone = False
+
+    self.clippingModelNode = None
+    self.inputMarkupNode = None
 
     self._activeResult = None
-    self.preopVolume = None
+    self.preopN4Volume = None
     self.preopTargets = None  # TODO: never used???
     self._savedRegistrationResults = []
     self._registrationResults = OrderedDict()
@@ -70,11 +76,11 @@ class RegistrationResults(ModuleLogicMixin):
       # TODO: self.applyZFrameTransform(self.zFrameTransform)
 
       if data["VOLUME-PREOP-N4"]:
-        self.preopVolume = self._loadOrGetFileData(directory, data["VOLUME-PREOP-N4"], slicer.util.loadVolume)
-        # self.biasCorrectionDone = True
+        self.preopN4Volume = self._loadOrGetFileData(directory, data["VOLUME-PREOP-N4"], slicer.util.loadVolume)
+      self.biasCorrectionDone = self.preopN4Volume is not None
 
       self.loadResults(data, directory)
-    self._registrationResults = OrderedDict(sorted(self._registrationResults.items()))
+    self._registrationResults = OrderedDict(sorted(self._registrationResults.items()))  # TODO: sort here?
 
   def loadResults(self, data, directory):
     for jsonResult in data["results"]:
@@ -96,15 +102,19 @@ class RegistrationResults(ModuleLogicMixin):
           self._loadResultFileData(value, directory, slicer.util.loadTransform, result.setTransform)
         elif attribute == 'targets':
           approved = value.pop('approved', None)
+          original = value.pop('original', None)
           self._loadResultFileData(value, directory, slicer.util.loadMarkupsFiducialList, result.setTargets)
           if approved:
-            targets = self._loadOrGetFileData(directory, approved["fileName"], slicer.util.loadMarkupsFiducialList)
-            setattr(result.targets, 'approved', targets)
+            approvedTargets = self._loadOrGetFileData(directory, approved["fileName"], slicer.util.loadMarkupsFiducialList)
+            setattr(result.targets, 'approved', approvedTargets)
             result.targets.modifiedTargets[jsonResult["registrationType"]] = approved["userModified"]
+          if original:
+            originalTargets = self._loadOrGetFileData(directory, original, slicer.util.loadMarkupsFiducialList)
+            setattr(result.targets, 'original', originalTargets)
         elif attribute == 'labels':
           self._loadResultFileData(value, directory, slicer.util.loadLabelVolume, result.setLabel)
         elif attribute == 'status':
-          result.status.status = value
+          result.status = value
         else:
           setattr(result, attribute, value)
       if result not in self._savedRegistrationResults:
@@ -127,51 +137,110 @@ class RegistrationResults(ModuleLogicMixin):
       self.alreadyLoadedFileNames[filename] = data
     return data
 
-  def saveAsJson(self, outputDirectory):
-    if not os.path.exists(outputDirectory):
-      self.createDirectory(outputDirectory)
+  def save(self, outputDir):
+    if not os.path.exists(outputDir):
+      self.createDirectory(outputDir)
+
+    successfullySavedFileNames = []
+    failedSaveOfFileNames = []
+
+    def saveIntraopSegmentation():
+      if self.intraopLabel:
+        seriesNumber = self.intraopLabel.GetName().split(":")[0]
+        success, name = self.saveNodeData(self.intraopLabel, outputDir, FileExtension.NRRD,
+                                          name=seriesNumber + "-LABEL", overwrite=True)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+
+        if self.clippingModelNode:
+          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
+                                            name=seriesNumber + "-MODEL", overwrite=True)
+          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+
+        if self.inputMarkupNode:
+          success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
+                                            name=seriesNumber + "-VolumeClip_points", overwrite=True)
+          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+
+    def saveOriginalTargets():
+      if self.originalTargets:
+        success, name = self.saveNodeData(self.originalTargets, outputDir, FileExtension.FCSV,
+                                          name="PreopTargets", overwrite=True)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+
+    def saveBiasCorrectionResult():
+      if not self.biasCorrectionDone:
+        return None
+      success, name = self.saveNodeData(self.preopN4Volume, outputDir, FileExtension.NRRD, overwrite=True)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+      return name + FileExtension.NRRD
+
+    def saveZFrameTransformation():
+      success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5, overwrite=True)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+      return name + FileExtension.H5
 
     def createResultsList():
       results = []
-      for result in sorted(self.getResultsAsList(), key=lambda result: result.seriesNumber):
+      for result in sorted(self.getResultsAsList(), key=lambda r: r.seriesNumber):
         results.append(result.toDict())
       return results
 
-    data = {"completed": self.completed,
-            "usedPreopData": self.usePreopData,
-            # "VOLUME-PREOP-N4": saveBiasCorrectionResult(),
-            # "zFrameTransform": saveZFrameTransformation(),
-            "results": createResultsList()
-            }
-    destinationfile = os.path.join(outputDirectory, self.DEFAULT_JSON_FILE_NAME)
-    with open(destinationfile, 'w') as outfile:
-      logging.info("Writing registration results to %s" % destinationfile)
+    saveIntraopSegmentation()
+    saveOriginalTargets()
+    saveBiasCorrectionResult()
+
+    data = {
+      "completed": self.completed,
+      "usedPreopData": self.usePreopData,
+      "results": createResultsList()
+    }
+    if self.zFrameTransform:
+      data["zFrameTransform"] = saveZFrameTransformation() # TODO: filename
+    if self.preopN4Volume and self.biasCorrectionDone:
+      data["VOLUME-PREOP-N4"] = saveBiasCorrectionResult() # TODO: filename
+
+    destinationFile = os.path.join(outputDir, self.DEFAULT_JSON_FILE_NAME)
+    with open(destinationFile, 'w') as outfile:
+      logging.info("Writing registration results to %s" % destinationFile)
       json.dump(data, outfile, indent=2)
 
-  def save(self, outputDir):
-    savedSuccessfully = []
+    failedSaveOfFileNames += self.saveRegistrationResults(outputDir)
+
+    self.printOutput("The following data was successfully saved:\n", successfullySavedFileNames)
+    self.printOutput("The following data failed to saved:\n", failedSaveOfFileNames)
+    return len(failedSaveOfFileNames) == 0
+
+  def printOutput(self, message, fileNames):
+    if not len(fileNames):
+      return
+    for fileName in fileNames:
+      message += fileName + "\n"
+    logging.debug(message)
+
+  @logmethod(level=logging.INFO)
+  def saveRegistrationResults(self, outputDir):
     failedToSave = []
     # TODO: the following should not be here since it is widget depending
     # self.customProgressBar.visible = True
-    for index, result in enumerate(self._registrationResults.values()):
+    for result in self.getResultsAsList():
       # TODO: the following should not be here since it is widget depending
       # self.customProgressBar.maximum = len(self._registrationResults)
       # self.customProgressBar.updateStatus("Saving registration result for series %s" % result.name, index + 1)
-      slicer.app.processEvents()
+      # slicer.app.processEvents()
+      print self._savedRegistrationResults
       if result not in self._savedRegistrationResults:
         successfulList, failedList = result.save(outputDir)
-        savedSuccessfully += successfulList
         failedToSave += failedList
         self._savedRegistrationResults.append(result)
     # TODO: the following should not be here since it is widget depending
     # self.customProgressBar.text = "Registration data successfully saved" if len(failedToSave) == 0 else "Error/s occurred during saving"
-    return savedSuccessfully, failedToSave
+    return failedToSave
 
   def _registrationResultHasStatus(self, series, status):
     if not type(series) is int:
       series = RegistrationResult.getSeriesNumberFromString(series)
     results = self.getResultsBySeriesNumber(series)
-    return any(result.status.status == status for result in results) if len(results) else False
+    return any(result.status == status for result in results) if len(results) else False
 
   def registrationResultWasApproved(self, series):
     return self._registrationResultHasStatus(series, RegistrationStatus.APPROVED_STATUS)
@@ -192,7 +261,7 @@ class RegistrationResults(ModuleLogicMixin):
   def getMostRecentApprovedCoverProstateRegistration(self):
     mostRecent = None
     for result in self._registrationResults.values():
-      if self.getSetting("COVER_PROSTATE", "SliceTracker") in result.name and result.approved:
+      if self.getSetting("COVER_PROSTATE", "SliceTracker", default="COVER_PROSTATE") in result.name and result.approved:
         mostRecent = result
         break
     return mostRecent
@@ -211,7 +280,7 @@ class RegistrationResults(ModuleLogicMixin):
   def getMostRecentApprovedTransform(self):
     results = sorted(self._registrationResults.values(), key=lambda s: s.seriesNumber)
     for result in reversed(results):
-      if result.approved and self.getSetting("COVER_PROSTATE", "SliceTracker") not in result.name:
+      if result.approved and self.getSetting("COVER_PROSTATE", "SliceTracker", "COVER_PROSTATE") not in result.name:
         return result.getTransform(result.approvedRegistrationType)
     return None
 
@@ -240,21 +309,60 @@ class RegistrationResults(ModuleLogicMixin):
     return self._registrationResults[self._activeResult]
 
   @onExceptionReturnNone
-  def getMostRecentApprovedResultPriorTo(self, seriesNumber):
+  def getMostRecentApprovedResult(self, priorToSeriesNumber=None):
     results = sorted(self._registrationResults.values(), key=lambda s: s.seriesNumber)
-    results = [result for result in results if result.seriesNumber < seriesNumber]
+    if priorToSeriesNumber:
+      results = [result for result in results if result.seriesNumber < priorToSeriesNumber]
     for result in reversed(results):
       if result.approved:
         return result
     return None
 
 
-class RegistrationData(ModuleLogicMixin):
+class AbstractRegistrationData(ModuleLogicMixin):
 
   FILE_EXTENSION = None
 
   def __init__(self):
     self.initializeMembers()
+
+  def initializeMembers(self):
+    raise NotImplementedError
+
+  def asList(self):
+    raise NotImplementedError
+
+  def asDict(self):
+    raise NotImplementedError
+
+  @onExceptionReturnNone
+  def getFileName(self, node):
+    return self.replaceUnwantedCharacters(node.GetName()) + self.FILE_EXTENSION
+
+  def getFileNameByAttributeName(self, name):
+    return self.getFileName(getattr(self, name))
+
+  # @logmethod(level=logging.INFO)
+  def getAllFileNames(self):
+    fileNames = {}
+    for regType, node in self.asDict().iteritems():
+      fileNames[regType] = self.getFileName(node)
+    return fileNames
+
+  @logmethod(level=logging.INFO)
+  def save(self, directory):
+    assert self.FILE_EXTENSION is not None
+    savedSuccessfully = failedToSave = []
+    for node in [node for node in self.asList() if node]:
+      success, name = self.saveNodeData(node, directory, self.FILE_EXTENSION)
+      self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+    return savedSuccessfully, failedToSave
+
+
+class RegistrationTypeData(AbstractRegistrationData):
+
+  def __init__(self):
+    super(RegistrationTypeData, self).__init__()
 
   def initializeMembers(self):
     self.rigid = None
@@ -267,31 +375,8 @@ class RegistrationData(ModuleLogicMixin):
   def asDict(self):
     return {'rigid': self.rigid, 'affine': self.affine, 'bSpline': self.bSpline}
 
-  @onExceptionReturnNone
-  def getFileName(self, node):
-    return self.replaceUnwantedCharacters(node.GetName()) + self.FILE_EXTENSION
 
-  def getFileNameByAttributeName(self, name):
-    return self.getFileName(getattr(self, name))
-
-  @logmethod(level=logging.INFO)
-  def getAllFileNames(self):
-    fileNames = {}
-    logging.info(self.asDict())
-    for regType, node in self.asDict().iteritems():
-      fileNames[regType] = self.getFileName(node)
-    return fileNames
-
-  def save(self, directory):
-    assert self.FILE_EXTENSION is not None
-    savedSuccessfully = failedToSave = []
-    for node in [node for node in self.asList() if node]:
-      success, name = self.saveNodeData(node, directory, self.FILE_EXTENSION)
-      self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
-    return savedSuccessfully, failedToSave
-
-
-class Transforms(RegistrationData):
+class Transforms(RegistrationTypeData):
 
   FILE_EXTENSION = FileExtension.H5
 
@@ -299,7 +384,7 @@ class Transforms(RegistrationData):
     super(Transforms, self).__init__()
 
 
-class Targets(RegistrationData):
+class Targets(RegistrationTypeData):
 
   FILE_EXTENSION = FileExtension.FCSV
 
@@ -311,6 +396,14 @@ class Targets(RegistrationData):
     self.modifiedTargets = {}
     self.original = None
     self.approved = None
+
+  def asList(self):
+    return super(Targets, self).asList() + [self.original, self.approved]
+
+  def asDict(self):
+    dictionary = super(Targets, self).asDict()
+    dictionary.update({'original':self.original, 'approved': self.approved})
+    return dictionary
 
   def approve(self, registrationType):
     approvedTargets = getattr(self, registrationType)
@@ -339,7 +432,7 @@ class Targets(RegistrationData):
     return None
 
 
-class Volumes(RegistrationData):
+class Volumes(RegistrationTypeData):
 
   FILE_EXTENSION = FileExtension.NRRD
 
@@ -360,7 +453,7 @@ class Volumes(RegistrationData):
     return dictionary
 
 
-class Labels(RegistrationData):
+class Labels(AbstractRegistrationData):
 
   FILE_EXTENSION = FileExtension.NRRD
 
@@ -378,7 +471,45 @@ class Labels(RegistrationData):
     return {'fixed':self.fixed, 'moving':self.moving}
 
 
-class RegistrationResult(ModuleLogicMixin):
+class RegistrationStatus(object):
+
+  UNDEFINED_STATUS = 'undefined'
+  SKIPPED_STATUS = 'skipped'
+  APPROVED_STATUS = 'approved'
+  REJECTED_STATUS = 'rejected'
+
+  @property
+  def approved(self):
+    return self.hasStatus(self.APPROVED_STATUS)
+
+  @property
+  def skipped(self):
+    return self.hasStatus(self.SKIPPED_STATUS)
+
+  @property
+  def rejected(self):
+    return self.hasStatus(self.REJECTED_STATUS)
+
+  def __init__(self):
+    self.status = self.UNDEFINED_STATUS
+
+  def hasStatus(self, status):
+    return self.status == status
+
+  def wasEvaluated(self):
+    return self.status in [self.SKIPPED_STATUS, self.APPROVED_STATUS, self.REJECTED_STATUS]
+
+  def approve(self):
+    self.status = self.APPROVED_STATUS
+
+  def skip(self):
+    self.status = self.SKIPPED_STATUS
+
+  def reject(self):
+    self.status = self.REJECTED_STATUS
+
+
+class RegistrationResult(RegistrationStatus, ModuleLogicMixin):
 
   REGISTRATION_TYPE_NAMES = ['rigid', 'affine', 'bSpline']
 
@@ -416,25 +547,12 @@ class RegistrationResult(ModuleLogicMixin):
     return len(self.targets.modifiedTargets) > 0
 
   @property
-  def approved(self):
-    return self.status.approved
-
-  @property
-  def skipped(self):
-    return self.status.skipped
-
-  @property
-  def rejected(self):
-    return self.status.rejected
-
-  @property
   def cmdFileName(self):
     return str(self.seriesNumber) + "-CMD-PARAMETERS" + self.suffix + FileExtension.TXT
 
   def __init__(self, series):
+    RegistrationStatus.__init__(self)
     self.name = series
-
-    self.status = RegistrationStatus()
 
     self.volumes = Volumes()
     self.transforms = Transforms()
@@ -474,26 +592,18 @@ class RegistrationResult(ModuleLogicMixin):
     return getattr(self.targets, name)
 
   def approve(self, registrationType):
+    super(RegistrationResult).approve()
     assert registrationType in self.REGISTRATION_TYPE_NAMES
     self.registrationType = registrationType
-    self.status.approve()
     self.targets.approve(registrationType)
-
-  def skip(self):
-    self.status.skip()
-
-  def reject(self):
-    self.status.reject()
 
   def printSummary(self):
     logging.debug('# ___________________________  registration output  ________________________________')
     logging.debug(self.__dict__)
     logging.debug('# __________________________________________________________________________________')
 
+  @logmethod(logging.INFO)
   def save(self, outputDir):
-    if not os.path.exists(outputDir):
-      self.createDirectory(outputDir)
-
     def saveCMDParameters():
       if self.cmdArguments != "":
         filename = os.path.join(outputDir, self.cmdFileName)
@@ -523,7 +633,7 @@ class RegistrationResult(ModuleLogicMixin):
   def toDict(self):
     dictionary = {
       "name": self.name,
-      "status":self.status.status
+      "status":self.status
     }
     if self.approved or self.rejected:
       dictionary["targets"] = self.targets.getAllFileNames()
@@ -545,41 +655,3 @@ class RegistrationResult(ModuleLogicMixin):
         "fileName": self.targets.getFileNameByAttributeName("approved")
       }
     return dictionary
-
-
-class RegistrationStatus(object):
-
-  UNDEFINED_STATUS = 'undefined'
-  SKIPPED_STATUS = 'skipped'
-  APPROVED_STATUS = 'approved'
-  REJECTED_STATUS = 'rejected'
-
-  @property
-  def approved(self):
-    return self.hasStatus(self.APPROVED_STATUS)
-
-  @property
-  def skipped(self):
-    return self.hasStatus(self.SKIPPED_STATUS)
-
-  @property
-  def rejected(self):
-    return self.hasStatus(self.REJECTED_STATUS)
-
-  def __init__(self):
-    self.status = self.UNDEFINED_STATUS
-
-  def hasStatus(self, status):
-    return self.status == status
-
-  def wasEvaluated(self):
-    return self.status in [self.SKIPPED_STATUS, self.APPROVED_STATUS, self.REJECTED_STATUS]
-
-  def approve(self):
-    self.status = self.APPROVED_STATUS
-
-  def skip(self):
-    self.status = self.SKIPPED_STATUS
-
-  def reject(self):
-    self.status = self.REJECTED_STATUS

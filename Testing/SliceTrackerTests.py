@@ -7,29 +7,29 @@ __all__ = ['SliceTrackerSessionTests', 'RegistrationResultsTest']
 
 tempDir =  os.path.join(slicer.app.temporaryPath, "SliceTrackerResults")
 
-class SliceTrackerSessionTests(unittest.TestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    cls.session = SliceTrackerSession()
-
-  def runTest(self):
-    self.test_SliceTrackerSessionEvents()
-    self.test_SliceTrackerSessionSingleton()
-
-  def test_SliceTrackerSessionEvents(self):
-    self.directoryChangedEventCalled = False
-    self.session.addEventObserver(self.session.DirectoryChangedEvent,
-                                  lambda event,caller:setattr(self, "directoryChangedEventCalled", True))
-
-    self.assertFalse(self.directoryChangedEventCalled)
-    self.session.directory = tempDir
-    self.assertTrue(self.directoryChangedEventCalled)
-
-  def test_SliceTrackerSessionSingleton(self):
-    session = SliceTrackerSession()
-    self.assertTrue(self.session is session)
-    self.assertTrue(session.directory == self.session.directory)
+# class SliceTrackerSessionTests(unittest.TestCase):
+#
+#   @classmethod
+#   def setUpClass(cls):
+#     cls.session = SliceTrackerSession()
+#
+#   def runTest(self):
+#     self.test_SliceTrackerSessionEvents()
+#     self.test_SliceTrackerSessionSingleton()
+#
+#   def test_SliceTrackerSessionEvents(self):
+#     self.directoryChangedEventCalled = False
+#     self.session.addEventObserver(self.session.DirectoryChangedEvent,
+#                                   lambda event,caller:setattr(self, "directoryChangedEventCalled", True))
+#
+#     self.assertFalse(self.directoryChangedEventCalled)
+#     self.session.directory = tempDir
+#     self.assertTrue(self.directoryChangedEventCalled)
+#
+#   def test_SliceTrackerSessionSingleton(self):
+#     session = SliceTrackerSession()
+#     self.assertTrue(self.session is session)
+#     self.assertTrue(session.directory == self.session.directory)
 
 
 class RegistrationResultsTest(unittest.TestCase):
@@ -48,4 +48,4 @@ class RegistrationResultsTest(unittest.TestCase):
     self.registrationResults.load(inputFileName)
 
   def test_Writing_json(self):
-    self.registrationResults.saveAsJson(tempDir)
+    self.registrationResults.save(tempDir)

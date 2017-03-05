@@ -53,7 +53,9 @@ package "Session" #DDDDDD {
 
   }
 
-    SliceTrackerStep <.. SliceTrackerSession::steps: has [0..n]
+  SliceTrackerStep <.. SliceTrackerSession::steps: has [0..n]
+  RegistrationResults <.. SliceTrackerSession::regResults : use
+
 
 }
 
