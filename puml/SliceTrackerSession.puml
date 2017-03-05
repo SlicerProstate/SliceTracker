@@ -26,7 +26,7 @@ package "Session" #DDDDDD {
     + preprocessedDirectory
     + outputDirectory
     --
-    + steps : SliceTrackerStep [0 .. *]
+    + steps
     + completed: boolean
     + trainingMode: boolean
     --
@@ -53,10 +53,8 @@ package "Session" #DDDDDD {
 
   }
 
+    SliceTrackerStep <.. SliceTrackerSession::steps: has [0..n]
 
-  note right of SliceTrackerSession::setupSteps
-    All interfaces will be build here
-  end note
 }
 
 @enduml

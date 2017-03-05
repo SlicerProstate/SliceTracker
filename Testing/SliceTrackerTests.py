@@ -1,17 +1,17 @@
-import slicer
 import unittest
-
+import os, inspect
 from SliceTrackerUtils.helpers import SliceTrackerSession
+from SliceTrackerUtils.RegistrationData import *
 
-__all__ = ['SliceTrackerSessionTests']
+__all__ = ['SliceTrackerSessionTests', 'RegistrationResultsTest']
 
+tempDir =  os.path.join(slicer.app.temporaryPath, "SliceTrackerResults")
 
 class SliceTrackerSessionTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls):
     cls.session = SliceTrackerSession()
-    cls.tempDir = slicer.app.temporaryPath
 
   def runTest(self):
     self.test_SliceTrackerSessionEvents()
@@ -23,10 +23,29 @@ class SliceTrackerSessionTests(unittest.TestCase):
                                   lambda event,caller:setattr(self, "directoryChangedEventCalled", True))
 
     self.assertFalse(self.directoryChangedEventCalled)
-    self.session.directory = self.tempDir
+    self.session.directory = tempDir
     self.assertTrue(self.directoryChangedEventCalled)
 
   def test_SliceTrackerSessionSingleton(self):
     session = SliceTrackerSession()
     self.assertTrue(self.session is session)
     self.assertTrue(session.directory == self.session.directory)
+
+
+class RegistrationResultsTest(unittest.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    cls.registrationResults = RegistrationResults()
+
+  def runTest(self):
+    self.test_Reading_json()
+    self.test_Writing_json()
+
+  def test_Reading_json(self):
+    directory = os.path.join(os.path.dirname(inspect.getfile(self.__class__)), "..", "doc")
+    inputFileName = os.path.join(directory, "output_example.json")
+    self.registrationResults.load(inputFileName)
+
+  def test_Writing_json(self):
+    self.registrationResults.saveAsJson(tempDir)

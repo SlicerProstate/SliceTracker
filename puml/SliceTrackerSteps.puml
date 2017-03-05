@@ -9,7 +9,8 @@ package "SliceTrackerSteps" #DDDDDD {
   class SliceTrackerTabWidget {
     + session
     + __init__(session)
-    + onTabSelected(step)
+    # _createTabs()
+    + onCurrentTabChanged(step)
   }
 
   ModuleWidgetMixin <|-- SliceTrackerStep
@@ -64,6 +65,8 @@ package "SliceTrackerSteps" #DDDDDD {
   SliceTrackerStepLogic <.. SliceTrackerStep : uses
 
   SliceTrackerSession <.. SliceTrackerStep::session : uses
+  SliceTrackerSession <.. SliceTrackerStepLogic::session: uses
+  SliceTrackerSession <.. SliceTrackerTabWidget::session: uses
 }
 
 

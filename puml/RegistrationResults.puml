@@ -91,7 +91,7 @@ package "RegistrationResults" #DDDDDD {
   RegistrationResult --> RegistrationStatus : has
 
 
-  ModuleWidgetMixin <|-- RegistrationResults
+  ModuleLogicMixin <|-- RegistrationResults
 
 
   RegistrationResults <.. SliceTrackerSession::regResults : use

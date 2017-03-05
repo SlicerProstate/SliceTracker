@@ -6,7 +6,7 @@
     "completed": { "type": "boolean" },
     "usedPreopData": { "type": "boolean" },
     "VOLUME-PREOP-N4": { "type": "string" },
-    "zFrameTransform": { "type": "string" },
+    "zFrameTransform": { "$ref": "#/definitions/TRANSFORM_FILE" },
     "results": { "$ref": "#/definitions/RESULTS" }
   },
   "required": ["completed", "usedPreopData", "VOLUME-PREOP-N4", "zFrameTransform", "results"],
@@ -26,7 +26,10 @@
         },
         "registrationType": { "$ref": "#/definitions/REGISTRATION_TYPE" },
         "score": { "type": "number" },
-        "suffix": { "type": "string" },
+        "suffix": {
+          "type": "string",
+          "pattern": "^_Retry_([0-9])+$"
+        },
         "labels": { "$ref": "#/definitions/VOLUME_TYPES" },
         "transforms": { "$ref": "#/definitions/REGISTRATION_TYPES" },
         "volumes": {
@@ -37,7 +40,7 @@
         },
         "targets": { "$ref": "#/definitions/TARGETS" }
       },
-      "required": ["name", "status", "suffix"]
+      "required": ["name", "status"]
     },
     "REGISTRATION_TYPE": {
       "type": "string",
@@ -69,19 +72,28 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
+                "derivedFrom": { "$ref": "#/definitions/REGISTRATION_TYPE" },
                 "userModified": {
                   "type": "array",
                   "items": {
                     "type": "boolean"
                   }
                 },
-                "fileName": { "type": "string" }
-              }, "required": ["userModified"]
+                "fileName": { "$ref": "#/definitions/FIDUCIALS_FILE" }
+              }, "required": ["userModified", "derivedFrom"]
             }
           }
         }
       ],
       "required": ["original"]
+    },
+    "TRANSFORM_FILE": {
+      "type": "string",
+      "pattern": "^([0-9])+-([a-z,A-Z])+.h5$"
+    },
+    "FIDUCIALS_FILE": {
+      "type": "string",
+      "pattern": "^([0-9])+-([a-z,A-Z])+-approved.fcsv$"
     }
   }
 }

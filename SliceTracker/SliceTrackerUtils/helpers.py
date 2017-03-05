@@ -135,11 +135,6 @@ class SliceTrackerSession(Singleton, SessionBase):
   def __init__(self, directory=None):
     super(SliceTrackerSession, self).__init__(directory)
     self.regResults = RegistrationResults()
-    self.completed = False
-    self.usePreopData = None
-    self.preopVolume = None
-    self.preopLabel = None
-    self.preopTargets = None
     self.trainingMode = False
 
     self.clippingModelNode = None
@@ -269,38 +264,15 @@ class SliceTrackerSession(Singleton, SessionBase):
     filename = os.path.join(self.directory, SliceTrackerConstants.JSON_FILENAME)
     if not os.path.exists(filename):
       return
-    with open(filename) as data_file:
-      data = json.load(data_file)
-      self.usePreopData = data["usedPreopData"]
-      if data["VOLUME-PREOP-N4"]:
-        self.loadBiasCorrectedImage(os.path.join(self.directory, data["VOLUME-PREOP-N4"]))
-      self.loadZFrameTransform(os.path.join(self.directory, data["zFrameTransform"]))
-    self.regResults.load(os.path.join(self.directory, SliceTrackerConstants.JSON_FILENAME))
+    self.regResults.load(filename)
     coverProstate = self.regResults.getMostRecentApprovedCoverProstateRegistration()
     if coverProstate:
-      if not self.preopVolume:
-        self.preopVolume = coverProstate.movingVolume if self.usePreopData else coverProstate.fixedVolume
-      self.preopTargets = coverProstate.originalTargets
-      if self.usePreopData:
-        self.preopLabel = coverProstate.movingLabel
+      if not self.regResults.preopVolume:
+        self.regResults.preopVolume = coverProstate.movingVolume if self.regResults.usePreopData else coverProstate.fixedVolume
+      self.regResults.preopTargets = coverProstate.originalTargets
+      if self.regResults.usePreopData:
+        self.regResults.preopLabel = coverProstate.movingLabel
     return True
-
-  def loadZFrameTransform(self, transformFile):
-    self.zFrameRegistrationSuccessful = False
-    if not os.path.exists(transformFile):
-      return False
-    success, self.zFrameTransform = slicer.util.loadTransform(transformFile, returnNode=True)
-    self.zFrameRegistrationSuccessful = success
-    # self.applyZFrameTransform(self.zFrameTransform)
-    return success
-
-  def loadBiasCorrectedImage(self, n4File):
-    self.biasCorrectionDone = False
-    if not os.path.exists(n4File):
-      return False
-    self.biasCorrectionDone = True
-    success, self.preopVolume = slicer.util.loadVolume(n4File, returnNode=True)
-    return success
 
 
 class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMixin):
