@@ -30,7 +30,6 @@
         "affine": "3-TARGETS-affine.fcsv",
         "rigid": "3-TARGETS-rigid.fcsv",
         "approved": {
-          "derivedFrom": "bSpline",
           "userModified": [
             false
           ],
@@ -58,7 +57,6 @@
         "affine": "5-TARGETS-affine.fcsv",
         "rigid": "5-TARGETS-rigid.fcsv",
         "approved": {
-          "derivedFrom": "bSpline",
           "userModified": [
             true
           ],
@@ -125,7 +123,6 @@
         "affine": "10-TARGETS-affine_Retry_1.fcsv",
         "rigid": "10-TARGETS-rigid_Retry_1.fcsv",
         "approved": {
-          "derivedFrom": "bSpline",
           "userModified": [
             false
           ],

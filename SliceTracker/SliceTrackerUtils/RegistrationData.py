@@ -100,9 +100,7 @@ class RegistrationResults(ModuleLogicMixin):
           if approved:
             targets = self._loadOrGetFileData(directory, approved["fileName"], slicer.util.loadMarkupsFiducialList)
             setattr(result.targets, 'approved', targets)
-            approvedRegType = approved[
-              "derivedFrom"]  # TODO: derived from is actually already known by approved reg type
-            result.targets.modifiedTargets[approvedRegType] = approved["userModified"]
+            result.targets.modifiedTargets[jsonResult["registrationType"]] = approved["userModified"]
         elif attribute == 'labels':
           self._loadResultFileData(value, directory, slicer.util.loadLabelVolume, result.setLabel)
         elif attribute == 'status':
@@ -523,7 +521,10 @@ class RegistrationResult(ModuleLogicMixin):
     return modified
 
   def toDict(self):
-    dictionary = {"name": self.name, "status":self.status.status}
+    dictionary = {
+      "name": self.name,
+      "status":self.status.status
+    }
     if self.approved or self.rejected:
       dictionary["targets"] = self.targets.getAllFileNames()
       dictionary["transforms"] = self.transforms.getAllFileNames()
@@ -533,13 +534,16 @@ class RegistrationResult(ModuleLogicMixin):
       if self.approved:
         dictionary["registrationType"] = self.registrationType
     elif self.skipped:
-      dictionary["volumes"] = {"fixed": self.volumes.getFileName(self.volumes.fixed)}
+      dictionary["volumes"] = {
+        "fixed": self.volumes.getFileName(self.volumes.fixed)
+      }
     if self.score:
       dictionary["score"] = self.score
     if self.approved:
-      dictionary["targets"]["approved"] = {"derivedFrom":self.registrationType,
-                                                  "userModified": self.getApprovedTargetsModifiedStatus(),
-                                                  "fileName": self.targets.getFileNameByAttributeName("approved")}
+      dictionary["targets"]["approved"] = {
+        "userModified": self.getApprovedTargetsModifiedStatus(),
+        "fileName": self.targets.getFileNameByAttributeName("approved")
+      }
     return dictionary
 
 

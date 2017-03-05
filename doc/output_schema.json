@@ -72,7 +72,6 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "derivedFrom": { "$ref": "#/definitions/REGISTRATION_TYPE" },
                 "userModified": {
                   "type": "array",
                   "items": {
@@ -80,7 +79,7 @@
                   }
                 },
                 "fileName": { "$ref": "#/definitions/FIDUCIALS_FILE" }
-              }, "required": ["userModified", "derivedFrom"]
+              }, "required": ["userModified"]
             }
           }
         }
