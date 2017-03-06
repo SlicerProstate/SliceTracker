@@ -1,13 +1,14 @@
 from SlicerProstateUtils.mixins import ParameterNodeObservationMixin, ModuleLogicMixin, ModuleWidgetMixin
-from SlicerProstateUtils.constants import FileExtension
-from SlicerProstateUtils.decorators import multimethod, onExceptionReturnNone
+from SlicerProstateUtils.constants import DICOMTAGS
+from SlicerProstateUtils.events import SlicerProstateEvents
+from exceptions import DICOMValueError
+from SlicerProstateUtils.helpers import SmartDICOMReceiver
 
-from RegistrationData import RegistrationResults
+from RegistrationData import RegistrationResults, RegistrationResult
 from constants import SliceTrackerConstants
 
-import vtk, qt, slicer
-from collections import OrderedDict
-import os, json, logging
+import ctk, vtk, qt, slicer
+import os, logging
 import datetime
 
 
@@ -111,6 +112,9 @@ class Singleton(object):
 class SliceTrackerSession(Singleton, SessionBase):
 
   # TODO: implement events that are invoked once data changes so that underlying steps can react to it
+  IncomingDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent
+  DICOMReceiverStatusChanged = SlicerProstateEvents.StatusChangedEvent
+  DICOMReceiverStoppedEvent = SlicerProstateEvents.DICOMReceiverStoppedEvent
 
   @property
   def preprocessedDirectory(self):
@@ -134,18 +138,33 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   def __init__(self, directory=None):
     super(SliceTrackerSession, self).__init__(directory)
+    self.steps = []
+    self.resetAndInitializeMembers()
+
+  def resetAndInitializeMembers(self):
     self.regResults = RegistrationResults()
     self.trainingMode = False
-    self.steps = []
+
+    self.dicomReceiver = None
+    self.loadableList = {}
+    self.seriesList = []
 
   def __del__(self):
     pass
+
+  def registerStep(self, step):
+    assert issubclass(step.__class__, SliceTrackerStep)
+    if step not in self.steps:
+      self.steps.append(step)
+
+  def getStep(self, stepName):
+    return next((x for x in self.steps if x.NAME == stepName), None)
 
   def isRunning(self):
     return self.directory is not None
 
   def clearData(self):
-    self.regResults.resetAndInitializeData()
+    self.resetAndInitializeMembers()
     #TODO: implement
     pass
 
@@ -160,14 +179,6 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   def closeCase(self):
     pass
-
-  def registerStep(self, step):
-    assert issubclass(step.__class__, SliceTrackerStep)
-    if step not in self.steps:
-      self.steps.append(step)
-
-  def getStep(self, stepName):
-    return next((x for x in self.steps if x.NAME == stepName), None)
 
   def save(self):
     # TODO: not sure about each step .... saving its own data
@@ -189,9 +200,83 @@ class SliceTrackerSession(Singleton, SessionBase):
       if not self.regResults.initialVolume:
         self.regResults.initialVolume = coverProstate.movingVolume if self.regResults.usePreopData else coverProstate.fixedVolume
       self.regResults.initialTargets = coverProstate.originalTargets
-      if self.regResults.usePreopData:
+      if self.regResults.usePreopData:  # TODO: makes sense?
         self.regResults.preopLabel = coverProstate.movingLabel
     return True
+
+  def startDICOMReceiver(self):
+    # TODO
+    # self.intraopWatchBox.sourceFile = None
+    logging.info("Starting DICOM Receiver for intraprocedural data")
+    if not self.regResults.completed:
+      self.stopSmartDICOMReceiver()
+      self.dicomReceiver = SmartDICOMReceiver(self.intraopDICOMDirectory)
+      # self.observeDICOMReceiverEvents()
+      self.dicomReceiver.start(not self.trainingMode)
+    else:
+      self.invokeEvent(SlicerProstateEvents.DICOMReceiverStoppedEvent)
+    self.importDICOMSeries(self.getFileList(self.intraopDICOMDirectory))
+    if self.dicomReceiver:
+      self.dicomReceiver.forceStatusChangeEvent()
+
+  def observeDICOMReceiverEvents(self):
+    self.dicomReceiver.addEventObserver(self.dicomReceiver.IncomingDataReceiveFinishedEvent,
+                                        self.onDICOMSeriesReceived)
+    self.dicomReceiver.addEventObserver(SlicerProstateEvents.StatusChangedEvent,
+                                        self.onDICOMReceiverStatusChanged)
+    self.dicomReceiver.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent,
+                                        self.onSmartDICOMReceiverStopped)
+
+    # self.logic.addEventObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
+    # self.logic.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
+    # self.logic.addEventObserver(SlicerProstateEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+    # self.logic.addEventObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
+
+  def stopSmartDICOMReceiver(self):
+    self.dicomReceiver = getattr(self, "dicomReceiver", None)
+    if self.dicomReceiver:
+      self.dicomReceiver.stop()
+      self.dicomReceiver.removeEventObservers()
+
+  def importDICOMSeries(self, newFileList):
+    indexer = ctk.ctkDICOMIndexer()
+
+    eligibleSeriesFiles = []
+    size = len(newFileList)
+    for currentIndex, currentFile in enumerate(newFileList, start=1):
+      self.invokeEvent(SlicerProstateEvents.NewFileIndexedEvent,
+                       ["Indexing file %s" % currentFile, size, currentIndex].__str__())
+      slicer.app.processEvents()
+      currentFile = os.path.join(self.intraopDICOMDirectory, currentFile)
+      indexer.addFile(slicer.dicomDatabase, currentFile, None)
+      series = self.makeSeriesNumberDescription(currentFile)
+      if series:
+        eligibleSeriesFiles.append(currentFile)
+        if series not in self.seriesList:
+          self.seriesList.append(series)
+          self.createLoadableFileListForSeries(series)
+
+    self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
+
+    if len(eligibleSeriesFiles):
+      self.invokeEvent(SlicerProstateEvents.NewImageDataReceivedEvent, eligibleSeriesFiles.__str__())
+
+  def makeSeriesNumberDescription(self, dicomFile):
+    seriesDescription = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_DESCRIPTION)
+    seriesNumber = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_NUMBER)
+    if not (seriesNumber and seriesDescription):
+      raise DICOMValueError("Missing Attribute(s):\nFile: {}\nseriesNumber: {}\nseriesDescription: {}"
+                            .format(dicomFile, seriesNumber, seriesDescription))
+    return "{}: {}".format(seriesNumber, seriesDescription)
+
+  def createLoadableFileListForSeries(self, selectedSeries):
+    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+    self.loadableList[selectedSeries] = []
+    for dcm in self.getFileList(self.intraopDICOMDirectory):
+      currentFile = os.path.join(self.intraopDICOMDirectory, dcm)
+      currentSeriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
+      if currentSeriesNumber and currentSeriesNumber == selectedSeriesNumber:
+        self.loadableList[selectedSeries].append(currentFile)
 
 
 class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMixin):

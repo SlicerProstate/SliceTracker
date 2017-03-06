@@ -1,5 +1,5 @@
 import logging
-import slicer
+import slicer, vtk
 import os, json
 from collections import OrderedDict
 
@@ -11,6 +11,8 @@ from constants import SliceTrackerConstants
 
 
 class RegistrationResults(ModuleLogicMixin):
+
+  ActiveResultChangedEvent = vtk.vtkCommand.UserEvent + 234
 
   # TODO: add events
   DEFAULT_JSON_FILE_NAME = "results.json"
@@ -24,6 +26,7 @@ class RegistrationResults(ModuleLogicMixin):
   def activeResult(self, series):
     assert series in self._registrationResults.keys()
     self._activeResult = series
+    self.invokeEvent(self.ActiveResultChangedEvent)
 
   @property
   @onExceptionReturnNone
