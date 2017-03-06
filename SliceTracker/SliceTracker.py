@@ -383,7 +383,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.simulatePreopPhaseButton.enabled = True
 
   def checkAndWarnUserIfCaseInProgress(self):
-    if self.session.directory is not None:
+    if self.session.isRunning():
       if not slicer.util.confirmYesNoDisplay("Current case will be closed. Do you want to proceed?"):
         return False
     return True

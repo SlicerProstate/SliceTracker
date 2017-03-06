@@ -5,11 +5,13 @@
   "properties": {
     "completed": { "type": "boolean" },
     "usedPreopData": { "type": "boolean" },
-    "VOLUME-PREOP-N4": { "type": "string" },
+    "biasCorrected": { "type": "boolean" },
+    "initialVolume": { "type": "string" },
+    "initialTargets": { "type": "string" },
     "zFrameTransform": { "$ref": "#/definitions/TRANSFORM_FILE" },
     "results": { "$ref": "#/definitions/RESULTS" }
   },
-  "required": ["completed", "usedPreopData", "VOLUME-PREOP-N4", "zFrameTransform", "results"],
+  "required": ["completed", "usedPreopData", "initialVolume", "zFrameTransform", "results"],
   "definitions": {
     "RESULTS": {
       "type": "array",

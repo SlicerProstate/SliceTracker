@@ -25,7 +25,7 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
   ActivatedEvent = vtk.vtkCommand.UserEvent + 150
   DeactivatedEvent = vtk.vtkCommand.UserEvent + 151
 
-  NAME=None
+  NAME = None
   MODULE_NAME = "SliceTracker"
 
   LogicClass = None
@@ -141,7 +141,11 @@ class SliceTrackerSession(Singleton, SessionBase):
   def __del__(self):
     pass
 
+  def isRunning(self):
+    return self.directory is not None
+
   def clearData(self):
+    self.regResults.resetAndInitializeData()
     #TODO: implement
     pass
 
@@ -169,9 +173,7 @@ class SliceTrackerSession(Singleton, SessionBase):
     # TODO: not sure about each step .... saving its own data
     for step in self.steps:
       step.save(self.directory)
-
-  def saveSession(self, outputDir):
-    self.regResults.save(outputDir)
+    self.regResults.save(self.outputDirectory)
 
   def complete(self):
     self.regResults.completed = True
@@ -184,9 +186,9 @@ class SliceTrackerSession(Singleton, SessionBase):
     self.regResults.load(filename)
     coverProstate = self.regResults.getMostRecentApprovedCoverProstateRegistration()
     if coverProstate:
-      if not self.regResults.preopN4Volume:
-        self.regResults.preopN4Volume = coverProstate.movingVolume if self.regResults.usePreopData else coverProstate.fixedVolume
-      self.regResults.preopTargets = coverProstate.originalTargets
+      if not self.regResults.initialVolume:
+        self.regResults.initialVolume = coverProstate.movingVolume if self.regResults.usePreopData else coverProstate.fixedVolume
+      self.regResults.initialTargets = coverProstate.originalTargets
       if self.regResults.usePreopData:
         self.regResults.preopLabel = coverProstate.movingLabel
     return True

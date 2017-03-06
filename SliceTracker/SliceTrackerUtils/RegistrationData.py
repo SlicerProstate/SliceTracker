@@ -12,11 +12,12 @@ from constants import SliceTrackerConstants
 
 class RegistrationResults(ModuleLogicMixin):
 
-  # TODO: active result should be in session...
+  # TODO: add events
   DEFAULT_JSON_FILE_NAME = "results.json"
 
   @property
   def activeResult(self):
+    # TODO: active result should be in session...
     return self._getActiveResult()
 
   @activeResult.setter
@@ -27,11 +28,13 @@ class RegistrationResults(ModuleLogicMixin):
   @property
   @onExceptionReturnNone
   def originalTargets(self):
+    # TODO: need to rename this to something telling us more about what targets since those are not needed to be original
     return self.getMostRecentApprovedCoverProstateRegistration().targets.originalTargets
 
   @property
   @onExceptionReturnNone
   def intraopLabel(self):
+    # TODO: should it always return the most recent approved cover prostate segmentation?
     return self.getMostRecentApprovedCoverProstateRegistration().labels.fixed
 
   def __init__(self):
@@ -46,8 +49,10 @@ class RegistrationResults(ModuleLogicMixin):
     self.inputMarkupNode = None
 
     self._activeResult = None
-    self.preopN4Volume = None
-    self.preopTargets = None  # TODO: never used???
+
+    self.initialVolume = None
+    self.initialTargets = None
+
     self._savedRegistrationResults = []
     self._registrationResults = OrderedDict()
     # TODO: the following should not be here since it is widget depending
@@ -72,12 +77,14 @@ class RegistrationResults(ModuleLogicMixin):
       data = json.load(data_file)
       self.completed = data["completed"]
       self.usePreopData = data["usedPreopData"]
+      self.biasCorrectionDone = data["biasCorrected"]
+      self.initialTargets = self._loadOrGetFileData(directory,
+                                                    data["initialTargets"], slicer.util.loadMarkupsFiducialList)
+
       self.zFrameTransform = self._loadOrGetFileData(directory, data["zFrameTransform"], slicer.util.loadTransform)
       # TODO: self.applyZFrameTransform(self.zFrameTransform)
 
-      if data["VOLUME-PREOP-N4"]:
-        self.preopN4Volume = self._loadOrGetFileData(directory, data["VOLUME-PREOP-N4"], slicer.util.loadVolume)
-      self.biasCorrectionDone = self.preopN4Volume is not None
+      self.initialVolume = self._loadOrGetFileData(directory, data["initialVolume"], slicer.util.loadVolume)
 
       self.loadResults(data, directory)
     self._registrationResults = OrderedDict(sorted(self._registrationResults.items()))  # TODO: sort here?
@@ -161,16 +168,14 @@ class RegistrationResults(ModuleLogicMixin):
                                             name=seriesNumber + "-VolumeClip_points", overwrite=True)
           self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
-    def saveOriginalTargets():
-      if self.originalTargets:
-        success, name = self.saveNodeData(self.originalTargets, outputDir, FileExtension.FCSV,
-                                          name="PreopTargets", overwrite=True)
-        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+    def saveInitialTargets():
+      success, name = self.saveNodeData(self.initialTargets, outputDir, FileExtension.FCSV,
+                                        name="Initial_Targets", overwrite=True)
+      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+      return name + FileExtension.FCSV
 
-    def saveBiasCorrectionResult():
-      if not self.biasCorrectionDone:
-        return None
-      success, name = self.saveNodeData(self.preopN4Volume, outputDir, FileExtension.NRRD, overwrite=True)
+    def saveInitialVolume():
+      success, name = self.saveNodeData(self.initialVolume, outputDir, FileExtension.NRRD, overwrite=True)
       self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
       return name + FileExtension.NRRD
 
@@ -186,18 +191,21 @@ class RegistrationResults(ModuleLogicMixin):
       return results
 
     saveIntraopSegmentation()
-    saveOriginalTargets()
-    saveBiasCorrectionResult()
 
     data = {
       "completed": self.completed,
       "usedPreopData": self.usePreopData,
+      "biasCorrected": self.biasCorrectionDone,
       "results": createResultsList()
     }
     if self.zFrameTransform:
       data["zFrameTransform"] = saveZFrameTransformation() # TODO: filename
-    if self.preopN4Volume and self.biasCorrectionDone:
-      data["VOLUME-PREOP-N4"] = saveBiasCorrectionResult() # TODO: filename
+
+    if self.initialTargets:
+      data["initialTargets"] = saveInitialTargets()
+
+    if self.initialVolume:
+      data["initialVolume"] = saveInitialVolume()
 
     destinationFile = os.path.join(outputDir, self.DEFAULT_JSON_FILE_NAME)
     with open(destinationFile, 'w') as outfile:

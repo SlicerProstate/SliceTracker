@@ -1,7 +1,9 @@
 {
   "completed": false,
   "usedPreopData": true,
-  "VOLUME-PREOP-N4": "VOLUME-PREOP-N4.nrrd",
+  "biasCorrected": true,
+  "initialVolume": "VOLUME-PREOP-N4.nrrd",
+  "initialTargets": "PreopTargets.fcsv",
   "zFrameTransform": "2-ZFrameTransform.h5",
   "results": [
     {
