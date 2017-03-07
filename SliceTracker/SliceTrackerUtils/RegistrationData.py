@@ -1,5 +1,6 @@
 import logging
 import slicer, vtk
+import datetime
 import os, json
 from collections import OrderedDict
 
@@ -7,14 +8,16 @@ from SlicerProstateUtils.constants import FileExtension
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 from SlicerProstateUtils.decorators import onExceptionReturnNone, logmethod
 
-from constants import SliceTrackerConstants
 
+def getTime():
+  d = datetime.datetime.now()
+  return d.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-4]+"Z"
 
 class RegistrationResults(ModuleLogicMixin):
 
+  # TODO: add events
   ActiveResultChangedEvent = vtk.vtkCommand.UserEvent + 234
 
-  # TODO: add events
   DEFAULT_JSON_FILE_NAME = "results.json"
 
   @property
@@ -41,9 +44,13 @@ class RegistrationResults(ModuleLogicMixin):
     return self.getMostRecentApprovedCoverProstateRegistration().labels.fixed
 
   def __init__(self):
+    self.startTimeStamp = getTime()
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
+    self.startTimeStamp = None
+    self.endTimeStamp = None
+
     self.completed = False
     self.usePreopData = False
     self.biasCorrectionDone = False
@@ -81,6 +88,10 @@ class RegistrationResults(ModuleLogicMixin):
       self.completed = data["completed"]
       self.usePreopData = data["usedPreopData"]
       self.biasCorrectionDone = data["biasCorrected"]
+
+      self.startTimeStamp = data["startTime"]
+      self.endTimeStamp = data["endTime"]
+
       self.initialTargets = self._loadOrGetFileData(directory,
                                                     data["initialTargets"], slicer.util.loadMarkupsFiducialList)
 
@@ -97,6 +108,7 @@ class RegistrationResults(ModuleLogicMixin):
       name = jsonResult["name"]
       logging.info("processing %s" % name)
       result = self.createResult(name)
+
 
       # TODO: the following should not be here since it is widget depending
       # self.customProgressBar.visible = True
@@ -124,7 +136,8 @@ class RegistrationResults(ModuleLogicMixin):
         elif attribute == 'labels':
           self._loadResultFileData(value, directory, slicer.util.loadLabelVolume, result.setLabel)
         elif attribute == 'status':
-          result.status = value
+          result.status = value["state"]
+          result.timestamp = value["time"]
         else:
           setattr(result, attribute, value)
       if result not in self._savedRegistrationResults:
@@ -148,6 +161,7 @@ class RegistrationResults(ModuleLogicMixin):
     return data
 
   def save(self, outputDir):
+    self.endTimeStamp = getTime()
     if not os.path.exists(outputDir):
       self.createDirectory(outputDir)
 
@@ -196,6 +210,8 @@ class RegistrationResults(ModuleLogicMixin):
     saveIntraopSegmentation()
 
     data = {
+      "startTime": self.startTimeStamp,
+      "endTime": self.endTimeStamp,
       "completed": self.completed,
       "usedPreopData": self.usePreopData,
       "biasCorrected": self.biasCorrectionDone,
@@ -490,6 +506,15 @@ class RegistrationStatus(object):
   REJECTED_STATUS = 'rejected'
 
   @property
+  def status(self):
+    return self._status
+
+  @status.setter
+  def status(self, value):
+    self.timestamp = getTime()
+    self._status = value
+
+  @property
   def approved(self):
     return self.hasStatus(self.APPROVED_STATUS)
 
@@ -502,7 +527,7 @@ class RegistrationStatus(object):
     return self.hasStatus(self.REJECTED_STATUS)
 
   def __init__(self):
-    self.status = self.UNDEFINED_STATUS
+    self._status = self.UNDEFINED_STATUS
 
   def hasStatus(self, status):
     return self.status == status
@@ -564,6 +589,7 @@ class RegistrationResult(RegistrationStatus, ModuleLogicMixin):
   def __init__(self, series):
     RegistrationStatus.__init__(self)
     self.name = series
+    self.receivedTime = getTime()
 
     self.volumes = Volumes()
     self.transforms = Transforms()
@@ -644,7 +670,11 @@ class RegistrationResult(RegistrationStatus, ModuleLogicMixin):
   def toDict(self):
     dictionary = {
       "name": self.name,
-      "status":self.status
+      "receivedTime": self.receivedTime,
+      "status": {
+        "state": self.status,
+        "time": self.timestamp
+      }
     }
     if self.approved or self.rejected:
       dictionary["targets"] = self.targets.getAllFileNames()
