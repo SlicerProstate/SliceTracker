@@ -34,11 +34,25 @@ package "SliceTrackerSteps" #DDDDDD {
 
   abstract class SliceTrackerStepLogic {
     + session
+    + {abstract} cleanup()
   }
 
   class SliceTrackerOverviewStep {
-
+    + onLayoutChanged()
   }
+
+  class SliceTrackerSegmentationStep {
+    + onLayoutChanged()
+  }
+
+  class SliceTrackerZFrameRegistrationStep {
+    + onLayoutChanged()
+  }
+
+  class SliceTrackerEvaluationStep {
+    + onLayoutChanged()
+  }
+
 
   'SliceTrackerSession "0" --> "*" SliceTrackerStep
 

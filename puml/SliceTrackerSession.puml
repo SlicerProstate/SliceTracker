@@ -10,7 +10,6 @@ package "Session" #DDDDDD {
     --
     + {abstract} load()
     + {abstract} save()
-    + close()
   }
 
 
@@ -27,19 +26,9 @@ package "Session" #DDDDDD {
     + outputDirectory
     --
     + steps
-    + completed: boolean
     + trainingMode: boolean
     --
-    + biasCorrected: boolean
-    + usePreopData
-    + preopVolume
-    + preopTargets
-    --
-    + originalTargets
-    --
-    + preopLabel
     + intraopLabel
-    --
     + regResults: RegistrationResults
     __
     + createNewCase(destination)
@@ -47,10 +36,11 @@ package "Session" #DDDDDD {
     + closeCase()
     + completeCase()
     + registerStep(step)
-    --
-    # _saveCase(): boolean
-    # _loadCaseData(): boolean
-
+    + startIntraopDICOMReceiver()
+    + stopIntraopDICOMReceiver()
+    + importDICOMSeries(newFileList)
+    + makeSeriesNumberDescription(dcmFile): string
+    + createLoadableFileListForSeries(series): list
   }
 
   SliceTrackerStep <.. SliceTrackerSession::steps: has [0..n]

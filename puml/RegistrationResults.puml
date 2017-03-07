@@ -6,6 +6,21 @@ package "RegistrationResults" #DDDDDD {
     .. properties ..
     + activeResult
     __
+    + startTimeStamp: localtime
+    + endTimeStamp: localtime
+    + completed: boolean
+    + usePreopData: boolean
+    + biasCorrectionDone: boolean
+
+    + clippingModelNode
+    + inputMarkupNode
+
+    + initialVolume
+    + initialTargets
+
+    # _savedRegistrationResults: list
+    # _registrationResults: OrderedDict
+    __
     + resetAndInitializeData()
     + load(directory, filename)
     + save(outputDir)
@@ -44,7 +59,6 @@ package "RegistrationResults" #DDDDDD {
   }
 
   RegistrationStatus <|-- RegistrationResult
-  RegistrationResults "0" *-- "*" RegistrationResult : contains
 
   class AbstractRegistrationData {
     + FILE_EXTENSION
@@ -99,6 +113,8 @@ package "RegistrationResults" #DDDDDD {
   Targets <.. RegistrationResult::_targets
   Labels <.. RegistrationResult::_labels
   Transforms <.. RegistrationResult::_transforms
+
+  RegistrationResult <.. RegistrationResults::_registrationResults
 }
 
 @enduml

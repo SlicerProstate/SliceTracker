@@ -1,6 +1,5 @@
 import logging
 import slicer, vtk
-import datetime
 import os, json
 from collections import OrderedDict
 
@@ -8,10 +7,6 @@ from SlicerProstateUtils.constants import FileExtension
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 from SlicerProstateUtils.decorators import onExceptionReturnNone, logmethod
 
-
-def getTime():
-  d = datetime.datetime.now()
-  return d.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-4]+"Z"
 
 class RegistrationResults(ModuleLogicMixin):
 
@@ -44,7 +39,7 @@ class RegistrationResults(ModuleLogicMixin):
     return self.getMostRecentApprovedCoverProstateRegistration().labels.fixed
 
   def __init__(self):
-    self.startTimeStamp = getTime()
+    self.startTimeStamp = self.getTime()
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
@@ -140,8 +135,8 @@ class RegistrationResults(ModuleLogicMixin):
           result.timestamp = value["time"]
         else:
           setattr(result, attribute, value)
-      if result not in self._savedRegistrationResults:
-        self._savedRegistrationResults.append(result)
+      # if result not in self._savedRegistrationResults:
+      #   self._savedRegistrationResults.append(result)
         # TODO: the following should not be here since it is widget depending
         # self.customProgressBar.text = "Finished loading registration results"
 
@@ -161,7 +156,7 @@ class RegistrationResults(ModuleLogicMixin):
     return data
 
   def save(self, outputDir):
-    self.endTimeStamp = getTime()
+    self.endTimeStamp = self.getTime()
     if not os.path.exists(outputDir):
       self.createDirectory(outputDir)
 
@@ -204,7 +199,7 @@ class RegistrationResults(ModuleLogicMixin):
     def createResultsList():
       results = []
       for result in sorted(self.getResultsAsList(), key=lambda r: r.seriesNumber):
-        results.append(result.toDict())
+        results.append(result.asDict())
       return results
 
     saveIntraopSegmentation()
@@ -379,7 +374,8 @@ class AbstractRegistrationData(ModuleLogicMixin):
   @logmethod(level=logging.INFO)
   def save(self, directory):
     assert self.FILE_EXTENSION is not None
-    savedSuccessfully = failedToSave = []
+    savedSuccessfully = []
+    failedToSave = []
     for node in [node for node in self.asList() if node]:
       success, name = self.saveNodeData(node, directory, self.FILE_EXTENSION)
       self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
@@ -511,7 +507,7 @@ class RegistrationStatus(object):
 
   @status.setter
   def status(self, value):
-    self.timestamp = getTime()
+    self.timestamp = self.getTime()
     self._status = value
 
   @property
@@ -543,6 +539,14 @@ class RegistrationStatus(object):
 
   def reject(self):
     self.status = self.REJECTED_STATUS
+
+  def asDict(self):
+    return {
+      "status": {
+        "state": self.status,
+        "time": self.timestamp
+      }
+    }
 
 
 class RegistrationResult(RegistrationStatus, ModuleLogicMixin):
@@ -587,9 +591,9 @@ class RegistrationResult(RegistrationStatus, ModuleLogicMixin):
     return str(self.seriesNumber) + "-CMD-PARAMETERS" + self.suffix + FileExtension.TXT
 
   def __init__(self, series):
-    RegistrationStatus.__init__(self)
+    super(RegistrationResult, self).__init__()
     self.name = series
-    self.receivedTime = getTime()
+    self.receivedTimestamp = self.getTime()
 
     self.volumes = Volumes()
     self.transforms = Transforms()
@@ -629,7 +633,7 @@ class RegistrationResult(RegistrationStatus, ModuleLogicMixin):
     return getattr(self.targets, name)
 
   def approve(self, registrationType):
-    super(RegistrationResult).approve()
+    super(RegistrationResult, self).approve()
     assert registrationType in self.REGISTRATION_TYPE_NAMES
     self.registrationType = registrationType
     self.targets.approve(registrationType)
@@ -648,17 +652,19 @@ class RegistrationResult(RegistrationStatus, ModuleLogicMixin):
         f.write(self.cmdArguments)
         f.close()
 
+    def saveData():
+      savedSuccessfully = []
+      failedToSave = []
+      for data in [self.transforms, self.targets, self.volumes, self.labels]:
+        successful, failed = data.save(outputDir)
+        savedSuccessfully += successful
+        failedToSave += failed
+      logging.info("Successfully saved: %s \n" % str(savedSuccessfully))
+      logging.info("Failed to save: %s \n" % str(failedToSave))
+      return savedSuccessfully, failedToSave
+
     saveCMDParameters()
-
-    savedSuccessfully = []
-    failedToSave = []
-
-    # TODO: add lists savedSuccessfully, failedToSave here
-    self.transforms.save(outputDir)
-    self.targets.save(outputDir)
-    self.volumes.save(outputDir)
-    self.labels.save(outputDir)
-    return savedSuccessfully, failedToSave
+    return saveData()
 
   def getApprovedTargetsModifiedStatus(self):
     try:
@@ -667,15 +673,12 @@ class RegistrationResult(RegistrationStatus, ModuleLogicMixin):
       modified = [False for i in range(self.targets.approved.GetNumberOfFiducials())]
     return modified
 
-  def toDict(self):
-    dictionary = {
+  def asDict(self):
+    dictionary = super(RegistrationResult, self).asDict()
+    dictionary.update({
       "name": self.name,
-      "receivedTime": self.receivedTime,
-      "status": {
-        "state": self.status,
-        "time": self.timestamp
-      }
-    }
+      "receivedTime": self.receivedTimestamp
+    })
     if self.approved or self.rejected:
       dictionary["targets"] = self.targets.getAllFileNames()
       dictionary["transforms"] = self.transforms.getAllFileNames()

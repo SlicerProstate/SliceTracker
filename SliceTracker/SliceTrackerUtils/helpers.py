@@ -11,14 +11,19 @@ import ctk, vtk, qt, slicer
 import os, logging
 import datetime
 
+from abc import abstractmethod, ABCMeta
+
 
 class SliceTrackerStepLogic(ModuleLogicMixin):
 
-  def __init__(self, session):
-    self.session = session
+  __metaclass__ = ABCMeta
 
+  def __init__(self):
+    self.session = SliceTrackerSession()
+
+  @abstractmethod
   def cleanup(self):
-    raise NotImplementedError("This method needs to be implemented by all deriving classes")
+    pass
 
 
 class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
@@ -45,11 +50,12 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
     method = "connect" if self.active else "disconnect"
     getattr(self.layoutManager.layoutChanged, method)(self.onLayoutChanged)
     logging.info("%s layout changed signal for %s" % (method, self.NAME))
-  def __init__(self, session):
+
+  def __init__(self):
     qt.QWidget.__init__(self)
     assert self.LogicClass is not None, "Logic class for each SliceTrackerStep needs to be implemented"
-    self.session = session
-    self.logic = self.LogicClass(session)
+    self.session = SliceTrackerSession()
+    self.logic = self.LogicClass()
     self.setLayout(qt.QGridLayout())
     self.setup()
     self.setupConnections()
@@ -59,14 +65,13 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
     self.removeEventObservers()
 
   def cleanup(self):
-    pass
+    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
   def setup(self):
-    raise NotImplementedError("This method needs to be implemented by all deriving classes")
+    NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
   def setupConnections(self):
-    pass
-    # raise NotImplementedError
+    NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
   def onLayoutChanged(self):
     raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
@@ -74,7 +79,11 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
 
 class SessionBase(ModuleLogicMixin):
 
+  __metaclass__ = ABCMeta
+
   DirectoryChangedEvent = vtk.vtkCommand.UserEvent + 203
+
+  _directory = None
 
   @property
   def directory(self):
@@ -88,20 +97,20 @@ class SessionBase(ModuleLogicMixin):
     self._directory = value
     self.invokeEvent(self.DirectoryChangedEvent, self.directory)
 
-  def __init__(self, directory=None):
-    self.directory = directory
+  def __init__(self):
+    pass
 
+  @abstractmethod
   def load(self):
-    raise NotImplementedError
+    pass
 
   def save(self):
-    raise NotImplementedError
-
-  def close(self):
-    self.save()
+    pass
 
 
 class Singleton(object):
+
+  __metaclass__ = ABCMeta
 
   def __new__(cls):
     if not hasattr(cls, 'instance'):
@@ -115,6 +124,16 @@ class SliceTrackerSession(Singleton, SessionBase):
   IncomingDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent
   DICOMReceiverStatusChanged = SlicerProstateEvents.StatusChangedEvent
   DICOMReceiverStoppedEvent = SlicerProstateEvents.DICOMReceiverStoppedEvent
+
+  NewCaseStartedEvent = vtk.vtkCommand.UserEvent + 501
+  CloseCaseEvent = vtk.vtkCommand.UserEvent + 502
+
+  steps = []
+  trainingMode = False
+  dicomReceiver = None
+  loadableList = {}
+  seriesList = []
+  regResults = RegistrationResults()
 
   @property
   def preprocessedDirectory(self):
@@ -136,15 +155,15 @@ class SliceTrackerSession(Singleton, SessionBase):
     # was outputDir
     return os.path.join(self.directory, "SliceTrackerOutputs")
 
-  def __init__(self, directory=None):
-    super(SliceTrackerSession, self).__init__(directory)
-    self.steps = []
-    self.resetAndInitializeMembers()
+  def isCaseDirectoryValid(self):
+    return os.path.exists(self.preopDICOMDirectory) and os.path.exists(self.intraopDICOMDirectory)
+
+  def __init__(self):
+    super(SliceTrackerSession, self).__init__()
 
   def resetAndInitializeMembers(self):
     self.regResults = RegistrationResults()
     self.trainingMode = False
-
     self.dicomReceiver = None
     self.loadableList = {}
     self.seriesList = []
@@ -154,6 +173,7 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   def registerStep(self, step):
     assert issubclass(step.__class__, SliceTrackerStep)
+    logging.debug("Registering step %s" % step.NAME)
     if step not in self.steps:
       self.steps.append(step)
 
@@ -171,14 +191,19 @@ class SliceTrackerSession(Singleton, SessionBase):
   def createNewCase(self, destination):
     # TODO: self.continueOldCase = False
     # TODO: make directory structure flexible
+    self.resetAndInitializeMembers()
     self.directory = destination
     self.createDirectory(self.preopDICOMDirectory)
     self.createDirectory(self.intraopDICOMDirectory)
     self.createDirectory(self.preprocessedDirectory)
     self.createDirectory(self.outputDirectory)
+    self.invokeEvent(self.NewCaseStartedEvent)
 
-  def closeCase(self):
-    pass
+  def close(self, save=False):
+    if save:
+      self.save()
+    self.invokeEvent(self.CloseCaseEvent)
+    self.resetAndInitializeMembers()
 
   def save(self):
     # TODO: not sure about each step .... saving its own data
@@ -204,14 +229,14 @@ class SliceTrackerSession(Singleton, SessionBase):
         self.regResults.preopLabel = coverProstate.movingLabel
     return True
 
-  def startDICOMReceiver(self):
+  def startIntraopDICOMReceiver(self):
     # TODO
     # self.intraopWatchBox.sourceFile = None
     logging.info("Starting DICOM Receiver for intraprocedural data")
     if not self.regResults.completed:
-      self.stopSmartDICOMReceiver()
+      self.stopIntraopDICOMReceiver()
       self.dicomReceiver = SmartDICOMReceiver(self.intraopDICOMDirectory)
-      # self.observeDICOMReceiverEvents()
+      # self._observeDICOMReceiverEvents()
       self.dicomReceiver.start(not self.trainingMode)
     else:
       self.invokeEvent(SlicerProstateEvents.DICOMReceiverStoppedEvent)
@@ -219,7 +244,7 @@ class SliceTrackerSession(Singleton, SessionBase):
     if self.dicomReceiver:
       self.dicomReceiver.forceStatusChangeEvent()
 
-  def observeDICOMReceiverEvents(self):
+  def _observeDICOMReceiverEvents(self):
     self.dicomReceiver.addEventObserver(self.dicomReceiver.IncomingDataReceiveFinishedEvent,
                                         self.onDICOMSeriesReceived)
     self.dicomReceiver.addEventObserver(SlicerProstateEvents.StatusChangedEvent,
@@ -232,7 +257,7 @@ class SliceTrackerSession(Singleton, SessionBase):
     # self.logic.addEventObserver(SlicerProstateEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
     # self.logic.addEventObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
 
-  def stopSmartDICOMReceiver(self):
+  def stopIntraopDICOMReceiver(self):
     self.dicomReceiver = getattr(self, "dicomReceiver", None)
     if self.dicomReceiver:
       self.dicomReceiver.stop()
@@ -254,161 +279,30 @@ class SliceTrackerSession(Singleton, SessionBase):
         eligibleSeriesFiles.append(currentFile)
         if series not in self.seriesList:
           self.seriesList.append(series)
-          self.createLoadableFileListForSeries(series)
+          self.loadableList[series] = self.createLoadableFileListForSeries(series)
 
     self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
 
     if len(eligibleSeriesFiles):
       self.invokeEvent(SlicerProstateEvents.NewImageDataReceivedEvent, eligibleSeriesFiles.__str__())
 
-  def makeSeriesNumberDescription(self, dicomFile):
-    seriesDescription = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_DESCRIPTION)
-    seriesNumber = self.getDICOMValue(dicomFile, DICOMTAGS.SERIES_NUMBER)
+  def makeSeriesNumberDescription(self, dcmFile):
+    seriesDescription = self.getDICOMValue(dcmFile, DICOMTAGS.SERIES_DESCRIPTION)
+    seriesNumber = self.getDICOMValue(dcmFile, DICOMTAGS.SERIES_NUMBER)
     if not (seriesNumber and seriesDescription):
       raise DICOMValueError("Missing Attribute(s):\nFile: {}\nseriesNumber: {}\nseriesDescription: {}"
-                            .format(dicomFile, seriesNumber, seriesDescription))
+                            .format(dcmFile, seriesNumber, seriesDescription))
     return "{}: {}".format(seriesNumber, seriesDescription)
 
-  def createLoadableFileListForSeries(self, selectedSeries):
-    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-    self.loadableList[selectedSeries] = []
+  def createLoadableFileListForSeries(self, series):
+    seriesNumber = RegistrationResult.getSeriesNumberFromString(series)
+    loadableList = []
     for dcm in self.getFileList(self.intraopDICOMDirectory):
       currentFile = os.path.join(self.intraopDICOMDirectory, dcm)
       currentSeriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
-      if currentSeriesNumber and currentSeriesNumber == selectedSeriesNumber:
-        self.loadableList[selectedSeries].append(currentFile)
-
-
-class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMixin):
-
-  COLUMN_NAME = 'Name'
-  COLUMN_2D_DISTANCE = 'Distance 2D[mm]'
-  COLUMN_3D_DISTANCE = 'Distance 3D[mm]'
-  COLUMN_HOLE = 'Hole'
-  COLUMN_DEPTH = 'Depth [mm]'
-
-  headers = [COLUMN_NAME, COLUMN_2D_DISTANCE, COLUMN_3D_DISTANCE, COLUMN_HOLE, COLUMN_DEPTH]
-
-  @property
-  def targetList(self):
-    return self._targetList
-
-  @targetList.setter
-  def targetList(self, targetList):
-    self.needleStartEndPositions = {}
-    if self._targetList and self.observer:
-      self._targetList.RemoveObserver(self.observer)
-    self._targetList = targetList
-    if self._targetList:
-      self.observer = self._targetList.AddObserver(self._targetList.PointModifiedEvent, self.computeNewDepthAndHole)
-    self.computeNewDepthAndHole()
-    self.reset()
-
-  @property
-  def coverProstateTargetList(self):
-    return self._coverProstateTargetList
-
-  @coverProstateTargetList.setter
-  def coverProstateTargetList(self, targetList):
-    self._coverProstateTargetList = targetList
-    #TODO: compute hole only if set
-
-  @property
-  def cursorPosition(self):
-    return self._cursorPosition
-
-  @cursorPosition.setter
-  def cursorPosition(self, cursorPosition):
-    self._cursorPosition = cursorPosition
-    self.dataChanged(self.index(0, 1), self.index(self.rowCount()-1, 2))
-
-  def __init__(self, logic, targets=None, parent=None, *args):
-    qt.QAbstractTableModel.__init__(self, parent, *args)
-    self.logic = logic
-    self._cursorPosition = None
-    self._targetList = None
-    self.needleStartEndPositions = {}
-    self.targetList = targets
-    self.computeCursorDistances = False
-    self.zFrameDepths = {}
-    self.zFrameHole = {}
-    self.observer = None
-
-  def headerData(self, col, orientation, role):
-    if orientation == qt.Qt.Horizontal and role in [qt.Qt.DisplayRole, qt.Qt.ToolTipRole]:
-        return self.headers[col]
-    return None
-
-  def rowCount(self):
-    try:
-      number_of_targets = self.targetList.GetNumberOfFiducials()
-      return number_of_targets
-    except AttributeError:
-      return 0
-
-  def columnCount(self):
-    return len(self.headers)
-
-  def data(self, index, role):
-    if role == qt.Qt.BackgroundRole:
-      if index.row() % 2:
-        return qt.QVariant(qt.QColor(qt.Qt.gray))
-      else:
-        return qt.QVariant(qt.QColor(qt.Qt.darkGray))
-
-    if not index.isValid() or role not in [qt.Qt.DisplayRole, qt.Qt.ToolTipRole]:
-      return None
-
-    row = index.row()
-    col = index.column()
-
-    targetPosition = [0.0, 0.0, 0.0]
-    if col in [1,2,3,4]:
-      self.targetList.GetNthFiducialPosition(row, targetPosition)
-
-    if col == 0:
-      return self.targetList.GetNthFiducialLabel(row)
-    elif (col == 1 or col == 2) and self.cursorPosition and self.computeCursorDistances:
-      if col == 1:
-        distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
-        distance2D = [str(round(distance2D[0], 2)), str(round(distance2D[1], 2)), str(round(distance2D[2], 2))]
-        return 'x=' + distance2D[0] + ' y=' + distance2D[1] + ' z=' + distance2D[2]
-      distance3D = self.logic.get3DEuclideanDistance(targetPosition, self.cursorPosition)
-      return str(round(distance3D, 2))
-
-    elif (col == 3 or col == 4) and self.logic.zFrameRegistrationSuccessful:
-      if col == 3:
-        return self.computeZFrameHole(row, targetPosition)
-      else:
-        return self.computeZFrameDepth(row, targetPosition)
-    return ""
-
-  def computeZFrameHole(self, index, targetPosition):
-    if index not in self.zFrameHole.keys():
-      (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
-      self.needleStartEndPositions[index] = (start, end)
-      self.zFrameHole[index] = '(%s, %s)' % (indexX, indexY)
-    return self.zFrameHole[index]
-
-  def computeZFrameDepth(self, index, targetPosition):
-    if index not in self.zFrameDepths.keys():
-      (start, end, indexX, indexY, depth, inRange) = self.logic.computeNearestPath(targetPosition)
-      self.zFrameDepths[index] = '%.3f' % depth if inRange else '(%.3f)' % depth
-    return self.zFrameDepths[index]
-
-  def computeNewDepthAndHole(self, observer=None, caller=None):
-    self.zFrameDepths = {}
-    self.zFrameHole = {}
-    if not self.targetList or not self.logic.zFrameRegistrationSuccessful:
-      return
-
-    for index in range(self.targetList.GetNumberOfFiducials()):
-      pos = [0.0, 0.0, 0.0]
-      self.targetList.GetNthFiducialPosition(index, pos)
-      self.computeZFrameHole(index, pos)
-
-    self.dataChanged(self.index(0, 3), self.index(self.rowCount()-1, 4))
-    self.invokeEvent(vtk.vtkCommand.ModifiedEvent)
+      if currentSeriesNumber and currentSeriesNumber == seriesNumber:
+        loadableList.append(currentFile)
+    return loadableList
 
 
 class CustomTargetTableModel(qt.QAbstractTableModel, ParameterNodeObservationMixin):
