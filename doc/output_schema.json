@@ -8,10 +8,12 @@
     "biasCorrected": { "type": "boolean" },
     "initialVolume": { "type": "string" },
     "initialTargets": { "type": "string" },
+    "startTime": { "$ref": "#/definitions/TIMESTAMP" },
+    "endTime": { "$ref": "#/definitions/TIMESTAMP" },
     "zFrameTransform": { "$ref": "#/definitions/TRANSFORM_FILE" },
     "results": { "$ref": "#/definitions/RESULTS" }
   },
-  "required": ["completed", "usedPreopData", "initialVolume", "zFrameTransform", "results"],
+  "required": ["completed", "usedPreopData", "initialVolume", "zFrameTransform", "results", "startTime", "endTime"],
   "definitions": {
     "RESULTS": {
       "type": "array",
@@ -22,9 +24,16 @@
       "additionalProperties": false,
       "properties": {
         "name": { "type": "string"},
+        "receivedTime": { "$ref": "#/definitions/TIMESTAMP" },
         "status": {
-          "type": "string",
-          "enum": ["approved", "skipped", "rejected"]
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "state": {"type": "string",
+              "enum": [ "approved", "skipped", "rejected"]
+            },
+            "time": { "$ref": "#/definitions/TIMESTAMP" }
+          }, "required": ["state", "time"]
         },
         "registrationType": { "$ref": "#/definitions/REGISTRATION_TYPE" },
         "score": { "type": "number" },
@@ -42,7 +51,7 @@
         },
         "targets": { "$ref": "#/definitions/TARGETS" }
       },
-      "required": ["name", "status"]
+      "required": ["name", "status", "receivedTime"]
     },
     "REGISTRATION_TYPE": {
       "type": "string",
@@ -95,6 +104,10 @@
     "FIDUCIALS_FILE": {
       "type": "string",
       "pattern": "^([0-9])+-([a-z,A-Z])+-approved.fcsv$"
+    },
+    "TIMESTAMP": {
+      "type": "string",
+      "format": "date-time"
     }
   }
 }

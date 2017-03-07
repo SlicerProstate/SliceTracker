@@ -5,10 +5,16 @@
   "initialVolume": "VOLUME-PREOP-N4.nrrd",
   "initialTargets": "PreopTargets.fcsv",
   "zFrameTransform": "2-ZFrameTransform.h5",
+  "startTime": "2017-03-07T15:23:20.38Z",
+  "endTime": "2017-03-07T16:33:20.38Z",
   "results": [
     {
       "name": "3: AXIAL T2 COVER PROSTATE 3mm 0gap at iso",
-      "status": "approved",
+      "receivedTime": "2017-03-07T15:38:20.38Z",
+      "status": {
+        "state": "approved",
+        "time": "2017-03-07T16:39:20.38Z"
+      },
       "registrationType": "bSpline",
       "labels": {
         "fixed": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd",
@@ -35,14 +41,18 @@
           "userModified": [
             false
           ],
-        "fileName": "3-TARGETS-approved.fcsv"
+          "fileName": "3-TARGETS-approved.fcsv"
 	  	  }
       },
       "score": 5
     },
     {
       "name": "5: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
-      "status": "approved",
+      "receivedTime": "2017-03-07T15:43:20.38Z",
+      "status": {
+        "state": "approved",
+        "time": "2017-03-07T16:44:20.38Z"
+      },
       "registrationType": "bSpline",
       "labels": {
         "fixed": "5-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label.nrrd",
@@ -75,7 +85,11 @@
     },
     {
       "name": "6: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
-      "status": "rejected",
+      "receivedTime": "2017-03-07T15:48:20.38Z",
+      "status": {
+        "state": "rejected",
+        "time": "2017-03-07T16:49:20.38Z"
+      },
       "labels": {
         "fixed": "6-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label.nrrd",
         "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd"
@@ -101,14 +115,21 @@
     },
     {
       "name": "9: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
-      "status": "skipped",
+      "receivedTime": "2017-03-07T15:51:20.38Z",
+      "status": {
+        "state": "skipped",
+        "time": "2017-03-07T16:51:43.38Z"
+      },
       "volumes": {
         "fixed": "9-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd"
       }
     },
     { "name": "10: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0_Retry_1",
-      "status": "approved",
-      "suffix": "_Retry_1",
+      "receivedTime": "2017-03-07T15:53:20.38Z",
+      "status": {
+        "state": "approved",
+        "time": "2017-03-07T16:54:43.38Z"
+      },      "suffix": "_Retry_1",
       "registrationType": "bSpline",
       "labels": {
         "fixed": "10-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label_Retry_1.nrrd",
