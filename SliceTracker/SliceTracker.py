@@ -65,10 +65,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def exit(self):
     pass
 
-  def onReload(self):
-    # TODO
-    pass
-
   @logmethod(logging.DEBUG)
   def cleanup(self):
     self.patientWatchBox.sourceFile = None
@@ -159,6 +155,7 @@ class SliceTrackerTabWidget(qt.QTabWidget):
     self.session = SliceTrackerSession()
     self._createTabs()
     self.currentChanged.connect(self.onCurrentTabChanged)
+    self.onCurrentTabChanged(0)
 
   def hideTabs(self):
     self.tabBar().hide()

@@ -3,6 +3,7 @@ from SlicerProstateUtils.constants import DICOMTAGS
 from SlicerProstateUtils.events import SlicerProstateEvents
 from exceptions import DICOMValueError
 from SlicerProstateUtils.helpers import SmartDICOMReceiver
+from SlicerProstateUtils.decorators import logmethod
 
 from RegistrationData import RegistrationResults, RegistrationResult
 from constants import SliceTrackerConstants
@@ -47,9 +48,12 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
     self._activated = value
     logging.info("%s %s" % ("activated" if self.active else "deactivate", self.NAME))
     self.invokeEvent(self.ActivatedEvent if self.active else self.DeactivatedEvent)
-    method = "connect" if self.active else "disconnect"
-    getattr(self.layoutManager.layoutChanged, method)(self.onLayoutChanged)
-    logging.info("%s layout changed signal for %s" % (method, self.NAME))
+    if self.active:
+      self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
+      self.setupSessionObservers()
+    else:
+      self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
+      self.removeSessionEventObservers()
 
   def __init__(self):
     qt.QWidget.__init__(self)
@@ -60,6 +64,22 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
     self.setup()
     self.setupConnections()
     self._activated = False
+
+  def setupSessionObservers(self):
+    self.session.addEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
+    self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
+
+  def removeSessionEventObservers(self):
+    self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
+    self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
+
+  @logmethod(logging.INFO)
+  def onNewCaseStarted(self, caller, event):
+    pass
+
+  @logmethod(logging.INFO)
+  def onCaseClosed(self, caller, event):
+    pass
 
   def __del__(self):
     self.removeEventObservers()
