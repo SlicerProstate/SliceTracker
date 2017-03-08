@@ -61,7 +61,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
         self.session.complete()
       else:
         self.session.close(save=True)
-    self.clearData()
+    self.cleanup()
 
   def enter(self):
     if not slicer.dicomDatabase:

@@ -8,9 +8,9 @@
       "additionalProperties": false,
       "properties": {
         "caseStarted": { "$ref": "#/definitions/TIMESTAMP" },
-        "caseClosed": { "$ref": "#/definitions/TIMESTAMP_LIST" },
+        "caseClosed": { "$ref": "#/definitions/TIMESTAMP_LOGFILE_LIST" },
         "caseResumed": { "$ref": "#/definitions/TIMESTAMP_LIST" },
-        "caseCompleted": { "$ref": "#/definitions/TIMESTAMP" }
+        "caseCompleted": { "$ref": "#/definitions/TIMESTAMP_LOGFILE" }
       }, "require": ["caseStarted", "caseClosed"]
     },
     "usedPreopData": { "type": "boolean" },
@@ -119,6 +119,18 @@
     "TIMESTAMP_LIST": {
       "type": "array",
       "items": { "$ref": "#/definitions/TIMESTAMP" }
+    },
+    "TIMESTAMP_LOGFILE_LIST": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/TIMESTAMP_LOGFILE" }
+    },
+    "TIMESTAMP_LOGFILE": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "time": { "$ref": "#/definitions/TIMESTAMP" },
+        "logfile": { "type": "string" }
+      }, "required": ["time", "logfile"]
     }
   }
 }

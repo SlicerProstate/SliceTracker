@@ -6,7 +6,12 @@
   "zFrameTransform": "2-ZFrameTransform.h5",
   "procedureEvents": {
     "caseStarted": "2017-03-07T15:23:20.38Z",
-    "caseClosed": ["2017-03-07T16:33:20.38Z"]
+    "caseClosed": [
+      {
+        "time": "2017-03-07T16:33:20.38Z",
+        "logfile": "Slicer_25707_20170308_144138.log"
+      }
+    ]
   },
   "results": [
     {

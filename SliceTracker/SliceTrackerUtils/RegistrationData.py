@@ -1,6 +1,7 @@
 import logging
 import slicer, vtk
 import os, json
+import shutil
 from collections import OrderedDict
 
 from SlicerProstateUtils.constants import FileExtension
@@ -48,7 +49,7 @@ class RegistrationResults(ModuleLogicMixin):
   @completed.setter
   def completed(self, value):
     self._completed = value
-    self.completedTimeStamp = self.getTime() if self._completed else None
+    self.completedLogTimeStamp = self.generateLogfileTimeStampDict() if self._completed else None
 
   @property
   def resumed(self):
@@ -67,7 +68,7 @@ class RegistrationResults(ModuleLogicMixin):
   def resetAndInitializeData(self):
     self.startTimeStamp = self.getTime()
     self.resumeTimeStamps = []
-    self.closedTimeStamps = []
+    self.closedLogTimeStamps = []
 
     self.completed = False
     self.usePreopData = False
@@ -109,9 +110,9 @@ class RegistrationResults(ModuleLogicMixin):
         self.startTimeStamp = procedureEvents["caseStarted"]
         self.completed = "caseCompleted" in procedureEvents.keys()
         if self.completed:
-          self.completedTimeStamp = procedureEvents["caseCompleted"]
+          self.completedLogTimeStamp = procedureEvents["caseCompleted"]
         if "caseClosed" in procedureEvents.keys():
-          self.closedTimeStamps = procedureEvents["caseClosed"]
+          self.closedLogTimeStamps = procedureEvents["caseClosed"]
         if "caseResumed" in procedureEvents.keys():
           self.resumeTimeStamps = procedureEvents["caseResumed"]
 
@@ -188,14 +189,25 @@ class RegistrationResults(ModuleLogicMixin):
       self.alreadyLoadedFileNames[filename] = data
     return data
 
+  def generateLogfileTimeStampDict(self):
+    return {
+      "time": self.getTime(),
+      "logfile": os.path.basename(self.getSlicerErrorLogPath())
+    }
+
   def save(self, outputDir):
     if not self.completed:
-      self.closedTimeStamps.append(self.getTime())
+      self.closedLogTimeStamps.append(self.generateLogfileTimeStampDict())
+
     if not os.path.exists(outputDir):
       self.createDirectory(outputDir)
 
     successfullySavedFileNames = []
     failedSaveOfFileNames = []
+
+    logFilePath = self.getSlicerErrorLogPath()
+    shutil.copy(logFilePath, os.path.join(outputDir, os.path.basename(logFilePath)))
+    successfullySavedFileNames.append(os.path.join(outputDir, os.path.basename(logFilePath)))
 
     def saveIntraopSegmentation():
       if self.intraopLabel:
@@ -248,12 +260,12 @@ class RegistrationResults(ModuleLogicMixin):
       procedureEvents = {
         "caseStarted": self.startTimeStamp,
       }
-      if len(self.closedTimeStamps):
-        procedureEvents["caseClosed"] = self.closedTimeStamps
+      if len(self.closedLogTimeStamps):
+        procedureEvents["caseClosed"] = self.closedLogTimeStamps
       if len(self.resumeTimeStamps):
         procedureEvents["caseResumed"] = self.resumeTimeStamps
       if self.completed:
-        procedureEvents["caseCompleted"] = self.completedTimeStamp
+        procedureEvents["caseCompleted"] = self.completedLogTimeStamp
       data["procedureEvents"] = procedureEvents
 
     addProcedureEvents()
