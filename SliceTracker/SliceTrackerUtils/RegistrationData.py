@@ -15,6 +15,8 @@ class RegistrationResults(ModuleLogicMixin):
 
   DEFAULT_JSON_FILE_NAME = "results.json"
 
+  _completed = False
+
   @property
   def activeResult(self):
     # TODO: active result should be in session...
@@ -38,13 +40,22 @@ class RegistrationResults(ModuleLogicMixin):
     # TODO: should it always return the most recent approved cover prostate segmentation?
     return self.getMostRecentApprovedCoverProstateRegistration().labels.fixed
 
+  @property
+  def completed(self):
+    return self._completed
+
+  @completed.setter
+  def completed(self, value):
+    self._completed = value
+    self.completedTimeStamp = self.getTime() if self._completed else None
+
   def __init__(self):
-    self.startTimeStamp = self.getTime()
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
-    self.startTimeStamp = None
-    self.endTimeStamp = None
+    self.startTimeStamp = self.getTime()
+    self.resumeTimeStamps = []
+    self.closedTimeStamps = []
 
     self.completed = False
     self.usePreopData = False
@@ -80,12 +91,22 @@ class RegistrationResults(ModuleLogicMixin):
     with open(filename) as data_file:
       logging.info("reading json file %s" % filename)
       data = json.load(data_file)
-      self.completed = data["completed"]
+
+      def readProcedureEvents():
+        procedureEvents = data["procedureEvents"]
+        self.startTimeStamp = procedureEvents["caseStarted"]
+        self.completed = "caseCompleted" in procedureEvents.keys()
+        if self.completed:
+          self.completedTimeStamp = procedureEvents["caseCompleted"]
+        if "caseClosed" in procedureEvents.keys():
+          self.closedTimeStamps = procedureEvents["caseClosed"]
+        if "caseResumed" in procedureEvents.keys():
+          self.resumeTimeStamps = procedureEvents["caseResumed"]
+
+      readProcedureEvents()
+
       self.usePreopData = data["usedPreopData"]
       self.biasCorrectionDone = data["biasCorrected"]
-
-      self.startTimeStamp = data["startTime"]
-      self.endTimeStamp = data["endTime"]
 
       self.initialTargets = self._loadOrGetFileData(directory,
                                                     data["initialTargets"], slicer.util.loadMarkupsFiducialList)
@@ -156,7 +177,8 @@ class RegistrationResults(ModuleLogicMixin):
     return data
 
   def save(self, outputDir):
-    self.endTimeStamp = self.getTime()
+    if not self.completed:
+      self.closedTimeStamps.append(self.getTime())
     if not os.path.exists(outputDir):
       self.createDirectory(outputDir)
 
@@ -205,13 +227,25 @@ class RegistrationResults(ModuleLogicMixin):
     saveIntraopSegmentation()
 
     data = {
-      "startTime": self.startTimeStamp,
-      "endTime": self.endTimeStamp,
-      "completed": self.completed,
       "usedPreopData": self.usePreopData,
       "biasCorrected": self.biasCorrectionDone,
       "results": createResultsList()
     }
+
+    def addProcedureEvents():
+      procedureEvents = {
+        "caseStarted": self.startTimeStamp,
+      }
+      if len(self.closedTimeStamps):
+        procedureEvents["caseClosed"] = self.closedTimeStamps
+      if len(self.resumeTimeStamps):
+        procedureEvents["caseResumed"] = self.resumeTimeStamps
+      if self.completed:
+        procedureEvents["caseCompleted"] = self.completedTimeStamp
+      data["procedureEvents"] = procedureEvents
+
+    addProcedureEvents()
+
     if self.zFrameTransform:
       data["zFrameTransform"] = saveZFrameTransformation() # TODO: filename
 

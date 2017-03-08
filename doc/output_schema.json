@@ -3,17 +3,24 @@
   "$schema": "http://json-schema.org/draft-04/schema#",
   "additionalProperties": false,
   "properties": {
-    "completed": { "type": "boolean" },
+    "procedureEvents": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "caseStarted": { "$ref": "#/definitions/TIMESTAMP" },
+        "caseClosed": { "$ref": "#/definitions/TIMESTAMP_LIST" },
+        "caseResumed": { "$ref": "#/definitions/TIMESTAMP_LIST" },
+        "caseCompleted": { "$ref": "#/definitions/TIMESTAMP" }
+      }, "require": ["caseStarted", "caseClosed"]
+    },
     "usedPreopData": { "type": "boolean" },
     "biasCorrected": { "type": "boolean" },
     "initialVolume": { "type": "string" },
     "initialTargets": { "type": "string" },
-    "startTime": { "$ref": "#/definitions/TIMESTAMP" },
-    "endTime": { "$ref": "#/definitions/TIMESTAMP" },
     "zFrameTransform": { "$ref": "#/definitions/TRANSFORM_FILE" },
     "results": { "$ref": "#/definitions/RESULTS" }
   },
-  "required": ["completed", "usedPreopData", "initialVolume", "zFrameTransform", "results", "startTime", "endTime"],
+  "required": ["procedureEvents", "usedPreopData", "initialVolume", "zFrameTransform", "results"],
   "definitions": {
     "RESULTS": {
       "type": "array",
@@ -108,6 +115,10 @@
     "TIMESTAMP": {
       "type": "string",
       "format": "date-time"
+    },
+    "TIMESTAMP_LIST": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/TIMESTAMP" }
     }
   }
 }

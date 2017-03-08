@@ -5,10 +5,12 @@ package "RegistrationResults" #DDDDDD {
   class RegistrationResults {
     .. properties ..
     + activeResult
+    + completed
     __
     + startTimeStamp: localtime
-    + endTimeStamp: localtime
-    + completed: boolean
+    + resumeTimeStamps: list(localtime)
+    + closedTimeStamps: list(localtime)
+    * completedTimeStamp
     + usePreopData: boolean
     + biasCorrectionDone: boolean
 
