@@ -48,4 +48,6 @@ class RegistrationResultsTest(unittest.TestCase):
     self.registrationResults.load(inputFileName)
 
   def test_Writing_json(self):
+    self.registrationResults.resumed = True
+    self.registrationResults.completed = True
     self.registrationResults.save(tempDir)

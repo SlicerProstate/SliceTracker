@@ -16,6 +16,7 @@ class RegistrationResults(ModuleLogicMixin):
   DEFAULT_JSON_FILE_NAME = "results.json"
 
   _completed = False
+  _resumed = False
 
   @property
   def activeResult(self):
@@ -48,6 +49,17 @@ class RegistrationResults(ModuleLogicMixin):
   def completed(self, value):
     self._completed = value
     self.completedTimeStamp = self.getTime() if self._completed else None
+
+  @property
+  def resumed(self):
+    return self._resumed
+
+  @resumed.setter
+  def resumed(self, value):
+    assert not self.completed
+    self._resumed = value
+    if self._resumed:
+      self.resumeTimeStamps.append(self.getTime())
 
   def __init__(self):
     self.resetAndInitializeData()

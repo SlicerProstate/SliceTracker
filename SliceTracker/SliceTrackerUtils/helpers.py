@@ -236,6 +236,7 @@ class SliceTrackerSession(Singleton, SessionBase):
     self.close(save=True)
 
   def load(self):
+    # TODO If case can be resumed !completed the user should be notified if he/she wants to do that. Otherwise readonly.
     filename = os.path.join(self.directory, SliceTrackerConstants.JSON_FILENAME)
     if not os.path.exists(filename):
       return
