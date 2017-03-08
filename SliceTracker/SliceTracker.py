@@ -54,6 +54,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     slicer.app.connect('aboutToQuit()', self.onSlicerQuits)
 
   def onSlicerQuits(self):
+    if self.session.isRunning():
+      if slicer.util.confirmYesNoDisplay("Case is still running! Slicer is about to be closed. Do you want to mark the "
+                                         "current case as completed? Otherwise it will only be closed and can be "
+                                         "resumed at a later time"):
+        self.session.complete()
+      else:
+        self.session.close(save=True)
     self.clearData()
 
   def enter(self):

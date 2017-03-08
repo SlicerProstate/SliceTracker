@@ -233,7 +233,7 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   def complete(self):
     self.regResults.completed = True
-    self.close()
+    self.close(save=True)
 
   def load(self):
     filename = os.path.join(self.directory, SliceTrackerConstants.JSON_FILENAME)
