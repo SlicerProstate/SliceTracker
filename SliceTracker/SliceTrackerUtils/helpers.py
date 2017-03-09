@@ -9,7 +9,7 @@ from RegistrationData import RegistrationResults, RegistrationResult
 from constants import SliceTrackerConstants
 
 import ctk, vtk, qt, slicer
-import os, logging
+import os, logging, shutil
 import datetime
 
 from abc import abstractmethod, ABCMeta
@@ -114,6 +114,9 @@ class SessionBase(ModuleLogicMixin):
     if value:
       if not os.path.exists(value):
         self.createDirectory(value)
+    elif not value and self._directory:
+      if self.getDirectorySize(self._directory) == 0:
+        shutil.rmtree(self.directory)
     self._directory = value
     self.invokeEvent(self.DirectoryChangedEvent, self.directory)
 
@@ -233,7 +236,6 @@ class SliceTrackerSession(Singleton, SessionBase):
   def close(self, save=False):
     if save:
       self.save()
-    self.directory = None
     self.invokeEvent(self.CloseCaseEvent)
     self.resetAndInitializeMembers()
 
