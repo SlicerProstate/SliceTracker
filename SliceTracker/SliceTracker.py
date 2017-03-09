@@ -205,18 +205,18 @@ class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
     if self.session.data.completed:
       return False
     if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
-      if self.getSetting("NEEDLE_IMAGE", moduleName=self.MODULE_NAME) in series:
+      if self.getSetting("NEEDLE_IMAGE") in series:
         return self.session.data.getMostRecentApprovedCoverProstateRegistration() or not self.session.data.usePreopData
-      elif self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME) in series:
+      elif self.getSetting("COVER_PROSTATE") in series:
         return self.session.zFrameRegistrationSuccessful
-      elif self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in series:
+      elif self.getSetting("COVER_TEMPLATE") in series:
         return not self.session.zFrameRegistrationSuccessful # TODO: Think about this
     return False
 
   def isInGeneralTrackable(self, series):
-    return self.isAnyListItemInString(series, [self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME),
-                                               self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME),
-                                               self.getSetting("NEEDLE_IMAGE", moduleName=self.MODULE_NAME)])
+    return self.isAnyListItemInString(series, [self.getSetting("COVER_TEMPLATE"),
+                                               self.getSetting("COVER_PROSTATE"),
+                                               self.getSetting("NEEDLE_IMAGE")])
 
   def isAnyListItemInString(self, string, listItem):
     return any(item in string for item in listItem)
@@ -253,7 +253,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       exists = os.path.exists(path)
     except TypeError:
       exists = False
-    self.setSetting('CasesRootLocation', path if exists else None, moduleName=self.MODULE_NAME)
+    self.setSetting('CasesRootLocation', path if exists else None)
     self.casesRootDirectoryButton.text = self.truncatePath(path) if exists else "Choose output directory"
     self.casesRootDirectoryButton.toolTip = path
     self.openCaseButton.enabled = exists
@@ -378,14 +378,14 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
     if volume:
       if not self.session.zFrameRegistrationSuccessful and \
-          self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in self.intraopSeriesSelector.currentText:
+          self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
         logging.info("Opening ZFrameRegistrationStep")
         # self.openZFrameRegistrationStep(volume)
         return
       # else:
       #   if self.currentResult is None or \
       #      self.session.data.getMostRecentApprovedCoverProstateRegistration() is None or \
-      #      self.logic.retryMode or self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME) in self.intraopSeriesSelector.currentText:
+      #      self.logic.retryMode or self.getSetting("COVER_PROSTATE") in self.intraopSeriesSelector.currentText:
       #     self.openSegmentationStep(volume)
       #   else:
       #     self.repeatRegistrationForCurrentSelection(volume)
@@ -537,8 +537,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageDataReceived(self, caller, event, callData):
     # self.customStatusProgressBar.text = "New image data has been received."
-    newFileList = ast.literal_eval(callData)
-    seriesNumberPatientIDs = self.getAllNewSeriesNumbersIncludingPatientIDs(newFileList)
+    seriesNumberPatientIDs = self.getAllNewSeriesNumbersIncludingPatientIDs(ast.literal_eval(callData))
     if self.session.data.usePreopData:
       newSeriesNumbers = self.verifyPatientIDEquality(seriesNumberPatientIDs)
     else:
@@ -548,7 +547,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if selectedSeries != "" and self.logic.isTrackingPossible(selectedSeries):
       selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
       if not self.session.zFrameRegistrationSuccessful and \
-          self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in selectedSeries and \
+          self.getSetting("COVER_TEMPLATE") in selectedSeries and \
           selectedSeriesNumber in newSeriesNumbers:
         self.onTrackTargetsButtonClicked()
         return
@@ -570,7 +569,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.seriesModel.appendRow(sItem)
       color = COLOR.YELLOW
       if self.session.data.registrationResultWasApproved(series) or \
-        (self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in series and
+        (self.getSetting("COVER_TEMPLATE") in series and
            self.session.zFrameRegistrationSuccessful):
         color = COLOR.GREEN
       elif self.session.data.registrationResultWasSkipped(series):
@@ -585,10 +584,10 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def selectMostRecentEligibleSeries(self):
     if not self.active:
       self.intraopSeriesSelector.blockSignals(True)
-    substring = self.getSetting("NEEDLE_IMAGE", moduleName=self.MODULE_NAME)
+    substring = self.getSetting("NEEDLE_IMAGE")
     index = -1
     if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
-      substring = self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) \
+      substring = self.getSetting("COVER_TEMPLATE") \
         if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
     for item in list(reversed(range(len(self.session.seriesList)))):
       series = self.seriesModel.item(item).text()
@@ -599,7 +598,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
             break
         index = self.intraopSeriesSelector.findText(series)
         break
-      elif self.getSetting("VIBE_IMAGE", moduleName=self.MODULE_NAME) in series and index == -1:
+      elif self.getSetting("VIBE_IMAGE") in series and index == -1:
         index = self.intraopSeriesSelector.findText(series)
     rowCount = self.intraopSeriesSelector.model().rowCount()
     self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))

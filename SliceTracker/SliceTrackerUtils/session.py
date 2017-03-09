@@ -255,7 +255,6 @@ class SliceTrackerSession(Singleton, SessionBase):
 
     eligibleSeriesFiles = []
     for currentIndex, currentFile in enumerate(newFileList, start=1):
-      # TODO: add statusbar
       self.invokeEvent(SlicerProstateEvents.NewFileIndexedEvent,
                        ["Indexing file %s" % currentFile, len(newFileList), currentIndex].__str__())
       slicer.app.processEvents()

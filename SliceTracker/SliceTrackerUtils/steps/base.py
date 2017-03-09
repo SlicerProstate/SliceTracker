@@ -5,13 +5,23 @@ from abc import ABCMeta, abstractmethod
 from ..session import SliceTrackerSession
 
 from SlicerProstateUtils.decorators import logmethod
-from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
+from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin, GeneralModuleMixin
 
 
-class SliceTrackerStepLogic(ModuleLogicMixin):
+class StepBase(GeneralModuleMixin):
+
+  MODULE_NAME = "SliceTracker"
+
+  def getSetting(self, setting, moduleName=None, default=None):
+    return GeneralModuleMixin.getSetting(self, setting, moduleName=self.MODULE_NAME, default=default)
+
+  def setSetting(self, setting, value, moduleName=None):
+    return GeneralModuleMixin.setSetting(self, setting, value, moduleName=self.MODULE_NAME)
+
+
+class SliceTrackerStepLogic(StepBase, ModuleLogicMixin):
 
   __metaclass__ = ABCMeta
-  MODULE_NAME = "SliceTracker"
 
   def __init__(self):
     self.session = SliceTrackerSession()
@@ -21,14 +31,12 @@ class SliceTrackerStepLogic(ModuleLogicMixin):
     pass
 
 
-class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
+class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   ActivatedEvent = vtk.vtkCommand.UserEvent + 150
   DeactivatedEvent = vtk.vtkCommand.UserEvent + 151
 
   NAME = None
-  MODULE_NAME = "SliceTracker"
-
   LogicClass = None
 
   @property
