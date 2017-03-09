@@ -1,7 +1,7 @@
 import unittest
-import os, inspect
-from SliceTrackerUtils.helpers import SliceTrackerSession
-from SliceTrackerUtils.RegistrationData import *
+import os, inspect, slicer
+from SliceTrackerUtils.session import SliceTrackerSession
+from SliceTrackerUtils.sessionData import SessionData
 
 __all__ = ['SliceTrackerSessionTests', 'RegistrationResultsTest']
 
@@ -36,7 +36,7 @@ class RegistrationResultsTest(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls):
-    cls.registrationResults = RegistrationResults()
+    cls.registrationResults = SessionData()
 
   def runTest(self):
     self.test_Reading_json()

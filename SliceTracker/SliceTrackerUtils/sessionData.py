@@ -9,7 +9,7 @@ from SlicerProstateUtils.mixins import ModuleLogicMixin
 from SlicerProstateUtils.decorators import onExceptionReturnNone, logmethod
 
 
-class RegistrationResults(ModuleLogicMixin):
+class SessionData(ModuleLogicMixin):
 
   # TODO: add events
   ActiveResultChangedEvent = vtk.vtkCommand.UserEvent + 234

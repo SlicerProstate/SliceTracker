@@ -2,7 +2,7 @@ import argparse, sys, os, logging
 import qt, slicer
 from slicer.ScriptedLoadableModule import *
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
-from SliceTrackerUtils.RegistrationData import RegistrationResult
+from SliceTrackerUtils.sessionData import *
 from SliceTrackerUtils.constants import SliceTrackerConstants
 from SlicerProstateUtils.decorators import onReturnProcessEvents
 

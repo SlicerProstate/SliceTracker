@@ -39,7 +39,14 @@ package "SliceTrackerSteps" #DDDDDD {
 
   class SliceTrackerOverviewStep {
     + onLayoutChanged()
+    + trainingsWidget
   }
+
+  class SliceTrackerTrainingStep {
+  }
+
+  SliceTrackerTrainingStep <.. SliceTrackerOverviewStep::traningsWidget
+
 
   class SliceTrackerSegmentationStep {
     + onLayoutChanged()

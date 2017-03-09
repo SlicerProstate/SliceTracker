@@ -5,13 +5,16 @@ set(MODULE_NAME SliceTracker)
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   SliceTrackerUtils/__init__.py
+  SliceTrackerUtils/steps/__init__.py
+  SliceTrackerUtils/steps/base.py
+  SliceTrackerUtils/steps/training.py
   SliceTrackerUtils/configuration.py
   SliceTrackerUtils/constants.py
   SliceTrackerUtils/exceptions.py
-  SliceTrackerUtils/RegistrationData.py
+  SliceTrackerUtils/session.py
+  SliceTrackerUtils/sessionData.py
   SliceTrackerUtils/ZFrameRegistration.py
   SliceTrackerUtils/helpers.py
-  SliceTrackerUtils/watch.py
   )
 
 set(MODULE_PYTHON_RESOURCES

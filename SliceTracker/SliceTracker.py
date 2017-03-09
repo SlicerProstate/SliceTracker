@@ -1,22 +1,21 @@
-import ctk, vtk, qt
 import logging
-from slicer.ScriptedLoadableModule import *
+import ctk, qt, vtk, slicer
+
+from SliceTrackerUtils.steps.base import SliceTrackerStepLogic, SliceTrackerStep
+from SliceTrackerUtils.steps.training import SliceTrackerTrainingStep
+from SliceTrackerUtils.configuration import SliceTrackerConfiguration
+from SliceTrackerUtils.constants import SliceTrackerConstants
+from SliceTrackerUtils.exceptions import PreProcessedDataError
+from SliceTrackerUtils.session import SliceTrackerSession
 
 from SlicerProstateUtils.buttons import *
 from SlicerProstateUtils.constants import DICOMTAGS
+from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
 from SlicerProstateUtils.helpers import TargetCreationWidget
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SlicerProstateUtils.mixins import ModuleWidgetMixin
-from SlicerProstateUtils.decorators import logmethod
 
-from SliceTrackerUtils.constants import SliceTrackerConstants
-from SliceTrackerUtils.ZFrameRegistration import *
-from SliceTrackerUtils.configuration import SliceTrackerConfiguration
-from SliceTrackerUtils.exceptions import PreProcessedDataError
-
-from SliceTrackerUtils.helpers import SliceTrackerSession
-from SliceTrackerUtils.SliceTrackerTrainingStep import SliceTrackerTrainingStep
-from SlicerProstateUtils.decorators import onReturnProcessEvents
+from slicer.ScriptedLoadableModule import *
 
 
 class SliceTracker(ScriptedLoadableModule):
@@ -32,9 +31,6 @@ class SliceTracker(ScriptedLoadableModule):
                                           Medical School, Boston, USA This work was supported in part by the National
                                           Institutes of Health through grants U24 CA180918,
                                           R01 CA111288 and P41 EB015898."""
-
-
-from SliceTrackerUtils.helpers import SliceTrackerStep, SliceTrackerStepLogic
 
 
 class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoadableModuleWidget):
