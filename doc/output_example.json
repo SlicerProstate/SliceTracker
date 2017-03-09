@@ -130,7 +130,8 @@
         "fixed": "9-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd"
       }
     },
-    { "name": "10: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0_Retry_1",
+    {
+      "name": "10: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0_Retry_1",
       "receivedTime": "2017-03-07T15:53:20.38Z",
       "status": {
         "state": "approved",

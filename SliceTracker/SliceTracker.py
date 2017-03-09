@@ -47,6 +47,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     #   TODO set logic instances here
 
     self.session = SliceTrackerSession()
+    self.session.steps = []
     self.session.addEventObserver(self.session.CloseCaseEvent, lambda caller, event: self.cleanup())
 
     self.demoMode = False
@@ -72,8 +73,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def exit(self):
     pass
 
+  def onReload(self):
+    ScriptedLoadableModuleWidget.onReload(self)
+
   @logmethod(logging.DEBUG)
   def cleanup(self):
+    ScriptedLoadableModuleWidget.cleanup(self)
     self.patientWatchBox.sourceFile = None
     self.intraopWatchBox.sourceFile = None
 
@@ -177,7 +182,6 @@ class SliceTrackerTabWidget(qt.QTabWidget):
     self.session.steps[index].active = True
 
 from SliceTrackerUtils.helpers import NewCaseSelectionNameWidget
-from SlicerProstateUtils.helpers import IncomingDataWindow
 
 
 class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
@@ -212,7 +216,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def __init__(self):
     super(SliceTrackerOverviewStep, self).__init__()
-    self.preopDICOMReceiver = None
     self.caseRootDir = self.getSetting('CasesRootLocation', self.MODULE_NAME)
 
   def cleanup(self):
@@ -228,7 +231,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.completeCaseButton.enabled = False
     self.trackTargetsButton.setEnabled(False)
     self.caseWatchBox.reset()
-    self.resetPreopDICOMReceiver()
     self.session.close(save=False)
     # slicer.mrmlScene.Clear(0)
     # self.updateIntraopSeriesSelectorTable()
@@ -345,14 +347,24 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onCreateNewCaseButtonClicked(self):
     if not self.checkAndWarnUserIfCaseInProgress():
       return
-    self.session.clearData()
     self.caseDialog = NewCaseSelectionNameWidget(self.caseRootDir)
     selectedButton = self.caseDialog.exec_()
     if selectedButton == qt.QMessageBox.Ok:
       self.session.createNewCase(self.caseDialog.newCaseDirectory)
       self.updateCaseWatchBox()
-      self.startPreopDICOMReceiver()
+      self.observePreopDICOMReceiverEvents()
       self.simulatePreopPhaseButton.enabled = True
+      self.closeCaseButton.enabled = True
+
+  def observePreopDICOMReceiverEvents(self):
+    preopDICOMReceiver = self.session.preopDICOMReceiver
+    if preopDICOMReceiver:
+      preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataSkippedEvent, self.continueWithoutPreopData)
+      preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
+                                          lambda caller, event: self.clearData())
+      preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+                                          self.startPreProcessingPreopData)
+
 
   def updateCaseWatchBox(self):
     self.caseWatchBox.setInformation("CurrentCaseDirectory", os.path.relpath(self.session.directory, self.caseRootDir),
@@ -373,35 +385,11 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         return False
     return True
 
-  def startPreopDICOMReceiver(self):
-    self.resetPreopDICOMReceiver()
-    self.preopDICOMReceiver = IncomingDataWindow(incomingDataDirectory=self.session.preopDICOMDirectory,
-                                                 skipText="No preoperative images available")
-    self.preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
-                                             self.continueWithoutPreopData)
-    self.preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
-                                             lambda caller, event: self.clearData())
-    self.preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
-                                             self.startPreProcessingPreopData)
-    self.preopDICOMReceiver.show()
-
-  def resetPreopDICOMReceiver(self):
-    if self.preopDICOMReceiver:
-      self.preopDICOMReceiver.hide()
-      self.preopDICOMReceiver.removeEventObservers()
-      self.preopDICOMReceiver = None
-
   def continueWithoutPreopData(self, caller, event):
-    self.session.regResults.usePreopData = False
-    self.resetPreopDICOMReceiver()
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = True
-    self.session.startIntraopDICOMReceiver()
 
   def startPreProcessingPreopData(self, caller=None, event=None):
-    self.session.regResults.usePreopData = True
-    self.resetPreopDICOMReceiver()
-    self.session.startIntraopDICOMReceiver()
     if self.invokePreProcessing():
       self.startMpReview()
     else:
