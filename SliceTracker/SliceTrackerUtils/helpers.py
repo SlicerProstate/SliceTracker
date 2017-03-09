@@ -57,9 +57,9 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
 
   def __init__(self):
     qt.QWidget.__init__(self)
-    assert self.LogicClass is not None, "Logic class for each SliceTrackerStep needs to be implemented"
     self.session = SliceTrackerSession()
-    self.logic = self.LogicClass()
+    if self.LogicClass:
+      self.logic = self.LogicClass()
     self.setLayout(qt.QGridLayout())
     self.setup()
     self.setupConnections()
@@ -68,10 +68,13 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
   def setupSessionObservers(self):
     self.session.addEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
     self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
+    self.session.addEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
 
   def removeSessionEventObservers(self):
     self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
     self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
+    self.session.removeEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
+
 
   @logmethod(logging.INFO)
   def onNewCaseStarted(self, caller, event):
@@ -79,6 +82,10 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
 
   @logmethod(logging.INFO)
   def onCaseClosed(self, caller, event):
+    pass
+
+  @logmethod(logging.INFO)
+  def onIncomingDataSkipped(self, caller, event):
     pass
 
   def __del__(self):
@@ -144,7 +151,9 @@ class Singleton(object):
 class SliceTrackerSession(Singleton, SessionBase):
 
   # TODO: implement events that are invoked once data changes so that underlying steps can react to it
-  IncomingDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent
+  IncomingDataSkippedEvent = SlicerProstateEvents.IncomingDataSkippedEvent
+  IncomingPreopDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent + 110
+  IncomingIntraopDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent + 111
   DICOMReceiverStatusChanged = SlicerProstateEvents.StatusChangedEvent
   DICOMReceiverStoppedEvent = SlicerProstateEvents.DICOMReceiverStoppedEvent
 
@@ -223,17 +232,18 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   def createNewCase(self, destination):
     # TODO: self.continueOldCase = False
-    # TODO: make directory structure flexible
     self.resetAndInitializeMembers()
     self.directory = destination
     self.createDirectory(self.preopDICOMDirectory)
     self.createDirectory(self.intraopDICOMDirectory)
     self.createDirectory(self.preprocessedDirectory)
     self.createDirectory(self.outputDirectory)
-    self.invokeEvent(self.NewCaseStartedEvent)
     self.startPreopDICOMReceiver()
+    self.invokeEvent(self.NewCaseStartedEvent)
 
   def close(self, save=False):
+    if not self.isRunning():
+      return
     if save:
       self.save()
     self.invokeEvent(self.CloseCaseEvent)
@@ -271,7 +281,7 @@ class SliceTrackerSession(Singleton, SessionBase):
     self.preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
                                              self.onSkippingPreopDataReception)
     self.preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
-                                             lambda caller, event: self.clearData())
+                                             lambda caller, event: self.close())
     self.preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
                                              self.onPreopDataReceptionFinished)
     self.preopDICOMReceiver.show()
@@ -280,11 +290,13 @@ class SliceTrackerSession(Singleton, SessionBase):
     self.regResults.usePreopData = False
     self.resetPreopDICOMReceiver()
     self.startIntraopDICOMReceiver()
+    self.invokeEvent(self.IncomingDataSkippedEvent)
 
   def onPreopDataReceptionFinished(self, caller, event):
     self.regResults.usePreopData = True
     self.resetPreopDICOMReceiver()
     self.startIntraopDICOMReceiver()
+    self.invokeEvent(self.IncomingPreopDataReceiveFinishedEvent)
 
   def resetPreopDICOMReceiver(self):
     if self.preopDICOMReceiver:

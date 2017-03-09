@@ -48,6 +48,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
     self.session = SliceTrackerSession()
     self.session.steps = []
+    self.session.removeEventObservers()
     self.session.addEventObserver(self.session.CloseCaseEvent, lambda caller, event: self.cleanup())
 
     self.demoMode = False
@@ -219,19 +220,16 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.caseRootDir = self.getSetting('CasesRootLocation', self.MODULE_NAME)
 
   def cleanup(self):
-    self.simulatePreopPhaseButton.enabled = False
-    self.simulateIntraopPhaseButton.enabled = False
     self.seriesModel.clear()
     self.trackTargetsButton.setEnabled(False)
 
   @logmethod(logging.DEBUG)
   def clearData(self):
-    self.simulatePreopPhaseButton.enabled = False
-    self.simulateIntraopPhaseButton.enabled = False
     self.completeCaseButton.enabled = False
     self.trackTargetsButton.setEnabled(False)
     self.caseWatchBox.reset()
-    self.session.close(save=False)
+    self.closeCaseButton.enabled = False
+    # self.session.close(save=False)
     # slicer.mrmlScene.Clear(0)
     # self.updateIntraopSeriesSelectorTable()
     # self.updateIntraopSeriesSelectorColor(None)
@@ -250,7 +248,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setup(self):
     self.setupCaseInformationArea()
-    self.setupTrainingSectionUIElements()
+    self.trainingWidget = SliceTrackerTrainingStep()
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series",
@@ -266,7 +264,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.layout().addWidget(self.collapsibleDirectoryConfigurationArea, 0, 0, 1, 2)
     self.layout().addWidget(self.createNewCaseButton, 1, 0)
     self.layout().addWidget(self.openCaseButton, 1, 1)
-    self.layout().addWidget(self.collapsibleTrainingArea, 2, 0, 1, 2)
+    self.layout().addWidget(self.trainingWidget, 2, 0, 1, 2)
     self.layout().addWidget(self.targetTable, 3, 0, 1, 2)
     self.layout().addWidget(self.intraopSeriesSelector, 4, 0)
     self.layout().addWidget(self.skipIntraopSeriesButton, 4, 1)
@@ -297,18 +295,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
                            WatchBoxAttribute('mpReviewDirectory', 'mpReview Directory: ')]
     self.caseWatchBox = BasicInformationWatchBox(watchBoxInformation, title="Current Case")
 
-  def setupTrainingSectionUIElements(self):
-    self.collapsibleTrainingArea = ctk.ctkCollapsibleButton()
-    self.collapsibleTrainingArea.collapsed = True
-    self.collapsibleTrainingArea.text = "Training"
-
-    self.simulatePreopPhaseButton = self.createButton("Simulate preop phase", enabled=False)
-    self.simulateIntraopPhaseButton = self.createButton("Simulate intraop phase", enabled=False)
-
-    self.trainingsAreaLayout = qt.QGridLayout(self.collapsibleTrainingArea)
-    self.trainingsAreaLayout.addWidget(self.createHLayout([self.simulatePreopPhaseButton,
-                                                           self.simulateIntraopPhaseButton]))
-
   def setupTargetsTable(self):
     self.targetTable = qt.QTableView()
     self.targetTable.setSelectionBehavior(qt.QTableView.SelectItems)
@@ -335,14 +321,20 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.casesRootDirectoryButton.directoryChanged.connect(lambda: setattr(self, "caseRootDir",
                                                                            self.casesRootDirectoryButton.directory))
     self.openCaseButton.clicked.connect(self.onOpenCaseButtonClicked)
-    # self.closeCaseButton.clicked.connect(self.clearData)
+    self.closeCaseButton.clicked.connect(self.session.close)
     # self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
     # self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
     # self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
-    # self.simulatePreopPhaseButton.clicked.connect(self.startPreopPhaseSimulation)
-    # self.simulateIntraopPhaseButton.clicked.connect(self.startIntraopPhaseSimulation)
     # self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.onIntraopSeriesSelectionChanged)
     # self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
+
+  def setupSessionObservers(self):
+    super(SliceTrackerOverviewStep, self).setupSessionObservers()
+    self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
+
+  def removeSessionEventObservers(self):
+    SliceTrackerStep.removeSessionEventObservers(self)
+    self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
 
   def onCreateNewCaseButtonClicked(self):
     if not self.checkAndWarnUserIfCaseInProgress():
@@ -352,19 +344,11 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if selectedButton == qt.QMessageBox.Ok:
       self.session.createNewCase(self.caseDialog.newCaseDirectory)
       self.updateCaseWatchBox()
-      self.observePreopDICOMReceiverEvents()
-      self.simulatePreopPhaseButton.enabled = True
       self.closeCaseButton.enabled = True
 
-  def observePreopDICOMReceiverEvents(self):
-    preopDICOMReceiver = self.session.preopDICOMReceiver
-    if preopDICOMReceiver:
-      preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataSkippedEvent, self.continueWithoutPreopData)
-      preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
-                                          lambda caller, event: self.clearData())
-      preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
-                                          self.startPreProcessingPreopData)
-
+  @logmethod(logging.INFO)
+  def onCaseClosed(self, caller, event):
+    self.clearData()
 
   def updateCaseWatchBox(self):
     self.caseWatchBox.setInformation("CurrentCaseDirectory", os.path.relpath(self.session.directory, self.caseRootDir),
@@ -385,11 +369,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         return False
     return True
 
-  def continueWithoutPreopData(self, caller, event):
-    self.simulatePreopPhaseButton.enabled = False
-    self.simulateIntraopPhaseButton.enabled = True
-
-  def startPreProcessingPreopData(self, caller=None, event=None):
+  @logmethod(logging.INFO)
+  def onPreopReceptionFinished(self, caller=None, event=None):
     if self.invokePreProcessing():
       self.startMpReview()
     else:
@@ -417,8 +398,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     #   self.clearData()
     #   return
     self.simulateIntraopPhaseButton.enabled = self.session.trainingMode
-    self.session.startIntraopDICOMReceiver()
-    self.closeCaseButton.enabled = True
     # self.intraopDataDir = self.intraopDICOMDataDirectory
 
   def invokePreProcessing(self):
@@ -448,7 +427,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onOpenCaseButtonClicked(self):
     if not self.checkAndWarnUserIfCaseInProgress():
       return
-    self.session.directory = qt.QFileDialog.getExistingDirectory(self.parent.window(), "Select Case Directory", self.caseRootDir) # TODO: move caseRootDir to session
+    self.session.directory = qt.QFileDialog.getExistingDirectory(self.parent().window(), "Select Case Directory", self.caseRootDir) # TODO: move caseRootDir to session
     if not self.session.directory or not self.session.isCaseDirectoryValid():
       slicer.util.warningDisplay("The selected case directory seems not to be valid", windowTitle="SliceTracker")
       self.clearData()
@@ -470,7 +449,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
           self.clearData()
           return
       else:
-        if len(os.listdir(self.preopDICOMDataDirectory)):
+        if len(os.listdir(self.session.preopDICOMDirectory)):
           self.startPreProcessingPreopData()
         elif len(os.listdir(self.intraopDICOMDataDirectory)):
           self.logic.usePreopData = False
@@ -478,6 +457,108 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         else:
           self.startPreopDICOMReceiver()
     self.configureAllTargetDisplayNodes()
+
+
+import ast, shutil
+from SlicerProstateUtils.helpers import SampleDataDownloader
+
+
+class SliceTrackerTrainingStep(SliceTrackerStep):
+
+  NAME = "Training"
+
+  def __init__(self):
+    self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
+    super(SliceTrackerTrainingStep, self).__init__()
+    self.sampleDownloader = SampleDataDownloader(True)
+    self.setupSessionObservers()
+
+  def setup(self):
+    self.collapsibleTrainingArea = ctk.ctkCollapsibleButton()
+    self.collapsibleTrainingArea.collapsed = True
+    self.collapsibleTrainingArea.text = "Training"
+
+    self.simulatePreopPhaseButton = self.createButton("Simulate preop phase", enabled=False)
+    self.simulateIntraopPhaseButton = self.createButton("Simulate intraop phase", enabled=False)
+
+    self.trainingsAreaLayout = qt.QGridLayout(self.collapsibleTrainingArea)
+    self.trainingsAreaLayout.addWidget(self.createHLayout([self.simulatePreopPhaseButton,
+                                                           self.simulateIntraopPhaseButton]))
+    self.layout().addWidget(self.collapsibleTrainingArea)
+
+  def setupConnections(self):
+    self.simulatePreopPhaseButton.clicked.connect(self.startPreopPhaseSimulation)
+    self.simulateIntraopPhaseButton.clicked.connect(self.startIntraopPhaseSimulation)
+
+  def startPreopPhaseSimulation(self):
+    self.session.trainingMode = True
+    if self.session.preopDICOMReceiver.dicomReceiver.isRunning():
+      self.session.preopDICOMReceiver.dicomReceiver.stopStoreSCP()
+    self.simulatePreopPhaseButton.enabled = False
+    preopZipFile = self.initiateSampleDataDownload(SliceTrackerConstants.PREOP_SAMPLE_DATA_URL)
+    if not self.sampleDownloader.wasCanceled and preopZipFile:
+      self.unzipFileAndCopyToDirectory(preopZipFile, self.session.preopDICOMDirectory)
+
+  def startIntraopPhaseSimulation(self):
+    self.simulateIntraopPhaseButton.enabled = False
+    intraopZipFile = self.initiateSampleDataDownload(SliceTrackerConstants.INTRAOP_SAMPLE_DATA_URL)
+    if not self.sampleDownloader.wasCanceled and intraopZipFile:
+      self.unzipFileAndCopyToDirectory(intraopZipFile, self.session.intraopDICOMDirectory)
+
+  def initiateSampleDataDownload(self, url):
+    filename = os.path.basename(url)
+    self.sampleDownloader.resetAndInitialize()
+    self.sampleDownloader.addEventObserver(self.sampleDownloader.EVENTS['status_changed'], self.onDownloadProgressUpdated)
+    # self.customStatusProgressBar.show()
+    downloadedFile = self.sampleDownloader.downloadFileIntoCache(url, filename)
+    # self.customStatusProgressBar.hide()
+    return None if self.sampleDownloader.wasCanceled else downloadedFile
+
+  @onReturnProcessEvents
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onDownloadProgressUpdated(self, caller, event, callData):
+    message, percent = ast.literal_eval(callData)
+    logging.info("%s, %s" %(message, percent))
+    # self.customStatusProgressBar.updateStatus(message, percent)
+
+  def unzipFileAndCopyToDirectory(self, filepath, copyToDirectory):
+    import zipfile
+    try:
+      zip_ref = zipfile.ZipFile(filepath, 'r')
+      destination = filepath.replace(os.path.basename(filepath), "")
+      logging.debug("extracting to %s " % destination)
+      zip_ref.extractall(destination)
+      zip_ref.close()
+      self.copyDirectory(filepath.replace(".zip", ""), copyToDirectory)
+    except zipfile.BadZipfile as exc:
+      if self.preopTransferWindow:
+        self.preopTransferWindow.hide()
+      slicer.util.errorDisplay("An error appeared while extracting %s. If the file is corrupt, please delete it and try "
+                               "again." % filepath, detailedText=str(exc.message))
+      self.clearData()
+
+  def copyDirectory(self, source, destination, recursive=True):
+    print source
+    assert os.path.isdir(source)
+    for listObject in os.listdir(source):
+      current = os.path.join(source, listObject)
+      if os.path.isdir(current) and recursive:
+        self.copyDirectory(current, destination, recursive)
+      else:
+        shutil.copy(current, destination)
+
+  @logmethod(logging.INFO)
+  def onNewCaseStarted(self, caller, event):
+    self.simulatePreopPhaseButton.enabled = True
+
+  def onIncomingDataSkipped(self, caller, event):
+    self.simulatePreopPhaseButton.enabled = False
+    self.simulateIntraopPhaseButton.enabled = True
+
+  @logmethod(logging.INFO)
+  def onCaseClosed(self, caller, event):
+    self.simulatePreopPhaseButton.enabled = False
+    self.simulateIntraopPhaseButton.enabled = False
 
 
 class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerStepLogic):
