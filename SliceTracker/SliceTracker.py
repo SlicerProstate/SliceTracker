@@ -1,5 +1,6 @@
 import logging
 import ctk, qt, vtk, slicer
+import ast
 
 from SliceTrackerUtils.steps.base import SliceTrackerStepLogic, SliceTrackerStep
 from SliceTrackerUtils.steps.training import SliceTrackerTrainingStep
@@ -7,11 +8,12 @@ from SliceTrackerUtils.configuration import SliceTrackerConfiguration
 from SliceTrackerUtils.constants import SliceTrackerConstants
 from SliceTrackerUtils.exceptions import PreProcessedDataError
 from SliceTrackerUtils.session import SliceTrackerSession
+from SliceTrackerUtils.sessionData import RegistrationResult
 
 from SlicerProstateUtils.buttons import *
-from SlicerProstateUtils.constants import DICOMTAGS
+from SlicerProstateUtils.constants import DICOMTAGS, COLOR
 from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
-from SlicerProstateUtils.helpers import TargetCreationWidget
+from SlicerProstateUtils.helpers import TargetCreationWidget, IncomingDataMessageBox
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SlicerProstateUtils.mixins import ModuleWidgetMixin
 
@@ -46,7 +48,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.session.steps = []
     self.session.removeEventObservers()
     self.session.addEventObserver(self.session.CloseCaseEvent, lambda caller, event: self.cleanup())
-
+    self.session.addEventObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
     self.demoMode = False
 
     slicer.app.connect('aboutToQuit()', self.onSlicerQuits)
@@ -81,6 +83,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
+    self.customStatusProgressBar = self.getOrCreateCustomProgressBar()
     self.setupIcons()
     self.setupPatientWatchBox()
     self.setupViewSettingGroupBox()
@@ -156,6 +159,14 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     # TODO
     # self.tabWidget.hideTabs()
 
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onNewFileIndexed(self, caller, event, callData):
+    text, size, currentIndex = ast.literal_eval(callData)
+    if not self.customStatusProgressBar.visible:
+      self.customStatusProgressBar.show()
+    self.customStatusProgressBar.maximum = size
+    self.customStatusProgressBar.updateStatus(text, currentIndex)
+
 
 class SliceTrackerTabWidget(qt.QTabWidget):
 
@@ -185,9 +196,46 @@ class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
 
   def __init__(self):
     super(SliceTrackerOverViewStepLogic, self).__init__()
+    self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
 
   def cleanup(self):
     pass
+
+  def isTrackingPossible(self, series):
+    if self.session.data.completed:
+      return False
+    if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
+      if self.getSetting("NEEDLE_IMAGE", moduleName=self.MODULE_NAME) in series:
+        return self.session.data.getMostRecentApprovedCoverProstateRegistration() or not self.session.data.usePreopData
+      elif self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME) in series:
+        return self.session.zFrameRegistrationSuccessful
+      elif self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in series:
+        return not self.session.zFrameRegistrationSuccessful # TODO: Think about this
+    return False
+
+  def isInGeneralTrackable(self, series):
+    return self.isAnyListItemInString(series, [self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME),
+                                               self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME),
+                                               self.getSetting("NEEDLE_IMAGE", moduleName=self.MODULE_NAME)])
+
+  def isAnyListItemInString(self, string, listItem):
+    return any(item in string for item in listItem)
+
+  def resultHasNotBeenProcessed(self, series):
+    return not (self.session.data.registrationResultWasApproved(series) or
+                self.session.data.registrationResultWasSkipped(series) or
+                self.session.data.registrationResultWasRejected(series))
+
+  def getOrCreateVolumeForSeries(self, series):
+    try:
+      volume = self.session.alreadyLoadedSeries[series]
+    except KeyError:
+      files = self.session.loadableList[series]
+      loadables = self.scalarVolumePlugin.examine([files])
+      success, volume = slicer.util.loadVolume(files[0], returnNode=True)
+      volume.SetName(loadables[0].name)
+      self.session.alreadyLoadedSeries[series] = volume
+    return volume
 
 
 class SliceTrackerOverviewStep(SliceTrackerStep):
@@ -225,9 +273,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.trackTargetsButton.setEnabled(False)
     self.caseWatchBox.reset()
     self.closeCaseButton.enabled = False
+    self.updateIntraopSeriesSelectorTable()
     # self.session.close(save=False)
     # slicer.mrmlScene.Clear(0)
-    # self.updateIntraopSeriesSelectorTable()
     # self.updateIntraopSeriesSelectorColor(None)
     # self.removeSliceAnnotations()
     # self.currentTargets = None
@@ -319,10 +367,42 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.openCaseButton.clicked.connect(self.onOpenCaseButtonClicked)
     self.closeCaseButton.clicked.connect(self.session.close)
     # self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
-    # self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
+    self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
     # self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
-    # self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.onIntraopSeriesSelectionChanged)
+    self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.onIntraopSeriesSelectionChanged)
     # self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
+
+  def onTrackTargetsButtonClicked(self):
+    # self.removeSliceAnnotations()
+    # self.targetTableModel.computeCursorDistances = False
+    volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
+    if volume:
+      if not self.session.zFrameRegistrationSuccessful and \
+          self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in self.intraopSeriesSelector.currentText:
+        logging.info("Opening ZFrameRegistrationStep")
+        # self.openZFrameRegistrationStep(volume)
+        return
+      # else:
+      #   if self.currentResult is None or \
+      #      self.session.data.getMostRecentApprovedCoverProstateRegistration() is None or \
+      #      self.logic.retryMode or self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME) in self.intraopSeriesSelector.currentText:
+      #     self.openSegmentationStep(volume)
+      #   else:
+      #     self.repeatRegistrationForCurrentSelection(volume)
+
+  def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
+    # if not self.active:
+    # self.removeSliceAnnotations()
+    trackingPossible = False
+    if selectedSeries:
+      trackingPossible = self.logic.isTrackingPossible(selectedSeries)
+      logging.info(trackingPossible)
+    #   self.showTemplatePathButton.checked = trackingPossible and self.getSetting("COVER_PROSTATE") in selectedSeries
+    #   self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
+    #   self.configureViewersForSelectedIntraopSeries(selectedSeries)
+    #   self.updateSliceAnnotations(selectedSeries)
+    # self.updateIntraopSeriesSelectorColor(selectedSeries)
+    # self.updateLayoutButtons(trackingPossible, selectedSeries)
 
   def setupSessionObservers(self):
     super(SliceTrackerOverviewStep, self).setupSessionObservers()
@@ -453,6 +533,109 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         else:
           self.startPreopDICOMReceiver()
     self.configureAllTargetDisplayNodes()
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onNewImageDataReceived(self, caller, event, callData):
+    # self.customStatusProgressBar.text = "New image data has been received."
+    newFileList = ast.literal_eval(callData)
+    seriesNumberPatientIDs = self.getAllNewSeriesNumbersIncludingPatientIDs(newFileList)
+    if self.session.data.usePreopData:
+      newSeriesNumbers = self.verifyPatientIDEquality(seriesNumberPatientIDs)
+    else:
+      newSeriesNumbers = seriesNumberPatientIDs.keys()
+    self.updateIntraopSeriesSelectorTable()
+    selectedSeries = self.intraopSeriesSelector.currentText
+    if selectedSeries != "" and self.logic.isTrackingPossible(selectedSeries):
+      selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+      if not self.session.zFrameRegistrationSuccessful and \
+          self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in selectedSeries and \
+          selectedSeriesNumber in newSeriesNumbers:
+        self.onTrackTargetsButtonClicked()
+        return
+
+      if self.currentStep == self.STEP_OVERVIEW and selectedSeriesNumber in newSeriesNumbers and \
+              self.logic.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
+        if self.notifyUserAboutNewData and not self.session.data.completed:
+          dialog = IncomingDataMessageBox()
+          self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
+          self.notifyUserAboutNewData = not checked
+        if hasattr(self, "notifyUserAboutNewDataAnswer") and self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
+          self.onTrackTargetsButtonClicked()
+
+  def updateIntraopSeriesSelectorTable(self):
+    self.intraopSeriesSelector.blockSignals(True)
+    self.seriesModel.clear()
+    for series in self.session.seriesList:
+      sItem = qt.QStandardItem(series)
+      self.seriesModel.appendRow(sItem)
+      color = COLOR.YELLOW
+      if self.session.data.registrationResultWasApproved(series) or \
+        (self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in series and
+           self.session.zFrameRegistrationSuccessful):
+        color = COLOR.GREEN
+      elif self.session.data.registrationResultWasSkipped(series):
+        color = COLOR.RED
+      elif self.session.data.registrationResultWasRejected(series):
+        color = COLOR.GRAY
+      self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
+    self.intraopSeriesSelector.setCurrentIndex(-1)
+    self.intraopSeriesSelector.blockSignals(False)
+    self.selectMostRecentEligibleSeries()
+
+  def selectMostRecentEligibleSeries(self):
+    if not self.active:
+      self.intraopSeriesSelector.blockSignals(True)
+    substring = self.getSetting("NEEDLE_IMAGE", moduleName=self.MODULE_NAME)
+    index = -1
+    if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
+      substring = self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) \
+        if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
+    for item in list(reversed(range(len(self.session.seriesList)))):
+      series = self.seriesModel.item(item).text()
+      if substring in series:
+        if index != -1:
+          if self.session.data.registrationResultWasApprovedOrRejected(series) or \
+            self.session.data.registrationResultWasSkipped(series):
+            break
+        index = self.intraopSeriesSelector.findText(series)
+        break
+      elif self.getSetting("VIBE_IMAGE", moduleName=self.MODULE_NAME) in series and index == -1:
+        index = self.intraopSeriesSelector.findText(series)
+    rowCount = self.intraopSeriesSelector.model().rowCount()
+    self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
+    self.intraopSeriesSelector.blockSignals(False)
+
+  def getAllNewSeriesNumbersIncludingPatientIDs(self, fileList):
+    seriesNumberPatientID = {}
+    for currentFile in [os.path.join(self.session.intraopDICOMDirectory, f) for f in fileList]:
+      seriesNumber = int(self.logic.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
+      if seriesNumber not in seriesNumberPatientID.keys():
+        seriesNumberPatientID[seriesNumber]= {
+          "PatientID": self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID),
+          "PatientName": self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)}
+    return seriesNumberPatientID
+
+  def verifyPatientIDEquality(self, seriesNumberPatientID):
+    acceptedSeriesNumbers = []
+    for seriesNumber, info in seriesNumberPatientID.iteritems():
+      patientID = info["PatientID"]
+      patientName = info["PatientName"]
+      if patientID is not None and patientID != self.currentID:
+        currentPatientName = self.patientWatchBox.getInformation("PatientName")
+        message = 'WARNING:\n' \
+                  'Current case:\n' \
+                  '  Patient ID: {0}\n' \
+                  '  Patient Name: {1}\n' \
+                  'Received image\n' \
+                  '  Patient ID: {2}\n' \
+                  '  Patient Name : {3}\n\n' \
+                  'Do you want to keep this series? '.format(self.currentID, currentPatientName, patientID, patientName)
+        if not slicer.util.confirmYesNoDisplay(message, title="Patient's ID Not Matching", windowTitle="SliceTracker"):
+          self.session.deleteSeriesFromSeriesList(seriesNumber)
+          continue
+      acceptedSeriesNumbers.append(seriesNumber)
+    acceptedSeriesNumbers.sort()
+    return acceptedSeriesNumbers
 
 
 class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerStepLogic):

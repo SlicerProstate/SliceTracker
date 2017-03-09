@@ -1,5 +1,5 @@
 import os, logging
-import vtk, ctk
+import vtk, ctk, ast
 import shutil
 from abc import ABCMeta, abstractmethod
 
@@ -63,7 +63,10 @@ class SliceTrackerSession(Singleton, SessionBase):
   # TODO: implement events that are invoked once data changes so that underlying steps can react to it
   IncomingDataSkippedEvent = SlicerProstateEvents.IncomingDataSkippedEvent
   IncomingPreopDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent + 110
+
   IncomingIntraopDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent + 111
+  NewImageDataReceivedEvent = SlicerProstateEvents.NewImageDataReceivedEvent
+
   DICOMReceiverStatusChanged = SlicerProstateEvents.StatusChangedEvent
   DICOMReceiverStoppedEvent = SlicerProstateEvents.DICOMReceiverStoppedEvent
 
@@ -75,7 +78,7 @@ class SliceTrackerSession(Singleton, SessionBase):
   intraopDICOMReceiver = None
   loadableList = {}
   seriesList = []
-  regResults = SessionData()
+  data = SessionData()
 
   @property
   def steps(self):
@@ -115,12 +118,15 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   def resetAndInitializeMembers(self):
     self.directory = None
-    self.regResults = SessionData()
+    self.data = SessionData()
     self.trainingMode = False
     self.preopDICOMReceiver = None
     self.intraopDICOMReceiver = None
     self.loadableList = {}
     self.seriesList = []
+    self.alreadyLoadedSeries = {}
+
+    self.zFrameRegistrationSuccessful = False
 
   def __del__(self):
     pass
@@ -160,12 +166,12 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   def save(self):
     # TODO: not sure about each step .... saving its own data
-    for step in self.steps:
-      step.save(self.directory)
-    self.regResults.save(self.outputDirectory)
+    # for step in self.steps:
+    #   step.save(self.directory)
+    self.data.save(self.outputDirectory)
 
   def complete(self):
-    self.regResults.completed = True
+    self.data.completed = True
     self.close(save=True)
 
   def load(self):
@@ -173,14 +179,14 @@ class SliceTrackerSession(Singleton, SessionBase):
     filename = os.path.join(self.directory, SliceTrackerConstants.JSON_FILENAME)
     if not os.path.exists(filename):
       return
-    self.regResults.load(filename)
-    coverProstate = self.regResults.getMostRecentApprovedCoverProstateRegistration()
+    self.data.load(filename)
+    coverProstate = self.data.getMostRecentApprovedCoverProstateRegistration()
     if coverProstate:
-      if not self.regResults.initialVolume:
-        self.regResults.initialVolume = coverProstate.movingVolume if self.regResults.usePreopData else coverProstate.fixedVolume
-      self.regResults.initialTargets = coverProstate.originalTargets
-      if self.regResults.usePreopData:  # TODO: makes sense?
-        self.regResults.preopLabel = coverProstate.movingLabel
+      if not self.data.initialVolume:
+        self.data.initialVolume = coverProstate.movingVolume if self.data.usePreopData else coverProstate.fixedVolume
+      self.data.initialTargets = coverProstate.originalTargets
+      if self.data.usePreopData:  # TODO: makes sense?
+        self.data.preopLabel = coverProstate.movingLabel
     return True
 
   def startPreopDICOMReceiver(self):
@@ -196,14 +202,12 @@ class SliceTrackerSession(Singleton, SessionBase):
     self.preopDICOMReceiver.show()
 
   def onSkippingPreopDataReception(self, caller, event):
-    self.regResults.usePreopData = False
-    self.resetPreopDICOMReceiver()
+    self.data.usePreopData = False
     self.startIntraopDICOMReceiver()
     self.invokeEvent(self.IncomingDataSkippedEvent)
 
   def onPreopDataReceptionFinished(self, caller, event):
-    self.regResults.usePreopData = True
-    self.resetPreopDICOMReceiver()
+    self.data.usePreopData = True
     self.startIntraopDICOMReceiver()
     self.invokeEvent(self.IncomingPreopDataReceiveFinishedEvent)
 
@@ -216,11 +220,12 @@ class SliceTrackerSession(Singleton, SessionBase):
   def startIntraopDICOMReceiver(self):
     # TODO
     # self.intraopWatchBox.sourceFile = None
+    self.resetPreopDICOMReceiver()
     logging.info("Starting DICOM Receiver for intra-procedural data")
-    if not self.regResults.completed:
+    if not self.data.completed:
       self.stopIntraopDICOMReceiver()
       self.intraopDICOMReceiver = SmartDICOMReceiver(self.intraopDICOMDirectory)
-      # self._observeIntraopDICOMReceiverEvents()
+      self._observeIntraopDICOMReceiverEvents()
       self.intraopDICOMReceiver.start(not self.trainingMode)
     else:
       self.invokeEvent(SlicerProstateEvents.DICOMReceiverStoppedEvent)
@@ -231,30 +236,28 @@ class SliceTrackerSession(Singleton, SessionBase):
   def _observeIntraopDICOMReceiverEvents(self):
     self.intraopDICOMReceiver.addEventObserver(self.intraopDICOMReceiver.IncomingDataReceiveFinishedEvent,
                                                self.onDICOMSeriesReceived)
-    self.intraopDICOMReceiver.addEventObserver(SlicerProstateEvents.StatusChangedEvent,
-                                               self.onDICOMReceiverStatusChanged)
-    self.intraopDICOMReceiver.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent,
-                                               self.onSmartDICOMReceiverStopped)
+    # self.intraopDICOMReceiver.addEventObserver(SlicerProstateEvents.StatusChangedEvent,
+    #                                            self.onDICOMReceiverStatusChanged)
+    # self.intraopDICOMReceiver.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent,
+    #                                            self.onSmartDICOMReceiverStopped)
 
     # self.logic.addEventObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
     # self.logic.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
-    # self.logic.addEventObserver(SlicerProstateEvents.NewImageDataReceivedEvent, self.onNewImageDataReceived)
-    # self.logic.addEventObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
 
-  def stopIntraopDICOMReceiver(self):
-    self.intraopDICOMReceiver = getattr(self, "dicomReceiver", None)
-    if self.intraopDICOMReceiver:
-      self.intraopDICOMReceiver.stop()
-      self.intraopDICOMReceiver.removeEventObservers()
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onDICOMSeriesReceived(self, caller, event, callData):
+    self.importDICOMSeries(ast.literal_eval(callData))
+    if self.trainingMode is True:
+      self.stopIntraopDICOMReceiver()
 
   def importDICOMSeries(self, newFileList):
     indexer = ctk.ctkDICOMIndexer()
 
     eligibleSeriesFiles = []
-    size = len(newFileList)
     for currentIndex, currentFile in enumerate(newFileList, start=1):
+      # TODO: add statusbar
       self.invokeEvent(SlicerProstateEvents.NewFileIndexedEvent,
-                       ["Indexing file %s" % currentFile, size, currentIndex].__str__())
+                       ["Indexing file %s" % currentFile, len(newFileList), currentIndex].__str__())
       slicer.app.processEvents()
       currentFile = os.path.join(self.intraopDICOMDirectory, currentFile)
       indexer.addFile(slicer.dicomDatabase, currentFile, None)
@@ -264,11 +267,22 @@ class SliceTrackerSession(Singleton, SessionBase):
         if series not in self.seriesList:
           self.seriesList.append(series)
           self.loadableList[series] = self.createLoadableFileListForSeries(series)
-
     self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
 
     if len(eligibleSeriesFiles):
       self.invokeEvent(SlicerProstateEvents.NewImageDataReceivedEvent, eligibleSeriesFiles.__str__())
+
+  def deleteSeriesFromSeriesList(self, seriesNumber):
+    for series in self.seriesList:
+      currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
+      if currentSeriesNumber == seriesNumber:
+        self.seriesList.remove(series)
+
+  def stopIntraopDICOMReceiver(self):
+    self.intraopDICOMReceiver = getattr(self, "dicomReceiver", None)
+    if self.intraopDICOMReceiver:
+      self.intraopDICOMReceiver.stop()
+      self.intraopDICOMReceiver.removeEventObservers()
 
   def makeSeriesNumberDescription(self, dcmFile):
     seriesDescription = self.getDICOMValue(dcmFile, DICOMTAGS.SERIES_DESCRIPTION)

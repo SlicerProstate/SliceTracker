@@ -1,5 +1,5 @@
 import logging
-import qt, vtk, slicer
+import qt, vtk
 from abc import ABCMeta, abstractmethod
 
 from ..session import SliceTrackerSession
@@ -11,6 +11,7 @@ from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 class SliceTrackerStepLogic(ModuleLogicMixin):
 
   __metaclass__ = ABCMeta
+  MODULE_NAME = "SliceTracker"
 
   def __init__(self):
     self.session = SliceTrackerSession()
@@ -62,12 +63,13 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
     self.session.addEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
     self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
     self.session.addEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
+    self.session.addEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
 
   def removeSessionEventObservers(self):
     self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
     self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
     self.session.removeEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
-
+    self.session.removeEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
 
   @logmethod(logging.INFO)
   def onNewCaseStarted(self, caller, event):
@@ -79,6 +81,10 @@ class SliceTrackerStep(qt.QWidget, ModuleWidgetMixin):
 
   @logmethod(logging.INFO)
   def onIncomingDataSkipped(self, caller, event):
+    pass
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onNewImageDataReceived(self, caller, event, callData):
     pass
 
   def __del__(self):
