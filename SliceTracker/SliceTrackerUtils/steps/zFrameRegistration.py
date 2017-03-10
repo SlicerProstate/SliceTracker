@@ -555,12 +555,10 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       node.SetAndObserveTransformNodeID(self.session.data.zFrameTransform.GetID())
 
   def onApproveZFrameRegistrationButtonClicked(self):
-    # self.session.zFrameRegistrationSuccessful = True  #TODO: session should emit a signal here
     self.redSliceNode.SetSliceVisible(False)
     if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
       self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
-
-    # self.openOverviewStep()
+    self.session.zFrameRegistrationSuccessful = True
 
   def onRetryZFrameRegistrationButtonClicked(self):
     self.removeZFrameInstructionAnnotation()

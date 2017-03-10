@@ -101,6 +101,7 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.session.addEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
     self.session.addEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
     self.session.addEventObserver(self.session.CoverTemplateReceivedEvent, self.onCoverTemplateReceived)
+    self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
   def removeSessionEventObservers(self):
     self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
@@ -108,6 +109,7 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.session.removeEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
     self.session.removeEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
     self.session.removeEventObserver(self.session.CoverTemplateReceivedEvent, self.onCoverTemplateReceived)
+    self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
   def setupSliceWidgets(self):
     self.createSliceWidgetClassMembers("Red")
@@ -144,6 +146,10 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   @logmethod(logging.INFO)
   def onCoverTemplateReceived(self, caller, event):
+    pass
+
+  @logmethod(logging.INFO)
+  def onZFrameRegistrationSuccessful(self, caller, event):
     pass
 
   def __del__(self):

@@ -79,6 +79,8 @@ class SliceTrackerSession(Singleton, SessionBase):
   VibeImageReceivedEvent = vtk.vtkCommand.UserEvent + 129
   OtherImageReceivedEvent = vtk.vtkCommand.UserEvent + 130
 
+  ZFrameRegistrationSuccessfulEvent = vtk.vtkCommand.UserEvent + 140
+
   _steps = []
   trainingMode = False
   intraopDICOMReceiver = None
@@ -122,7 +124,15 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   @property
   def zFrameRegistrationSuccessful(self):
-      return self.data.zFrameTransform is not None
+    return self.data.zFrameTransform is not None and self._zFrameRegistrationSuccessful
+
+  @zFrameRegistrationSuccessful.setter
+  def zFrameRegistrationSuccessful(self, value):
+    if value == getattr(self, "_zFrameRegistrationSuccessful", None):
+      return
+    self._zFrameRegistrationSuccessful = value
+    if self._zFrameRegistrationSuccessful:
+      self.invokeEvent(self.ZFrameRegistrationSuccessfulEvent)
 
   def __init__(self):
     super(SliceTrackerSession, self).__init__()
