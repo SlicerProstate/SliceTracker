@@ -66,9 +66,6 @@ class SessionData(ModuleLogicMixin):
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
-    self.patientID = None
-    self.patientName = None
-
     self.startTimeStamp = self.getTime()
     self.resumeTimeStamps = []
     self.closedLogTimeStamps = []
@@ -83,7 +80,9 @@ class SessionData(ModuleLogicMixin):
     self._activeResult = None
 
     self.initialVolume = None
+    self.initialLabel = None
     self.initialTargets = None
+    self.initialTargetsPath = None
 
     self.zFrameTransform = None
 
@@ -128,6 +127,7 @@ class SessionData(ModuleLogicMixin):
 
       self.initialTargets = self._loadOrGetFileData(directory,
                                                     data["initialTargets"], slicer.util.loadMarkupsFiducialList)
+      self.initialTargetsPath = os.path.join(directory, data["initialTargets"])
 
       self.zFrameTransform = self._loadOrGetFileData(directory, data["zFrameTransform"], slicer.util.loadTransform)
       # TODO: self.applyZFrameTransform(self.zFrameTransform)

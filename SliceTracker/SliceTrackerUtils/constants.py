@@ -13,7 +13,7 @@ class SliceTrackerConstants(object):
   STEP_SEGMENTATION_COMPARISON = "SegmentationComparison"
   STEP_EVALUATION = "Evaluation"
 
-  JSON_FILENAME = "result.json"
+  JSON_FILENAME = "results.json"
 
   SLICETRACKER_STEPS = [STEP_OVERVIEW, STEP_ZFRAME_REGISTRATION, STEP_SEGMENTATION, STEP_TARGETING,
                         STEP_SEGMENTATION_COMPARISON, STEP_EVALUATION]

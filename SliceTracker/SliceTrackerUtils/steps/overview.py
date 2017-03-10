@@ -49,6 +49,19 @@ class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
                 self.session.data.registrationResultWasSkipped(series) or
                 self.session.data.registrationResultWasRejected(series))
 
+  def applyBiasCorrection(self):
+    outputVolume = slicer.vtkMRMLScalarVolumeNode()
+    outputVolume.SetName('VOLUME-PREOP-N4')
+    slicer.mrmlScene.AddNode(outputVolume)
+    params = {'inputImageName': self.session.data.initialVolume.GetID(),
+              'maskImageName': self.session.data.initialLabel.GetID(),
+              'outputImageName': outputVolume.GetID(),
+              'numberOfIterations': '500,400,300'}
+
+    slicer.cli.run(slicer.modules.n4itkbiasfieldcorrection, None, params, wait_for_completion=True)
+    self.session.data.initialVolume = outputVolume
+    self.session.data.biasCorrectionDone = True
+
 
 class SliceTrackerOverviewStep(SliceTrackerStep):
 
@@ -87,6 +100,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.caseWatchBox.reset()
     self.closeCaseButton.enabled = False
     self.updateIntraopSeriesSelectorTable()
+
+
     # self.session.close(save=False)
     # slicer.mrmlScene.Clear(0)
     # self.updateIntraopSeriesSelectorColor(None)
@@ -220,10 +235,15 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def setupSessionObservers(self):
     super(SliceTrackerOverviewStep, self).setupSessionObservers()
     self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
+    self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
+    self.session.addEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
 
   def removeSessionEventObservers(self):
     SliceTrackerStep.removeSessionEventObservers(self)
     self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
+    self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
+    self.session.removeEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
+
 
   def onCreateNewCaseButtonClicked(self):
     if not self.checkAndWarnUserIfCaseInProgress():
@@ -238,6 +258,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   @logmethod(logging.INFO)
   def onCaseClosed(self, caller, event):
     self.clearData()
+
+  def onActivation(self):
+    self.updateIntraopSeriesSelectorTable()
 
   def updateCaseWatchBox(self):
     self.caseWatchBox.setInformation("CurrentCaseDirectory", os.path.relpath(self.session.directory, self.caseRootDir),
@@ -261,33 +284,26 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   @logmethod(logging.INFO)
   def onPreopReceptionFinished(self, caller=None, event=None):
     if self.invokePreProcessing():
-      self.startMpReview()
+      self.startPreProcessingModule()
     else:
       slicer.util.infoDisplay("No DICOM data could be processed. Please select another directory.",
                               windowTitle="SliceTracker")
 
-  def startMpReview(self):
+  def startPreProcessingModule(self):
     self.setSetting('InputLocation', None, moduleName="mpReview")
     self.layoutManager.selectModule("mpReview")
     mpReview = slicer.modules.mpReviewWidget
     self.setSetting('InputLocation', self.session.preprocessedDirectory, moduleName="mpReview")
     mpReview.onReload()
-    slicer.modules.mpReviewWidget.saveButton.clicked.connect(self.onReturnFromMpReview)
+    slicer.modules.mpReviewWidget.saveButton.clicked.connect(self.returnFromPreProcessingModule)
     self.layoutManager.selectModule(mpReview.moduleName)
 
-  def onReturnFromMpReview(self):
-    slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(self.onReturnFromMpReview)
+  def returnFromPreProcessingModule(self):
+    slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(self.returnFromPreProcessingModule)
     self.layoutManager.selectModule(self.MODULE_NAME)
-    # slicer.mrmlScene.Clear(0)
-    # self.logic.stopSmartDICOMReceiver()  # TODO: this is unclean since there is a time gap
-    # TODO!
-    # try:
-    #   self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.session.preprocessedDirectory)
-    # except PreProcessedDataError:
-    #   self.clearData()
-    #   return
+    slicer.mrmlScene.Clear(0)
     self.simulateIntraopPhaseButton.enabled = self.session.trainingMode
-    # self.intraopDataDir = self.intraopDICOMDataDirectory
+    self.session.loadPreProcessedData()
 
   def invokePreProcessing(self):
     if not os.path.exists(self.session.preprocessedDirectory):
@@ -317,35 +333,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if not self.checkAndWarnUserIfCaseInProgress():
       return
     self.session.directory = qt.QFileDialog.getExistingDirectory(self.parent().window(), "Select Case Directory", self.caseRootDir) # TODO: move caseRootDir to session
-    if not self.session.directory or not self.session.isCaseDirectoryValid():
-      slicer.util.warningDisplay("The selected case directory seems not to be valid", windowTitle="SliceTracker")
-      self.clearData()
-    else:
-      self.loadCaseData()
-
-  def loadCaseData(self):
-    from mpReview import mpReviewLogic
-    savedSessions = self.logic.getSavedSessions(self.currentCaseDirectory)
-    if len(savedSessions) > 0: # After registration(s) has been done
-      if not self.openSavedSession(savedSessions):
-        self.clearData()
-    else:
-      if os.path.exists(self.mpReviewPreprocessedOutput) and \
-              mpReviewLogic.wasmpReviewPreprocessed(self.mpReviewPreprocessedOutput):
-        try:
-          self.preopDataDir = self.logic.getFirstMpReviewPreprocessedStudy(self.mpReviewPreprocessedOutput)
-        except PreProcessedDataError:
-          self.clearData()
-          return
-      else:
-        if len(os.listdir(self.session.preopDICOMDirectory)):
-          self.startPreProcessingPreopData()
-        elif len(os.listdir(self.intraopDICOMDataDirectory)):
-          self.logic.usePreopData = False
-          self.intraopDataDir = self.intraopDICOMDataDirectory
-        else:
-          self.startPreopDICOMReceiver()
-    self.configureAllTargetDisplayNodes()
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageDataReceived(self, caller, event, callData):
@@ -418,4 +405,24 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   @logmethod(logging.INFO)
   def onZFrameRegistrationSuccessful(self, caller, event):
     self.active = True
-    self.updateIntraopSeriesSelectorTable()
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onFailedPreProcessing(self, caller, event, callData):
+    if slicer.util.confirmYesNoDisplay(callData, windowTitle="SliceTracker"):
+      self.startPreProcessingModule()
+    else:
+      self.session.close()
+
+  def onSuccessfulPreProcessing(self, caller, event):
+    self.promptUserAndApplyBiasCorrectionIfNeeded()
+
+  def promptUserAndApplyBiasCorrectionIfNeeded(self):
+    if not self.session.data.resumed:
+      if slicer.util.confirmYesNoDisplay("Was an endorectal coil used for preop image acquisition?",
+                                         windowTitle="SliceTracker"):
+        progress = self.createProgressDialog(maximum=2, value=1)
+        progress.labelText = '\nBias Correction'
+        self.logic.applyBiasCorrection()
+        progress.setValue(2)
+        progress.close()
+    # TODO: self.movingVolumeSelector.setCurrentNode(self.logic.preopVolume)

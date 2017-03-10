@@ -16,7 +16,7 @@ from SlicerProstateUtils.constants import DICOMTAGS
 from SlicerProstateUtils.decorators import logmethod
 from SlicerProstateUtils.helpers import TargetCreationWidget
 from SlicerProstateUtils.helpers import WatchBoxAttribute, DICOMBasedInformationWatchBox
-from SlicerProstateUtils.mixins import ModuleWidgetMixin
+from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from slicer.ScriptedLoadableModule import *
 
 
@@ -41,7 +41,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     ScriptedLoadableModuleWidget.__init__(self, parent)
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     SliceTrackerConfiguration(self.moduleName, os.path.join(self.modulePath, 'Resources', "default.cfg"))
-    self.logic = None
+    self.logic = SliceTrackerLogic()
     #   TODO set logic instances here
 
     self.session = SliceTrackerSession()
@@ -60,7 +60,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                          "resumed at a later time"):
         self.session.complete()
       else:
-        self.session.close(save=True)
+        self.session.close(save=slicer.util.confirmYesNoDisplay("Do you want to save the case data?"))
     self.cleanup()
 
   def enter(self):
@@ -94,6 +94,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.setupViewSettingGroupBox()
     self.setupTabBarNavigation()
     self.setupConnections()
+    self.setupSessionObservers()
     self.layout.addStretch(1)
 
   def setupIcons(self):
@@ -153,6 +154,16 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def setupConnections(self):
     self.showAnnotationsButton.connect('toggled(bool)', self.onShowAnnotationsToggled)
 
+  def setupSessionObservers(self):
+    self.session.addEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
+
+  def removeSessionObservers(self):
+    self.session.removeEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
+
+  def onSuccessfulPreProcessing(self, caller, event):
+    dicomFileName = self.logic.getFileList(self.session.preopDICOMDirectory)[0]
+    self.patientWatchBox.sourceFile = os.path.join(self.session.preopDICOMDirectory, dicomFileName)
+
   def onShowAnnotationsToggled(self, checked):
     allSliceAnnotations = self.sliceAnnotations[:]
 
@@ -163,6 +174,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.customStatusProgressBar.show()
     self.customStatusProgressBar.maximum = size
     self.customStatusProgressBar.updateStatus(text, currentIndex)
+
+
+class SliceTrackerLogic(ModuleLogicMixin):
+
+  def __init__(self):
+    pass
 
 
 class SliceTrackerTabWidget(qt.QTabWidget):
