@@ -1,0 +1,37 @@
+@startuml
+participant "Session" as A
+participant "SmartDICOMReceiver" as B
+participant "ParameterNodeObservationMixin" as C
+participant "ZFrameRegistrationStep" as D
+participant "OverviewStep" as E
+participant "Operator" as O
+
+A --> B: start storecp
+B --> B: receiving DICOM
+B --> A: DICOM reception finished
+A --> A: import DICOM into database
+
+alt Depending on series that has been received
+
+else COVER_TEMPLATE and not zFrameRegistratationSuccessful
+A --> C: invoke event CoverTemplateReceivedEvent
+C --> D: onCoverTemplateReceived
+D -> D: activate
+O --> D: initialize template
+O --> D: run calibration
+O --> D: approve calibration result
+D --> A: zFrameRegistratationSuccessful = True
+A --> C: invoke event ZFrameCalibrationSuccessfulEvent
+E -> E: activate
+E -> E: select eligible series
+else COVER_PROSTATE and zFrameRegistratationSuccessful
+A --> C: invoke event CoverProstateReceivedEvent
+A --> E:
+else NEEDLE_IMAGE
+A --> C: invoke event NeedleImageReceivedEvent
+else VIBE_IMAGE
+A --> C: invoke event VibeImageReceivedEvent
+else OTHERS
+end
+
+@enduml

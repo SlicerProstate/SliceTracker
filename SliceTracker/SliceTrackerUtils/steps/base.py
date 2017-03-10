@@ -1,16 +1,19 @@
-import logging
-import qt, vtk
+import logging, os
+import qt, vtk, slicer
 from abc import ABCMeta, abstractmethod
 
 from ..session import SliceTrackerSession
 
-from SlicerProstateUtils.decorators import logmethod
+from SlicerProstateUtils.decorators import logmethod, beforeRunProcessEvents
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin, GeneralModuleMixin
-
+from ..constants import SliceTrackerConstants
 
 class StepBase(GeneralModuleMixin):
 
   MODULE_NAME = "SliceTracker"
+
+  def getModulePath(self):
+    return os.path.dirname(slicer.util.modulePath(self.MODULE_NAME))
 
   def getSetting(self, setting, moduleName=None, default=None):
     return GeneralModuleMixin.getSetting(self, setting, moduleName=self.MODULE_NAME, default=default)
@@ -25,10 +28,25 @@ class SliceTrackerStepLogic(StepBase, ModuleLogicMixin):
 
   def __init__(self):
     self.session = SliceTrackerSession()
+    self.modulePath = self.getModulePath()
+    self.resourcesPath = os.path.join(self.modulePath, "Resources")
+    self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
+    self.volumesLogic = slicer.modules.volumes.logic()
 
   @abstractmethod
   def cleanup(self):
     pass
+
+  def getOrCreateVolumeForSeries(self, series):
+    try:
+      volume = self.session.alreadyLoadedSeries[series]
+    except KeyError:
+      files = self.session.loadableList[series]
+      loadables = self.scalarVolumePlugin.examine([files])
+      success, volume = slicer.util.loadVolume(files[0], returnNode=True)
+      volume.SetName(loadables[0].name)
+      self.session.alreadyLoadedSeries[series] = volume
+    return volume
 
 
 class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
@@ -38,6 +56,7 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   NAME = None
   LogicClass = None
+  viewSettingButtons = []
 
   @property
   def active(self):
@@ -52,32 +71,60 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.invokeEvent(self.ActivatedEvent if self.active else self.DeactivatedEvent)
     if self.active:
       self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
-      self.setupSessionObservers()
+      self.onActivation()
     else:
       self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
-      self.removeSessionEventObservers()
+      self.onDeactivation()
 
   def __init__(self):
     qt.QWidget.__init__(self)
+    self.modulePath = self.getModulePath()
+    self.parameterNode.SetAttribute("Name", self.NAME)
     self.session = SliceTrackerSession()
     if self.LogicClass:
       self.logic = self.LogicClass()
     self.setLayout(qt.QGridLayout())
+    self.setupIcons()
     self.setup()
-    self.setupConnections()
+    self.setupAdditionalViewSettingButtons()
     self._activated = False
+    self.setupSessionObservers()
+    self.setupSliceWidgets()
+    self.setupConnections()
+
+  def setupIcons(self):
+    pass
 
   def setupSessionObservers(self):
     self.session.addEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
     self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
     self.session.addEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
     self.session.addEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+    self.session.addEventObserver(self.session.CoverTemplateReceivedEvent, self.onCoverTemplateReceived)
 
   def removeSessionEventObservers(self):
     self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
     self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
     self.session.removeEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
     self.session.removeEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+    self.session.removeEventObserver(self.session.CoverTemplateReceivedEvent, self.onCoverTemplateReceived)
+
+  def setupSliceWidgets(self):
+    self.createSliceWidgetClassMembers("Red")
+    self.createSliceWidgetClassMembers("Yellow")
+    self.createSliceWidgetClassMembers("Green")
+
+  def setupAdditionalViewSettingButtons(self):
+    pass
+
+  def resetViewSettingButtons(self):
+    pass
+
+  def onActivation(self):
+    pass
+
+  def onDeactivation(self):
+    pass
 
   @logmethod(logging.INFO)
   def onNewCaseStarted(self, caller, event):
@@ -95,6 +142,10 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
   def onNewImageDataReceived(self, caller, event, callData):
     pass
 
+  @logmethod(logging.INFO)
+  def onCoverTemplateReceived(self, caller, event):
+    pass
+
   def __del__(self):
     self.removeEventObservers()
 
@@ -109,3 +160,42 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   def onLayoutChanged(self):
     raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
+
+  def setupFourUpView(self, volume):
+    self.setBackgroundToVolumeID(volume.GetID())
+    self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_FOUR_UP)
+
+  def setBackgroundToVolumeID(self, volumeID):
+    for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
+      compositeNode.SetLabelVolumeID(None)
+      compositeNode.SetForegroundVolumeID(None)
+      compositeNode.SetBackgroundVolumeID(volumeID)
+    self.setDefaultOrientation()
+
+  def setDefaultOrientation(self):
+    self.redSliceNode.SetOrientationToAxial()
+    self.yellowSliceNode.SetOrientationToSagittal()
+    self.greenSliceNode.SetOrientationToCoronal()
+    self.updateFOV() # TODO: shall not be called here
+
+  def updateFOV(self):
+    # if self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
+    #   self.setDefaultFOV(self.redSliceLogic, 1.0)
+    #   self.setDefaultFOV(self.yellowSliceLogic, 1.0)
+    #   self.setDefaultFOV(self.greenSliceLogic, 1.0)
+    # el
+    if self.layoutManager.layout == SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY:
+      self.setDefaultFOV(self.redSliceLogic)
+    elif self.layoutManager.layout == SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE:
+      self.setDefaultFOV(self.redSliceLogic)
+      self.setDefaultFOV(self.yellowSliceLogic)
+    elif self.layoutManager.layout == SliceTrackerConstants.LAYOUT_FOUR_UP:
+      self.setDefaultFOV(self.redSliceLogic)
+      self.yellowSliceLogic.FitSliceToAll()
+      self.greenSliceLogic.FitSliceToAll()
+
+  @beforeRunProcessEvents
+  def setDefaultFOV(self, sliceLogic, factor=0.5):
+    sliceLogic.FitSliceToAll()
+    FOV = sliceLogic.GetSliceNode().GetFieldOfView()
+    self.setFOV(sliceLogic, [FOV[0] * factor, FOV[1] * factor, FOV[2]])

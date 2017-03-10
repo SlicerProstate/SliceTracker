@@ -8,12 +8,14 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/steps/__init__.py
   SliceTrackerUtils/steps/base.py
   SliceTrackerUtils/steps/training.py
+  SliceTrackerUtils/steps/zFrameRegistration.py
+  SliceTrackerUtils/algorithms/__init__.py
+  SliceTrackerUtils/algorithms/zFrameRegistration.py
   SliceTrackerUtils/configuration.py
   SliceTrackerUtils/constants.py
   SliceTrackerUtils/exceptions.py
   SliceTrackerUtils/session.py
   SliceTrackerUtils/sessionData.py
-  SliceTrackerUtils/ZFrameRegistration.py
   SliceTrackerUtils/helpers.py
   )
 

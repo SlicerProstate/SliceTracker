@@ -66,6 +66,9 @@ class SessionData(ModuleLogicMixin):
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
+    self.patientID = None
+    self.patientName = None
+
     self.startTimeStamp = self.getTime()
     self.resumeTimeStamps = []
     self.closedLogTimeStamps = []
@@ -81,6 +84,8 @@ class SessionData(ModuleLogicMixin):
 
     self.initialVolume = None
     self.initialTargets = None
+
+    self.zFrameTransform = None
 
     self._savedRegistrationResults = []
     self._registrationResults = OrderedDict()

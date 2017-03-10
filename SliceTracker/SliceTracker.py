@@ -1,22 +1,24 @@
-import logging
-import ctk, qt, vtk, slicer
 import ast
+import logging
 
-from SliceTrackerUtils.steps.base import SliceTrackerStepLogic, SliceTrackerStep
-from SliceTrackerUtils.steps.training import SliceTrackerTrainingStep
+import ctk
+import qt
+import vtk
+
+from SliceTrackerUtils.steps.zFrameRegistration import SliceTrackerZFrameRegistrationStep
 from SliceTrackerUtils.configuration import SliceTrackerConfiguration
 from SliceTrackerUtils.constants import SliceTrackerConstants
 from SliceTrackerUtils.exceptions import PreProcessedDataError
 from SliceTrackerUtils.session import SliceTrackerSession
 from SliceTrackerUtils.sessionData import RegistrationResult
-
+from SliceTrackerUtils.steps.base import SliceTrackerStepLogic, SliceTrackerStep
+from SliceTrackerUtils.steps.training import SliceTrackerTrainingStep
 from SlicerProstateUtils.buttons import *
 from SlicerProstateUtils.constants import DICOMTAGS, COLOR
 from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
 from SlicerProstateUtils.helpers import TargetCreationWidget, IncomingDataMessageBox
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, DICOMBasedInformationWatchBox
 from SlicerProstateUtils.mixins import ModuleWidgetMixin
-
 from slicer.ScriptedLoadableModule import *
 
 
@@ -83,18 +85,21 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
+
+    for step in [SliceTrackerOverviewStep, SliceTrackerZFrameRegistrationStep,
+                 SliceTrackerSegmentationStep, SliceTrackerEvaluationStep]:
+      self.session.registerStep(step())
+
     self.customStatusProgressBar = self.getOrCreateCustomProgressBar()
     self.setupIcons()
     self.setupPatientWatchBox()
     self.setupViewSettingGroupBox()
     self.setupTabBarNavigation()
+    self.setupConnections()
     self.layout.addStretch(1)
 
   def setupIcons(self):
     self.settingsIcon = self.createIcon('icon-settings.png')
-    self.zFrameIcon = self.createIcon('icon-zframe.png')
-    self.needleIcon = self.createIcon('icon-needle.png')
-    self.templateIcon = self.createIcon('icon-template.png')
     self.textInfoIcon = self.createIcon('icon-text-info.png')
 
   def setupPatientWatchBox(self):
@@ -121,43 +126,37 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.crosshairButton = CrosshairButton()
     self.wlEffectsToolButton = WindowLevelEffectsButton()
     self.settingsButton = ModuleSettingsButton(self.moduleName)
-
-    self.showZFrameModelButton = self.createButton("", icon=self.zFrameIcon, iconSize=iconSize, checkable=True, toolTip="Display zFrame model")
-    self.showTemplateButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template")
-    self.showNeedlePathButton = self.createButton("", icon=self.needleIcon, iconSize=iconSize, checkable=True, toolTip="Display needle path")
-    self.showTemplatePathButton = self.createButton("", icon=self.templateIcon, iconSize=iconSize, checkable=True, toolTip="Display template paths")
     self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, iconSize=iconSize, checkable=True, toolTip="Display annotations", checked=True)
 
+    viewSettingButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton,
+                          self.showAnnotationsButton, self.crosshairButton,   self.wlEffectsToolButton,
+                          self.settingsButton]
+
+    for step in self.session.steps:
+      viewSettingButtons += step.viewSettingButtons
+
+    self.layout.addWidget(self.createHLayout(viewSettingButtons))
+
     self.resetViewSettingButtons()
-    self.layout.addWidget(self.createHLayout([self.redOnlyLayoutButton, self.sideBySideLayoutButton,
-                                              self.fourUpLayoutButton, self.showAnnotationsButton,
-                                              self.crosshairButton, self.showZFrameModelButton,
-                                              self.showTemplatePathButton, self.showNeedlePathButton,
-                                              self.wlEffectsToolButton, self.settingsButton]))
 
   def resetViewSettingButtons(self):
-    # TODO
-    # self.showTemplateButton.enabled = self.logic.templateSuccessfulLoaded
-    # self.showTemplatePathButton.enabled = self.logic.templateSuccessfulLoaded
-    # self.showZFrameModelButton.enabled = self.logic.zFrameSuccessfulLoaded
-    self.showTemplateButton.checked = False
-    self.showTemplatePathButton.checked = False
-    self.showZFrameModelButton.checked = False
-    self.showNeedlePathButton.checked = False
-
+    for step in self.session.steps:
+      step.resetViewSettingButtons()
     self.wlEffectsToolButton.checked = False
     self.crosshairButton.checked = False
 
   def setupTabBarNavigation(self):
-    for step in [SliceTrackerOverviewStep, SliceTrackerZFrameRegistrationStep,
-                 SliceTrackerSegmentationStep, SliceTrackerEvaluationStep]:
-      self.session.registerStep(step())
-
     self.tabWidget = SliceTrackerTabWidget()
     self.layout.addWidget(self.tabWidget)
 
     # TODO
     # self.tabWidget.hideTabs()
+
+  def setupConnections(self):
+    self.showAnnotationsButton.connect('toggled(bool)', self.onShowAnnotationsToggled)
+
+  def onShowAnnotationsToggled(self, checked):
+    allSliceAnnotations = self.sliceAnnotations[:]
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewFileIndexed(self, caller, event, callData):
@@ -184,6 +183,13 @@ class SliceTrackerTabWidget(qt.QTabWidget):
     for step in self.session.steps:
       logging.debug("Adding tab for %s step" % step.NAME)
       self.addTab(step, step.NAME)
+      step.addEventObserver(step.ActivatedEvent, self.onStepActivated)
+
+  def onStepActivated(self, caller, event):
+    name = caller.GetAttribute("Name")
+    index = next((i for i, step in enumerate(self.session.steps) if step.NAME == name), None)
+    if index is not None:
+      self.setCurrentIndex(index)
 
   def onCurrentTabChanged(self, index):
     map(lambda step: setattr(step, "active", False), self.session.steps)
@@ -226,17 +232,6 @@ class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
                 self.session.data.registrationResultWasSkipped(series) or
                 self.session.data.registrationResultWasRejected(series))
 
-  def getOrCreateVolumeForSeries(self, series):
-    try:
-      volume = self.session.alreadyLoadedSeries[series]
-    except KeyError:
-      files = self.session.loadableList[series]
-      loadables = self.scalarVolumePlugin.examine([files])
-      success, volume = slicer.util.loadVolume(files[0], returnNode=True)
-      volume.SetName(loadables[0].name)
-      self.session.alreadyLoadedSeries[series] = volume
-    return volume
-
 
 class SliceTrackerOverviewStep(SliceTrackerStep):
 
@@ -262,6 +257,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def __init__(self):
     super(SliceTrackerOverviewStep, self).__init__()
     self.caseRootDir = self.getSetting('CasesRootLocation', self.MODULE_NAME)
+    self.notifyUserAboutNewData = True
 
   def cleanup(self):
     self.seriesModel.clear()
@@ -537,29 +533,27 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageDataReceived(self, caller, event, callData):
     # self.customStatusProgressBar.text = "New image data has been received."
-    seriesNumberPatientIDs = self.getAllNewSeriesNumbersIncludingPatientIDs(ast.literal_eval(callData))
-    if self.session.data.usePreopData:
-      newSeriesNumbers = self.verifyPatientIDEquality(seriesNumberPatientIDs)
-    else:
-      newSeriesNumbers = seriesNumberPatientIDs.keys()
     self.updateIntraopSeriesSelectorTable()
-    selectedSeries = self.intraopSeriesSelector.currentText
-    if selectedSeries != "" and self.logic.isTrackingPossible(selectedSeries):
-      selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-      if not self.session.zFrameRegistrationSuccessful and \
-          self.getSetting("COVER_TEMPLATE") in selectedSeries and \
-          selectedSeriesNumber in newSeriesNumbers:
-        self.onTrackTargetsButtonClicked()
-        return
+    # selectedSeries = self.intraopSeriesSelector.currentText
 
-      if self.currentStep == self.STEP_OVERVIEW and selectedSeriesNumber in newSeriesNumbers and \
-              self.logic.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
-        if self.notifyUserAboutNewData and not self.session.data.completed:
-          dialog = IncomingDataMessageBox()
-          self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
-          self.notifyUserAboutNewData = not checked
-        if hasattr(self, "notifyUserAboutNewDataAnswer") and self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
-          self.onTrackTargetsButtonClicked()
+    # if selectedSeries != "" and self.logic.isTrackingPossible(selectedSeries):
+    #   self.takeActionOnSelectedSeries(newSeriesNumbers, selectedSeries)
+
+  def takeActionOnSelectedSeries(self, newSeriesNumbers, selectedSeries):
+    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+    if self.getSetting("COVER_TEMPLATE") in selectedSeries and not self.session.zFrameRegistrationSuccessful:
+      # TODO: zFrameRegistrationStep
+      self.onTrackTargetsButtonClicked()
+      return
+
+    if self.active and selectedSeriesNumber in newSeriesNumbers and \
+      self.logic.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
+      if self.notifyUserAboutNewData and not self.session.data.completed:
+        dialog = IncomingDataMessageBox()
+        self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
+        self.notifyUserAboutNewData = not checked
+      if hasattr(self, "notifyUserAboutNewDataAnswer") and self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
+        self.onTrackTargetsButtonClicked()
 
   def updateIntraopSeriesSelectorTable(self):
     self.intraopSeriesSelector.blockSignals(True)
@@ -579,113 +573,30 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
     self.intraopSeriesSelector.setCurrentIndex(-1)
     self.intraopSeriesSelector.blockSignals(False)
-    self.selectMostRecentEligibleSeries()
+    # self.selectMostRecentEligibleSeries()
 
-  def selectMostRecentEligibleSeries(self):
-    if not self.active:
-      self.intraopSeriesSelector.blockSignals(True)
-    substring = self.getSetting("NEEDLE_IMAGE")
-    index = -1
-    if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
-      substring = self.getSetting("COVER_TEMPLATE") \
-        if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
-    for item in list(reversed(range(len(self.session.seriesList)))):
-      series = self.seriesModel.item(item).text()
-      if substring in series:
-        if index != -1:
-          if self.session.data.registrationResultWasApprovedOrRejected(series) or \
-            self.session.data.registrationResultWasSkipped(series):
-            break
-        index = self.intraopSeriesSelector.findText(series)
-        break
-      elif self.getSetting("VIBE_IMAGE") in series and index == -1:
-        index = self.intraopSeriesSelector.findText(series)
-    rowCount = self.intraopSeriesSelector.model().rowCount()
-    self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
-    self.intraopSeriesSelector.blockSignals(False)
-
-  def getAllNewSeriesNumbersIncludingPatientIDs(self, fileList):
-    seriesNumberPatientID = {}
-    for currentFile in [os.path.join(self.session.intraopDICOMDirectory, f) for f in fileList]:
-      seriesNumber = int(self.logic.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
-      if seriesNumber not in seriesNumberPatientID.keys():
-        seriesNumberPatientID[seriesNumber]= {
-          "PatientID": self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID),
-          "PatientName": self.logic.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME)}
-    return seriesNumberPatientID
-
-  def verifyPatientIDEquality(self, seriesNumberPatientID):
-    acceptedSeriesNumbers = []
-    for seriesNumber, info in seriesNumberPatientID.iteritems():
-      patientID = info["PatientID"]
-      patientName = info["PatientName"]
-      if patientID is not None and patientID != self.currentID:
-        currentPatientName = self.patientWatchBox.getInformation("PatientName")
-        message = 'WARNING:\n' \
-                  'Current case:\n' \
-                  '  Patient ID: {0}\n' \
-                  '  Patient Name: {1}\n' \
-                  'Received image\n' \
-                  '  Patient ID: {2}\n' \
-                  '  Patient Name : {3}\n\n' \
-                  'Do you want to keep this series? '.format(self.currentID, currentPatientName, patientID, patientName)
-        if not slicer.util.confirmYesNoDisplay(message, title="Patient's ID Not Matching", windowTitle="SliceTracker"):
-          self.session.deleteSeriesFromSeriesList(seriesNumber)
-          continue
-      acceptedSeriesNumbers.append(seriesNumber)
-    acceptedSeriesNumbers.sort()
-    return acceptedSeriesNumbers
-
-
-class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerStepLogic):
-
-  def __init__(self):
-    super(SliceTrackerZFrameRegistrationStepLogic, self).__init__()
-
-  def cleanup(self):
-    pass
-
-
-class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
-
-  NAME = "ZFrame Registration"
-  LogicClass = SliceTrackerZFrameRegistrationStepLogic
-
-  def __init__(self):
-    super(SliceTrackerZFrameRegistrationStep, self).__init__()
-
-  def setup(self):
-    self.zFrameRegistrationGroupBox = qt.QGroupBox()
-    self.zFrameRegistrationGroupBoxGroupBoxLayout = qt.QGridLayout()
-    self.zFrameRegistrationGroupBox.setLayout(self.zFrameRegistrationGroupBoxGroupBoxLayout)
-
-    self.applyZFrameRegistrationButton = self.createButton("Run ZFrame Registration", enabled=False)
-
-    self.zFrameRegistrationManualIndexesGroupBox = qt.QGroupBox("Use manual start/end indexes")
-    self.zFrameRegistrationManualIndexesGroupBox.setCheckable(True)
-    self.zFrameRegistrationManualIndexesGroupBoxLayout = qt.QGridLayout()
-    self.zFrameRegistrationManualIndexesGroupBox.setLayout(self.zFrameRegistrationManualIndexesGroupBoxLayout)
-
-    self.zFrameRegistrationStartIndex = qt.QSpinBox()
-    self.zFrameRegistrationEndIndex = qt.QSpinBox()
-
-    hBox = self.createHLayout([qt.QLabel("start"), self.zFrameRegistrationStartIndex,
-                               qt.QLabel("end"),self.zFrameRegistrationEndIndex])
-    self.zFrameRegistrationManualIndexesGroupBoxLayout.addWidget(hBox, 1, 1, qt.Qt.AlignRight)
-
-    self.approveZFrameRegistrationButton = self.createButton("Confirm registration accuracy", enabled=False)
-    self.retryZFrameRegistrationButton = self.createButton("Reset", enabled=False)
-
-    buttons = self.createVLayout([self.applyZFrameRegistrationButton, self.approveZFrameRegistrationButton,
-                                  self.retryZFrameRegistrationButton])
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.createHLayout([buttons,
-                                                                                self.zFrameRegistrationManualIndexesGroupBox]))
-
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.setRowStretch(1, 1)
-    self.layout().addWidget(self.zFrameRegistrationGroupBox)
-
-  def save(self, directory):
-    pass
+  # def selectMostRecentEligibleSeries(self):
+  #   if not self.active:
+  #     self.intraopSeriesSelector.blockSignals(True)
+  #   substring = self.getSetting("NEEDLE_IMAGE")
+  #   index = -1
+  #   if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
+  #     substring = self.getSetting("COVER_TEMPLATE") \
+  #       if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
+  #   for item in list(reversed(range(len(self.session.seriesList)))):
+  #     series = self.seriesModel.item(item).text()
+  #     if substring in series:
+  #       if index != -1:
+  #         if self.session.data.registrationResultWasApprovedOrRejected(series) or \
+  #           self.session.data.registrationResultWasSkipped(series):
+  #           break
+  #       index = self.intraopSeriesSelector.findText(series)
+  #       break
+  #     elif self.getSetting("VIBE_IMAGE") in series and index == -1:
+  #       index = self.intraopSeriesSelector.findText(series)
+  #   rowCount = self.intraopSeriesSelector.model().rowCount()
+  #   self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
+  #   self.intraopSeriesSelector.blockSignals(False)
 
 
 import EditorLib

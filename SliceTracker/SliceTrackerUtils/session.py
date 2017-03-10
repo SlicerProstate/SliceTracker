@@ -73,12 +73,19 @@ class SliceTrackerSession(Singleton, SessionBase):
   NewCaseStartedEvent = vtk.vtkCommand.UserEvent + 501
   CloseCaseEvent = vtk.vtkCommand.UserEvent + 502
 
+  CoverTemplateReceivedEvent = vtk.vtkCommand.UserEvent + 126
+  CoverProstateReceivedEvent = vtk.vtkCommand.UserEvent + 127
+  NeedleImageReceivedEvent = vtk.vtkCommand.UserEvent + 128
+  VibeImageReceivedEvent = vtk.vtkCommand.UserEvent + 129
+  OtherImageReceivedEvent = vtk.vtkCommand.UserEvent + 130
+
   _steps = []
   trainingMode = False
   intraopDICOMReceiver = None
   loadableList = {}
   seriesList = []
   data = SessionData()
+  MODULE_NAME = "SliceTracker"
 
   @property
   def steps(self):
@@ -113,6 +120,10 @@ class SliceTrackerSession(Singleton, SessionBase):
   def isCaseDirectoryValid(self):
     return os.path.exists(self.preopDICOMDirectory) and os.path.exists(self.intraopDICOMDirectory)
 
+  @property
+  def zFrameRegistrationSuccessful(self):
+      return self.data.zFrameTransform is not None
+
   def __init__(self):
     super(SliceTrackerSession, self).__init__()
 
@@ -125,8 +136,6 @@ class SliceTrackerSession(Singleton, SessionBase):
     self.loadableList = {}
     self.seriesList = []
     self.alreadyLoadedSeries = {}
-
-    self.zFrameRegistrationSuccessful = False
 
   def __del__(self):
     pass
@@ -253,7 +262,7 @@ class SliceTrackerSession(Singleton, SessionBase):
   def importDICOMSeries(self, newFileList):
     indexer = ctk.ctkDICOMIndexer()
 
-    eligibleSeriesFiles = []
+    receivedFiles = []
     for currentIndex, currentFile in enumerate(newFileList, start=1):
       self.invokeEvent(SlicerProstateEvents.NewFileIndexedEvent,
                        ["Indexing file %s" % currentFile, len(newFileList), currentIndex].__str__())
@@ -261,21 +270,52 @@ class SliceTrackerSession(Singleton, SessionBase):
       currentFile = os.path.join(self.intraopDICOMDirectory, currentFile)
       indexer.addFile(slicer.dicomDatabase, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
-      if series:
-        eligibleSeriesFiles.append(currentFile)
-        if series not in self.seriesList:
-          self.seriesList.append(series)
-          self.loadableList[series] = self.createLoadableFileListForSeries(series)
+      receivedFiles.append(currentFile)
+      if series not in self.seriesList:
+        self.seriesList.append(series)
+        self.loadableList[series] = self.createLoadableFileListForSeries(series)
     self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
 
-    if len(eligibleSeriesFiles):
-      self.invokeEvent(SlicerProstateEvents.NewImageDataReceivedEvent, eligibleSeriesFiles.__str__())
+    if len(receivedFiles):
+      if self.data.usePreopData:
+        self.verifyPatientIDEquality(receivedFiles)
+      self.invokeEvent(SlicerProstateEvents.NewImageDataReceivedEvent, receivedFiles.__str__())
+      self.selectMostRecentEligibleSeries()
+
+  def verifyPatientIDEquality(self, receivedFiles):
+    seriesNumberPatientID = self.getAdditionalInformationForReceivedSeries(receivedFiles)
+    for seriesNumber, info in seriesNumberPatientID.iteritems():
+      patientID = info["PatientID"]
+      if patientID is not None and patientID != self.data.patientID:
+        message = 'WARNING:\n' \
+                  'Current case:\n' \
+                  '  Patient ID: {0}\n' \
+                  '  Patient Name: {1}\n' \
+                  'Received image\n' \
+                  '  Patient ID: {2}\n' \
+                  '  Patient Name : {3}\n\n' \
+                  'Do you want to keep this series? '.format(self.data.patientID, self.data.patientName,
+                                                             patientID, info["PatientName"])
+        if not slicer.util.confirmYesNoDisplay(message, title="Patient IDs Not Matching", windowTitle="SliceTracker"):
+          self.deleteSeriesFromSeriesList(seriesNumber)
+
+  def createLoadableFileListForSeries(self, series):
+    seriesNumber = RegistrationResult.getSeriesNumberFromString(series)
+    loadableList = []
+    for dcm in self.getFileList(self.intraopDICOMDirectory):
+      currentFile = os.path.join(self.intraopDICOMDirectory, dcm)
+      currentSeriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
+      if currentSeriesNumber and currentSeriesNumber == seriesNumber:
+        loadableList.append(currentFile)
+    return loadableList
 
   def deleteSeriesFromSeriesList(self, seriesNumber):
     for series in self.seriesList:
       currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
       if currentSeriesNumber == seriesNumber:
+        # TODO: remove files from filesystem self.loadableList[series] all files
         self.seriesList.remove(series)
+        del self.loadableList[series]
 
   def stopIntraopDICOMReceiver(self):
     self.intraopDICOMReceiver = getattr(self, "dicomReceiver", None)
@@ -291,12 +331,40 @@ class SliceTrackerSession(Singleton, SessionBase):
                             .format(dcmFile, seriesNumber, seriesDescription))
     return "{}: {}".format(seriesNumber, seriesDescription)
 
-  def createLoadableFileListForSeries(self, series):
-    seriesNumber = RegistrationResult.getSeriesNumberFromString(series)
-    loadableList = []
-    for dcm in self.getFileList(self.intraopDICOMDirectory):
-      currentFile = os.path.join(self.intraopDICOMDirectory, dcm)
-      currentSeriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
-      if currentSeriesNumber and currentSeriesNumber == seriesNumber:
-        loadableList.append(currentFile)
-    return loadableList
+  def getAdditionalInformationForReceivedSeries(self, fileList):
+    seriesNumberPatientID = {}
+    for currentFile in [os.path.join(self.intraopDICOMDirectory, f) for f in fileList]:
+      seriesNumber = int(self.getDICOMValue(currentFile, DICOMTAGS.SERIES_NUMBER))
+      if seriesNumber not in seriesNumberPatientID.keys():
+        seriesNumberPatientID[seriesNumber]= {
+          "PatientID": self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_ID),
+          "PatientName": self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME),
+          "SeriesDescription": self.getDICOMValue(currentFile, DICOMTAGS.SERIES_DESCRIPTION)}
+    return seriesNumberPatientID
+
+  def selectMostRecentEligibleSeries(self):
+    substring = self.getSetting("NEEDLE_IMAGE", moduleName=self.MODULE_NAME)
+    if not self.data.getMostRecentApprovedCoverProstateRegistration():
+      if not self.zFrameRegistrationSuccessful:
+        substring = self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME)
+        self.invokeEvent(self.CoverTemplateReceivedEvent, self.getSeriesForSubstring(substring))
+      else:
+        substring = self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME)
+        self.invokeEvent(self.CoverProstateReceivedEvent, self.getSeriesForSubstring(substring))
+
+  def getSeriesForSubstring(self, substring):
+    for series in reversed(self.seriesList):
+      if substring in series:
+        return series
+    return None
+
+    #   series = self.seriesModel.item(item).text()
+    #   if substring in series:
+    #     if index != -1:
+    #       if self.data.registrationResultWasApprovedOrRejected(series) or \
+    #         self.data.registrationResultWasSkipped(series):
+    #         break
+    #     index = self.intraopSeriesSelector.findText(series)
+    #     break
+    #   elif self.getSetting("VIBE_IMAGE") in series and index == -1:
+    #     index = self.intraopSeriesSelector.findText(series)

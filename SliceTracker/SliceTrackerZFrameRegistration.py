@@ -5,7 +5,7 @@ import EditorLib
 
 from slicer.ScriptedLoadableModule import *
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
-from SliceTrackerUtils.ZFrameRegistration import OpenSourceZFrameRegistration
+from SliceTrackerUtils.algorithms.zFrameRegistration import OpenSourceZFrameRegistration
 
 
 class SliceTrackerZFrameRegistration(ScriptedLoadableModule):
@@ -77,7 +77,7 @@ class SliceTrackerZFrameRegistrationWidget(ScriptedLoadableModuleWidget, ModuleW
       modelDisplayNode = self.zFrameModelNode.GetDisplayNode()
       modelDisplayNode.SetColor(1, 1, 0)
 
-  def setupSliceWidget(self, name):
+  def setupSliceWidget(self):
     self.redWidget = self.layoutManager.sliceWidget("Red")
     self.redCompositeNode = self.redWidget.mrmlSliceCompositeNode()
     self.redSliceView = self.redWidget.sliceView()
@@ -162,6 +162,7 @@ class SliceTrackerZFrameRegistrationWidget(ScriptedLoadableModuleWidget, ModuleW
     registration.runRegistration()
     self.zFrameModelNode.SetAndObserveTransformNodeID(registration.outputTransform.GetID())
 
+
 class SliceTrackerZFrameRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixin):
 
   def __init__(self):
@@ -172,4 +173,3 @@ class SliceTrackerZFrameRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLog
 
   def run(self, parameterNode, progressCallback=None):
     pass
-
