@@ -14,7 +14,19 @@ package "SliceTrackerSteps" #DDDDDD {
   }
 
   ModuleWidgetMixin <|-- SliceTrackerStep
+  StepBase <|-- SliceTrackerStep
   QWidget <|-- SliceTrackerStep
+
+  abstract class StepBase {
+    + MODULE_NAME = "SliceTracker"
+    __
+    + session
+    + modulePath: string
+    __
+    + getModulePath(): string
+    + getSetting(self, setting, moduleName=None, default=None)
+    + setSetting(self, setting, value, moduleName=None)
+  }
 
   abstract class SliceTrackerStep {
     + {abstract} NAME: string
@@ -24,18 +36,40 @@ package "SliceTrackerSteps" #DDDDDD {
     DeactivatedEvent: vtk.vtkCommand.UserEvent
     .. properties ..
     + active: bool
-    --
-    + session
+    .. abstract methods ..
     + {abstract} setup()
+    + {abstract} cleanup()
+    + {abstract} setupConnections()
     + {abstract} onLayoutChanged()
-    + cleanup()
-    + setupConnections()
+    __
+    + setupSliceWidgets()
+    + setupAdditionalViewSettingButtons()
+    + resetViewSettingButtons()
+    + onActivation()
+    + onDeactivation()
+    + setupSessionObservers()
+    + removeSessionEventObservers()
+    .. slots ..
+    + onNewCaseStarted()
+    + onCaseClosed()
+    + onIncomingDataSkipped()
+    + onNewImageDataReceived()
+    + onCoverTemplateReceived()
+    + onZFrameRegistrationSuccessful()
   }
 
   abstract class SliceTrackerStepLogic {
-    + session
+    + resourcesPath
+    + scalarVolumePlugin
+    + volumesLogic
+    .. abstract methods ..
     + {abstract} cleanup()
+    __
+    + getOrCreateVolumeForSeries(series)
   }
+
+  StepBase <|-- SliceTrackerStepLogic
+  ModuleLogicMixin <|-- SliceTrackerStepLogic
 
   class SliceTrackerOverviewStep {
     + onLayoutChanged()

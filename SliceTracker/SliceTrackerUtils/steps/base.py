@@ -12,6 +12,10 @@ class StepBase(GeneralModuleMixin):
 
   MODULE_NAME = "SliceTracker"
 
+  def __init__(self):
+    self.modulePath = self.getModulePath()
+    self.session = SliceTrackerSession()
+
   def getModulePath(self):
     return os.path.dirname(slicer.util.modulePath(self.MODULE_NAME))
 
@@ -27,8 +31,7 @@ class SliceTrackerStepLogic(StepBase, ModuleLogicMixin):
   __metaclass__ = ABCMeta
 
   def __init__(self):
-    self.session = SliceTrackerSession()
-    self.modulePath = self.getModulePath()
+    StepBase.__init__(self)
     self.resourcesPath = os.path.join(self.modulePath, "Resources")
     self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.volumesLogic = slicer.modules.volumes.logic()
@@ -78,22 +81,36 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   def __init__(self):
     qt.QWidget.__init__(self)
-    self.modulePath = self.getModulePath()
+    StepBase.__init__(self)
+    self._activated = False
     self.parameterNode.SetAttribute("Name", self.NAME)
-    self.session = SliceTrackerSession()
     if self.LogicClass:
       self.logic = self.LogicClass()
     self.setLayout(qt.QGridLayout())
     self.setupIcons()
     self.setup()
     self.setupAdditionalViewSettingButtons()
-    self._activated = False
     self.setupSessionObservers()
     self.setupSliceWidgets()
     self.setupConnections()
 
+  def __del__(self):
+    self.removeEventObservers()
+
   def setupIcons(self):
     pass
+
+  def cleanup(self):
+    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
+
+  def setup(self):
+    NotImplementedError("This method needs to be implemented for %s" % self.NAME)
+
+  def setupConnections(self):
+    NotImplementedError("This method needs to be implemented for %s" % self.NAME)
+
+  def onLayoutChanged(self):
+    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
   def setupSessionObservers(self):
     self.session.addEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
@@ -152,27 +169,12 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
   def onZFrameRegistrationSuccessful(self, caller, event):
     pass
 
-  def __del__(self):
-    self.removeEventObservers()
-
-  def cleanup(self):
-    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
-
-  def setup(self):
-    NotImplementedError("This method needs to be implemented for %s" % self.NAME)
-
-  def setupConnections(self):
-    NotImplementedError("This method needs to be implemented for %s" % self.NAME)
-
-  def onLayoutChanged(self):
-    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
-
   def setupFourUpView(self, volume):
     self.setBackgroundToVolumeID(volume.GetID())
     self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_FOUR_UP)
 
   def setBackgroundToVolumeID(self, volumeID):
-    for compositeNode in [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]:
+    for compositeNode in self._compositeNodes:
       compositeNode.SetLabelVolumeID(None)
       compositeNode.SetForegroundVolumeID(None)
       compositeNode.SetBackgroundVolumeID(volumeID)
