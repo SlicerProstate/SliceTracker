@@ -1,8 +1,8 @@
 import os, ast, shutil
 import qt, vtk, ctk, slicer
 
-from SliceTrackerUtils.constants import SliceTrackerConstants
-from SliceTrackerUtils.steps.base import SliceTrackerStep
+from ..constants import SliceTrackerConstants
+from base import SliceTrackerStep
 
 from SlicerProstateUtils.helpers import SampleDataDownloader
 from SlicerProstateUtils.decorators import *

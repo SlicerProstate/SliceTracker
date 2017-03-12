@@ -1,17 +1,18 @@
 import sys, os
 import qt, vtk
 import csv, re, numpy
+import logging
+import slicer
 
 import SimpleITK as sitk
 import sitkUtils
 
 from ..algorithms.zFrameRegistration import LineMarkerRegistration, OpenSourceZFrameRegistration
-from SlicerProstateUtils.decorators import logmethod
-import logging
-import slicer
-from SlicerProstateUtils.helpers import SliceAnnotation
-from base import SliceTrackerStepLogic, SliceTrackerStep
 from ..constants import SliceTrackerConstants
+from base import SliceTrackerStepLogic, SliceTrackerStep
+
+from SlicerProstateUtils.decorators import logmethod
+from SlicerProstateUtils.helpers import SliceAnnotation
 
 
 class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerStepLogic):
@@ -422,6 +423,16 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
         return
     self.templateVolume = templateVolume
     self.initiateZFrameRegistrationStep()
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCurrentSeriesChanged(self, caller, event, callData=None):
+    if callData:
+      self.showTemplatePathButton.checked = self.session.isTrackingPossible(callData) and \
+                                            self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME) in callData
+
+  def onLoadingMetadataSuccessful(self, caller, event):
+    if self.session.zFrameRegistrationSuccessful:
+      self.applyZFrameTransform()
 
   def onActivation(self):
     self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_FOUR_UP)

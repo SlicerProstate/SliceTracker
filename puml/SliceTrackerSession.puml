@@ -24,6 +24,7 @@ package "Session" #DDDDDD {
     + intraopDICOMDirectory
     + preprocessedDirectory
     + outputDirectory
+    + currentSeries
     --
     + steps
     + trainingMode: boolean

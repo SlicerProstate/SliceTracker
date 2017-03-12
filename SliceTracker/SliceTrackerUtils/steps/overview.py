@@ -5,7 +5,6 @@ import qt
 import ctk
 
 import slicer
-from ..exceptions import PreProcessedDataError
 from ..helpers import NewCaseSelectionNameWidget
 from ..sessionData import RegistrationResult
 from base import SliceTrackerStepLogic, SliceTrackerStep
@@ -23,31 +22,6 @@ class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
 
   def cleanup(self):
     pass
-
-  def isTrackingPossible(self, series):
-    if self.session.data.completed:
-      return False
-    if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
-      if self.getSetting("NEEDLE_IMAGE") in series:
-        return self.session.data.getMostRecentApprovedCoverProstateRegistration() or not self.session.data.usePreopData
-      elif self.getSetting("COVER_PROSTATE") in series:
-        return self.session.zFrameRegistrationSuccessful
-      elif self.getSetting("COVER_TEMPLATE") in series:
-        return not self.session.zFrameRegistrationSuccessful # TODO: Think about this
-    return False
-
-  def isInGeneralTrackable(self, series):
-    return self.isAnyListItemInString(series, [self.getSetting("COVER_TEMPLATE"),
-                                               self.getSetting("COVER_PROSTATE"),
-                                               self.getSetting("NEEDLE_IMAGE")])
-
-  def isAnyListItemInString(self, string, listItem):
-    return any(item in string for item in listItem)
-
-  def resultHasNotBeenProcessed(self, series):
-    return not (self.session.data.registrationResultWasApproved(series) or
-                self.session.data.registrationResultWasSkipped(series) or
-                self.session.data.registrationResultWasRejected(series))
 
   def applyBiasCorrection(self):
     outputVolume = slicer.vtkMRMLScalarVolumeNode()
@@ -207,6 +181,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if volume:
       if not self.session.zFrameRegistrationSuccessful and \
           self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
+
         logging.info("Opening ZFrameRegistrationStep")
         # self.openZFrameRegistrationStep(volume)
         return
@@ -218,19 +193,38 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       #   else:
       #     self.repeatRegistrationForCurrentSelection(volume)
 
+  @logmethod(logging.INFO)
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
     # if not self.active:
     # self.removeSliceAnnotations()
     trackingPossible = False
+
+    self.session.currentSeries = selectedSeries
+    volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
     if selectedSeries:
-      trackingPossible = self.logic.isTrackingPossible(selectedSeries)
+      trackingPossible = self.session.isTrackingPossible(selectedSeries)
       logging.info(trackingPossible)
     #   self.showTemplatePathButton.checked = trackingPossible and self.getSetting("COVER_PROSTATE") in selectedSeries
-    #   self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
+      self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
     #   self.configureViewersForSelectedIntraopSeries(selectedSeries)
     #   self.updateSliceAnnotations(selectedSeries)
-    # self.updateIntraopSeriesSelectorColor(selectedSeries)
-    # self.updateLayoutButtons(trackingPossible, selectedSeries)
+    self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries())
+
+      # self.updateLayoutButtons(trackingPossible, selectedSeries)
+
+  def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
+    trackingPossible = trackingPossible if not self.session.data.completed else False
+    self.trackTargetsButton.setEnabled(trackingPossible)
+    self.skipIntraopSeriesButton.setEnabled(trackingPossible and self.session.isEligibleForSkipping(selectedSeries))
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCurrentSeriesChanged(self, caller, event, callData=None):
+    logging.info("Current series selection changed invoked from session")
+    logging.info("Series with name %s selected" % callData if callData else "")
+    if callData:
+      model = self.intraopSeriesSelector.model()
+      index = next((i for i in range(model.rowCount()) if model.item(i).text() == callData), None)
+      self.intraopSeriesSelector.currentIndex = index
 
   def setupSessionObservers(self):
     super(SliceTrackerOverviewStep, self).setupSessionObservers()
@@ -243,7 +237,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
     self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.removeEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
-
 
   def onCreateNewCaseButtonClicked(self):
     if not self.checkAndWarnUserIfCaseInProgress():
@@ -377,30 +370,30 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
     self.intraopSeriesSelector.setCurrentIndex(-1)
     self.intraopSeriesSelector.blockSignals(False)
-    self.selectMostRecentEligibleSeries()
+    # self.selectMostRecentEligibleSeries()
 
-  def selectMostRecentEligibleSeries(self):
-    if not self.active:
-      self.intraopSeriesSelector.blockSignals(True)
-    substring = self.getSetting("NEEDLE_IMAGE")
-    index = -1
-    if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
-      substring = self.getSetting("COVER_TEMPLATE") \
-        if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
-    for item in list(reversed(range(len(self.session.seriesList)))):
-      series = self.seriesModel.item(item).text()
-      if substring in series:
-        if index != -1:
-          if self.session.data.registrationResultWasApprovedOrRejected(series) or \
-            self.session.data.registrationResultWasSkipped(series):
-            break
-        index = self.intraopSeriesSelector.findText(series)
-        break
-      elif self.getSetting("VIBE_IMAGE") in series and index == -1:
-        index = self.intraopSeriesSelector.findText(series)
-    rowCount = self.intraopSeriesSelector.model().rowCount()
-    self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
-    self.intraopSeriesSelector.blockSignals(False)
+  # def selectMostRecentEligibleSeries(self):
+  #   if not self.active:
+  #     self.intraopSeriesSelector.blockSignals(True)
+  #   substring = self.getSetting("NEEDLE_IMAGE")
+  #   index = -1
+  #   if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
+  #     substring = self.getSetting("COVER_TEMPLATE") \
+  #       if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
+  #   for item in list(reversed(range(len(self.session.seriesList)))):
+  #     series = self.seriesModel.item(item).text()
+  #     if substring in series:
+  #       if index != -1:
+  #         if self.session.data.registrationResultWasApprovedOrRejected(series) or \
+  #           self.session.data.registrationResultWasSkipped(series):
+  #           break
+  #       index = self.intraopSeriesSelector.findText(series)
+  #       break
+  #     elif self.getSetting("VIBE_IMAGE") in series and index == -1:
+  #       index = self.intraopSeriesSelector.findText(series)
+  #   rowCount = self.intraopSeriesSelector.model().rowCount()
+  #   self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
+  #   self.intraopSeriesSelector.blockSignals(False)
 
   @logmethod(logging.INFO)
   def onZFrameRegistrationSuccessful(self, caller, event):

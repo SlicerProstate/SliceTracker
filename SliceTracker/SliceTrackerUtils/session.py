@@ -7,9 +7,9 @@ import slicer
 from sessionData import SessionData, RegistrationResult
 from constants import SliceTrackerConstants
 
-from exceptions import DICOMValueError, PreProcessedDataError
+from exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 
-from SlicerProstateUtils.constants import DICOMTAGS, FileExtension
+from SlicerProstateUtils.constants import DICOMTAGS, FileExtension, STYLE
 from SlicerProstateUtils.events import SlicerProstateEvents
 from SlicerProstateUtils.helpers import IncomingDataWindow, SmartDICOMReceiver
 from SlicerProstateUtils.mixins import ModuleLogicMixin
@@ -91,12 +91,13 @@ class SliceTrackerSession(Singleton, SessionBase):
   ZFrameRegistrationSuccessfulEvent = vtk.vtkCommand.UserEvent + 140
   SuccessfullyPreprocessedEvent = vtk.vtkCommand.UserEvent + 141
   FailedPreprocessedEvent = vtk.vtkCommand.UserEvent + 142
+  SuccessfullyLoadedMetadataEvent = vtk.vtkCommand.UserEvent + 143
+
+  CurrentSeriesChangedEvent = vtk.vtkCommand.UserEvent + 151
 
   _steps = []
-  _zFrameRegistrationSuccessful = False
   alreadyLoadedSeries = {}
   trainingMode = False
-  intraopDICOMReceiver = None
   loadableList = {}
   seriesList = []
   data = SessionData()
@@ -114,17 +115,14 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   @property
   def preprocessedDirectory(self):
-    # was mpReviewPreprocessedOutput
     return os.path.join(self.directory, "mpReviewPreprocessed") if self.directory else None
 
   @property
   def preopDICOMDirectory(self):
-    # was preopDICOMDataDirectory
     return os.path.join(self.directory, "DICOM", "Preop") if self.directory else None
 
   @property
   def intraopDICOMDirectory(self):
-    # was intraopDICOMDataDirectory
     return os.path.join(self.directory, "DICOM", "Intraop") if self.directory else None
 
   @property
@@ -137,7 +135,22 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   @property
   def zFrameRegistrationSuccessful(self):
+    self._zFrameRegistrationSuccessful = getattr(self, "_zFrameRegistrationSuccessful", None)
     return self.data.zFrameTransform is not None and self._zFrameRegistrationSuccessful
+
+  @property
+  def currentSeries(self):
+    self._currentSeries = getattr(self, "_currentSeries", None)
+    return self._currentSeries
+
+  @currentSeries.setter
+  def currentSeries(self, series):
+    if series == self.currentSeries:
+      return
+    if series and series not in self.seriesList :
+      raise UnknownSeriesError("Series %s is unknown" % series)
+    self._currentSeries = series
+    self.invokeEvent(self.CurrentSeriesChangedEvent, series)
 
   @zFrameRegistrationSuccessful.setter
   def zFrameRegistrationSuccessful(self, value):
@@ -237,7 +250,7 @@ class SliceTrackerSession(Singleton, SessionBase):
         self.data.preopLabel = coverProstate.movingLabel
     if self.data.zFrameTransform:
       self._zFrameRegistrationSuccessful = True
-    return True
+    self.invokeEvent(self.SuccessfullyLoadedMetadataEvent)
 
   def startPreopDICOMReceiver(self):
     self.resetPreopDICOMReceiver()
@@ -364,7 +377,7 @@ class SliceTrackerSession(Singleton, SessionBase):
         del self.loadableList[series]
 
   def stopIntraopDICOMReceiver(self):
-    self.intraopDICOMReceiver = getattr(self, "dicomReceiver", None)
+    self.intraopDICOMReceiver = getattr(self, "intraopDICOMReceiver", None)
     if self.intraopDICOMReceiver:
       self.intraopDICOMReceiver.stop()
       self.intraopDICOMReceiver.removeEventObservers()
@@ -403,10 +416,10 @@ class SliceTrackerSession(Singleton, SessionBase):
       if not self.zFrameRegistrationSuccessful:
         event = self.CoverTemplateReceivedEvent
         substring = self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME)
-    series = self.getSeriesForSubstring(substring)
+    self.currentSeries = self.getSeriesForSubstring(substring)
 
-    if series and event:
-      self.invokeEvent(event, series)
+    if self.currentSeries and event:
+      self.invokeEvent(event, self.currentSeries)
 
   def getSeriesForSubstring(self, substring):
     for series in reversed(self.seriesList):
@@ -585,3 +598,42 @@ class SliceTrackerSession(Singleton, SessionBase):
 
   def getMostRecentTargetsFile(self, path):
     return self.getMostRecentFile(path, FileExtension.FCSV)
+
+  def getColorForSelectedSeries(self):
+    style = "" if self.currentSeries is None else STYLE.YELLOW_BACKGROUND
+    if not self.isTrackingPossible(self.currentSeries):
+      if self.data.registrationResultWasApproved(self.currentSeries) or \
+              (self.zFrameRegistrationSuccessful and
+                   self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in self.currentSeries):
+        style = STYLE.GREEN_BACKGROUND
+      elif self.data.registrationResultWasSkipped(self.currentSeries):
+        style = STYLE.RED_BACKGROUND
+      elif self.data.registrationResultWasRejected(self.currentSeries):
+        style = STYLE.GRAY_BACKGROUND
+    return style
+
+  def isTrackingPossible(self, series):
+    if self.data.completed:
+      return False
+    if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
+      if self.getSetting("NEEDLE_IMAGE", moduleName=self.MODULE_NAME) in series:
+        return self.data.getMostRecentApprovedCoverProstateRegistration() or not self.data.usePreopData
+      elif self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME) in series:
+        return self.zFrameRegistrationSuccessful
+      elif self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME) in series:
+        return not self.zFrameRegistrationSuccessful # TODO: Think about this
+    return False
+
+  def isInGeneralTrackable(self, series):
+    return self.isAnyListItemInString(series, [self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME),
+                                               self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME),
+                                               self.getSetting("NEEDLE_IMAGE", moduleName=self.MODULE_NAME)])
+
+  def resultHasNotBeenProcessed(self, series):
+    return not (self.data.registrationResultWasApproved(series) or
+                self.data.registrationResultWasSkipped(series) or
+                self.data.registrationResultWasRejected(series))
+
+  def isEligibleForSkipping(self, series):
+    return not self.isAnyListItemInString(series,[self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME),
+                                                  self.getSetting("COVER_TEMPLATE", moduleName=self.MODULE_NAME)])

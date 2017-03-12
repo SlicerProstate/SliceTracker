@@ -42,7 +42,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     SliceTrackerConfiguration(self.moduleName, os.path.join(self.modulePath, 'Resources', "default.cfg"))
     self.logic = SliceTrackerLogic()
-    #   TODO set logic instances here
 
     self.session = SliceTrackerSession()
     self.session.steps = []
