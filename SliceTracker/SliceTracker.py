@@ -155,9 +155,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def setupSessionObservers(self):
     self.session.addEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
+    self.session.addEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
 
   def removeSessionObservers(self):
     self.session.removeEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
+    self.session.removeEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
 
   def onSuccessfulPreProcessing(self, caller, event):
     dicomFileName = self.logic.getFileList(self.session.preopDICOMDirectory)[0]
@@ -173,6 +175,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.customStatusProgressBar.show()
     self.customStatusProgressBar.maximum = size
     self.customStatusProgressBar.updateStatus(text, currentIndex)
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCurrentSeriesChanged(self, caller, event, callData):
+    self.intraopWatchBox.sourceFile = self.session.loadableList[callData][0] if callData else None
 
 
 class SliceTrackerLogic(ModuleLogicMixin):

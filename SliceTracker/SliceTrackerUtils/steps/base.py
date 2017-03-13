@@ -7,6 +7,7 @@ from ..session import SliceTrackerSession
 from SlicerProstateUtils.decorators import logmethod, beforeRunProcessEvents
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin, GeneralModuleMixin
 from ..constants import SliceTrackerConstants
+from ..sessionData import RegistrationResult
 
 class StepBase(GeneralModuleMixin):
 
@@ -117,7 +118,6 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
     self.session.addEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
     self.session.addEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
-    self.session.addEventObserver(self.session.CoverTemplateReceivedEvent, self.onCoverTemplateReceived)
     self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
     self.session.addEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
     self.session.addEventObserver(self.session.SuccessfullyLoadedMetadataEvent, self.onLoadingMetadataSuccessful)
@@ -127,8 +127,7 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
     self.session.removeEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
     self.session.removeEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
-    self.session.removeEventObserver(self.session.CoverTemplateReceivedEvent, self.onCoverTemplateReceived)
-    self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
+    self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
     self.session.removeEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
     self.session.removeEventObserver(self.session.SuccessfullyLoadedMetadataEvent, self.onLoadingMetadataSuccessful)
 
@@ -166,10 +165,6 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
     pass
 
   @logmethod(logging.INFO)
-  def onCoverTemplateReceived(self, caller, event):
-    pass
-
-  @logmethod(logging.INFO)
   def onZFrameRegistrationSuccessful(self, caller, event):
     pass
 
@@ -198,6 +193,11 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.greenSliceNode.SetOrientationToCoronal()
     self.updateFOV() # TODO: shall not be called here
 
+  def setAxialOrientation(self):
+    for sliceNode in self._sliceNodes:
+      sliceNode.SetOrientationToAxial()
+    self.updateFOV() # TODO: shall not be called here
+
   def updateFOV(self):
     # if self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
     #   self.setDefaultFOV(self.redSliceLogic, 1.0)
@@ -219,3 +219,51 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
     sliceLogic.FitSliceToAll()
     FOV = sliceLogic.GetSliceNode().GetFieldOfView()
     self.setFOV(sliceLogic, [FOV[0] * factor, FOV[1] * factor, FOV[2]])
+
+  def setupRedSlicePreview(self, selectedSeries):
+    self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY)
+    # self.hideAllTargets()
+    try:
+      result = self.session.data.getResultsBySeries(selectedSeries)[0]
+      volume = result.volumes.fixed
+    except IndexError:
+      result = None
+      volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
+    self.setBackgroundToVolumeID(volume.GetID())
+
+    if result and self.getSetting("COVER_PROSTATE") in selectedSeries and not self.session.data.usePreopData:
+      pass
+      # self.currentResult = selectedSeries
+      # self.currentTargets = self.currentResult.approvedTargets
+      # self.refreshViewNodeIDs(self.currentTargets, [self.redSliceNode])
+      # self.showCurrentTargets()
+      # self.selectLastSelectedTarget()
+    elif self.getSetting("VIBE_IMAGE") in selectedSeries:
+      seriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+      mostRecentApprovedTargets = self.session.data.getMostRecentApprovedTargetsPriorTo(seriesNumber)
+      if mostRecentApprovedTargets:
+        print "found most recent approved targets"
+        # self.currentTargets = mostRecentApprovedTargets
+        # self.refreshViewNodeIDs(self.currentTargets, [])
+        # self.showCurrentTargets()
+        # self.selectLastSelectedTarget()
+    # else:
+    #   self.disableTargetTable()
+
+  def setupSideBySideRegistrationView(self):
+    for result in self.session.data.getResultsBySeries(self.session.currentSeries):
+      if result.approved or result.rejected:
+        self.setupRegistrationResultView(layout=SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE)
+        if result.rejected:
+          self.onRegistrationResultSelected(result.name, registrationType='bSpline')
+        elif result.approved and result.approvedTargets:
+          self.onRegistrationResultSelected(result.name, showApproved=True)
+        break
+
+  def setupRegistrationResultView(self, layout=None):
+    if layout:
+      self.layoutManager.setLayout(layout)
+    # self.hideAllLabels()
+    # self.addSliceAnnotationsBasedOnLayoutAndSetOrientation()
+    self.refreshViewNodeIDs(self.session.data.initialTargets, [self.redSliceNode])
+    # self.setupViewNodesForCurrentTargets()

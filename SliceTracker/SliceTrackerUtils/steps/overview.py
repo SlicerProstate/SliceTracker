@@ -177,14 +177,15 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onTrackTargetsButtonClicked(self):
     # self.removeSliceAnnotations()
     # self.targetTableModel.computeCursorDistances = False
-    volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
-    if volume:
-      if not self.session.zFrameRegistrationSuccessful and \
-          self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
-
-        logging.info("Opening ZFrameRegistrationStep")
-        # self.openZFrameRegistrationStep(volume)
-        return
+    # volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
+    self.session.takeActionForCurrentSeries()
+    # if volume:
+    #   if not self.session.zFrameRegistrationSuccessful and \
+    #       self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
+    #
+    #     logging.info("Opening ZFrameRegistrationStep")
+    #     # self.openZFrameRegistrationStep(volume)
+    #     return
       # else:
       #   if self.currentResult is None or \
       #      self.session.data.getMostRecentApprovedCoverProstateRegistration() is None or \
@@ -206,11 +207,22 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       logging.info(trackingPossible)
     #   self.showTemplatePathButton.checked = trackingPossible and self.getSetting("COVER_PROSTATE") in selectedSeries
       self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
-    #   self.configureViewersForSelectedIntraopSeries(selectedSeries)
+      self.configureViewersForSelectedIntraopSeries(selectedSeries)
     #   self.updateSliceAnnotations(selectedSeries)
     self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries())
 
       # self.updateLayoutButtons(trackingPossible, selectedSeries)
+
+  def configureViewersForSelectedIntraopSeries(self, selectedSeries):
+    if self.session.data.registrationResultWasApproved(selectedSeries) or \
+            self.session.data.registrationResultWasRejected(selectedSeries):
+      if self.getSetting("COVER_PROSTATE") in selectedSeries and not self.session.data.usePreopData:
+        self.setupRedSlicePreview(selectedSeries)
+      else:
+        print "setupSideBySideRegistrationView"
+        # self.setupSideBySideRegistrationView()
+    else:
+      self.setupRedSlicePreview(selectedSeries)
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
     trackingPossible = trackingPossible if not self.session.data.completed else False

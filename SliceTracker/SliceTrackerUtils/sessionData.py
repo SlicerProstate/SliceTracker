@@ -125,14 +125,16 @@ class SessionData(ModuleLogicMixin):
       self.usePreopData = data["usedPreopData"]
       self.biasCorrectionDone = data["biasCorrected"]
 
-      self.initialTargets = self._loadOrGetFileData(directory,
-                                                    data["initialTargets"], slicer.util.loadMarkupsFiducialList)
-      self.initialTargetsPath = os.path.join(directory, data["initialTargets"])
+      if "initialTargets" in data.keys():
+        self.initialTargets = self._loadOrGetFileData(directory,
+                                                      data["initialTargets"], slicer.util.loadMarkupsFiducialList)
+        self.initialTargetsPath = os.path.join(directory, data["initialTargets"])
 
-      self.zFrameTransform = self._loadOrGetFileData(directory, data["zFrameTransform"], slicer.util.loadTransform)
-      # TODO: self.applyZFrameTransform(self.zFrameTransform)
+      if "zFrameTransform" in data.keys():
+        self.zFrameTransform = self._loadOrGetFileData(directory, data["zFrameTransform"], slicer.util.loadTransform)
 
-      self.initialVolume = self._loadOrGetFileData(directory, data["initialVolume"], slicer.util.loadVolume)
+      if "initialVolume" in data.keys():
+        self.initialVolume = self._loadOrGetFileData(directory, data["initialVolume"], slicer.util.loadVolume)
 
       self.loadResults(data, directory)
     self._registrationResults = OrderedDict(sorted(self._registrationResults.items()))  # TODO: sort here?

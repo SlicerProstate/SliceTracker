@@ -388,6 +388,14 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
     # self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
 
+  def setupSessionObservers(self):
+    super(SliceTrackerZFrameRegistrationStep, self).setupSessionObservers()
+    self.session.addEventObserver(self.session.InitiateZFrameCalibrationEvent, self.onInitiateZFrameCalibration)
+
+  def removeSessionEventObservers(self):
+    super(SliceTrackerZFrameRegistrationStep, self).removeSessionEventObservers()
+    self.session.removeEventObserver(self.session.InitiateZFrameCalibrationEvent, self.onInitiateZFrameCalibration)
+
   def onShowZFrameModelToggled(self, checked):
     self.logic.setZFrameVisibility(checked)
 
@@ -412,11 +420,10 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
   def onLayoutChanged(self):
     pass
 
-  @vtk.calldata_type(vtk.VTK_STRING)
-  def onCoverTemplateReceived(self, caller, event, callData):
+  def onInitiateZFrameCalibration(self, caller, event):
     self.active = True
 
-    templateVolume = self.logic.getOrCreateVolumeForSeries(callData)
+    templateVolume = self.logic.getOrCreateVolumeForSeries(self.session.currentSeries)
     if self.templateVolume and templateVolume is not self.templateVolume:
       if not slicer.util.confirmYesNoDisplay("It looks like another %s was received. Do you want to use this one for"
                                              "calibration?" % self.getSetting("COVER_TEMPLATE")):
