@@ -149,17 +149,18 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     if not self.registrationResult:
       self.registrationResult = RegistrationResult("01: RegistrationResult")
     result = self.registrationResult
-    result.fixedVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('FixedImageNodeID'))
-    result.fixedLabel = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('FixedLabelNodeID'))
-    result.movingLabel = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingLabelNodeID'))
+    result.volumes.fixed = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('FixedImageNodeID'))
+    result.labels.fixed = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('FixedLabelNodeID'))
+    result.labels.moving = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingLabelNodeID'))
     movingVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingImageNodeID'))
-    result.movingVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, movingVolume, "temp-movingVolume_" + str(self.counter))
+    result.volumes.moving = self.volumesLogic.CloneVolume(slicer.mrmlScene, movingVolume,
+                                                          "temp-movingVolume_" + str(self.counter))
     self.counter += 1
 
-    logging.debug("Fixed Image Name: %s" % result.fixedVolume.GetName())
-    logging.debug("Fixed Label Name: %s" % result.fixedLabel.GetName())
+    logging.debug("Fixed Image Name: %s" % result.volumes.fixed.GetName())
+    logging.debug("Fixed Label Name: %s" % result.labels.fixed.GetName())
     logging.debug("Moving Image Name: %s" % movingVolume.GetName())
-    logging.debug("Moving Label Name: %s" % result.movingLabel.GetName())
+    logging.debug("Moving Label Name: %s" % result.labels.moving.GetName())
     initialTransform = parameterNode.GetAttribute('InitialTransformNodeID')
     if initialTransform:
       initialTransform = slicer.mrmlScene.GetNodeByID(initialTransform)
@@ -173,9 +174,9 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     registrationTypes = ['rigid', 'affine', 'bSpline']
     self.createVolumeAndTransformNodes(registrationTypes, prefix=str(result.seriesNumber), suffix=result.suffix)
 
-    self.doRigidRegistration(movingBinaryVolume=result.movingLabel, initializeTransformMode="useCenterOfROIAlign")
+    self.doRigidRegistration(movingBinaryVolume=result.labels.moving, initializeTransformMode="useCenterOfROIAlign")
     self.doAffineRegistration()
-    self.doBSplineRegistration(initialTransform=result.affineTransform)
+    self.doBSplineRegistration(initialTransform=result.transforms.affine)
 
     targetsNodeID = parameterNode.GetAttribute('TargetsNodeID')
     if targetsNodeID:
@@ -202,7 +203,7 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     self.dilateMask(result.fixedLabel, dilateValue=8)
     self.doRigidRegistration(movingBinaryVolume=result.movingLabel,
                              initialTransform=initialTransform if initialTransform else None)
-    self.doBSplineRegistration(initialTransform=result.rigidTransform, useScaleVersor3D=True, useScaleSkewVersor3D=True,
+    self.doBSplineRegistration(initialTransform=result.transforms.rigid, useScaleVersor3D=True, useScaleSkewVersor3D=True,
                                useAffine=True)
 
     targetsNodeID = parameterNode.GetAttribute('TargetsNodeID')
@@ -236,11 +237,11 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
 
   def doRigidRegistration(self, **kwargs):
     self.updateProgress(labelText='\nRigid registration', value=2)
-    paramsRigid = {'fixedVolume': self.registrationResult.fixedVolume,
-                   'movingVolume': self.registrationResult.movingVolume,
-                   'fixedBinaryVolume': self.registrationResult.fixedLabel,
-                   'outputTransform': self.registrationResult.rigidTransform.GetID(),
-                   'outputVolume': self.registrationResult.rigidVolume.GetID(),
+    paramsRigid = {'fixedVolume': self.registrationResult.volumes.fixed,
+                   'movingVolume': self.registrationResult.volumes.moving,
+                   'fixedBinaryVolume': self.registrationResult.labels.fixed,
+                   'outputTransform': self.registrationResult.transforms.rigid.GetID(),
+                   'outputVolume': self.registrationResult.volumes.rigid.GetID(),
                    'maskProcessingMode': "ROI",
                    'useRigid': True}
     for key, value in kwargs.iteritems():
@@ -250,26 +251,26 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
 
   def doAffineRegistration(self):
     self.updateProgress(labelText='\nAffine registration', value=2)
-    paramsAffine = {'fixedVolume': self.registrationResult.fixedVolume,
-                    'movingVolume': self.registrationResult.movingVolume,
-                    'fixedBinaryVolume': self.registrationResult.fixedLabel,
-                    'movingBinaryVolume': self.registrationResult.movingLabel,
-                    'outputTransform': self.registrationResult.affineTransform.GetID(),
-                    'outputVolume': self.registrationResult.affineVolume.GetID(),
+    paramsAffine = {'fixedVolume': self.registrationResult.volumes.fixed,
+                    'movingVolume': self.registrationResult.volumes.moving,
+                    'fixedBinaryVolume': self.registrationResult.labels.fixed,
+                    'movingBinaryVolume': self.registrationResult.labels.moving,
+                    'outputTransform': self.registrationResult.transforms.affine.GetID(),
+                    'outputVolume': self.registrationResult.volumes.affine.GetID(),
                     'maskProcessingMode': "ROI",
                     'useAffine': True,
-                    'initialTransform': self.registrationResult.rigidTransform}
+                    'initialTransform': self.registrationResult.transforms.rigid}
     slicer.cli.run(slicer.modules.brainsfit, None, paramsAffine, wait_for_completion=True)
     self.registrationResult.cmdArguments += "Affine Registration Parameters: %s" % str(paramsAffine) + "\n\n"
 
   def doBSplineRegistration(self, initialTransform, **kwargs):
     self.updateProgress(labelText='\nBSpline registration', value=3)
-    paramsBSpline = {'fixedVolume': self.registrationResult.fixedVolume,
-                     'movingVolume': self.registrationResult.movingVolume,
-                     'outputVolume': self.registrationResult.bSplineVolume.GetID(),
-                     'bsplineTransform': self.registrationResult.bSplineTransform.GetID(),
-                     'fixedBinaryVolume': self.registrationResult.fixedLabel,
-                     'movingBinaryVolume': self.registrationResult.movingLabel,
+    paramsBSpline = {'fixedVolume': self.registrationResult.volumes.fixed,
+                     'movingVolume': self.registrationResult.volumes.moving,
+                     'outputVolume': self.registrationResult.volumes.bSpline.GetID(),
+                     'bsplineTransform': self.registrationResult.transforms.bSpline.GetID(),
+                     'fixedBinaryVolume': self.registrationResult.labels.fixed,
+                     'movingBinaryVolume': self.registrationResult.labels.moving,
                      'useROIBSpline': True,
                      'useBSpline': True,
                      'splineGridSize': "3,3,3",
