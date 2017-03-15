@@ -201,7 +201,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     trackingPossible = False
 
     self.session.currentSeries = selectedSeries
-    volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
+    volume = self.session.currentSeriesVolume
     if selectedSeries:
       trackingPossible = self.session.isTrackingPossible(selectedSeries)
       logging.info(trackingPossible)

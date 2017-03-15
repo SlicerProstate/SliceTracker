@@ -14,7 +14,9 @@ from SlicerProstateUtils.events import SlicerProstateEvents
 from SlicerProstateUtils.helpers import IncomingDataWindow, SmartDICOMReceiver
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 
-from SlicerProstateUtils.decorators import logmethod, singleton
+from SlicerProstateUtils.decorators import logmethod, singleton, onReturnProcessEvents
+
+from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
 
 class SessionBase(ModuleLogicMixin):
@@ -88,6 +90,7 @@ class SliceTrackerSession(SessionBase):
   InitiateZFrameCalibrationEvent = vtk.vtkCommand.UserEvent + 160
   InitiateSegmentationEvent = vtk.vtkCommand.UserEvent + 161
   InitiateRegistrationEvent = vtk.vtkCommand.UserEvent + 162
+  InitiateEvaluationEvent = vtk.vtkCommand.UserEvent + 163
 
   MODULE_NAME = "SliceTracker"
 
@@ -148,14 +151,19 @@ class SliceTrackerSession(SessionBase):
     self.invokeEvent(self.CurrentSeriesChangedEvent, series)
 
   @property
+  def currentSeriesVolume(self):
+    if not self._currentSeries:
+      return None
+    else:
+      return self.getOrCreateVolumeForSeries(self.currentSeries)
+
+  @property
   def movingVolume(self):
     self._movingVolume = getattr(self, "_movingVolume", None)
     return self._movingVolume
 
   @movingVolume.setter
   def movingVolume(self, value):
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
-      self.data.initialVolume = value
     self._movingVolume = value
 
   @property
@@ -165,13 +173,13 @@ class SliceTrackerSession(SessionBase):
 
   @movingLabel.setter
   def movingLabel(self, value):
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
-      self.data.initialLabel = value
     self._movingLabel = value
 
   @property
   def movingTargets(self):
     self._movingTargets = getattr(self, "_movingTargets", None)
+    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+      return self.data.initialTargets
     return self._movingTargets
 
   @movingTargets.setter
@@ -183,23 +191,33 @@ class SliceTrackerSession(SessionBase):
   @property
   def fixedVolume(self):
     self._fixedVolume = getattr(self, "_fixedVolume", None)
+    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+      return self.data.initialVolume
     return self._fixedVolume
 
   @fixedVolume.setter
   def fixedVolume(self, value):
+    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+      self.data.initialVolume = value
     self._fixedVolume = value
 
   @property
   def fixedLabel(self):
     self._fixedLabel = getattr(self, "_fixedLabel", None)
+    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+      return self.data.initialLabel
     return self._fixedLabel
 
   @fixedLabel.setter
   def fixedLabel(self, value):
+    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+      self.data.initialLabel = value
     self._fixedLabel = value
 
   def __init__(self):
     SessionBase.__init__(self)
+    self.registrationLogic = SliceTrackerRegistrationLogic()
+    self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.resetAndInitializeMembers()
 
   def resetAndInitializeMembers(self):
@@ -409,6 +427,17 @@ class SliceTrackerSession(SessionBase):
                                                              patientID, receivedInfo["PatientName"])
         if not slicer.util.confirmYesNoDisplay(message, title="Patient IDs Not Matching", windowTitle="SliceTracker"):
           self.deleteSeriesFromSeriesList(seriesNumber)
+
+  def getOrCreateVolumeForSeries(self, series):
+    try:
+      volume = self.alreadyLoadedSeries[series]
+    except KeyError:
+      files = self.loadableList[series]
+      loadables = self.scalarVolumePlugin.examine([files])
+      success, volume = slicer.util.loadVolume(files[0], returnNode=True)
+      volume.SetName(loadables[0].name)
+      self.alreadyLoadedSeries[series] = volume
+    return volume
 
   def createLoadableFileListForSeries(self, series):
     seriesNumber = RegistrationResult.getSeriesNumberFromString(series)
@@ -712,9 +741,62 @@ class SliceTrackerSession(SessionBase):
       suffix = "_Retry_" + str(nOccurrences)
     return name, suffix
 
+  def onInvokeRegistration(self, initial=True, retryMode=False):
+    self.progress = slicer.util.createProgressDialog(maximum=4, value=1)
+    if initial:
+      self.applyInitialRegistration(retryMode, progressCallback=self.updateProgressBar)
+    else:
+      self.logic.applyRegistration(progressCallback=self.updateProgressBar)
+    self.progress.close()
+    self.progress = None
+    # self.openEvaluationStep()
+    logging.debug('Re-Registration is done')
+
+  @onReturnProcessEvents
+  def updateProgressBar(self, **kwargs):
+    if self.progress:
+      for key, value in kwargs.iteritems():
+        if hasattr(self.progress, key):
+          setattr(self.progress, key, value)
+
   def generateNameAndCreateRegistrationResult(self, fixedVolume):
     name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(fixedVolume.GetName())
     result = self.data.createResult(name + suffix)
     result.suffix = suffix
-    # self.registrationLogic.registrationResult = result
+    self.registrationLogic.registrationResult = result
     return result
+
+  def applyInitialRegistration(self, retryMode, progressCallback=None):
+    if not retryMode:
+      self.data.initializeRegistrationResults()
+    self._runRegistration(self.fixedVolume, self.fixedLabel, self.movingVolume,
+                          self.movingLabel, self.movingTargets, progressCallback)
+
+  def applyRegistration(self, progressCallback=None):
+
+    coverProstateRegResult = self.data.getMostRecentApprovedCoverProstateRegistration()
+    lastRigidTfm = self.data.getLastApprovedRigidTransformation()
+    lastApprovedTfm = self.data.getMostRecentApprovedTransform()
+    initialTransform = lastApprovedTfm if lastApprovedTfm else lastRigidTfm
+
+
+    fixedLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.currentSeriesVolume,
+                                                           self.currentSeriesVolume.GetName() + '-label')
+
+    self.runBRAINSResample(inputVolume=coverProstateRegResult.fixedLabel, referenceVolume=self.currentSeriesVolume,
+                           outputVolume=fixedLabel, warpTransform=initialTransform)
+
+    self.dilateMask(fixedLabel, dilateValue=self.segmentedLabelValue)
+    self._runRegistration(self.currentSeriesVolume, fixedLabel, coverProstateRegResult.fixedVolume,
+                         coverProstateRegResult.fixedLabel, coverProstateRegResult.approvedTargets, progressCallback)
+
+  def _runRegistration(self, fixedVolume, fixedLabel, movingVolume, movingLabel, targets, progressCallback):
+    self.generateNameAndCreateRegistrationResult(fixedVolume)
+    parameterNode = slicer.vtkMRMLScriptedModuleNode()
+    parameterNode.SetAttribute('FixedImageNodeID', fixedVolume.GetID())
+    parameterNode.SetAttribute('FixedLabelNodeID', fixedLabel.GetID())
+    parameterNode.SetAttribute('MovingImageNodeID', movingVolume.GetID())
+    parameterNode.SetAttribute('MovingLabelNodeID', movingLabel.GetID())
+    parameterNode.SetAttribute('TargetsNodeID', targets.GetID())
+    self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
+    self.invokeEvent(self.InitiateEvaluationEvent)

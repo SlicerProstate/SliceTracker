@@ -41,17 +41,6 @@ class SliceTrackerStepLogic(StepBase, ModuleLogicMixin):
   def cleanup(self):
     pass
 
-  def getOrCreateVolumeForSeries(self, series):
-    try:
-      volume = self.session.alreadyLoadedSeries[series]
-    except KeyError:
-      files = self.session.loadableList[series]
-      loadables = self.scalarVolumePlugin.examine([files])
-      success, volume = slicer.util.loadVolume(files[0], returnNode=True)
-      volume.SetName(loadables[0].name)
-      self.session.alreadyLoadedSeries[series] = volume
-    return volume
-
 
 class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
 
@@ -228,7 +217,7 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
       volume = result.volumes.fixed
     except IndexError:
       result = None
-      volume = self.logic.getOrCreateVolumeForSeries(selectedSeries)
+      volume = self.session.getOrCreateVolumeForSeries(selectedSeries)
     self.setBackgroundToVolumeID(volume.GetID())
 
     if result and self.getSetting("COVER_PROSTATE") in selectedSeries and not self.session.data.usePreopData:

@@ -87,9 +87,12 @@ class SessionData(ModuleLogicMixin):
     self.zFrameTransform = None
 
     self._savedRegistrationResults = []
-    self._registrationResults = OrderedDict()
+    self.initializeRegistrationResults()
     # TODO: the following should not be here since it is widget depending
     # self.customProgressBar = self.getOrCreateCustomProgressBar()
+
+  def initializeRegistrationResults(self):
+    self._registrationResults = OrderedDict()
 
   def getOrCreateResult(self, series):
     result = self.getResult(series)

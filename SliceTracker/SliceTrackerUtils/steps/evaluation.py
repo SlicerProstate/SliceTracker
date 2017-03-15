@@ -135,3 +135,14 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
                                                 enabled=False, toolTip="Use reveal cursor")
     slider = self.createHLayout([self.opacitySpinBox, self.animaHolderLayout])
     self.visualEffectsGroupBoxLayout.addWidget(self.createVLayout([slider, self.revealCursorButton]))
+
+  def setupSessionObservers(self):
+    super(SliceTrackerEvaluationStep, self).setupSessionObservers()
+    self.session.addEventObserver(self.session.InitiateEvaluationEvent, self.onInitiateEvaluation)
+
+  def removeSessionEventObservers(self):
+    super(SliceTrackerEvaluationStep, self).removeSessionEventObservers()
+    self.session.removeEventObserver(self.session.InitiateEvaluationEvent, self.onInitiateEvaluation)
+
+  def onInitiateEvaluation(self, caller, event):
+    self.active = True

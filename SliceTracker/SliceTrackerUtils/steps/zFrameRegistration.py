@@ -423,7 +423,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
   def onInitiateZFrameCalibration(self, caller, event):
     self.active = True
 
-    templateVolume = self.logic.getOrCreateVolumeForSeries(self.session.currentSeries)
+    templateVolume = self.session.currentSeriesVolume
     if self.templateVolume and templateVolume is not self.templateVolume:
       if not slicer.util.confirmYesNoDisplay("It looks like another %s was received. Do you want to use this one for"
                                              "calibration?" % self.getSetting("COVER_TEMPLATE")):
