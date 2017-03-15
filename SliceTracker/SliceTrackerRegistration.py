@@ -39,11 +39,6 @@ class SliceTrackerRegistrationWidget(ScriptedLoadableModuleWidget, ModuleWidgetM
     ScriptedLoadableModuleWidget.__init__(self, parent)
     self.logic = SliceTrackerRegistrationLogic()
 
-  def createSliceWidgetClassMembers(self, name):
-    widget = self.layoutManager.sliceWidget(name)
-    setattr(self, name.lower()+"Widget", widget)
-    setattr(self, name.lower()+"CompositeNode", widget.mrmlSliceCompositeNode())
-
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
     self.createSliceWidgetClassMembers("Red")

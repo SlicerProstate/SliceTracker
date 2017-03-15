@@ -89,12 +89,6 @@ class SliceTrackerSession(SessionBase):
   InitiateSegmentationEvent = vtk.vtkCommand.UserEvent + 161
   InitiateRegistrationEvent = vtk.vtkCommand.UserEvent + 162
 
-  _steps = []
-  alreadyLoadedSeries = {}
-  trainingMode = False
-  loadableList = {}
-  seriesList = []
-  data = SessionData()
   MODULE_NAME = "SliceTracker"
 
   @property
@@ -153,16 +147,69 @@ class SliceTrackerSession(SessionBase):
     self._currentSeries = series
     self.invokeEvent(self.CurrentSeriesChangedEvent, series)
 
+  @property
+  def movingVolume(self):
+    self._movingVolume = getattr(self, "_movingVolume", None)
+    return self._movingVolume
+
+  @movingVolume.setter
+  def movingVolume(self, value):
+    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+      self.data.initialVolume = value
+    self._movingVolume = value
+
+  @property
+  def movingLabel(self):
+    self._movingLabel = getattr(self, "_movingLabel", None)
+    return self._movingLabel
+
+  @movingLabel.setter
+  def movingLabel(self, value):
+    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+      self.data.initialLabel = value
+    self._movingLabel = value
+
+  @property
+  def movingTargets(self):
+    self._movingTargets = getattr(self, "_movingTargets", None)
+    return self._movingTargets
+
+  @movingTargets.setter
+  def movingTargets(self, value):
+    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+      self.data.initialTargets = value
+    self._movingTargets = value
+    
+  @property
+  def fixedVolume(self):
+    self._fixedVolume = getattr(self, "_fixedVolume", None)
+    return self._fixedVolume
+
+  @fixedVolume.setter
+  def fixedVolume(self, value):
+    self._fixedVolume = value
+
+  @property
+  def fixedLabel(self):
+    self._fixedLabel = getattr(self, "_fixedLabel", None)
+    return self._fixedLabel
+
+  @fixedLabel.setter
+  def fixedLabel(self, value):
+    self._fixedLabel = value
+
   def __init__(self):
     SessionBase.__init__(self)
     self.resetAndInitializeMembers()
 
   def resetAndInitializeMembers(self):
+
     from mpReview import mpReviewLogic
     self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name"))
     self.segmentedColorName = self.getSetting("Segmentation_Color_Name")
     self.segmentedLabelValue = self.mpReviewColorNode.GetColorIndexByName(self.segmentedColorName)
     self.directory = None
+    self._steps = []
     self.data = SessionData()
     self.trainingMode = False
     self.preopDICOMReceiver = None
@@ -657,3 +704,17 @@ class SliceTrackerSession(SessionBase):
       self.invokeEvent(event, callData)
     else:
       raise UnknownSeriesError("Action for currently selected series unknown")
+
+  def getRegistrationResultNameAndGeneratedSuffix(self, name):
+    nOccurrences = sum([1 for result in self.data.getResultsAsList() if name in result.name])
+    suffix = ""
+    if nOccurrences:
+      suffix = "_Retry_" + str(nOccurrences)
+    return name, suffix
+
+  def generateNameAndCreateRegistrationResult(self, fixedVolume):
+    name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(fixedVolume.GetName())
+    result = self.data.createResult(name + suffix)
+    result.suffix = suffix
+    # self.registrationLogic.registrationResult = result
+    return result
