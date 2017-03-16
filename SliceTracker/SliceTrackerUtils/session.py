@@ -14,7 +14,7 @@ from SlicerProstateUtils.events import SlicerProstateEvents
 from SlicerProstateUtils.helpers import IncomingDataWindow, SmartDICOMReceiver
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 
-from SlicerProstateUtils.decorators import logmethod, singleton, onReturnProcessEvents
+from SlicerProstateUtils.decorators import logmethod, singleton, onReturnProcessEvents, onExceptionReturnNone
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
@@ -86,11 +86,20 @@ class SliceTrackerSession(SessionBase):
   SuccessfullyLoadedMetadataEvent = vtk.vtkCommand.UserEvent + 143
 
   CurrentSeriesChangedEvent = vtk.vtkCommand.UserEvent + 151
+  RegistrationStatusChangedEvent = vtk.vtkCommand.UserEvent + 152
 
   InitiateZFrameCalibrationEvent = vtk.vtkCommand.UserEvent + 160
   InitiateSegmentationEvent = vtk.vtkCommand.UserEvent + 161
   InitiateRegistrationEvent = vtk.vtkCommand.UserEvent + 162
   InitiateEvaluationEvent = vtk.vtkCommand.UserEvent + 163
+
+  # TODO: add events
+  ActiveResultChangedEvent = vtk.vtkCommand.UserEvent + 234
+  ApprovedEvent = RegistrationResult.ApprovedEvent
+  SkippedEvent = RegistrationResult.SkippedEvent
+  RejectedEvent = RegistrationResult.RejectedEvent
+
+  ResultEvents = [ApprovedEvent, SkippedEvent, RejectedEvent]
 
   MODULE_NAME = "SliceTracker"
 
@@ -137,6 +146,24 @@ class SliceTrackerSession(SessionBase):
       self.invokeEventForMostRecentEligibleSeries()
 
   @property
+  def activeResult(self):
+    return self._getActiveResult()
+
+  @onExceptionReturnNone
+  def _getActiveResult(self):
+    return self.data.registrationResults[self._activeResult]
+
+  @activeResult.setter
+  def activeResult(self, series):
+    assert series in self.data.registrationResults.keys()
+    if self.activeResult is not None:
+      self.activeResult.removeEventObservers()
+    self._activeResult = series
+    for event in RegistrationResult.StatusEvents.values():
+      self.activeResult.addEventObserver(event, self.onRegistrationResultStatusChanged)
+    # self.invokeEvent(self.ActiveResultChangedEvent)
+
+  @property
   def currentSeries(self):
     self._currentSeries = getattr(self, "_currentSeries", None)
     return self._currentSeries
@@ -145,6 +172,7 @@ class SliceTrackerSession(SessionBase):
   def currentSeries(self, series):
     if series == self.currentSeries:
       return
+    print "set current Series on session"
     if series and series not in self.seriesList :
       raise UnknownSeriesError("Series %s is unknown" % series)
     self._currentSeries = series
@@ -235,6 +263,9 @@ class SliceTrackerSession(SessionBase):
     self.loadableList = {}
     self.seriesList = []
     self.alreadyLoadedSeries = {}
+
+    self.data.addEventObserver(self.data.NewResultCreatedEvent, self.onNewRegistrationResultCreated)
+    self._activeResult = None
 
   def __del__(self):
     pass
@@ -432,11 +463,13 @@ class SliceTrackerSession(SessionBase):
     try:
       volume = self.alreadyLoadedSeries[series]
     except KeyError:
+      logging.info("Need to load volume")
       files = self.loadableList[series]
       loadables = self.scalarVolumePlugin.examine([files])
       success, volume = slicer.util.loadVolume(files[0], returnNode=True)
       volume.SetName(loadables[0].name)
       self.alreadyLoadedSeries[series] = volume
+    slicer.app.processEvents()
     return volume
 
   def createLoadableFileListForSeries(self, series):
@@ -734,6 +767,9 @@ class SliceTrackerSession(SessionBase):
     else:
       raise UnknownSeriesError("Action for currently selected series unknown")
 
+  def retryRegistration(self):
+    self.invokeEvent(self.InitiateSegmentationEvent, str(True))
+
   def getRegistrationResultNameAndGeneratedSuffix(self, name):
     nOccurrences = sum([1 for result in self.data.getResultsAsList() if name in result.name])
     suffix = ""
@@ -749,7 +785,6 @@ class SliceTrackerSession(SessionBase):
       self.logic.applyRegistration(progressCallback=self.updateProgressBar)
     self.progress.close()
     self.progress = None
-    # self.openEvaluationStep()
     logging.debug('Re-Registration is done')
 
   @onReturnProcessEvents
@@ -800,3 +835,11 @@ class SliceTrackerSession(SessionBase):
     parameterNode.SetAttribute('TargetsNodeID', targets.GetID())
     self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
     self.invokeEvent(self.InitiateEvaluationEvent)
+
+  def onRegistrationResultStatusChanged(self, caller, event):
+    self.invokeEventForMostRecentEligibleSeries()
+    self.invokeEvent(self.RegistrationStatusChangedEvent)
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onNewRegistrationResultCreated(self, caller, event, callData):
+    self.activeResult = callData

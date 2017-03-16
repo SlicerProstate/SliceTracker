@@ -401,6 +401,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
 
   def onShowZFrameTemplateToggled(self, checked):
     self.logic.setTemplateVisibility(checked)
+    self.logic.setTemplatePathVisibility(checked)
 
   def onShowTemplatePathToggled(self, checked):
     self.logic.setTemplatePathVisibility(checked)
@@ -431,11 +432,11 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.templateVolume = templateVolume
     self.initiateZFrameRegistrationStep()
 
-  @vtk.calldata_type(vtk.VTK_STRING)
-  def onCurrentSeriesChanged(self, caller, event, callData=None):
-    if callData:
-      self.showTemplatePathButton.checked = self.session.isTrackingPossible(callData) and \
-                                            self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME) in callData
+  # @vtk.calldata_type(vtk.VTK_STRING)
+  # def onCurrentSeriesChanged(self, caller, event, callData=None):
+  #   if callData:
+  #     self.showTemplatePathButton.checked = self.session.isTrackingPossible(callData) and \
+  #                                           self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME) in callData
 
   def onLoadingMetadataSuccessful(self, caller, event):
     if self.session.zFrameRegistrationSuccessful:

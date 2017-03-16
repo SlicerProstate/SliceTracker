@@ -136,16 +136,20 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     if self.getSetting("Cover_Prostate") in self.session.currentSeries:
       if self.session.data.usePreopData:
         if self.retryMode:
-          self.loadLatestCoverProstateResultData()
+          if not self.loadLatestCoverProstateResultData():
+            self.loadInitialData()
         else:
-          self.session.movingLabel = self.session.data.initialLabel
-          self.session.movingVolume = self.session.data.initialVolume
-          self.session.movingTargets = self.session.data.initialTargets
+          self.loadInitialData()
       else:
         self.session.movingVolume = self.session.currentSeriesVolume
     else:
       self.loadLatestCoverProstateResultData()
     self.active = True
+
+  def loadInitialData(self):
+    self.session.movingLabel = self.session.data.initialLabel
+    self.session.movingVolume = self.session.data.initialVolume
+    self.session.movingTargets = self.session.data.initialTargets
 
   def configureUIElements(self):
     self.targetingGroupBox.visible = not self.session.data.usePreopData and not self.retryMode
@@ -156,6 +160,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
 
   def onLayoutChanged(self):
+    print "onLayoutChanged in %s " % self.NAME
     if self.layoutManager.layout == SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE:
       self.setupSideBySideSegmentationView()
     elif self.layoutManager.layout in [SliceTrackerConstants.LAYOUT_FOUR_UP,
@@ -204,9 +209,12 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   def loadLatestCoverProstateResultData(self):
     coverProstate = self.data.getMostRecentApprovedCoverProstateRegistration()
-    self.session.movingVolume = coverProstate.volumes.fixed
-    self.session.movingLabel = coverProstate.labels.fixed
-    self.session.movingTargets = coverProstate.targets.approved
+    if coverProstate:
+      self.session.movingVolume = coverProstate.volumes.fixed
+      self.session.movingLabel = coverProstate.labels.fixed
+      self.session.movingTargets = coverProstate.targets.approved
+      return True
+    return False
 
   def onFinishedStep(self):
     self.disableEditorWidgetAndResetEditorTool()

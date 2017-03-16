@@ -36,10 +36,29 @@ class SliceTrackerStepLogic(StepBase, ModuleLogicMixin):
     self.resourcesPath = os.path.join(self.modulePath, "Resources")
     self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.volumesLogic = slicer.modules.volumes.logic()
+    self.markupsLogic = slicer.modules.markups.logic()
 
   @abstractmethod
   def cleanup(self):
     pass
+
+  def applyDefaultTargetDisplayNode(self, targetNode, new=False):
+    displayNode = None if new else targetNode.GetDisplayNode()
+    modifiedDisplayNode = self.setupDisplayNode(displayNode, True)
+    targetNode.SetAndObserveDisplayNodeID(modifiedDisplayNode.GetID())
+
+  def setupDisplayNode(self, displayNode=None, starBurst=False):
+    if not displayNode:
+      displayNode = slicer.vtkMRMLMarkupsDisplayNode()
+      slicer.mrmlScene.AddNode(displayNode)
+    displayNode.SetTextScale(0)
+    displayNode.SetGlyphScale(2.5)
+    if starBurst:
+      displayNode.SetGlyphType(slicer.vtkMRMLAnnotationPointDisplayNode.StarBurst2D)
+    return displayNode
+
+  def setTargetVisibility(self, targetNode, show=True):
+    self.markupsLogic.SetAllMarkupsVisibility(targetNode, show)
 
 
 class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):

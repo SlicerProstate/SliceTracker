@@ -202,12 +202,13 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
     self.session.currentSeries = selectedSeries
     volume = self.session.currentSeriesVolume
+
     if selectedSeries:
+      print "onIntraopSeriesSelectionChanged called"
       trackingPossible = self.session.isTrackingPossible(selectedSeries)
       logging.info(trackingPossible)
-    #   self.showTemplatePathButton.checked = trackingPossible and self.getSetting("COVER_PROSTATE") in selectedSeries
       self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
-      self.configureViewersForSelectedIntraopSeries(selectedSeries)
+      # self.configureViewersForSelectedIntraopSeries(selectedSeries)
     #   self.updateSliceAnnotations(selectedSeries)
     self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries())
 
@@ -243,6 +244,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
     self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.addEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
+    # self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, lambda)
 
   def removeSessionEventObservers(self):
     SliceTrackerStep.removeSessionEventObservers(self)
@@ -337,7 +339,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onOpenCaseButtonClicked(self):
     if not self.checkAndWarnUserIfCaseInProgress():
       return
-    self.session.directory = qt.QFileDialog.getExistingDirectory(self.parent().window(), "Select Case Directory", self.caseRootDir) # TODO: move caseRootDir to session
+    self.session.directory = qt.QFileDialog.getExistingDirectory(self.parent().window(), "Select Case Directory",
+                                                                 self.caseRootDir) # TODO: move caseRootDir to session
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageDataReceived(self, caller, event, callData):
@@ -366,6 +369,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def updateIntraopSeriesSelectorTable(self):
     self.intraopSeriesSelector.blockSignals(True)
+    currentIndex = self.intraopSeriesSelector.currentIndex
     self.seriesModel.clear()
     for series in self.session.seriesList:
       sItem = qt.QStandardItem(series)
@@ -380,7 +384,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       elif self.session.data.registrationResultWasRejected(series):
         color = COLOR.GRAY
       self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
-    self.intraopSeriesSelector.setCurrentIndex(-1)
+    self.intraopSeriesSelector.setCurrentIndex(currentIndex)
     self.intraopSeriesSelector.blockSignals(False)
     # self.selectMostRecentEligibleSeries()
 

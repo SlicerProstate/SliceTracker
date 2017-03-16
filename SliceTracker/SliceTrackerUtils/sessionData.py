@@ -11,24 +11,12 @@ from SlicerProstateUtils.decorators import onExceptionReturnNone, logmethod
 
 class SessionData(ModuleLogicMixin):
 
-  # TODO: add events
-  ActiveResultChangedEvent = vtk.vtkCommand.UserEvent + 234
+  NewResultCreatedEvent = vtk.vtkCommand.UserEvent + 901
 
   DEFAULT_JSON_FILE_NAME = "results.json"
 
   _completed = False
   _resumed = False
-
-  @property
-  def activeResult(self):
-    # TODO: active result should be in session...
-    return self._getActiveResult()
-
-  @activeResult.setter
-  def activeResult(self, series):
-    assert series in self._registrationResults.keys()
-    self._activeResult = series
-    self.invokeEvent(self.ActiveResultChangedEvent)
 
   @property
   @onExceptionReturnNone
@@ -77,8 +65,6 @@ class SessionData(ModuleLogicMixin):
     self.clippingModelNode = None
     self.inputMarkupNode = None
 
-    self._activeResult = None
-
     self.initialVolume = None
     self.initialLabel = None
     self.initialTargets = None
@@ -92,17 +78,17 @@ class SessionData(ModuleLogicMixin):
     # self.customProgressBar = self.getOrCreateCustomProgressBar()
 
   def initializeRegistrationResults(self):
-    self._registrationResults = OrderedDict()
+    self.registrationResults = OrderedDict()
 
   def getOrCreateResult(self, series):
     result = self.getResult(series)
     return result if result else self.createResult(series)
 
   def createResult(self, series):
-    assert series not in self._registrationResults.keys()
-    self._registrationResults[series] = RegistrationResult(series)
-    self.activeResult = series
-    return self._registrationResults[series]
+    assert series not in self.registrationResults.keys()
+    self.registrationResults[series] = RegistrationResult(series)
+    self.invokeEvent(self.NewResultCreatedEvent, self.registrationResults[series].name)
+    return self.registrationResults[series]
 
   def load(self, filename):
     directory = os.path.dirname(filename)
@@ -140,7 +126,7 @@ class SessionData(ModuleLogicMixin):
         self.initialVolume = self._loadOrGetFileData(directory, data["initialVolume"], slicer.util.loadVolume)
 
       self.loadResults(data, directory)
-    self._registrationResults = OrderedDict(sorted(self._registrationResults.items()))  # TODO: sort here?
+    self.registrationResults = OrderedDict(sorted(self.registrationResults.items()))  # TODO: sort here?
 
   def loadResults(self, data, directory):
     for jsonResult in data["results"]:
@@ -346,18 +332,18 @@ class SessionData(ModuleLogicMixin):
            self._registrationResultHasStatus(series, RegistrationStatus.APPROVED_STATUS)
 
   def getResultsAsList(self):
-    return self._registrationResults.values()
+    return self.registrationResults.values()
 
   def getMostRecentApprovedCoverProstateRegistration(self):
     mostRecent = None
-    for result in self._registrationResults.values():
+    for result in self.registrationResults.values():
       if self.getSetting("COVER_PROSTATE", "SliceTracker", default="COVER_PROSTATE") in result.name and result.approved:
         mostRecent = result
         break
     return mostRecent
 
   def getLastApprovedRigidTransformation(self):
-    if sum([1 for result in self._registrationResults.values() if result.approved]) == 1:
+    if sum([1 for result in self.registrationResults.values() if result.approved]) == 1:
       lastRigidTfm = None
     else:
       lastRigidTfm = self.getMostRecentApprovedResult().transforms.rigid
@@ -368,7 +354,7 @@ class SessionData(ModuleLogicMixin):
 
   @onExceptionReturnNone
   def getMostRecentApprovedTransform(self):
-    results = sorted(self._registrationResults.values(), key=lambda s: s.seriesNumber)
+    results = sorted(self.registrationResults.values(), key=lambda s: s.seriesNumber)
     for result in reversed(results):
       if result.approved and self.getSetting("COVER_PROSTATE", "SliceTracker", "COVER_PROSTATE") not in result.name:
         return result.getTransform(result.approvedRegistrationType)
@@ -376,7 +362,7 @@ class SessionData(ModuleLogicMixin):
 
   @onExceptionReturnNone
   def getResult(self, series):
-    return self._registrationResults[series]
+    return self.registrationResults[series]
 
   def getResultsBySeries(self, series):
     seriesNumber = RegistrationResult.getSeriesNumberFromString(series)
@@ -386,21 +372,18 @@ class SessionData(ModuleLogicMixin):
     return [result for result in self.getResultsAsList() if seriesNumber == result.seriesNumber]
 
   def removeResult(self, series):
+    # TODO: is this method ever used?
     try:
-      del self._registrationResults[series]
+      del self.registrationResults[series]
     except KeyError:
       pass
 
   def exists(self, series):
-    return series in self._registrationResults.keys()
-
-  @onExceptionReturnNone
-  def _getActiveResult(self):
-    return self._registrationResults[self._activeResult]
+    return series in self.registrationResults.keys()
 
   @onExceptionReturnNone
   def getMostRecentApprovedResult(self, priorToSeriesNumber=None):
-    results = sorted(self._registrationResults.values(), key=lambda s: s.seriesNumber)
+    results = sorted(self.registrationResults.values(), key=lambda s: s.seriesNumber)
     if priorToSeriesNumber:
       results = [result for result in results if result.seriesNumber < priorToSeriesNumber]
     for result in reversed(results):
@@ -562,12 +545,19 @@ class Labels(AbstractRegistrationData):
     return {'fixed':self.fixed, 'moving':self.moving}
 
 
-class RegistrationStatus(object):
+class RegistrationStatus(ModuleLogicMixin):
+
+  SkippedEvent = vtk.vtkCommand.UserEvent + 601
+  ApprovedEvent = vtk.vtkCommand.UserEvent + 602
+  RejectedEvent = vtk.vtkCommand.UserEvent + 603
 
   UNDEFINED_STATUS = 'undefined'
   SKIPPED_STATUS = 'skipped'
   APPROVED_STATUS = 'approved'
   REJECTED_STATUS = 'rejected'
+
+  __allowedStates = [SKIPPED_STATUS, APPROVED_STATUS, REJECTED_STATUS]
+  StatusEvents = {SKIPPED_STATUS: SKIPPED_STATUS, APPROVED_STATUS: ApprovedEvent, REJECTED_STATUS: RejectedEvent}
 
   @property
   def status(self):
@@ -575,8 +565,10 @@ class RegistrationStatus(object):
 
   @status.setter
   def status(self, value):
+    assert value in self.__allowedStates
     self.timestamp = self.getTime()
     self._status = value
+    self.invokeEvent(self.StatusEvents[value])
 
   @property
   def approved(self):
@@ -617,7 +609,7 @@ class RegistrationStatus(object):
     }
 
 
-class RegistrationResult(RegistrationStatus, ModuleLogicMixin):
+class RegistrationResult(RegistrationStatus):
 
   REGISTRATION_TYPE_NAMES = ['rigid', 'affine', 'bSpline']
 

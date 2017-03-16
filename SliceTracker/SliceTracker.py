@@ -212,5 +212,7 @@ class SliceTrackerTabWidget(qt.QTabWidget):
       self.setCurrentIndex(index)
 
   def onCurrentTabChanged(self, index):
-    map(lambda step: setattr(step, "active", False), self.session.steps)
+    for idx, step in enumerate(self.session.steps):
+      if index != idx:
+        step.active = False
     self.session.steps[index].active = True
