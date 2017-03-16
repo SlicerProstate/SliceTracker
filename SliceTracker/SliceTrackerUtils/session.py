@@ -245,25 +245,23 @@ class SliceTrackerSession(SessionBase):
   def __init__(self):
     SessionBase.__init__(self)
     self.registrationLogic = SliceTrackerRegistrationLogic()
+    self._steps = []
     self.resetAndInitializeMembers()
 
   def resetAndInitializeMembers(self):
-
     from mpReview import mpReviewLogic
     self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name"))
     self.segmentedColorName = self.getSetting("Segmentation_Color_Name")
     self.segmentedLabelValue = self.mpReviewColorNode.GetColorIndexByName(self.segmentedColorName)
     self.directory = None
-    self._steps = []
     self.data = SessionData()
+    self.data.addEventObserver(self.data.NewResultCreatedEvent, self.onNewRegistrationResultCreated)
     self.trainingMode = False
-    self.preopDICOMReceiver = None
-    self.intraopDICOMReceiver = None
+    self.resetPreopDICOMReceiver()
+    self.resetIntraopDICOMReceiver()
     self.loadableList = {}
     self.seriesList = []
     self.alreadyLoadedSeries = {}
-
-    self.data.addEventObserver(self.data.NewResultCreatedEvent, self.onNewRegistrationResultCreated)
     self._activeResult = None
 
   def __del__(self):
@@ -323,8 +321,8 @@ class SliceTrackerSession(SessionBase):
       return
     if save:
       self.save()
-    self.invokeEvent(self.CloseCaseEvent)
     self.resetAndInitializeMembers()
+    self.invokeEvent(self.CloseCaseEvent)
 
   def save(self):
     # TODO: not sure about each step .... saving its own data
@@ -391,7 +389,7 @@ class SliceTrackerSession(SessionBase):
     self.resetPreopDICOMReceiver()
     logging.info("Starting DICOM Receiver for intra-procedural data")
     if not self.data.completed:
-      self.stopIntraopDICOMReceiver()
+      self.resetIntraopDICOMReceiver()
       self.intraopDICOMReceiver = SmartDICOMReceiver(self.intraopDICOMDirectory)
       self._observeIntraopDICOMReceiverEvents()
       self.intraopDICOMReceiver.start(not self.trainingMode)
@@ -400,6 +398,12 @@ class SliceTrackerSession(SessionBase):
     self.importDICOMSeries(self.getFileList(self.intraopDICOMDirectory))
     if self.intraopDICOMReceiver:
       self.intraopDICOMReceiver.forceStatusChangeEvent()
+
+  def resetIntraopDICOMReceiver(self):
+    self.intraopDICOMReceiver = getattr(self, "intraopDICOMReceiver", None)
+    if self.intraopDICOMReceiver:
+      self.intraopDICOMReceiver.stop()
+      self.intraopDICOMReceiver.removeEventObservers()
 
   def _observeIntraopDICOMReceiverEvents(self):
     self.intraopDICOMReceiver.addEventObserver(self.intraopDICOMReceiver.IncomingDataReceiveFinishedEvent,
@@ -412,11 +416,12 @@ class SliceTrackerSession(SessionBase):
     # self.logic.addEventObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
     # self.logic.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
 
+
   @vtk.calldata_type(vtk.VTK_STRING)
   def onDICOMSeriesReceived(self, caller, event, callData):
     self.importDICOMSeries(ast.literal_eval(callData))
     if self.trainingMode is True:
-      self.stopIntraopDICOMReceiver()
+      self.resetIntraopDICOMReceiver()
 
   def importDICOMSeries(self, newFileList):
     indexer = ctk.ctkDICOMIndexer()
@@ -492,12 +497,6 @@ class SliceTrackerSession(SessionBase):
         # TODO: remove files from filesystem self.loadableList[series] all files
         self.seriesList.remove(series)
         del self.loadableList[series]
-
-  def stopIntraopDICOMReceiver(self):
-    self.intraopDICOMReceiver = getattr(self, "intraopDICOMReceiver", None)
-    if self.intraopDICOMReceiver:
-      self.intraopDICOMReceiver.stop()
-      self.intraopDICOMReceiver.removeEventObservers()
 
   def makeSeriesNumberDescription(self, dcmFile):
     seriesDescription = self.getDICOMValue(dcmFile, DICOMTAGS.SERIES_DESCRIPTION)
