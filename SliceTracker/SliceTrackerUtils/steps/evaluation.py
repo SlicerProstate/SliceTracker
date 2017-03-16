@@ -143,7 +143,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.visualEffectsGroupBox = qt.QGroupBox("Visual Effects")
     self.visualEffectsGroupBoxLayout = qt.QFormLayout(self.visualEffectsGroupBox)
     self.revealCursorButton = self.createButton("", icon=self.revealCursorIcon, checkable=True,
-                                                enabled=False, toolTip="Use reveal cursor")
+                                                toolTip="Use reveal cursor")
     slider = self.createHLayout([self.opacitySpinBox, self.animaHolderLayout])
     self.visualEffectsGroupBoxLayout.addWidget(self.createVLayout([slider, self.revealCursorButton]))
 
@@ -156,6 +156,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.rejectRegistrationResultButton.clicked.connect(self.onRejectRegistrationResultButtonClicked)
     # self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
 
+    self.revealCursorButton.connect('toggled(bool)', self.onRevealToggled)
     self.rockCheckBox.connect('toggled(bool)', self.onRockToggled)
     self.flickerCheckBox.connect('toggled(bool)', self.onFlickerToggled)
 
@@ -174,8 +175,6 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
 
   def onRetryRegistrationButtonClicked(self):
     self.removeSliceAnnotations()
-    self.stopFlickering()
-    self.stopRocking()
     self.session.retryRegistration()
 
   def onApproveRegistrationResultButtonClicked(self):
@@ -209,6 +208,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.setOldNewIndicatorAnnotationOpacity(value)
 
   def onRockToggled(self):
+    self.updateRevealCursorAvailability()
     if self.rockCheckBox.checked:
       self.startRocking()
     else:
@@ -217,18 +217,16 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
   def startRocking(self):
     if self.flickerCheckBox.checked:
       self.flickerCheckBox.checked = False
-    # self.wlEffectsToolButton.checked = False
-    # self.wlEffectsToolButton.enabled = False
     self.rockTimer.start()
     self.opacitySpinBox.value = 0.5 + numpy.sin(self.rockCount / 10.) / 2.
     self.rockCount += 1
 
   def stopRocking(self):
-    # self.wlEffectsToolButton.enabled = True
     self.rockTimer.stop()
     self.opacitySpinBox.value = 1.0
 
   def onFlickerToggled(self):
+    self.updateRevealCursorAvailability()
     if self.flickerCheckBox.checked:
       self.startFlickering()
     else:
@@ -237,15 +235,29 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
   def startFlickering(self):
     if self.rockCheckBox.checked:
       self.rockCheckBox.checked = False
-    # self.wlEffectsToolButton.checked = False
-    # self.wlEffectsToolButton.enabled = False
     self.flickerTimer.start()
     self.opacitySpinBox.value = 1.0 if self.opacitySpinBox.value == 0.0 else 0.0
 
   def stopFlickering(self):
-    # self.wlEffectsToolButton.enabled = True
     self.flickerTimer.stop()
     self.opacitySpinBox.value = 1.0
+
+  def onRevealToggled(self, checked):
+    self.revealCursor = getattr(self, "revealCursor", None)
+    if self.revealCursor:
+      self.revealCursor.tearDown()
+    if checked:
+      import CompareVolumes
+      self.revealCursor = CompareVolumes.LayerReveal()
+
+  def updateRevealCursorAvailability(self):
+    self.revealCursorButton.checked = False
+    self.revealCursorButton.enabled = not (self.rockCheckBox.checked or self.flickerCheckBox.checked)
+
+  def resetVisualEffects(self):
+    self.flickerCheckBox.checked = False
+    self.rockCheckBox.checked = False
+    self.revealCursorButton.checked = False
 
   def setOldNewIndicatorAnnotationOpacity(self, value):
     if self.registrationResultNewImageAnnotation:
@@ -368,6 +380,11 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
         "2. Retry with creating a new segmentation \n"
         "3. Set targets to your preferred position (in Four-Up layout)",
         title="Action needed: Registration created empty volume(s)", windowTitle="SliceTracker")
+
+  def onDeactivation(self):
+    self.resetVisualEffects()
+    self.hideAllLabels()
+    self.hideAllFiducialNodes()
 
   def addNewTargetsToScene(self):
     for targetNode in self.getResultingTargets():
