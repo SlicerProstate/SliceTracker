@@ -1,20 +1,20 @@
 import os, ast, shutil
 import qt, vtk, ctk, slicer
 
-from ..constants import SliceTrackerConstants
-from base import SliceTrackerStep
+from ...constants import SliceTrackerConstants
+from ..base import SliceTrackerStep
 
 from SlicerProstateUtils.helpers import SampleDataDownloader
 from SlicerProstateUtils.decorators import *
 
 
-class SliceTrackerTrainingStep(SliceTrackerStep):
+class SliceTrackerTrainingPlugin(SliceTrackerStep):
 
   NAME = "Training"
 
   def __init__(self):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
-    super(SliceTrackerTrainingStep, self).__init__()
+    super(SliceTrackerTrainingPlugin, self).__init__()
     self.sampleDownloader = SampleDataDownloader(True)
     self.setupSessionObservers()
 

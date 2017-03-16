@@ -1,17 +1,17 @@
 import logging
 import os
-import vtk
-import qt
-import ctk
 
+import ctk
+import qt
 import slicer
-from ..helpers import NewCaseSelectionNameWidget
-from ..sessionData import RegistrationResult
-from base import SliceTrackerStepLogic, SliceTrackerStep
-from training import SliceTrackerTrainingStep
+import vtk
+from plugins.training import SliceTrackerTrainingPlugin
 from SlicerProstateUtils.constants import COLOR
 from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, IncomingDataMessageBox
+from base import SliceTrackerStepLogic, SliceTrackerStep
+from ..helpers import NewCaseSelectionNameWidget
+from ..sessionData import RegistrationResult
 
 
 class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
@@ -93,7 +93,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setup(self):
     self.setupCaseInformationArea()
-    self.trainingWidget = SliceTrackerTrainingStep()
+    self.trainingWidget = SliceTrackerTrainingPlugin()
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series",
@@ -260,7 +260,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if selectedButton == qt.QMessageBox.Ok:
       self.session.createNewCase(self.caseDialog.newCaseDirectory)
       self.updateCaseWatchBox()
-      self.closeCaseButton.enabled = True
 
   @logmethod(logging.INFO)
   def onCaseClosed(self, caller, event):
@@ -427,6 +426,19 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def onLoadingMetadataSuccessful(self, caller, event):
     self.active = True
+    self.updateCaseButtons()
+
+  @logmethod(logging.INFO)
+  def onNewCaseStarted(self, caller, event):
+    self.updateCaseButtons()
+
+  @logmethod(logging.INFO)
+  def onCaseClosed(self, caller, event):
+    self.updateCaseButtons()
+
+  def updateCaseButtons(self):
+    self.closeCaseButton.enabled = self.session.directory is not None
+    self.completeCaseButton.enabled = self.session.directory is not None
 
   def onSuccessfulPreProcessing(self, caller, event):
     self.promptUserAndApplyBiasCorrectionIfNeeded()
