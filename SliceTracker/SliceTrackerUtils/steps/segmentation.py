@@ -231,6 +231,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.editorWidgetButton.setEnabled(enabledButton)
 
   def onStartTargetingButtonClicked(self):
+    # TODO: add annotation in viewer for making mode visible to user
     self.startTargetingButton.enabled = False
     self.setupFourUpView(self.session.currentSeriesVolume)
     self.fiducialsWidget.createNewFiducialNode(name="IntraopTargets")
@@ -245,7 +246,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.session.movingTargets = self.fiducialsWidget.currentNode
     self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
     self.session.setupPreopLoadedTargets()
-    self.hideAllFiducialNodes()
 
   def createCoverProstateRegistrationResultManually(self):
     fixedVolume = self.session.currentSeriesVolume
@@ -288,8 +288,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
 
   def openSegmentationComparisonStep(self):
-    self.hideAllLabels()
-    self.hideAllFiducialNodes()
     self.removeMissingPreopDataAnnotation()
     if self.session.data.usePreopData or self.retryMode:
       self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE)
@@ -300,6 +298,9 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       self.centerLabelsOnVisibleSliceWidgets()
     elif not self.session.movingTargets:
       self.startTargetingButton.click()
+    else:
+      for sliceNode in self._sliceNodes:
+        sliceNode.SetUseLabelOutline(True)
 
   def setupScreenForSegmentationComparison(self, viewName, volume, label):
     compositeNode = getattr(self, viewName+"CompositeNode")

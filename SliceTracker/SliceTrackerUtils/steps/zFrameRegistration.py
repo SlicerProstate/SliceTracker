@@ -348,6 +348,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.zFrameRegistrationManualIndexesGroupBox.setCheckable(True)
     self.zFrameRegistrationManualIndexesGroupBoxLayout = qt.QGridLayout()
     self.zFrameRegistrationManualIndexesGroupBox.setLayout(self.zFrameRegistrationManualIndexesGroupBoxLayout)
+    self.zFrameRegistrationManualIndexesGroupBox.checked = False
 
     self.zFrameRegistrationStartIndex = qt.QSpinBox()
     self.zFrameRegistrationEndIndex = qt.QSpinBox()
@@ -446,6 +447,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.showZFrameModelButton.checked = True
     self.showTemplateButton.checked = True
     self.showTemplatePathButton.checked = True
+    self.zFrameRegistrationManualIndexesGroupBox.checked = False
     if self.templateVolume:
       self.initiateZFrameRegistrationStep()
 
@@ -453,7 +455,6 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.showZFrameModelButton.checked = False
     self.showTemplateButton.checked = False
     self.showTemplatePathButton.checked = False
-    self.zFrameRegistrationManualIndexesGroupBox.checked = False
     self.templateVolume = None
 
   def initiateZFrameRegistrationStep(self):

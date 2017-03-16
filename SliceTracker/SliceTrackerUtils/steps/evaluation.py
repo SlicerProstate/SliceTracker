@@ -382,6 +382,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
         title="Action needed: Registration created empty volume(s)", windowTitle="SliceTracker")
 
   def onDeactivation(self):
+    self.removeSliceAnnotations()
     self.resetVisualEffects()
     self.hideAllLabels()
     self.hideAllFiducialNodes()
