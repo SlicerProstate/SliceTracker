@@ -173,21 +173,24 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.session.removeEventObserver(self.session.InitiateEvaluationEvent, self.onInitiateEvaluation)
 
   def onRetryRegistrationButtonClicked(self):
+    self.removeSliceAnnotations()
+    self.stopFlickering()
+    self.stopRocking()
     self.session.retryRegistration()
 
   def onApproveRegistrationResultButtonClicked(self):
+    results = self.session.data.getResultsBySeriesNumber(self.currentResult.seriesNumber)
+    for result in [r for r in results if r is not self.currentResult]:
+      result.reject()
     self.currentResult.approve(registrationType=self.registrationButtonGroup.checkedButton().name)
-
     # if self.ratingWindow.isRatingEnabled():
     #   self.ratingWindow.show(disableWidget=self.parent)
-    # else:
-    #   self.openOverviewStep()
 
   def onRejectRegistrationResultButtonClicked(self):
-    results = self.series.data.getResultsBySeriesNumber(self.currentResult.seriesNumber)
-    for result in results:
+    results = self.session.data.getResultsBySeriesNumber(self.currentResult.seriesNumber)
+    for result in [r for r in results if r is not self.currentResult]:
       result.reject()
-    # self.openOverviewStep()
+    self.currentResult.reject()
 
   def onOpacitySpinBoxChanged(self, value):
     if self.opacitySlider.value != value:
@@ -267,14 +270,14 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.onRegistrationResultSelected(self.currentResult.name)
     self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
     # self.crosshairButton.checked = self.layoutManager.layout == constants.LAYOUT_FOUR_UP
-    self.logic.setTargetVisibility(self.session.data.initialTargets,
+    self.setFiducialNodeVisibility(self.session.data.initialTargets,
                                    show=self.layoutManager.layout != constants.LAYOUT_FOUR_UP)
 
   def onRegistrationResultSelected(self, seriesText, registrationType=None, showApproved=False):
     # self.disableTargetMovingMode()
     if not seriesText:
       return
-    self.hideAllTargets()
+    self.hideAllFiducialNodes()
     self.currentResult = seriesText
     self.affineResultButton.setEnabled(self.currentResult.targets.affine is not None)
     if registrationType:
@@ -299,16 +302,15 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.displayRegistrationResults(self.currentResult.getTargets(registrationType), registrationType)
 
   def displayRegistrationResults(self, targets, registrationType):
-    self.hideAllTargets()
-    # self.currentTargets = targets
+    self.hideAllFiducialNodes()
     self.showCurrentTargets(targets)
     self.setupRegistrationResultSliceViews(registrationType)
     self.setPreopTargetVisibility()
     # self.selectLastSelectedTarget()
 
   def setPreopTargetVisibility(self):
-    self.logic.setTargetVisibility(self.session.data.initialTargets,
-                                   show=self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE)
+    self.setFiducialNodeVisibility(self.session.data.initialTargets,
+                                    show=self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE)
 
   def setupRegistrationResultSliceViews(self, registrationType):
     if self.layoutManager.layout in [constants.LAYOUT_SIDE_BY_SIDE, constants.LAYOUT_RED_SLICE_ONLY]:
@@ -332,16 +334,12 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
       self.setAxialOrientation()
     elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
       self.setDefaultOrientation()
-      self.logic.setTargetVisibility(self.session.data.initialTargets, show=False)
+      self.setFiducialNodeVisibility(self.session.data.initialTargets, show=False)
     # self.centerViewsToProstate()
 
   def showCurrentTargets(self, targets):
-    self.logic.applyDefaultTargetDisplayNode(targets)
-    self.logic.setTargetVisibility(targets)
-
-  def hideAllTargets(self):
-    for targetNode in slicer.util.getNodesByClass("vtkMRMLMarkupsFiducialNode"):
-      self.logic.setTargetVisibility(targetNode, show=False)
+    self.session.applyDefaultTargetDisplayNode(targets)
+    self.setFiducialNodeVisibility(targets)
 
   def onInitiateEvaluation(self, caller, event):
     self.active = True
@@ -379,7 +377,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     # TODO: make a mixin or service from that
     if layout:
       self.layoutManager.setLayout(layout)
-    # self.hideAllLabels()
+    self.hideAllLabels()
     self.addSliceAnnotationsBasedOnLayoutAndSetOrientation()
     self.refreshViewNodeIDs(self.session.data.initialTargets, [self.redSliceNode])
     self.setupViewNodesForCurrentTargets()

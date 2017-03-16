@@ -22,7 +22,7 @@ class SessionData(ModuleLogicMixin):
   @onExceptionReturnNone
   def originalTargets(self):
     # TODO: need to rename this to something telling us more about what targets since those are not needed to be original
-    return self.getMostRecentApprovedCoverProstateRegistration().targets.originalTargets
+    return self.getMostRecentApprovedCoverProstateRegistration().targets.original
 
   @property
   @onExceptionReturnNone
@@ -95,7 +95,7 @@ class SessionData(ModuleLogicMixin):
     self.resetAndInitializeData()
     self.alreadyLoadedFileNames = {}
     with open(filename) as data_file:
-      logging.info("reading json file %s" % filename)
+      logging.debug("reading json file %s" % filename)
       data = json.load(data_file)
 
       def readProcedureEvents():
@@ -131,9 +131,8 @@ class SessionData(ModuleLogicMixin):
   def loadResults(self, data, directory):
     for jsonResult in data["results"]:
       name = jsonResult["name"]
-      logging.info("processing %s" % name)
+      logging.debug("processing %s" % name)
       result = self.createResult(name)
-
 
       # TODO: the following should not be here since it is widget depending
       # self.customProgressBar.visible = True
@@ -142,7 +141,7 @@ class SessionData(ModuleLogicMixin):
       # slicer.app.processEvents()
 
       for attribute, value in jsonResult.iteritems():
-        logging.info("found %s: %s" % (attribute, value))
+        logging.debug("found %s: %s" % (attribute, value))
         if attribute == 'volumes':
           self._loadResultFileData(value, directory, slicer.util.loadVolume, result.setVolume)
         elif attribute == 'transforms':
@@ -277,7 +276,7 @@ class SessionData(ModuleLogicMixin):
 
     destinationFile = os.path.join(outputDir, self.DEFAULT_JSON_FILE_NAME)
     with open(destinationFile, 'w') as outfile:
-      logging.info("Writing registration results to %s" % destinationFile)
+      logging.debug("Writing registration results to %s" % destinationFile)
       json.dump(data, outfile, indent=2)
 
     failedSaveOfFileNames += self.saveRegistrationResults(outputDir)
@@ -312,14 +311,14 @@ class SessionData(ModuleLogicMixin):
     # self.customProgressBar.text = "Registration data successfully saved" if len(failedToSave) == 0 else "Error/s occurred during saving"
     return failedToSave
 
-  def _registrationResultHasStatus(self, series, status):
+  def _registrationResultHasStatus(self, series, status, method=all):
     if not type(series) is int:
       series = RegistrationResult.getSeriesNumberFromString(series)
     results = self.getResultsBySeriesNumber(series)
-    return any(result.status == status for result in results) if len(results) else False
+    return method(result.status == status for result in results) if len(results) else False
 
   def registrationResultWasApproved(self, series):
-    return self._registrationResultHasStatus(series, RegistrationStatus.APPROVED_STATUS)
+    return self._registrationResultHasStatus(series, RegistrationStatus.APPROVED_STATUS, method=any)
 
   def registrationResultWasSkipped(self, series):
     return self._registrationResultHasStatus(series, RegistrationStatus.SKIPPED_STATUS)
@@ -335,12 +334,10 @@ class SessionData(ModuleLogicMixin):
     return self.registrationResults.values()
 
   def getMostRecentApprovedCoverProstateRegistration(self):
-    mostRecent = None
     for result in self.registrationResults.values():
       if self.getSetting("COVER_PROSTATE", "SliceTracker", default="COVER_PROSTATE") in result.name and result.approved:
-        mostRecent = result
-        break
-    return mostRecent
+        return result
+    return None
 
   def getLastApprovedRigidTransformation(self):
     if sum([1 for result in self.registrationResults.values() if result.approved]) == 1:
@@ -419,7 +416,8 @@ class AbstractRegistrationData(ModuleLogicMixin):
   def getAllFileNames(self):
     fileNames = {}
     for regType, node in self.asDict().iteritems():
-      fileNames[regType] = self.getFileName(node)
+      if node:
+        fileNames[regType] = self.getFileName(node)
     return fileNames
 
   @logmethod(level=logging.INFO)
@@ -693,10 +691,10 @@ class RegistrationResult(RegistrationStatus):
     return getattr(self.targets, name)
 
   def approve(self, registrationType):
-    super(RegistrationResult, self).approve()
     assert registrationType in self.REGISTRATION_TYPE_NAMES
     self.registrationType = registrationType
     self.targets.approve(registrationType)
+    super(RegistrationResult, self).approve()
 
   def printSummary(self):
     logging.debug('# ___________________________  registration output  ________________________________')
@@ -719,8 +717,8 @@ class RegistrationResult(RegistrationStatus):
         successful, failed = data.save(outputDir)
         savedSuccessfully += successful
         failedToSave += failed
-      logging.info("Successfully saved: %s \n" % str(savedSuccessfully))
-      logging.info("Failed to save: %s \n" % str(failedToSave))
+      logging.debug("Successfully saved: %s \n" % str(savedSuccessfully))
+      logging.debug("Failed to save: %s \n" % str(failedToSave))
       return savedSuccessfully, failedToSave
 
     saveCMDParameters()

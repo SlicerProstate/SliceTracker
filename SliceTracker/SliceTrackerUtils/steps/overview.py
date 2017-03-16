@@ -18,7 +18,6 @@ class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
 
   def __init__(self):
     super(SliceTrackerOverViewStepLogic, self).__init__()
-    self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
 
   def cleanup(self):
     pass
@@ -244,13 +243,14 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
     self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.addEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
-    # self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, lambda)
+    self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
 
   def removeSessionEventObservers(self):
     SliceTrackerStep.removeSessionEventObservers(self)
     self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
     self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.removeEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
+    self.session.removeEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
 
   def onCreateNewCaseButtonClicked(self):
     if not self.checkAndWarnUserIfCaseInProgress():
@@ -386,30 +386,30 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
     self.intraopSeriesSelector.setCurrentIndex(currentIndex)
     self.intraopSeriesSelector.blockSignals(False)
-    # self.selectMostRecentEligibleSeries()
+    self.selectMostRecentEligibleSeries()
 
-  # def selectMostRecentEligibleSeries(self):
-  #   if not self.active:
-  #     self.intraopSeriesSelector.blockSignals(True)
-  #   substring = self.getSetting("NEEDLE_IMAGE")
-  #   index = -1
-  #   if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
-  #     substring = self.getSetting("COVER_TEMPLATE") \
-  #       if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
-  #   for item in list(reversed(range(len(self.session.seriesList)))):
-  #     series = self.seriesModel.item(item).text()
-  #     if substring in series:
-  #       if index != -1:
-  #         if self.session.data.registrationResultWasApprovedOrRejected(series) or \
-  #           self.session.data.registrationResultWasSkipped(series):
-  #           break
-  #       index = self.intraopSeriesSelector.findText(series)
-  #       break
-  #     elif self.getSetting("VIBE_IMAGE") in series and index == -1:
-  #       index = self.intraopSeriesSelector.findText(series)
-  #   rowCount = self.intraopSeriesSelector.model().rowCount()
-  #   self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
-  #   self.intraopSeriesSelector.blockSignals(False)
+  def selectMostRecentEligibleSeries(self):
+    if not self.active:
+      self.intraopSeriesSelector.blockSignals(True)
+    substring = self.getSetting("NEEDLE_IMAGE")
+    index = -1
+    if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
+      substring = self.getSetting("COVER_TEMPLATE") \
+        if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
+    for item in list(reversed(range(len(self.session.seriesList)))):
+      series = self .seriesModel.item(item).text()
+      if substring in series:
+        if index != -1:
+          if self.session.data.registrationResultWasApprovedOrRejected(series) or \
+            self.session.data.registrationResultWasSkipped(series):
+            break
+        index = self.intraopSeriesSelector.findText(series)
+        break
+      elif self.getSetting("VIBE_IMAGE") in series and index == -1:
+        index = self.intraopSeriesSelector.findText(series)
+    rowCount = self.intraopSeriesSelector.model().rowCount()
+    self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
+    self.intraopSeriesSelector.blockSignals(False)
 
   @logmethod(logging.INFO)
   def onZFrameRegistrationSuccessful(self, caller, event):
@@ -421,6 +421,12 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.startPreProcessingModule()
     else:
       self.session.close()
+
+  def onRegistrationStatusChanged(self, caller, event):
+    self.active = True
+
+  def onLoadingMetadataSuccessful(self, caller, event):
+    self.active = True
 
   def onSuccessfulPreProcessing(self, caller, event):
     self.promptUserAndApplyBiasCorrectionIfNeeded()

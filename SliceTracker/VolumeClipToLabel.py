@@ -272,7 +272,6 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   def __init__(self, outputLabelValue=None):
     ScriptedLoadableModuleLogic.__init__(self)
-    self.markupsLogic = slicer.modules.markups.logic()
     self.clippingModelNode = None
     self.clippingModelDisplayNode = None
     self.inputMarkupNode = None

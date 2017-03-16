@@ -34,31 +34,10 @@ class SliceTrackerStepLogic(StepBase, ModuleLogicMixin):
   def __init__(self):
     StepBase.__init__(self)
     self.resourcesPath = os.path.join(self.modulePath, "Resources")
-    self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
-    self.volumesLogic = slicer.modules.volumes.logic()
-    self.markupsLogic = slicer.modules.markups.logic()
 
   @abstractmethod
   def cleanup(self):
     pass
-
-  def applyDefaultTargetDisplayNode(self, targetNode, new=False):
-    displayNode = None if new else targetNode.GetDisplayNode()
-    modifiedDisplayNode = self.setupDisplayNode(displayNode, True)
-    targetNode.SetAndObserveDisplayNodeID(modifiedDisplayNode.GetID())
-
-  def setupDisplayNode(self, displayNode=None, starBurst=False):
-    if not displayNode:
-      displayNode = slicer.vtkMRMLMarkupsDisplayNode()
-      slicer.mrmlScene.AddNode(displayNode)
-    displayNode.SetTextScale(0)
-    displayNode.SetGlyphScale(2.5)
-    if starBurst:
-      displayNode.SetGlyphType(slicer.vtkMRMLAnnotationPointDisplayNode.StarBurst2D)
-    return displayNode
-
-  def setTargetVisibility(self, targetNode, show=True):
-    self.markupsLogic.SetAllMarkupsVisibility(targetNode, show)
 
 
 class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
@@ -230,7 +209,7 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   def setupRedSlicePreview(self, selectedSeries):
     self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY)
-    # self.hideAllTargets()
+    self.hideAllFiducialNodes()
     try:
       result = self.session.data.getResultsBySeries(selectedSeries)[0]
       volume = result.volumes.fixed
@@ -264,14 +243,14 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
         self.setupRegistrationResultView(layout=SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE)
         if result.rejected:
           self.onRegistrationResultSelected(result.name, registrationType='bSpline')
-        elif result.approved and result.approvedTargets:
+        elif result.approved and result.targets.approved:
           self.onRegistrationResultSelected(result.name, showApproved=True)
         break
 
   def setupRegistrationResultView(self, layout=None):
     if layout:
       self.layoutManager.setLayout(layout)
-    # self.hideAllLabels()
+    self.hideAllLabels()
     # self.addSliceAnnotationsBasedOnLayoutAndSetOrientation()
     self.refreshViewNodeIDs(self.session.data.initialTargets, [self.redSliceNode])
     # self.setupViewNodesForCurrentTargets()

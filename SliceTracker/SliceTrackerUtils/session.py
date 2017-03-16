@@ -12,7 +12,7 @@ from exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesErro
 from SlicerProstateUtils.constants import DICOMTAGS, FileExtension, STYLE
 from SlicerProstateUtils.events import SlicerProstateEvents
 from SlicerProstateUtils.helpers import IncomingDataWindow, SmartDICOMReceiver
-from SlicerProstateUtils.mixins import ModuleLogicMixin
+from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 
 from SlicerProstateUtils.decorators import logmethod, singleton, onReturnProcessEvents, onExceptionReturnNone
 
@@ -245,7 +245,6 @@ class SliceTrackerSession(SessionBase):
   def __init__(self):
     SessionBase.__init__(self)
     self.registrationLogic = SliceTrackerRegistrationLogic()
-    self.scalarVolumePlugin = slicer.modules.dicomPlugins['DICOMScalarVolumePlugin']()
     self.resetAndInitializeMembers()
 
   def resetAndInitializeMembers(self):
@@ -338,6 +337,8 @@ class SliceTrackerSession(SessionBase):
     self.close(save=True)
 
   def load(self):
+    self._loading = True
+    slicer.app.layoutManager().blockSignals(True)
     filename = os.path.join(self.outputDirectory, SliceTrackerConstants.JSON_FILENAME)
     if not os.path.exists(filename):
       return
@@ -345,12 +346,14 @@ class SliceTrackerSession(SessionBase):
     coverProstate = self.data.getMostRecentApprovedCoverProstateRegistration()
     if coverProstate:
       if not self.data.initialVolume:
-        self.data.initialVolume = coverProstate.movingVolume if self.data.usePreopData else coverProstate.fixedVolume
-      self.data.initialTargets = coverProstate.originalTargets
+        self.data.initialVolume = coverProstate.volumes.moving if self.data.usePreopData else coverProstate.volumes.fixed
+      self.data.initialTargets = coverProstate.targets.original
       if self.data.usePreopData:  # TODO: makes sense?
-        self.data.preopLabel = coverProstate.movingLabel
+        self.data.preopLabel = coverProstate.labels.moving
     if self.data.zFrameTransform:
       self._zFrameRegistrationSuccessful = True
+    self._loading = False
+    slicer.app.layoutManager().blockSignals(False)
     self.invokeEvent(self.SuccessfullyLoadedMetadataEvent)
 
   def startPreopDICOMReceiver(self):
@@ -587,14 +590,29 @@ class SliceTrackerSession(SessionBase):
     return True
 
   def setupPreopLoadedTargets(self):
-    pass
-    # self.setTargetVisibility(self.logic.preopTargets, show=True)
-    # self.targetTableModel.targetList = self.logic.preopTargets
-    # self.fiducialSelector.setCurrentNode(self.logic.preopTargets)
-    # self.logic.applyDefaultTargetDisplayNode(self.logic.preopTargets)
-    # self.markupsLogic.JumpSlicesToNthPointInMarkup(self.logic.preopTargets.GetID(), 0)
+    targets = self.data.initialTargets
+    ModuleWidgetMixin.setFiducialNodeVisibility(targets, show=True)
+    # self.targetTableModel.targetList = targets
+    self.applyDefaultTargetDisplayNode(targets)
+    self.markupsLogic.JumpSlicesToNthPointInMarkup(targets.GetID(), 0)
     # self.targetTable.selectRow(0)
     # self.targetTable.enabled = True
+    # self.updateDisplacementChartTargetSelectorTable()
+
+  def applyDefaultTargetDisplayNode(self, targetNode, new=False):
+    displayNode = None if new else targetNode.GetDisplayNode()
+    modifiedDisplayNode = self.setupDisplayNode(displayNode, True)
+    targetNode.SetAndObserveDisplayNodeID(modifiedDisplayNode.GetID())
+
+  def setupDisplayNode(self, displayNode=None, starBurst=False):
+    if not displayNode:
+      displayNode = slicer.vtkMRMLMarkupsDisplayNode()
+      slicer.mrmlScene.AddNode(displayNode)
+    displayNode.SetTextScale(0)
+    displayNode.SetGlyphScale(2.5)
+    if starBurst:
+      displayNode.SetGlyphType(slicer.vtkMRMLAnnotationPointDisplayNode.StarBurst2D)
+    return displayNode
 
   def getFirstMpReviewPreprocessedStudy(self, directory):
     # TODO add check here and selected the one which has targets in it
@@ -623,7 +641,7 @@ class SliceTrackerSession(SessionBase):
       # self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
       # self.setAxialOrientation()
       # self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume)
-      # self.setupPreopLoadedTargets()
+      self.setupPreopLoadedTargets()
 
   def loadMpReviewProcessedData(self, directory):
     from mpReview import mpReviewLogic
@@ -761,7 +779,8 @@ class SliceTrackerSession(SessionBase):
     elif self.getSetting("COVER_TEMPLATE") in self.currentSeries:
       event = self.InitiateZFrameCalibrationEvent
     elif self.getSetting("NEEDLE_IMAGE") in self.currentSeries:
-      event = self.InitiateRegistrationEvent
+      self.onInvokeRegistration(initial=False)
+      return
     if event:
       self.invokeEvent(event, callData)
     else:
@@ -782,7 +801,7 @@ class SliceTrackerSession(SessionBase):
     if initial:
       self.applyInitialRegistration(retryMode, progressCallback=self.updateProgressBar)
     else:
-      self.logic.applyRegistration(progressCallback=self.updateProgressBar)
+      self.applyRegistration(progressCallback=self.updateProgressBar)
     self.progress.close()
     self.progress = None
     logging.debug('Re-Registration is done')
@@ -818,12 +837,12 @@ class SliceTrackerSession(SessionBase):
     fixedLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.currentSeriesVolume,
                                                            self.currentSeriesVolume.GetName() + '-label')
 
-    self.runBRAINSResample(inputVolume=coverProstateRegResult.fixedLabel, referenceVolume=self.currentSeriesVolume,
+    self.runBRAINSResample(inputVolume=coverProstateRegResult.labels.fixed, referenceVolume=self.currentSeriesVolume,
                            outputVolume=fixedLabel, warpTransform=initialTransform)
 
     self.dilateMask(fixedLabel, dilateValue=self.segmentedLabelValue)
-    self._runRegistration(self.currentSeriesVolume, fixedLabel, coverProstateRegResult.fixedVolume,
-                         coverProstateRegResult.fixedLabel, coverProstateRegResult.approvedTargets, progressCallback)
+    self._runRegistration(self.currentSeriesVolume, fixedLabel, coverProstateRegResult.volumes.fixed,
+                         coverProstateRegResult.labels.fixed, coverProstateRegResult.targets.approved, progressCallback)
 
   def _runRegistration(self, fixedVolume, fixedLabel, movingVolume, movingLabel, targets, progressCallback):
     self.generateNameAndCreateRegistrationResult(fixedVolume)
@@ -836,8 +855,22 @@ class SliceTrackerSession(SessionBase):
     self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
     self.invokeEvent(self.InitiateEvaluationEvent)
 
+  def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
+
+    params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
+              'warpTransform': warpTransform, 'interpolationMode': 'NearestNeighbor', 'pixelType':'short'}
+
+    logging.debug('About to run BRAINSResample CLI with those params: %s' % params)
+    slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
+    logging.debug('resample labelmap through')
+    slicer.mrmlScene.AddNode(outputVolume)
+
+  @logmethod(logging.INFO)
   def onRegistrationResultStatusChanged(self, caller, event):
-    self.invokeEventForMostRecentEligibleSeries()
+    if self._loading:
+      return
+    self.save()
+    # self.invokeEventForMostRecentEligibleSeries()
     self.invokeEvent(self.RegistrationStatusChangedEvent)
 
   @vtk.calldata_type(vtk.VTK_STRING)

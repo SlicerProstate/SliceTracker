@@ -136,8 +136,6 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
 
   def __init__(self):
     ScriptedLoadableModuleLogic.__init__(self)
-    self.volumesLogic = slicer.modules.volumes.logic()
-    self.markupsLogic = slicer.modules.markups.logic()
     self.registrationResult = None
 
   def _processParameterNode(self, parameterNode):
@@ -175,8 +173,8 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
 
     targetsNodeID = parameterNode.GetAttribute('TargetsNodeID')
     if targetsNodeID:
-      result.originalTargets = slicer.mrmlScene.GetNodeByID(targetsNodeID)
-      self.transformTargets(registrationTypes, result.originalTargets, str(result.seriesNumber), suffix=result.suffix)
+      result.targets.original = slicer.mrmlScene.GetNodeByID(targetsNodeID)
+      self.transformTargets(registrationTypes, result.targets.original, str(result.seriesNumber), suffix=result.suffix)
     result.movingVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingImageNodeID'))
 
   def runReRegistration(self, parameterNode, progressCallback=None):
@@ -203,7 +201,7 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
 
     targetsNodeID = parameterNode.GetAttribute('TargetsNodeID')
     if targetsNodeID:
-      result.originalTargets = slicer.mrmlScene.GetNodeByID(targetsNodeID)
+      result.targets.original = slicer.mrmlScene.GetNodeByID(targetsNodeID)
       self.transformTargets(registrationTypes, result.originalTargets, str(result.seriesNumber), suffix=result.suffix)
     result.movingVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingImageNodeID'))
 

@@ -34,7 +34,6 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerStepLogic):
 
   def __init__(self):
     super(SliceTrackerZFrameRegistrationStepLogic, self).__init__()
-    self.cropVolumeLogic = slicer.modules.cropvolume.logic()
     self.setupSliceWidgets()
     self.resetAndInitializeData()
 
