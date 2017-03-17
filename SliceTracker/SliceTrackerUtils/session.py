@@ -883,3 +883,26 @@ class SliceTrackerSession(SessionBase):
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewRegistrationResultCreated(self, caller, event, callData):
     self.activeResult = callData
+
+  def skipAllUnregisteredPreviousSeries(self, series):
+    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
+    for series in [series for series in self.seriesList if not self.getSetting("COVER_TEMPLATE") in series]:
+      currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
+      if currentSeriesNumber < selectedSeriesNumber and self.isTrackingPossible(series):
+        results = self.registrationResults.getResultsBySeriesNumber(currentSeriesNumber)
+        if len(results) == 0:
+          self.skipSeries(series)
+      elif currentSeriesNumber >= selectedSeriesNumber:
+        break
+
+  def skipSeries(self, series):
+    volume = self.logic.getOrCreateVolumeForSeries(series)
+    name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(volume.GetName())
+    result = self.data.createResult(name+suffix)
+    result.volumes.fixed = volume
+    result.skip()
+
+  def skip(self, series):
+    self.skipAllUnregisteredPreviousSeries(series)
+    self.skipSeries(series)
+    self.save()

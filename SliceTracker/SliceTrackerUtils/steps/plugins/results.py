@@ -152,14 +152,26 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.opacitySlider.valueChanged.connect(self.onOpacitySliderChanged)
 
   def onLayoutChanged(self):
+    if not self.currentResult:
+      return
     self.setupRegistrationResultView()
     self.onRegistrationResultSelected(self.currentResult.name)
     self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
     self.setFiducialNodeVisibility(self.session.data.initialTargets,
                                    show=self.layoutManager.layout != constants.LAYOUT_FOUR_UP)
 
+  def show(self):
+    qt.QWidget.show(self)
+    self.onActivation()
+
+  def hide(self):
+    qt.QWidget.hide(self)
+    self.onDeactivation()
+
   @logmethod(logging.INFO)
   def onActivation(self):
+    if not self.currentResult:
+      return
     self.updateRegistrationResultSelector()
     defaultLayout = self.getSetting("DEFAULT_EVALUATION_LAYOUT")
     self.setupRegistrationResultView(layout=getattr(constants, defaultLayout, constants.LAYOUT_SIDE_BY_SIDE))
@@ -256,8 +268,11 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.revealCursorButton.checked = False
 
   def setOldNewIndicatorAnnotationOpacity(self, value):
+    self.registrationResultNewImageAnnotation = getattr(self, "registrationResultNewImageAnnotation", None)
     if self.registrationResultNewImageAnnotation:
       self.registrationResultNewImageAnnotation.opacity = value
+
+    self.registrationResultOldImageAnnotation = getattr(self, "registrationResultOldImageAnnotation", None)
     if self.registrationResultOldImageAnnotation:
       self.registrationResultOldImageAnnotation.opacity = 1.0 - value
 

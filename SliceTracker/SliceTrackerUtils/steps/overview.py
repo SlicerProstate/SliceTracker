@@ -6,6 +6,7 @@ import qt
 import slicer
 import vtk
 from plugins.training import SliceTrackerTrainingPlugin
+from plugins.results import SliceTrackerRegistrationResultsPlugin
 from SlicerProstateUtils.constants import COLOR
 from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, IncomingDataMessageBox
@@ -106,18 +107,25 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.createNewCaseButton = self.createButton("New case")
     self.openCaseButton = self.createButton("Open case")
 
+    self.regResultsPlugin = SliceTrackerRegistrationResultsPlugin()
+    self.regResultsPlugin.resultSelectorVisible = False
+    self.regResultsPlugin.titleVisible = False
+    self.regResultsPlugin.registrationTypeButtonsVisible = False
+    self.regResultsPlugin.hide()
+    self.addPlugin(self.regResultsPlugin)
+
     self.layout().addWidget(self.collapsibleDirectoryConfigurationArea, 0, 0, 1, 2)
     self.layout().addWidget(self.createNewCaseButton, 1, 0)
     self.layout().addWidget(self.openCaseButton, 1, 1)
-    self.layout().addWidget(self.trainingPlugin, 2, 0, 1, 2)
-    self.layout().addWidget(self.targetTable, 3, 0, 1, 2)
-    self.layout().addWidget(self.intraopSeriesSelector, 4, 0)
-    self.layout().addWidget(self.skipIntraopSeriesButton, 4, 1)
-    self.layout().addWidget(self.trackTargetsButton, 5, 0, 1, 2)
-    self.layout().addWidget(self.closeCaseButton, 6, 0, 1, 2)
-    self.layout().addWidget(self.completeCaseButton, 7, 0, 1, 2)
-
-    self.layout().setRowStretch(6, 1)
+    self.layout().addWidget(self.closeCaseButton, 2, 0)
+    self.layout().addWidget(self.completeCaseButton, 2, 1)
+    self.layout().addWidget(self.trainingPlugin, 3, 0, 1, 2)
+    self.layout().addWidget(self.targetTable, 4, 0, 1, 2)
+    self.layout().addWidget(self.intraopSeriesSelector, 5, 0, 1, 2)
+    self.layout().addWidget(self.regResultsPlugin, 6, 0, 1, 2)
+    self.layout().addWidget(self.trackTargetsButton, 7, 0)
+    self.layout().addWidget(self.skipIntraopSeriesButton, 7, 1)
+    self.layout().setRowStretch(8, 1)
 
   def setupCaseInformationArea(self):
     self.setupCaseWatchBox()
@@ -167,48 +175,31 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
                                                                            self.casesRootDirectoryButton.directory))
     self.openCaseButton.clicked.connect(self.onOpenCaseButtonClicked)
     self.closeCaseButton.clicked.connect(self.session.close)
-    # self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
+    self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
     self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
-    # self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
+    self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
     self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.onIntraopSeriesSelectionChanged)
     # self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
 
+  def onSkipIntraopSeriesButtonClicked(self):
+    self.session.skip(self.intraopSeriesSelector.currentText)
+    self.updateIntraopSeriesSelectorTable()
+
+  def onCompleteCaseButtonClicked(self):
+    self.session.complete()
+    # self.save(showDialog=True)
+
   def onTrackTargetsButtonClicked(self):
-    # self.removeSliceAnnotations()
-    # self.targetTableModel.computeCursorDistances = False
-    # volume = self.logic.getOrCreateVolumeForSeries(self.intraopSeriesSelector.currentText)
     self.session.takeActionForCurrentSeries()
-    # if volume:
-    #   if not self.session.zFrameRegistrationSuccessful and \
-    #       self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
-    #
-    #     logging.info("Opening ZFrameRegistrationStep")
-    #     # self.openZFrameRegistrationStep(volume)
-    #     return
-      # else:
-      #   if self.currentResult is None or \
-      #      self.session.data.getMostRecentApprovedCoverProstateRegistration() is None or \
-      #      self.logic.retryMode or self.getSetting("COVER_PROSTATE") in self.intraopSeriesSelector.currentText:
-      #     self.openSegmentationStep(volume)
-      #   else:
-      #     self.repeatRegistrationForCurrentSelection(volume)
 
   @logmethod(logging.INFO)
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
-    # if not self.active:
-    # self.removeSliceAnnotations()
-    trackingPossible = False
-
     self.session.currentSeries = selectedSeries
-    volume = self.session.currentSeriesVolume
-
     if selectedSeries:
       print "onIntraopSeriesSelectionChanged called"
       trackingPossible = self.session.isTrackingPossible(selectedSeries)
-      logging.info(trackingPossible)
       self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
-      # self.configureViewersForSelectedIntraopSeries(selectedSeries)
-    #   self.updateSliceAnnotations(selectedSeries)
+      self.configureViewersForSelectedIntraopSeries(selectedSeries)
     self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries())
 
       # self.updateLayoutButtons(trackingPossible, selectedSeries)
@@ -218,10 +209,12 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
             self.session.data.registrationResultWasRejected(selectedSeries):
       if self.getSetting("COVER_PROSTATE") in selectedSeries and not self.session.data.usePreopData:
         self.setupRedSlicePreview(selectedSeries)
+        self.regResultsPlugin.hide()
       else:
-        print "setupSideBySideRegistrationView"
-        # self.setupSideBySideRegistrationView()
+        self.currentResult = self.session.data.getApprovedOrLastResultForSeries(selectedSeries).name
+        self.regResultsPlugin.show()
     else:
+      self.regResultsPlugin.hide()
       self.setupRedSlicePreview(selectedSeries)
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):

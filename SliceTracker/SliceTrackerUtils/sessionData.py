@@ -388,6 +388,13 @@ class SessionData(ModuleLogicMixin):
         return result
     return None
 
+  def getApprovedOrLastResultForSeries(self, series):
+    results = self.getResultsBySeries(series)
+    for result in results:
+      if result.approved:
+        return result
+    return results[-1]
+
 
 class AbstractRegistrationData(ModuleLogicMixin):
 
