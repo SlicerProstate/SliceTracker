@@ -5,13 +5,13 @@ import qt
 import slicer
 import vtk
 from Editor import EditorWidget
-from base import SliceTrackerStepLogic, SliceTrackerStep
+from base import SliceTrackerLogicBase, SliceTrackerStep
 from VolumeClipToLabel import VolumeClipToLabelWidget
 from SlicerProstateUtils.helpers import TargetCreationWidget, SliceAnnotation
 from ..constants import SliceTrackerConstants
 
 
-class SliceTrackerSegmentationStepLogic(SliceTrackerStepLogic):
+class SliceTrackerSegmentationStepLogic(SliceTrackerLogicBase):
 
   def __init__(self):
     super(SliceTrackerSegmentationStepLogic, self).__init__()
@@ -110,6 +110,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.finishedSegmentationStepButton.clicked.connect(self.onFinishedStep)
 
   def onActivation(self):
+    super(SliceTrackerSegmentationStep, self).onActivation()
     self.finishedSegmentationStepButton.enabled = False
     self.volumeClipToLabelWidget.logic.colorNode = self.session.mpReviewColorNode
     self.volumeClipToLabelWidget.onColorSelected(self.session.segmentedLabelValue)
@@ -126,6 +127,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       self.volumeClipToLabelWidget.quickSegmentationButton.click()
 
   def onDeactivation(self):
+    super(SliceTrackerSegmentationStep, self).onDeactivation()
     self.fiducialsWidget.reset()
 
   @vtk.calldata_type(vtk.VTK_STRING)

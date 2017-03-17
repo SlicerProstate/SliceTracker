@@ -43,11 +43,9 @@ package "Session" #DDDDDD {
     + makeSeriesNumberDescription(dcmFile): string
     + createLoadableFileListForSeries(series): list
   }
+}
 
   SliceTrackerStep <.. SliceTrackerSession::steps: has [0..n]
   RegistrationResults <.. SliceTrackerSession::regResults : use
-
-
-}
 
 @enduml

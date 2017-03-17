@@ -9,12 +9,12 @@ from plugins.training import SliceTrackerTrainingPlugin
 from SlicerProstateUtils.constants import COLOR
 from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, IncomingDataMessageBox
-from base import SliceTrackerStepLogic, SliceTrackerStep
+from base import SliceTrackerLogicBase, SliceTrackerStep
 from ..helpers import NewCaseSelectionNameWidget
 from ..sessionData import RegistrationResult
 
 
-class SliceTrackerOverViewStepLogic(SliceTrackerStepLogic):
+class SliceTrackerOverViewStepLogic(SliceTrackerLogicBase):
 
   def __init__(self):
     super(SliceTrackerOverViewStepLogic, self).__init__()
@@ -93,7 +93,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setup(self):
     self.setupCaseInformationArea()
-    self.trainingWidget = SliceTrackerTrainingPlugin()
+    self.trainingPlugin = SliceTrackerTrainingPlugin()
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series",
@@ -109,7 +109,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.layout().addWidget(self.collapsibleDirectoryConfigurationArea, 0, 0, 1, 2)
     self.layout().addWidget(self.createNewCaseButton, 1, 0)
     self.layout().addWidget(self.openCaseButton, 1, 1)
-    self.layout().addWidget(self.trainingWidget, 2, 0, 1, 2)
+    self.layout().addWidget(self.trainingPlugin, 2, 0, 1, 2)
     self.layout().addWidget(self.targetTable, 3, 0, 1, 2)
     self.layout().addWidget(self.intraopSeriesSelector, 4, 0)
     self.layout().addWidget(self.skipIntraopSeriesButton, 4, 1)
@@ -244,6 +244,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.addEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
     self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
+    self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
   def removeSessionEventObservers(self):
     SliceTrackerStep.removeSessionEventObservers(self)
@@ -251,6 +252,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.removeEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
     self.session.removeEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
+    self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
   def onCreateNewCaseButtonClicked(self):
     if not self.checkAndWarnUserIfCaseInProgress():
@@ -266,6 +268,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.clearData()
 
   def onActivation(self):
+    super(SliceTrackerOverviewStep, self).onActivation()
     self.updateIntraopSeriesSelectorTable()
 
   def updateCaseWatchBox(self):

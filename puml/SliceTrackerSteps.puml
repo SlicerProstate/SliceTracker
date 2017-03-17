@@ -2,10 +2,6 @@
 
 package "SliceTrackerSteps" #DDDDDD {
 
-
-  QTabWidget <|-- SliceTrackerTabWidget
-  SliceTrackerStep <.. SliceTrackerTabWidget::steps: has [0..n]
-
   class SliceTrackerTabWidget {
     + session
     + __init__(session)
@@ -13,43 +9,35 @@ package "SliceTrackerSteps" #DDDDDD {
     + onCurrentTabChanged(step)
   }
 
-  ModuleWidgetMixin <|-- SliceTrackerStep
-  StepBase <|-- SliceTrackerStep
-  QWidget <|-- SliceTrackerStep
-
   abstract class StepBase {
     + MODULE_NAME = "SliceTracker"
     __
     + session
     + modulePath: string
+    + resourcesPath
     __
     + getModulePath(): string
     + getSetting(self, setting, moduleName=None, default=None)
     + setSetting(self, setting, value, moduleName=None)
   }
 
-  abstract class SliceTrackerStep {
+  abstract class SliceTrackerPlugin {
+    + {abstract} LogicClass
+  }
+
+  SliceTrackerWidgetBase <|-- SliceTrackerPlugin
+
+  abstract class SliceTrackerWidgetBase {
     + {abstract} NAME: string
-    + {abstract} LogicClass: SliceTrackerStepLogic
-    .. events ..
-    ActivatedEvent: vtk.vtkCommand.UserEvent
-    DeactivatedEvent: vtk.vtkCommand.UserEvent
-    .. properties ..
-    + active: bool
-    .. abstract methods ..
+    + {abstract} LogicClass
     + {abstract} setup()
     + {abstract} cleanup()
     + {abstract} setupConnections()
     + {abstract} onLayoutChanged()
-    __
+    + setupSessionObservers()
     + setupSliceWidgets()
     + setupAdditionalViewSettingButtons()
     + resetViewSettingButtons()
-    + onActivation()
-    + onDeactivation()
-    + setupSessionObservers()
-    + removeSessionEventObservers()
-    .. slots ..
     + onNewCaseStarted()
     + onCaseClosed()
     + onIncomingDataSkipped()
@@ -58,28 +46,55 @@ package "SliceTrackerSteps" #DDDDDD {
     + onZFrameRegistrationSuccessful()
   }
 
-  abstract class SliceTrackerStepLogic {
-    + resourcesPath
-    + scalarVolumePlugin
-    + volumesLogic
+  StepBase <|-- SliceTrackerWidgetBase
+
+  abstract class SliceTrackerStep {
+    .. events ..
+    ActivatedEvent: vtk.vtkCommand.UserEvent
+    DeactivatedEvent: vtk.vtkCommand.UserEvent
+    .. properties ..
+    + active: bool
+    __
+    + onActivation()
+    + onDeactivation()
+    + removeSessionEventObservers()
+    .. slots ..
+  }
+
+  SliceTrackerWidgetBase <|-- SliceTrackerStep
+
+
+  abstract class SliceTrackerLogicBase {
     .. abstract methods ..
     + {abstract} cleanup()
     __
     + getOrCreateVolumeForSeries(series)
   }
 
-  StepBase <|-- SliceTrackerStepLogic
-  ModuleLogicMixin <|-- SliceTrackerStepLogic
+  StepBase <|-- SliceTrackerLogicBase
 
   class SliceTrackerOverviewStep {
     + onLayoutChanged()
-    + trainingsWidget
+    + trainingPlugin
+    + regResultPlugin
   }
 
-  class SliceTrackerTrainingStep {
+  class SliceTrackerTrainingPlugin {
   }
 
-  SliceTrackerTrainingStep <.. SliceTrackerOverviewStep::traningsWidget
+  class SliceTrackerRegistrationResultsPlugin {
+    + LogicClass
+    + onLayoutChanged()
+  }
+
+  class SliceTrackerRegistrationResultsLogic
+
+  SliceTrackerTrainingPlugin <.. SliceTrackerOverviewStep::trainingPlugin
+  SliceTrackerPlugin <|-- SliceTrackerTrainingPlugin
+  SliceTrackerPlugin <|-- SliceTrackerRegistrationResultsPlugin
+  SliceTrackerRegistrationResultsPlugin <.. SliceTrackerOverviewStep::regResultPlugin
+  SliceTrackerLogicBase <|-- SliceTrackerRegistrationResultsLogic
+  SliceTrackerRegistrationResultsLogic <.. SliceTrackerRegistrationResultsPlugin::LogicClass: uses
 
 
   class SliceTrackerSegmentationStep {
@@ -91,21 +106,22 @@ package "SliceTrackerSteps" #DDDDDD {
   }
 
   class SliceTrackerEvaluationStep {
+    + regResultPlugin
+    __
     + onLayoutChanged()
   }
 
-
-  'SliceTrackerSession "0" --> "*" SliceTrackerStep
+  SliceTrackerRegistrationResultsPlugin <.. SliceTrackerEvaluationStep::regResultPlugin
 
   'class OverViewStepLogic
   'class SegmentationStepLogic
   'class ZFrameRegistrationStepLogic
   'class EvaluationStepLogic
   '
-  SliceTrackerStepLogic <|-- OverViewStepLogic
-  SliceTrackerStepLogic <|-- SegmentationStepLogic
-  SliceTrackerStepLogic <|-- ZFrameRegistrationStepLogic
-  SliceTrackerStepLogic <|-- EvaluationStepLogic
+  SliceTrackerLogicBase <|-- OverViewStepLogic
+  SliceTrackerLogicBase <|-- SegmentationStepLogic
+  SliceTrackerLogicBase <|-- ZFrameRegistrationStepLogic
+  SliceTrackerLogicBase <|-- EvaluationStepLogic
 
   SliceTrackerStep <|-- SliceTrackerOverviewStep
   SliceTrackerStep <|-- SliceTrackerSegmentationStep
@@ -117,13 +133,15 @@ package "SliceTrackerSteps" #DDDDDD {
   ZFrameRegistrationStepLogic <.. SliceTrackerZFrameRegistrationStep: uses
   EvaluationStepLogic <.. SliceTrackerEvaluationStep: uses
 
-  SliceTrackerStepLogic <.. SliceTrackerStep : uses
-
-  SliceTrackerSession <.. SliceTrackerStep::session : uses
-  SliceTrackerSession <.. SliceTrackerStepLogic::session: uses
-  SliceTrackerSession <.. SliceTrackerTabWidget::session: uses
+  SliceTrackerLogicBase <.. SliceTrackerWidgetBase::LogicClass : uses
 }
 
+QTabWidget <|-- SliceTrackerTabWidget
+QWidget <|-- SliceTrackerWidgetBase
+ModuleWidgetMixin <|-- SliceTrackerWidgetBase
+ModuleLogicMixin <|-- SliceTrackerLogicBase
 
+SliceTrackerSession <.. StepBase::session : uses
+'SliceTrackerSession "0" --> "*" SliceTrackerStep
 
 @enduml

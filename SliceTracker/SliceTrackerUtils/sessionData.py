@@ -433,6 +433,8 @@ class AbstractRegistrationData(ModuleLogicMixin):
 
 class RegistrationTypeData(AbstractRegistrationData):
 
+  RegistrationTypes = ['rigid', 'affine', 'bSpline']
+
   def __init__(self):
     super(RegistrationTypeData, self).__init__()
 

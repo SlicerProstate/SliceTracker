@@ -9,13 +9,13 @@ import sitkUtils
 
 from ..algorithms.zFrameRegistration import LineMarkerRegistration, OpenSourceZFrameRegistration
 from ..constants import SliceTrackerConstants
-from base import SliceTrackerStepLogic, SliceTrackerStep
+from base import SliceTrackerLogicBase, SliceTrackerStep
 
 from SlicerProstateUtils.decorators import logmethod
 from SlicerProstateUtils.helpers import SliceAnnotation
 
 
-class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerStepLogic):
+class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
 
   ZFRAME_MODEL_PATH = 'zframe-model.vtk'
   ZFRAME_TEMPLATE_CONFIG_FILE_NAME = 'ProstateTemplate.csv'
@@ -443,6 +443,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       self.applyZFrameTransform()
 
   def onActivation(self):
+    super(SliceTrackerZFrameRegistrationStep, self).onActivation()
     self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_FOUR_UP)
     self.showZFrameModelButton.checked = True
     self.showTemplateButton.checked = True
@@ -452,6 +453,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       self.initiateZFrameRegistrationStep()
 
   def onDeactivation(self):
+    super(SliceTrackerZFrameRegistrationStep, self).onDeactivation()
     self.showZFrameModelButton.checked = False
     self.showTemplateButton.checked = False
     self.showTemplatePathButton.checked = False

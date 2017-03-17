@@ -4,7 +4,7 @@ import shutil
 from abc import ABCMeta, abstractmethod
 
 import slicer
-from sessionData import SessionData, RegistrationResult
+from sessionData import SessionData, RegistrationResult, RegistrationTypeData
 from constants import SliceTrackerConstants
 
 from exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
@@ -844,7 +844,7 @@ class SliceTrackerSession(SessionBase):
                          coverProstateRegResult.labels.fixed, coverProstateRegResult.targets.approved, progressCallback)
 
   def _runRegistration(self, fixedVolume, fixedLabel, movingVolume, movingLabel, targets, progressCallback):
-    self.generateNameAndCreateRegistrationResult(fixedVolume)
+    result = self.generateNameAndCreateRegistrationResult(fixedVolume)
     parameterNode = slicer.vtkMRMLScriptedModuleNode()
     parameterNode.SetAttribute('FixedImageNodeID', fixedVolume.GetID())
     parameterNode.SetAttribute('FixedLabelNodeID', fixedLabel.GetID())
@@ -852,7 +852,14 @@ class SliceTrackerSession(SessionBase):
     parameterNode.SetAttribute('MovingLabelNodeID', movingLabel.GetID())
     parameterNode.SetAttribute('TargetsNodeID', targets.GetID())
     self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
+    self.addTargetsToMrmlScene(result)
     self.invokeEvent(self.InitiateEvaluationEvent)
+
+  def addTargetsToMrmlScene(self, result):
+    targetNodes = result.targets.asDict()
+    for regType in RegistrationTypeData.RegistrationTypes:
+      if targetNodes[regType]:
+        slicer.mrmlScene.AddNode(targetNodes[regType])
 
   def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
 
@@ -866,6 +873,7 @@ class SliceTrackerSession(SessionBase):
 
   @logmethod(logging.INFO)
   def onRegistrationResultStatusChanged(self, caller, event):
+    self._loading = getattr(self, "_loading", None)
     if self._loading:
       return
     self.save()

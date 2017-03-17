@@ -1,22 +1,25 @@
-import os, ast, shutil
-import qt, vtk, ctk, slicer
+import os
+import ast
+import shutil
+import qt
+import vtk
+import ctk
+import slicer
 
 from ...constants import SliceTrackerConstants
-from ..base import SliceTrackerStep
+from ..base import SliceTrackerPlugin
 
 from SlicerProstateUtils.helpers import SampleDataDownloader
 from SlicerProstateUtils.decorators import *
 
 
-class SliceTrackerTrainingPlugin(SliceTrackerStep):
+class SliceTrackerTrainingPlugin(SliceTrackerPlugin):
 
   NAME = "Training"
 
   def __init__(self):
-    self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
     super(SliceTrackerTrainingPlugin, self).__init__()
     self.sampleDownloader = SampleDataDownloader(True)
-    self.setupSessionObservers()
 
   def setup(self):
     self.collapsibleTrainingArea = ctk.ctkCollapsibleButton()
@@ -34,6 +37,14 @@ class SliceTrackerTrainingPlugin(SliceTrackerStep):
   def setupConnections(self):
     self.simulatePreopPhaseButton.clicked.connect(self.startPreopPhaseSimulation)
     self.simulateIntraopPhaseButton.clicked.connect(self.startIntraopPhaseSimulation)
+
+  def setupSessionObservers(self):
+    super(SliceTrackerTrainingPlugin, self).setupSessionObservers()
+    self.session.addEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
+
+  def removeSessionEventObservers(self):
+    super(SliceTrackerTrainingPlugin, self).removeSessionEventObservers()
+    self.session.removeEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
 
   def startPreopPhaseSimulation(self):
     self.session.trainingMode = True
