@@ -13,8 +13,17 @@ class StepBase(GeneralModuleMixin):
 
   MODULE_NAME = "SliceTracker"
 
+  @property
+  def currentResult(self):
+    return self.session.activeResult
+
+  @currentResult.setter
+  def currentResult(self, value):
+    self.session.activeResult = value
+
   def __init__(self):
     self.modulePath = self.getModulePath()
+    self.resourcesPath = os.path.join(self.modulePath, "Resources")
     self.session = SliceTrackerSession()
 
   def getModulePath(self):
@@ -27,30 +36,17 @@ class StepBase(GeneralModuleMixin):
     return GeneralModuleMixin.setSetting(self, setting, value, moduleName=self.MODULE_NAME)
 
 
-class SliceTrackerStepLogic(StepBase, ModuleLogicMixin):
-
-  __metaclass__ = ABCMeta
-
-  def __init__(self):
-    StepBase.__init__(self)
-    self.resourcesPath = os.path.join(self.modulePath, "Resources")
-
-  @abstractmethod
-  def cleanup(self):
-    pass
-
-
-class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
+class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   ActivatedEvent = vtk.vtkCommand.UserEvent + 150
   DeactivatedEvent = vtk.vtkCommand.UserEvent + 151
 
   NAME = None
   LogicClass = None
-  viewSettingButtons = []
 
   @property
   def active(self):
+    self._activated = getattr(self, "_activated", False)
     return self._activated
 
   @active.setter
@@ -70,20 +66,19 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
   def __init__(self):
     qt.QWidget.__init__(self)
     StepBase.__init__(self)
-    self._activated = False
-    self.parameterNode.SetAttribute("Name", self.NAME)
-    if self.LogicClass:
-      self.logic = self.LogicClass()
     self.setLayout(qt.QGridLayout())
     self.setupIcons()
     self.setup()
     self.setupAdditionalViewSettingButtons()
-    self.setupSessionObservers()
     self.setupSliceWidgets()
+    self.setupSessionObservers()
     self.setupConnections()
 
+    if self.LogicClass:
+      self.logic = self.LogicClass()
+
   def __del__(self):
-    self.removeEventObservers()
+    self.removeSessionEventObservers()
 
   def setupIcons(self):
     pass
@@ -100,39 +95,35 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
   def onLayoutChanged(self):
     raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
-  def setupSessionObservers(self):
-    self.session.addEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
-    self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
-    self.session.addEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
-    self.session.addEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
-    self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
-    self.session.addEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
-    self.session.addEventObserver(self.session.SuccessfullyLoadedMetadataEvent, self.onLoadingMetadataSuccessful)
+  def onActivation(self):
+    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
-  def removeSessionEventObservers(self):
-    self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
-    self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
-    self.session.removeEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
-    self.session.removeEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
-    self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
-    self.session.removeEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
-    self.session.removeEventObserver(self.session.SuccessfullyLoadedMetadataEvent, self.onLoadingMetadataSuccessful)
+  def onDeactivation(self):
+    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
   def setupSliceWidgets(self):
     self.createSliceWidgetClassMembers("Red")
     self.createSliceWidgetClassMembers("Yellow")
     self.createSliceWidgetClassMembers("Green")
 
+  def setupSessionObservers(self):
+    self.session.addEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
+    self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
+    self.session.addEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+    self.session.addEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
+    self.session.addEventObserver(self.session.SuccessfullyLoadedMetadataEvent, self.onLoadingMetadataSuccessful)
+
+  def removeSessionEventObservers(self):
+    self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
+    self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
+    self.session.removeEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+    self.session.removeEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
+    self.session.removeEventObserver(self.session.SuccessfullyLoadedMetadataEvent, self.onLoadingMetadataSuccessful)
+
   def setupAdditionalViewSettingButtons(self):
     pass
 
   def resetViewSettingButtons(self):
-    pass
-
-  def onActivation(self):
-    pass
-
-  def onDeactivation(self):
     pass
 
   @logmethod(logging.INFO)
@@ -143,16 +134,8 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
   def onCaseClosed(self, caller, event):
     pass
 
-  @logmethod(logging.INFO)
-  def onIncomingDataSkipped(self, caller, event):
-    pass
-
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageDataReceived(self, caller, event, callData):
-    pass
-
-  @logmethod(logging.INFO)
-  def onZFrameRegistrationSuccessful(self, caller, event):
     pass
 
   @vtk.calldata_type(vtk.VTK_STRING)
@@ -238,6 +221,7 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
     #   self.disableTargetTable()
 
   def setupSideBySideRegistrationView(self):
+    # TODO: needed?
     for result in self.session.data.getResultsBySeries(self.session.currentSeries):
       if result.approved or result.rejected:
         self.setupRegistrationResultView(layout=SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE)
@@ -247,10 +231,53 @@ class SliceTrackerStep(qt.QWidget, StepBase, ModuleWidgetMixin):
           self.onRegistrationResultSelected(result.name, showApproved=True)
         break
 
-  def setupRegistrationResultView(self, layout=None):
-    if layout:
-      self.layoutManager.setLayout(layout)
-    self.hideAllLabels()
-    # self.addSliceAnnotationsBasedOnLayoutAndSetOrientation()
-    self.refreshViewNodeIDs(self.session.data.initialTargets, [self.redSliceNode])
-    # self.setupViewNodesForCurrentTargets()
+
+class SliceTrackerStep(SliceTrackerWidgetBase):
+
+  def __init__(self):
+    self.viewSettingButtons = []
+    self._plugins = []
+    self.parameterNode.SetAttribute("Name", self.NAME)
+    super(SliceTrackerStep, self).__init__()
+
+  @logmethod(logging.INFO)
+  def addPlugin(self, plugin):
+    assert hasattr(plugin, "active"), "Plugin needs to be a subclass of %s" % SliceTrackerPlugin.__class__.__name__
+    self._plugins.append(plugin)
+
+  def onActivation(self):
+    self._activatePlugins()
+
+  def onDeactivation(self):
+    self._deactivatePlugins()
+
+  def _activatePlugins(self):
+    self.__setPluginsActivated(True)
+
+  def _deactivatePlugins(self):
+    self.__setPluginsActivated(False)
+
+  def __setPluginsActivated(self, activated):
+    for plugin in self._plugins:
+      plugin.active = activated
+
+  def __del__(self):
+    self.removeEventObservers()
+
+
+class SliceTrackerLogicBase(StepBase, ModuleLogicMixin):
+
+  __metaclass__ = ABCMeta
+
+  def __init__(self):
+    StepBase.__init__(self)
+
+  @abstractmethod
+  def cleanup(self):
+    pass
+
+
+class SliceTrackerPlugin(SliceTrackerWidgetBase):
+
+  def __init__(self):
+    super(SliceTrackerPlugin, self).__init__()
