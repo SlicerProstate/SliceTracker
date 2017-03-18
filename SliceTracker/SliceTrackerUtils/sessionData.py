@@ -354,7 +354,7 @@ class SessionData(ModuleLogicMixin):
     results = sorted(self.registrationResults.values(), key=lambda s: s.seriesNumber)
     for result in reversed(results):
       if result.approved and self.getSetting("COVER_PROSTATE", "SliceTracker", "COVER_PROSTATE") not in result.name:
-        return result.getTransform(result.approvedRegistrationType)
+        return result.getTransform(result.registrationType)
     return None
 
   @onExceptionReturnNone

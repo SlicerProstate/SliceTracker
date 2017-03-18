@@ -155,12 +155,12 @@ class SliceTrackerSession(SessionBase):
 
   @activeResult.setter
   def activeResult(self, series):
-    assert series in self.data.registrationResults.keys()
     if self.activeResult is not None:
       self.activeResult.removeEventObservers()
     self._activeResult = series
-    for event in RegistrationResult.StatusEvents.values():
-      self.activeResult.addEventObserver(event, self.onRegistrationResultStatusChanged)
+    if self.activeResult:
+      for event in RegistrationResult.StatusEvents.values():
+        self.activeResult.addEventObserver(event, self.onRegistrationResultStatusChanged)
     # self.invokeEvent(self.ActiveResultChangedEvent)
 
   @property

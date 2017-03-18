@@ -214,6 +214,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         self.currentResult = self.session.data.getApprovedOrLastResultForSeries(selectedSeries).name
         self.regResultsPlugin.show()
     else:
+      self.currentResult = None
       self.regResultsPlugin.hide()
       self.setupRedSlicePreview(selectedSeries)
 

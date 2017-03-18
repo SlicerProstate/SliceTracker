@@ -220,17 +220,6 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     # else:
     #   self.disableTargetTable()
 
-  def setupSideBySideRegistrationView(self):
-    # TODO: needed?
-    for result in self.session.data.getResultsBySeries(self.session.currentSeries):
-      if result.approved or result.rejected:
-        self.setupRegistrationResultView(layout=SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE)
-        if result.rejected:
-          self.onRegistrationResultSelected(result.name, registrationType='bSpline')
-        elif result.approved and result.targets.approved:
-          self.onRegistrationResultSelected(result.name, showApproved=True)
-        break
-
 
 class SliceTrackerStep(SliceTrackerWidgetBase):
 
