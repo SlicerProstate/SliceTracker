@@ -21,12 +21,6 @@ package "SliceTrackerSteps" #DDDDDD {
     + setSetting(self, setting, value, moduleName=None)
   }
 
-  abstract class SliceTrackerPlugin {
-    + {abstract} LogicClass
-  }
-
-  SliceTrackerWidgetBase <|-- SliceTrackerPlugin
-
   abstract class SliceTrackerWidgetBase {
     + {abstract} NAME: string
     + {abstract} LogicClass
@@ -49,6 +43,7 @@ package "SliceTrackerSteps" #DDDDDD {
   StepBase <|-- SliceTrackerWidgetBase
 
   abstract class SliceTrackerStep {
+    # _plugins
     .. events ..
     ActivatedEvent: vtk.vtkCommand.UserEvent
     DeactivatedEvent: vtk.vtkCommand.UserEvent
@@ -58,10 +53,10 @@ package "SliceTrackerSteps" #DDDDDD {
     + onActivation()
     + onDeactivation()
     + removeSessionEventObservers()
-    .. slots ..
   }
 
   SliceTrackerWidgetBase <|-- SliceTrackerStep
+  SliceTrackerPlugin <.. SliceTrackerStep::_plugins: has [0..n]
 
 
   abstract class SliceTrackerLogicBase {
@@ -78,23 +73,6 @@ package "SliceTrackerSteps" #DDDDDD {
     + trainingPlugin
     + regResultPlugin
   }
-
-  class SliceTrackerTrainingPlugin {
-  }
-
-  class SliceTrackerRegistrationResultsPlugin {
-    + LogicClass
-    + onLayoutChanged()
-  }
-
-  class SliceTrackerRegistrationResultsLogic
-
-  SliceTrackerTrainingPlugin <.. SliceTrackerOverviewStep::trainingPlugin
-  SliceTrackerPlugin <|-- SliceTrackerTrainingPlugin
-  SliceTrackerPlugin <|-- SliceTrackerRegistrationResultsPlugin
-  SliceTrackerRegistrationResultsPlugin <.. SliceTrackerOverviewStep::regResultPlugin
-  SliceTrackerLogicBase <|-- SliceTrackerRegistrationResultsLogic
-  SliceTrackerRegistrationResultsLogic <.. SliceTrackerRegistrationResultsPlugin::LogicClass: uses
 
 
   class SliceTrackerSegmentationStep {

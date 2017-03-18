@@ -66,6 +66,8 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   def __init__(self):
     qt.QWidget.__init__(self)
     StepBase.__init__(self)
+    if self.LogicClass:
+      self.logic = self.LogicClass()
     self.setLayout(qt.QGridLayout())
     self.setupIcons()
     self.setup()
@@ -73,9 +75,6 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.setupSliceWidgets()
     self.setupSessionObservers()
     self.setupConnections()
-
-    if self.LogicClass:
-      self.logic = self.LogicClass()
 
   def __del__(self):
     self.removeSessionEventObservers()

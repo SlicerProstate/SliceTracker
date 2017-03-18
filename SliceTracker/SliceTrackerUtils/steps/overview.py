@@ -7,6 +7,7 @@ import slicer
 import vtk
 from plugins.training import SliceTrackerTrainingPlugin
 from plugins.results import SliceTrackerRegistrationResultsPlugin
+from plugins.targets import SliceTrackerTargetTablePlugin
 from SlicerProstateUtils.constants import COLOR
 from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, IncomingDataMessageBox
@@ -101,7 +102,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
                                                      enabled=False)
     self.closeCaseButton = self.createButton("Close case", toolTip="Close case without completing it", enabled=False)
     self.completeCaseButton = self.createButton('Case completed', enabled=False)
-    self.setupTargetsTable()
+    # self.setupTargetsTable()
     self.setupIntraopSeriesSelector()
 
     self.createNewCaseButton = self.createButton("New case")
@@ -114,13 +115,16 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.regResultsPlugin.hide()
     self.addPlugin(self.regResultsPlugin)
 
+    self.targetTablePlugin = SliceTrackerTargetTablePlugin()
+    self.addPlugin(self.targetTablePlugin)
+
     self.layout().addWidget(self.collapsibleDirectoryConfigurationArea, 0, 0, 1, 2)
     self.layout().addWidget(self.createNewCaseButton, 1, 0)
     self.layout().addWidget(self.openCaseButton, 1, 1)
     self.layout().addWidget(self.closeCaseButton, 2, 0)
     self.layout().addWidget(self.completeCaseButton, 2, 1)
     self.layout().addWidget(self.trainingPlugin, 3, 0, 1, 2)
-    self.layout().addWidget(self.targetTable, 4, 0, 1, 2)
+    self.layout().addWidget(self.targetTablePlugin, 4, 0, 1, 2)
     self.layout().addWidget(self.intraopSeriesSelector, 5, 0, 1, 2)
     self.layout().addWidget(self.regResultsPlugin, 6, 0, 1, 2)
     self.layout().addWidget(self.trackTargetsButton, 7, 0)
@@ -147,21 +151,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
                            WatchBoxAttribute('CurrentIntraopDICOMDirectory', 'Intraop DICOM Directory: '),
                            WatchBoxAttribute('mpReviewDirectory', 'mpReview Directory: ')]
     self.caseWatchBox = BasicInformationWatchBox(watchBoxInformation, title="Current Case")
-
-  def setupTargetsTable(self):
-    self.targetTable = qt.QTableView()
-    self.targetTable.setSelectionBehavior(qt.QTableView.SelectItems)
-    self.setTargetTableSizeConstraints()
-    self.targetTable.verticalHeader().hide()
-    self.targetTable.minimumHeight = 150
-    self.targetTable.setStyleSheet("QTableView::item:selected{background-color: #ff7f7f; color: black};")
-
-  def setTargetTableSizeConstraints(self):
-    self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
-    self.targetTable.horizontalHeader().setResizeMode(0, qt.QHeaderView.Fixed)
-    self.targetTable.horizontalHeader().setResizeMode(1, qt.QHeaderView.Stretch)
-    self.targetTable.horizontalHeader().setResizeMode(2, qt.QHeaderView.ResizeToContents)
-    self.targetTable.horizontalHeader().setResizeMode(3, qt.QHeaderView.ResizeToContents)
 
   def setupIntraopSeriesSelector(self):
     self.intraopSeriesSelector = qt.QComboBox()
@@ -210,13 +199,16 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       if self.getSetting("COVER_PROSTATE") in selectedSeries and not self.session.data.usePreopData:
         self.setupRedSlicePreview(selectedSeries)
         self.regResultsPlugin.hide()
+        self.targetTablePlugin.currentTargets = None
       else:
         self.currentResult = self.session.data.getApprovedOrLastResultForSeries(selectedSeries).name
         self.regResultsPlugin.show()
+        self.targetTablePlugin.currentTargets = self.currentResult.targets.approved
     else:
       self.currentResult = None
       self.regResultsPlugin.hide()
       self.setupRedSlicePreview(selectedSeries)
+      self.targetTablePlugin.currentTargets = None
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
     trackingPossible = trackingPossible if not self.session.data.completed else False

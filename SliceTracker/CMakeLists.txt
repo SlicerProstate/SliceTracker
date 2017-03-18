@@ -10,6 +10,7 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/steps/plugins/__init__.py
   SliceTrackerUtils/steps/plugins/training.py
   SliceTrackerUtils/steps/plugins/results.py
+  SliceTrackerUtils/steps/plugins/targets.py
   SliceTrackerUtils/steps/overview.py
   SliceTrackerUtils/steps/segmentation.py
   SliceTrackerUtils/steps/zFrameRegistration.py

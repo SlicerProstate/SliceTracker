@@ -1,0 +1,45 @@
+@startuml
+
+package "SliceTrackerPlugins" #DDDDDD {
+
+  abstract class SliceTrackerPlugin {
+    + {abstract} LogicClass
+  }
+
+  SliceTrackerWidgetBase <|-- SliceTrackerPlugin
+
+  class SliceTrackerTrainingPlugin {
+  }
+
+  class SliceTrackerRegistrationResultsPlugin {
+    + LogicClass
+    + onLayoutChanged()
+  }
+
+  class SliceTrackerRegistrationResultsLogic
+
+  class SliceTrackerTargetTablePlugin {
+    + LogicClass
+  }
+
+  class SliceTrackerTargetTableLogic {
+  }
+
+
+  SliceTrackerPlugin <|-- SliceTrackerTrainingPlugin
+  SliceTrackerPlugin <|-- SliceTrackerRegistrationResultsPlugin
+  SliceTrackerPlugin <|-- SliceTrackerTargetTablePlugin
+
+
+  SliceTrackerTrainingPlugin <.. SliceTrackerOverviewStep::trainingPlugin
+
+  SliceTrackerRegistrationResultsPlugin <.. SliceTrackerOverviewStep::regResultPlugin
+  SliceTrackerLogicBase <|-- SliceTrackerRegistrationResultsLogic
+  SliceTrackerRegistrationResultsLogic <.. SliceTrackerRegistrationResultsPlugin::LogicClass: uses
+
+  SliceTrackerTargetTableLogic <.. SliceTrackerTargetTablePlugin::LogicClass: uses
+
+
+}
+
+@enduml

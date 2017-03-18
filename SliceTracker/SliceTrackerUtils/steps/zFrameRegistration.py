@@ -180,6 +180,28 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
     if self.tempModelNode is None:
       return
 
+    trans = vtk.vtkMatrix4x4()
+    transformNode = self.tempModelNode.GetParentTransformNode()
+    if transformNode is not None:
+      transformNode.GetMatrixTransformToWorld(trans)
+    else:
+      trans.Identity()
+
+    # Calculate offset
+    zero = [0.0, 0.0, 0.0, 1.0]
+    offset = trans.MultiplyDoublePoint(zero)
+
+    self.pathOrigins = []
+    self.pathVectors = []
+
+    for i, orig in enumerate(self.templatePathOrigins):
+      torig = trans.MultiplyDoublePoint(orig)
+      self.pathOrigins.append(numpy.array(torig[0:3]))
+      vec = self.templatePathVectors[i]
+      tvec = trans.MultiplyDoublePoint(vec)
+      self.pathVectors.append(numpy.array([tvec[0] - offset[0], tvec[1] - offset[1], tvec[2] - offset[2]]))
+      i += 1
+
   def _setModelVisibility(self, node, visible):
     dnode = node.GetDisplayNode()
     if dnode is not None:

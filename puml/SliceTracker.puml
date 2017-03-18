@@ -3,6 +3,7 @@
 !include SlicerProstate.puml
 !include RegistrationResults.puml
 !include SliceTrackerSession.puml
+!include SliceTrackerPlugins.puml
 !include SliceTrackerSteps.puml
 
 

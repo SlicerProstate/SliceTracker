@@ -23,8 +23,6 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
   def __init__(self):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
     super(SliceTrackerEvaluationStep, self).__init__()
-    self.keyPressEventObservers = {}
-    self.keyReleaseEventObservers = {}
 
   def setup(self):
     self.setupIcons()
@@ -129,37 +127,3 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     super(SliceTrackerEvaluationStep, self).onDeactivation()
     self.hideAllLabels()
     self.hideAllFiducialNodes()
-
-  def connectKeyEventObservers(self):
-    interactors = [self.yellowSliceViewInteractor]
-    if self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
-      interactors += [self.redSliceViewInteractor, self.greenSliceViewInteractor]
-    for interactor in interactors:
-      self.keyPressEventObservers[interactor] = interactor.AddObserver("KeyPressEvent", self.onKeyPressedEvent)
-      self.keyReleaseEventObservers[interactor] = interactor.AddObserver("KeyReleaseEvent", self.onKeyReleasedEvent)
-
-  def disconnectKeyEventObservers(self):
-    for interactor, tag in self.keyPressEventObservers.iteritems():
-      interactor.RemoveObserver(tag)
-    for interactor, tag in self.keyReleaseEventObservers.iteritems():
-      interactor.RemoveObserver(tag)
-
-  def onKeyPressedEvent(self, caller, event):
-    # TODO
-    pass
-    # if not caller.GetKeySym() == 'd':
-    #   return
-    # if not self.targetTableModel.computeCursorDistances:
-    #   self.targetTableModel.computeCursorDistances = True
-    #   # self.calcCursorTargetsDistance()
-    #   self.crosshairButton.addEventObserver(self.crosshairButton.CursorPositionModifiedEvent,
-    #                                         self.calcCursorTargetsDistance)
-
-  def onKeyReleasedEvent(self, caller, event):
-    # TODO
-    pass
-    # if not caller.GetKeySym() == 'd':
-    #   return
-    # self.targetTableModel.computeCursorDistances = False
-    # self.crosshairButton.removeEventObserver(self.crosshairButton.CursorPositionModifiedEvent,
-    #                                          self.calcCursorTargetsDistance)

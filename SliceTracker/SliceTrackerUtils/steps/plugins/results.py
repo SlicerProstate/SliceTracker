@@ -1,8 +1,6 @@
 import numpy
 import ctk
 import qt
-import vtk
-import slicer
 import logging
 from ...constants import SliceTrackerConstants as constants
 from SlicerProstateUtils.decorators import logmethod
@@ -23,6 +21,7 @@ class SliceTrackerRegistrationResultsLogic(SliceTrackerLogicBase):
 class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   LogicClass = SliceTrackerRegistrationResultsLogic
+  NAME = "RegistrationResults"
 
   @property
   def resultSelectorVisible(self):
