@@ -6,17 +6,7 @@ class SliceTrackerConstants(object):
   PREOP_SAMPLE_DATA_URL = 'https://github.com/SlicerProstate/SliceTracker/releases/download/test-data/Preop-deid.zip'
   INTRAOP_SAMPLE_DATA_URL = 'https://github.com/SlicerProstate/SliceTracker/releases/download/test-data/Intraop-deid.zip'
 
-  STEP_OVERVIEW = "Overview"
-  STEP_ZFRAME_REGISTRATION = "OpenSourceZFrameRegistration"
-  STEP_SEGMENTATION = "Segmentation"
-  STEP_TARGETING = "Targeting"
-  STEP_SEGMENTATION_COMPARISON = "SegmentationComparison"
-  STEP_EVALUATION = "Evaluation"
-
   JSON_FILENAME = "results.json"
-
-  SLICETRACKER_STEPS = [STEP_OVERVIEW, STEP_ZFRAME_REGISTRATION, STEP_SEGMENTATION, STEP_TARGETING,
-                        STEP_SEGMENTATION_COMPARISON, STEP_EVALUATION]
 
   MISSING_PREOP_ANNOTATION_TEXT = "No preop data available"
   LEFT_VIEWER_SLICE_ANNOTATION_TEXT = 'BIOPSY PLAN'
