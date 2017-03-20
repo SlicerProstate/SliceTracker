@@ -90,9 +90,6 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   def setupConnections(self):
     NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
-  def onLayoutChanged(self):
-    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
-
   def onActivation(self):
     raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
@@ -117,6 +114,9 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.session.removeEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
     self.session.removeEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
     self.session.removeEventObserver(self.session.SuccessfullyLoadedMetadataEvent, self.onLoadingMetadataSuccessful)
+
+  def onLayoutChanged(self):
+    pass
 
   def setupAdditionalViewSettingButtons(self):
     pass

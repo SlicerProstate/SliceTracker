@@ -65,6 +65,10 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self._showResultSelector = True
     super(SliceTrackerRegistrationResultsPlugin, self).__init__()
 
+  def cleanup(self):
+    self.removeSliceAnnotations()
+    self.resetVisualEffects()
+
   def setupIcons(self):
     self.revealCursorIcon = self.createIcon('icon-revealCursor.png')
 
@@ -164,6 +168,10 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.setFiducialNodeVisibility(self.session.data.initialTargets,
                                    show=self.layoutManager.layout != constants.LAYOUT_FOUR_UP)
 
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCaseClosed(self, caller, event, callData):
+    self.cleanup()
+
   def show(self):
     qt.QWidget.show(self)
     self.onActivation()
@@ -181,9 +189,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.setupRegistrationResultView(layout=getattr(constants, defaultLayout, constants.LAYOUT_SIDE_BY_SIDE))
 
   def onDeactivation(self):
-    # TODO cleanup scene from the data used here
-    self.removeSliceAnnotations()
-    self.resetVisualEffects()
+    self.cleanup()
 
   def onRegistrationButtonChecked(self, button):
     # self.disableTargetMovingMode()
@@ -295,11 +301,13 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.revealCursorButton.enabled = not (self.rockCheckBox.checked or self.flickerCheckBox.checked)
 
   def updateRegistrationResultSelector(self):
+    resultName = self.currentResult.name
     self.resultSelector.clear()
-    for result in reversed(self.session.data.getResultsBySeriesNumber(self.currentResult.seriesNumber)):
+    for result in self.session.data.getResultsBySeriesNumber(self.currentResult.seriesNumber):
       self.resultSelector.addItem(result.name)
     if self._showResultSelector:
       self.resultSelector.visible = self.resultSelector.model().rowCount() > 1
+    self.resultSelector.currentIndex = self.resultSelector.findText(resultName, qt.Qt.MatchExactly)
 
   def checkButtonByRegistrationType(self, registrationType):
     next((b for b in self.registrationButtonGroup.buttons() if b.name == registrationType), None).click()

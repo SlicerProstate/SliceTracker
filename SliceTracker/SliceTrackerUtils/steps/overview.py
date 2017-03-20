@@ -173,9 +173,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.session.removeEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
-  def onLayoutChanged(self):
-    logging.info("Layout changed in %s" % self.NAME)
-
   def onSkipIntraopSeriesButtonClicked(self):
     self.session.skip(self.intraopSeriesSelector.currentText)
     self.updateIntraopSeriesSelectorTable()
