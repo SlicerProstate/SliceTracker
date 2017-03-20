@@ -111,7 +111,7 @@ class SliceTrackerTrainingPlugin(SliceTrackerPlugin):
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = True
 
-  @logmethod(logging.INFO)
-  def onCaseClosed(self, caller, event):
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCaseClosed(self, caller, event, callData):
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = False

@@ -283,7 +283,7 @@ class SessionData(ModuleLogicMixin):
 
     self.printOutput("The following data was successfully saved:\n", successfullySavedFileNames)
     self.printOutput("The following data failed to saved:\n", failedSaveOfFileNames)
-    return len(failedSaveOfFileNames) == 0
+    return (len(failedSaveOfFileNames) == 0, failedSaveOfFileNames)
 
   def printOutput(self, message, fileNames):
     if not len(fileNames):

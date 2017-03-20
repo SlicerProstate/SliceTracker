@@ -15,6 +15,7 @@ from SlicerProstateUtils.helpers import IncomingDataWindow, SmartDICOMReceiver
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 
 from SlicerProstateUtils.decorators import logmethod, singleton, onReturnProcessEvents, onExceptionReturnNone
+from SlicerProstateUtils.decorators import onExceptionReturnFalse
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
@@ -74,6 +75,7 @@ class SliceTrackerSession(SessionBase):
 
   NewCaseStartedEvent = vtk.vtkCommand.UserEvent + 501
   CloseCaseEvent = vtk.vtkCommand.UserEvent + 502
+  CaseOpenedEvent = vtk.vtkCommand.UserEvent + 503
 
   # TODO: not sure about the following events
   NeedleImageReceivedEvent = vtk.vtkCommand.UserEvent + 128
@@ -180,7 +182,7 @@ class SliceTrackerSession(SessionBase):
 
   @property
   def currentSeriesVolume(self):
-    if not self._currentSeries:
+    if not self.currentSeries:
       return None
     else:
       return self.getOrCreateVolumeForSeries(self.currentSeries)
@@ -206,39 +208,39 @@ class SliceTrackerSession(SessionBase):
   @property
   def movingTargets(self):
     self._movingTargets = getattr(self, "_movingTargets", None)
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+    if self.isCurrentSeriesCoverProstateInNonPreopMode():
       return self.data.initialTargets
     return self._movingTargets
 
   @movingTargets.setter
   def movingTargets(self, value):
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+    if self.isCurrentSeriesCoverProstateInNonPreopMode():
       self.data.initialTargets = value
     self._movingTargets = value
     
   @property
   def fixedVolume(self):
     self._fixedVolume = getattr(self, "_fixedVolume", None)
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+    if self.isCurrentSeriesCoverProstateInNonPreopMode():
       return self.data.initialVolume
     return self._fixedVolume
 
   @fixedVolume.setter
   def fixedVolume(self, value):
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+    if self.isCurrentSeriesCoverProstateInNonPreopMode():
       self.data.initialVolume = value
     self._fixedVolume = value
 
   @property
   def fixedLabel(self):
     self._fixedLabel = getattr(self, "_fixedLabel", None)
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+    if self.isCurrentSeriesCoverProstateInNonPreopMode():
       return self.data.initialLabel
     return self._fixedLabel
 
   @fixedLabel.setter
   def fixedLabel(self, value):
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData:
+    if self.isCurrentSeriesCoverProstateInNonPreopMode():
       self.data.initialLabel = value
     self._fixedLabel = value
 
@@ -266,6 +268,10 @@ class SliceTrackerSession(SessionBase):
 
   def __del__(self):
     pass
+
+  @onExceptionReturnFalse
+  def isCurrentSeriesCoverProstateInNonPreopMode(self):
+    return self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData
 
   def isPreProcessing(self):
     return slicer.util.selectedModule() != self.MODULE_NAME
@@ -319,16 +325,16 @@ class SliceTrackerSession(SessionBase):
   def close(self, save=False):
     if not self.isRunning():
       return
+    message = None
     if save:
-      self.save()
+      success, failedMessage = self.save()
+      message = "Case data has been save successfully." if success else failedMessage
     self.resetAndInitializeMembers()
-    self.invokeEvent(self.CloseCaseEvent)
+    self.invokeEvent(self.CloseCaseEvent, str(message))
 
   def save(self):
-    # TODO: not sure about each step .... saving its own data
-    # for step in self.steps:
-    #   step.save(self.directory)
-    self.data.save(self.outputDirectory)
+    success, failedFileNames = self.data.save(self.outputDirectory)
+    return success and not len(failedFileNames), "The following data failed to saved:\n %s" % failedFileNames
 
   def complete(self):
     self.data.completed = True
@@ -384,15 +390,13 @@ class SliceTrackerSession(SessionBase):
       self.preopDICOMReceiver = None
 
   def startIntraopDICOMReceiver(self):
-    # TODO
-    # self.intraopWatchBox.sourceFile = None
     self.resetPreopDICOMReceiver()
     logging.info("Starting DICOM Receiver for intra-procedural data")
     if not self.data.completed:
       self.resetIntraopDICOMReceiver()
       self.intraopDICOMReceiver = SmartDICOMReceiver(self.intraopDICOMDirectory)
       self._observeIntraopDICOMReceiverEvents()
-      self.intraopDICOMReceiver.start(not self.trainingMode)
+      self.intraopDICOMReceiver.start(not (self.trainingMode or self.data.completed))
     else:
       self.invokeEvent(SlicerProstateEvents.DICOMReceiverStoppedEvent)
     self.importDICOMSeries(self.getFileList(self.intraopDICOMDirectory))
@@ -548,20 +552,16 @@ class SliceTrackerSession(SessionBase):
 
   def loadPreProcessedData(self):
     try:
-      preprocessedStudy = self.getFirstMpReviewPreprocessedStudy(self.preprocessedDirectory)
-      self.loadPreopData(preprocessedStudy)
+      self.loadPreopData(self.getFirstMpReviewPreprocessedStudy(self.preprocessedDirectory))
+      self.startIntraopDICOMReceiver()
     except PreProcessedDataError:
       self.close(save=False)
 
   def loadCaseData(self):
-    from mpReview import mpReviewLogic
-    if os.path.exists(os.path.join(self.outputDirectory, SliceTrackerConstants.JSON_FILENAME)):
-      if not self.openSavedSession():
-        self.clearData()
-    else:
+    if not os.path.exists(os.path.join(self.outputDirectory, SliceTrackerConstants.JSON_FILENAME)):
+      from mpReview import mpReviewLogic
       if mpReviewLogic.wasmpReviewPreprocessed(self.preprocessedDirectory):
-        preprocessedStudy = self.getFirstMpReviewPreprocessedStudy(self.preprocessedDirectory)
-        self.loadPreopData(preprocessedStudy)
+        self.loadPreProcessedData()
       else:
         if len(os.listdir(self.preopDICOMDirectory)):
           self.startPreopDICOMReceiver()
@@ -570,23 +570,25 @@ class SliceTrackerSession(SessionBase):
           self.startIntraopDICOMReceiver()
         else:
           self.startPreopDICOMReceiver()
-    # self.configureAllTargetDisplayNodes()
+    else:
+      self.openSavedSession()
 
+  @logmethod(logging.INFO)
   def openSavedSession(self):
     self.load()
-    if not slicer.util.confirmYesNoDisplay("A %s session has been found for the selected case. Do you want to %s?" \
+    if slicer.util.confirmYesNoDisplay("A %s session has been found for the selected case. Do you want to %s?" \
               % ("completed" if self.data.completed else "started",
                  "open it" if self.data.completed else "continue this session")):
-      return False
-    self.data.resumed = True
-    if self.data.usePreopData:
-      preprocessedStudy = self.getFirstMpReviewPreprocessedStudy(self.preprocessedDirectory)
-      self.loadPreopData(preprocessedStudy)
+      # TODO: if completed, read only!
+      self.data.resumed = True
+      if self.data.usePreopData:
+        self.loadPreProcessedData()
+      else:
+        if self.data.initialTargets:
+          self.setupPreopLoadedTargets()
+        self.startIntraopDICOMReceiver()
     else:
-      if self.data.initialTargets:
-        self.setupPreopLoadedTargets()
-    self.startIntraopDICOMReceiver()
-    return True
+      self.clearData()
 
   def setupPreopLoadedTargets(self):
     targets = self.data.initialTargets
@@ -629,18 +631,10 @@ class SliceTrackerSession(SessionBase):
                        "\n\nSliceTracker expects a T2 volume, WholeGland segmentation and target(s). Do you want to "
                        "open/revisit pre-processing for the current case?")
     else:
-      self.data.usedPreopData = True
-      self.invokeEvent(self.SuccessfullyPreprocessedEvent)
-      # self.movingLabelSelector.setCurrentNode(self.data.initialLabel)
-      # self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID(self.mpReviewColorNode.GetID())
-      #
-      # self.configureRedSliceNodeForPreopData()
-      # self.promptUserAndApplyBiasCorrectionIfNeeded()
-      #
-      # self.layoutManager.setLayout(self.LAYOUT_RED_SLICE_ONLY)
-      # self.setAxialOrientation()
-      # self.redSliceNode.RotateToVolumePlane(self.logic.preopVolume)
+      self.data.usePreopData = True
       self.setupPreopLoadedTargets()
+      self.invokeEvent(self.SuccessfullyPreprocessedEvent)
+      # self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID(self.mpReviewColorNode.GetID())
 
   def loadMpReviewProcessedData(self, directory):
     from mpReview import mpReviewLogic
@@ -750,7 +744,7 @@ class SliceTrackerSession(SessionBase):
       return False
     if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
       if self.getSetting("NEEDLE_IMAGE") in series:
-        return self.data.getMostRecentApprovedCoverProstateRegistration() or not self.data.usePreopData
+        return self.data.getMostRecentApprovedCoverProstateRegistration()
       elif self.getSetting("COVER_PROSTATE") in series:
         return self.zFrameRegistrationSuccessful
       elif self.getSetting("COVER_TEMPLATE") in series:

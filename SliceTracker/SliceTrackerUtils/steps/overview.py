@@ -1,17 +1,19 @@
 import logging
 import os
-
+import ast
 import ctk
 import qt
 import slicer
 import vtk
-from plugins.training import SliceTrackerTrainingPlugin
-from plugins.results import SliceTrackerRegistrationResultsPlugin
-from plugins.targets import SliceTrackerTargetTablePlugin
 from SlicerProstateUtils.constants import COLOR
 from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
 from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, IncomingDataMessageBox
+
 from base import SliceTrackerLogicBase, SliceTrackerStep
+from plugins.results import SliceTrackerRegistrationResultsPlugin
+from plugins.targets import SliceTrackerTargetTablePlugin
+from plugins.training import SliceTrackerTrainingPlugin
+from ..constants import SliceTrackerConstants as constants
 from ..helpers import NewCaseSelectionNameWidget
 from ..sessionData import RegistrationResult
 
@@ -70,28 +72,15 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   @logmethod(logging.DEBUG)
   def clearData(self):
-    self.completeCaseButton.enabled = False
-    self.trackTargetsButton.setEnabled(False)
+    self.updateCaseButtons()
     self.caseWatchBox.reset()
-    self.closeCaseButton.enabled = False
+    self.trackTargetsButton.enabled = False
+    self.skipIntraopSeriesButton.enabled = False
     self.updateIntraopSeriesSelectorTable()
-
-
-    # self.session.close(save=False)
-    # slicer.mrmlScene.Clear(0)
-    # self.updateIntraopSeriesSelectorColor(None)
-    # self.removeSliceAnnotations()
-    # self.currentTargets = None
-    # self.resetViewSettingButtons()
-    # self.resetVisualEffects()
-    # self.disconnectKeyEventObservers()
-
+    slicer.mrmlScene.Clear(0)
     # if self.customStatusProgressBar:
     #   self.customStatusProgressBar.reset()
     #   self.customStatusProgressBar.hide()
-
-  def onLayoutChanged(self):
-    logging.info("Layout changed in %s" % self.NAME)
 
   def setup(self):
     self.setupCaseInformationArea()
@@ -102,7 +91,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
                                                      enabled=False)
     self.closeCaseButton = self.createButton("Close case", toolTip="Close case without completing it", enabled=False)
     self.completeCaseButton = self.createButton('Case completed', enabled=False)
-    # self.setupTargetsTable()
     self.setupIntraopSeriesSelector()
 
     self.createNewCaseButton = self.createButton("New case")
@@ -129,7 +117,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.layout().addWidget(self.regResultsPlugin, 6, 0, 1, 2)
     self.layout().addWidget(self.trackTargetsButton, 7, 0)
     self.layout().addWidget(self.skipIntraopSeriesButton, 7, 1)
-    self.layout().setRowStretch(8, 1)
+    # self.layout().setRowStretch(8, 1)
 
   def setupCaseInformationArea(self):
     self.setupCaseWatchBox()
@@ -163,20 +151,41 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.casesRootDirectoryButton.directoryChanged.connect(lambda: setattr(self, "caseRootDir",
                                                                            self.casesRootDirectoryButton.directory))
     self.openCaseButton.clicked.connect(self.onOpenCaseButtonClicked)
-    self.closeCaseButton.clicked.connect(self.session.close)
+    self.closeCaseButton.clicked.connect(self.onCloseCaseButtonClicked)
     self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
     self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
     self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
     self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.onIntraopSeriesSelectionChanged)
-    # self.targetTable.connect('clicked(QModelIndex)', self.onTargetTableSelectionChanged)
+
+  def setupSessionObservers(self):
+    super(SliceTrackerOverviewStep, self).setupSessionObservers()
+    self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
+    self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
+    self.session.addEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
+    self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
+    self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
+
+  def removeSessionEventObservers(self):
+    SliceTrackerStep.removeSessionEventObservers(self)
+    self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
+    self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
+    self.session.removeEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
+    self.session.removeEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
+    self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
+
+  def onLayoutChanged(self):
+    logging.info("Layout changed in %s" % self.NAME)
 
   def onSkipIntraopSeriesButtonClicked(self):
     self.session.skip(self.intraopSeriesSelector.currentText)
     self.updateIntraopSeriesSelectorTable()
 
+  def onCloseCaseButtonClicked(self):
+    self.session.close(save=slicer.util.confirmYesNoDisplay("Save the case data?", title="Close Case",
+                                                            windowTitle="SliceTracker"))
+
   def onCompleteCaseButtonClicked(self):
     self.session.complete()
-    # self.save(showDialog=True)
 
   def onTrackTargetsButtonClicked(self):
     self.session.takeActionForCurrentSeries()
@@ -190,8 +199,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
     self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries())
-
-      # self.updateLayoutButtons(trackingPossible, selectedSeries)
+      # TODO: self.updateLayoutButtons(trackingPossible, selectedSeries)
 
   def configureViewersForSelectedIntraopSeries(self, selectedSeries):
     if self.session.data.registrationResultWasApproved(selectedSeries) or \
@@ -211,34 +219,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.targetTablePlugin.currentTargets = None
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
-    trackingPossible = trackingPossible if not self.session.data.completed else False
+    trackingPossible = trackingPossible and not self.session.data.completed
     self.trackTargetsButton.setEnabled(trackingPossible)
     self.skipIntraopSeriesButton.setEnabled(trackingPossible and self.session.isEligibleForSkipping(selectedSeries))
-
-  @vtk.calldata_type(vtk.VTK_STRING)
-  def onCurrentSeriesChanged(self, caller, event, callData=None):
-    logging.info("Current series selection changed invoked from session")
-    logging.info("Series with name %s selected" % callData if callData else "")
-    if callData:
-      model = self.intraopSeriesSelector.model()
-      index = next((i for i in range(model.rowCount()) if model.item(i).text() == callData), None)
-      self.intraopSeriesSelector.currentIndex = index
-
-  def setupSessionObservers(self):
-    super(SliceTrackerOverviewStep, self).setupSessionObservers()
-    self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
-    self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
-    self.session.addEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
-    self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
-    self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
-
-  def removeSessionEventObservers(self):
-    SliceTrackerStep.removeSessionEventObservers(self)
-    self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
-    self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
-    self.session.removeEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
-    self.session.removeEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
-    self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
   def onCreateNewCaseButtonClicked(self):
     if not self.checkAndWarnUserIfCaseInProgress():
@@ -249,9 +232,51 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.session.createNewCase(self.caseDialog.newCaseDirectory)
       self.updateCaseWatchBox()
 
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCurrentSeriesChanged(self, caller, event, callData=None):
+    logging.info("Current series selection changed invoked from session")
+    logging.info("Series with name %s selected" % callData if callData else "")
+    if callData:
+      model = self.intraopSeriesSelector.model()
+      index = next((i for i in range(model.rowCount()) if model.item(i).text() == callData), None)
+      self.intraopSeriesSelector.currentIndex = index
+
   @logmethod(logging.INFO)
-  def onCaseClosed(self, caller, event):
+  def onZFrameRegistrationSuccessful(self, caller, event):
+    self.active = True
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onFailedPreProcessing(self, caller, event, callData):
+    if slicer.util.confirmYesNoDisplay(callData, windowTitle="SliceTracker"):
+      self.startPreProcessingModule()
+    else:
+      self.session.close()
+
+  def onRegistrationStatusChanged(self, caller, event):
+    self.active = True
+
+  def onLoadingMetadataSuccessful(self, caller, event):
+    self.active = True
+    self.updateCaseButtons()
+
+  @logmethod(logging.INFO)
+  def onNewCaseStarted(self, caller, event):
+    self.updateCaseButtons()
+
+  @logmethod(logging.INFO)
+  def onCaseOpened(self, caller, event):
+    self.updateCaseButtons()
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCaseClosed(self, caller, event, callData):
+    if callData != "None":
+      slicer.util.infoDisplay(callData, windowTitle="SliceTracker")
+    self.updateCaseButtons()
     self.clearData()
+
+  def onSuccessfulPreProcessing(self, caller, event):
+    self.configureRedSliceNodeForPreopData()
+    self.promptUserAndApplyBiasCorrectionIfNeeded()
 
   def onActivation(self):
     super(SliceTrackerOverviewStep, self).onActivation()
@@ -269,6 +294,10 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.caseWatchBox.setInformation("mpReviewDirectory", os.path.relpath(self.session.preprocessedDirectory,
                                                                           self.caseRootDir),
                                      toolTip=self.session.preprocessedDirectory)
+
+  def updateCaseButtons(self):
+    self.closeCaseButton.enabled = self.session.directory is not None
+    self.completeCaseButton.enabled = self.session.directory is not None
 
   def checkAndWarnUserIfCaseInProgress(self):
     if self.session.isRunning():
@@ -399,41 +428,19 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
     self.intraopSeriesSelector.blockSignals(False)
 
-  @logmethod(logging.INFO)
-  def onZFrameRegistrationSuccessful(self, caller, event):
-    self.active = True
-
-  @vtk.calldata_type(vtk.VTK_STRING)
-  def onFailedPreProcessing(self, caller, event, callData):
-    if slicer.util.confirmYesNoDisplay(callData, windowTitle="SliceTracker"):
-      self.startPreProcessingModule()
-    else:
-      self.session.close()
-
-  def onRegistrationStatusChanged(self, caller, event):
-    self.active = True
-
-  def onLoadingMetadataSuccessful(self, caller, event):
-    self.active = True
-    self.updateCaseButtons()
-
-  @logmethod(logging.INFO)
-  def onNewCaseStarted(self, caller, event):
-    self.updateCaseButtons()
-
-  @logmethod(logging.INFO)
-  def onCaseClosed(self, caller, event):
-    self.updateCaseButtons()
-
-  def updateCaseButtons(self):
-    self.closeCaseButton.enabled = self.session.directory is not None
-    self.completeCaseButton.enabled = self.session.directory is not None
-
-  def onSuccessfulPreProcessing(self, caller, event):
-    self.promptUserAndApplyBiasCorrectionIfNeeded()
+  def configureRedSliceNodeForPreopData(self):
+    if not self.session.data.initialVolume or not self.session.data.initialTargets:
+      return
+    self.layoutManager.setLayout(constants.LAYOUT_RED_SLICE_ONLY)
+    self.redSliceNode.SetOrientationToAxial()
+    self.redSliceNode.RotateToVolumePlane(self.session.data.initialVolume)
+    self.redSliceNode.SetUseLabelOutline(True)
+    self.redCompositeNode.SetLabelOpacity(1)
+    self.targetTablePlugin.currentTargets = self.session.data.initialTargets
+    # self.logic.centerViewsToProstate()
 
   def promptUserAndApplyBiasCorrectionIfNeeded(self):
-    if not self.session.data.resumed:
+    if not self.session.data.resumed and not self.session.data.completed:
       if slicer.util.confirmYesNoDisplay("Was an endorectal coil used for preop image acquisition?",
                                          windowTitle="SliceTracker"):
         progress = self.createProgressDialog(maximum=2, value=1)
@@ -441,4 +448,5 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         self.logic.applyBiasCorrection()
         progress.setValue(2)
         progress.close()
+
     # TODO: self.movingVolumeSelector.setCurrentNode(self.logic.preopVolume)

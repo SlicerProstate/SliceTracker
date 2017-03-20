@@ -7,7 +7,6 @@ from ..session import SliceTrackerSession
 from SlicerProstateUtils.decorators import logmethod, beforeRunProcessEvents
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin, GeneralModuleMixin
 from ..constants import SliceTrackerConstants
-from ..sessionData import RegistrationResult
 
 class StepBase(GeneralModuleMixin):
 
@@ -129,8 +128,8 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   def onNewCaseStarted(self, caller, event):
     pass
 
-  @logmethod(logging.INFO)
-  def onCaseClosed(self, caller, event):
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCaseClosed(self, caller, event, callData):
     pass
 
   @vtk.calldata_type(vtk.VTK_STRING)
@@ -196,28 +195,8 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
       result = self.session.data.getResultsBySeries(selectedSeries)[0]
       volume = result.volumes.fixed
     except IndexError:
-      result = None
       volume = self.session.getOrCreateVolumeForSeries(selectedSeries)
     self.setBackgroundToVolumeID(volume.GetID())
-
-    if result and self.getSetting("COVER_PROSTATE") in selectedSeries and not self.session.data.usePreopData:
-      pass
-      # self.currentResult = selectedSeries
-      # self.currentTargets = self.currentResult.approvedTargets
-      # self.refreshViewNodeIDs(self.currentTargets, [self.redSliceNode])
-      # self.showCurrentTargets()
-      # self.selectLastSelectedTarget()
-    elif self.getSetting("VIBE_IMAGE") in selectedSeries:
-      seriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-      mostRecentApprovedTargets = self.session.data.getMostRecentApprovedTargetsPriorTo(seriesNumber)
-      if mostRecentApprovedTargets:
-        print "found most recent approved targets"
-        # self.currentTargets = mostRecentApprovedTargets
-        # self.refreshViewNodeIDs(self.currentTargets, [])
-        # self.showCurrentTargets()
-        # self.selectLastSelectedTarget()
-    # else:
-    #   self.disableTargetTable()
 
 
 class SliceTrackerStep(SliceTrackerWidgetBase):
