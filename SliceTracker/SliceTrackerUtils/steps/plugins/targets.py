@@ -349,6 +349,10 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
   def onLayoutChanged(self):
     self.disableTargetMovingMode()
 
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCaseClosed(self, caller, event, callData):
+    self.currentTargets = None
+
   @logmethod(logging.INFO)
   def onActivation(self):
     self.moveTargetMode = False
