@@ -1,5 +1,6 @@
 import numpy
 import ctk
+import vtk
 import qt
 import logging
 from ...constants import SliceTrackerConstants as constants
@@ -22,6 +23,8 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   LogicClass = SliceTrackerRegistrationResultsLogic
   NAME = "RegistrationResults"
+
+  RegistrationTypeSelectedEvent = vtk.vtkCommand.UserEvent + 657
 
   @property
   def resultSelectorVisible(self):
@@ -244,6 +247,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   def displayRegistrationResultsByType(self, registrationType):
     self.displayRegistrationResults(self.currentResult.getTargets(registrationType), registrationType)
+    self.invokeEvent(self.RegistrationTypeSelectedEvent, registrationType)
 
   def displayRegistrationResults(self, targets, registrationType):
     self.hideAllFiducialNodes()

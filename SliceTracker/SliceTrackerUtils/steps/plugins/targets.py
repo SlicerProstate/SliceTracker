@@ -7,6 +7,7 @@ from ..base import SliceTrackerPlugin, SliceTrackerLogicBase, StepBase
 
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 from SlicerProstateUtils.decorators import logmethod
+from SlicerProstateUtils.helpers import SliceAnnotation
 
 
 class CustomTargetTableModel(qt.QAbstractTableModel, StepBase):
@@ -291,7 +292,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
 
   @movingEnabled.setter
   def movingEnabled(self, value):
-    if self._movingEnabled  == value:
+    if self.movingEnabled  == value:
       return
     self._movingEnabled = value
     if self.movingEnabled:
@@ -316,11 +317,12 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
         self.targetTableModel.coverProstateTargetList = coverProstate.targets.approved
     self.targetTable.enabled = targets is not None
 
-  def __init__(self):
+  def __init__(self, **kwargs):
+    super(SliceTrackerTargetTablePlugin, self).__init__()
+    self.movingEnabled = kwargs.pop("movingEnabled", False)
     self.keyPressEventObservers = {}
     self.keyReleaseEventObservers = {}
     self.mouseReleaseEventObservers = {}
-    super(SliceTrackerTargetTablePlugin, self).__init__()
 
   def setup(self):
     self.targetTable = qt.QTableView()
@@ -412,7 +414,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
       self.disableTargetMovingMode()
     self.lastSelectedModelIndex = modelIndex
     if not self.currentTargets:
-      self.currentTargets = self.logic.preopTargets
+      self.currentTargets = self.session.data.initialTargets
     self.jumpSliceNodesToNthTarget(modelIndex.row())
     # self.updateNeedleModel()
     self.targetTableModel.currentTargetIndex = self.lastSelectedModelIndex.row()
@@ -429,11 +431,11 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
   def jumpSliceNodesToNthTarget(self, targetIndex):
     currentTargetsSliceNodes = []
     if self.layoutManager.layout in [constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_SIDE_BY_SIDE]:
-      targets = self.logic.preopTargets
-      if self.getSetting("VIBE_IMAGE") in self.intraopSeriesSelector.currentText:
+      targets = self.session.data.initialTargets
+      if self.session.currentSeries and self.getSetting("VIBE_IMAGE") in self.session.currentSeries:
         targets = self.targetTableModel.targetList
       self.jumpSliceNodeToTarget(self.redSliceNode, targets, targetIndex)
-      self.setTargetSelected(targets, selected=False)
+      self.logic.setTargetSelected(targets, selected=False)
       targets.SetNthFiducialSelected(targetIndex, True)
 
     if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
@@ -500,8 +502,10 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     widget = self.getWidgetForInteractor(observee)
     posRAS = self.xyToRAS(widget.sliceLogic(), posXY)
     if self.currentlyMovedTargetModelIndex is not None:
-      self.currentResult.isGoingToBeMoved(self.targetTableModel.targetList, self.currentlyMovedTargetModelIndex.row())
-      self.targetTableModel.targetList.SetNthFiducialPositionFromArray(self.currentlyMovedTargetModelIndex.row(), posRAS)
+      self.currentResult.targets.isGoingToBeMoved(self.targetTableModel.targetList,
+                                                  self.currentlyMovedTargetModelIndex.row())
+      self.targetTableModel.targetList.SetNthFiducialPositionFromArray(self.currentlyMovedTargetModelIndex.row(),
+                                                                       posRAS)
     self.disableTargetMovingMode()
 
   def getWidgetForInteractor(self, observee):

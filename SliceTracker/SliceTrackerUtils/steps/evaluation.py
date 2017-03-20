@@ -1,9 +1,10 @@
 import os
 import qt
+import vtk
 import slicer
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.results import SliceTrackerRegistrationResultsPlugin
-from ..constants import SliceTrackerConstants as constants
+from plugins.targets import SliceTrackerTargetTablePlugin
 
 
 class SliceTrackerEvaluationStepLogic(SliceTrackerLogicBase):
@@ -29,15 +30,18 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.registrationEvaluationGroupBox = qt.QGroupBox()
     self.registrationEvaluationGroupBoxLayout = qt.QGridLayout()
     self.registrationEvaluationGroupBox.setLayout(self.registrationEvaluationGroupBoxLayout)
-
-    self.setupTargetsTable()
     self.setupRegistrationValidationButtons()
 
     self.regResultsPlugin = SliceTrackerRegistrationResultsPlugin()
     self.addPlugin(self.regResultsPlugin)
+    self.regResultsPlugin.addEventObserver(self.regResultsPlugin.RegistrationTypeSelectedEvent,
+                                            self.onRegistrationTypeSelected)
+
+    self.targetTablePlugin = SliceTrackerTargetTablePlugin(movingEnabled=True)
+    self.addPlugin(self.targetTablePlugin)
 
     self.registrationEvaluationGroupBoxLayout.addWidget(self.regResultsPlugin, 3, 0)
-    self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTable, 4, 0)  # factor out the table since it is used in both Overview and evaluation step
+    self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTablePlugin, 4, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.registrationEvaluationButtonsGroupBox, 5, 0)
     self.registrationEvaluationGroupBoxLayout.setRowStretch(6, 1)
     self.layout().addWidget(self.registrationEvaluationGroupBox)
@@ -50,23 +54,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
                                                                      self.approveRegistrationResultButton,
                                                                      self.rejectRegistrationResultButton])
 
-  def setupTargetsTable(self):
-    self.targetTable = qt.QTableView()
-    self.targetTable.setSelectionBehavior(qt.QTableView.SelectItems)
-    self.setTargetTableSizeConstraints()
-    self.targetTable.verticalHeader().hide()
-    self.targetTable.minimumHeight = 150
-    self.targetTable.setStyleSheet("QTableView::item:selected{background-color: #ff7f7f; color: black};")
-
-  def setTargetTableSizeConstraints(self):
-    self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
-    self.targetTable.horizontalHeader().setResizeMode(0, qt.QHeaderView.Fixed)
-    self.targetTable.horizontalHeader().setResizeMode(1, qt.QHeaderView.Stretch)
-    self.targetTable.horizontalHeader().setResizeMode(2, qt.QHeaderView.ResizeToContents)
-    self.targetTable.horizontalHeader().setResizeMode(3, qt.QHeaderView.ResizeToContents)
-
   def setupConnections(self):
-
     self.retryRegistrationButton.clicked.connect(self.onRetryRegistrationButtonClicked)
     self.approveRegistrationResultButton.clicked.connect(self.onApproveRegistrationResultButtonClicked)
     self.rejectRegistrationResultButton.clicked.connect(self.onRejectRegistrationResultButtonClicked)
@@ -106,15 +94,14 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
 
   def onActivation(self):
     super(SliceTrackerEvaluationStep, self).onActivation()
+    self.enabled = self.currentResult is not None
+    if not self.currentResult:
+      return
     # self.redOnlyLayoutButton.enabled = False
     # self.sideBySideLayoutButton.enabled = True
-    # self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTable, 4, 0)
     self.rejectRegistrationResultButton.enabled = not self.getSetting("COVER_PROSTATE") in self.currentResult.name
     self.currentResult.save(self.session.outputDirectory)
     self.currentResult.printSummary()
-    # self.targetTable.connect('doubleClicked(QModelIndex)', self.onMoveTargetRequest)
-
-    self.connectKeyEventObservers()
     if not self.logic.isVolumeExtentValid(self.currentResult.volumes.bSpline):
       slicer.util.infoDisplay(
         "One or more empty volume were created during registration process. You have three options:\n"
@@ -127,3 +114,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     super(SliceTrackerEvaluationStep, self).onDeactivation()
     self.hideAllLabels()
     self.hideAllFiducialNodes()
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onRegistrationTypeSelected(self, caller, event, callData):
+    self.targetTablePlugin.currentTargets = getattr(self.currentResult.targets, callData)
