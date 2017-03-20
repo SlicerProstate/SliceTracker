@@ -221,6 +221,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   def onFinishedStep(self):
     self.disableEditorWidgetAndResetEditorTool()
+    self.session.data.clippingModelNode = self.volumeClipToLabelWidget.logic.clippingModelNode
+    self.session.data.inputMarkupNode = self.volumeClipToLabelWidget.logic.inputMarkupNode
     if not self.session.data.usePreopData and not self.retryMode:
       self.createCoverProstateRegistrationResultManually()
       self.session.invokeEventForMostRecentEligibleSeries()
@@ -295,7 +297,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE)
       self.setupScreenForSegmentationComparison("red", self.session.movingVolume, self.session.movingLabel)
       self.setupScreenForSegmentationComparison("yellow", self.session.fixedVolume, self.session.fixedLabel)
-      self.setAxialOrientation()
       self.editorWidgetButton.setEnabled(True)
       self.centerLabelsOnVisibleSliceWidgets()
     elif not self.session.movingTargets:
@@ -310,6 +311,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     compositeNode.SetLabelVolumeID(label.GetID())
     compositeNode.SetLabelOpacity(1)
     sliceNode = getattr(self, viewName+"SliceNode")
+    sliceNode.SetOrientationToAxial()
     sliceNode.RotateToVolumePlane(volume)
     sliceNode.SetUseLabelOutline(True)
 
