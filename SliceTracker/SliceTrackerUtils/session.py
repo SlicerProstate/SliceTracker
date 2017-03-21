@@ -83,9 +83,9 @@ class SliceTrackerSession(SessionBase):
   OtherImageReceivedEvent = vtk.vtkCommand.UserEvent + 130
 
   ZFrameRegistrationSuccessfulEvent = vtk.vtkCommand.UserEvent + 140
-  SuccessfullyPreprocessedEvent = vtk.vtkCommand.UserEvent + 141
+  PreprocessingSuccessfulEvent = vtk.vtkCommand.UserEvent + 141
   FailedPreprocessedEvent = vtk.vtkCommand.UserEvent + 142
-  SuccessfullyLoadedMetadataEvent = vtk.vtkCommand.UserEvent + 143
+  LoadingMetadataSuccessfulEvent = vtk.vtkCommand.UserEvent + 143
 
   CurrentSeriesChangedEvent = vtk.vtkCommand.UserEvent + 151
   RegistrationStatusChangedEvent = vtk.vtkCommand.UserEvent + 152
@@ -358,7 +358,7 @@ class SliceTrackerSession(SessionBase):
       self._zFrameRegistrationSuccessful = True
     self._loading = False
     slicer.app.layoutManager().blockSignals(False)
-    self.invokeEvent(self.SuccessfullyLoadedMetadataEvent)
+    self.invokeEvent(self.LoadingMetadataSuccessfulEvent)
 
   def startPreopDICOMReceiver(self):
     self.resetPreopDICOMReceiver()
@@ -633,7 +633,7 @@ class SliceTrackerSession(SessionBase):
     else:
       self.data.usePreopData = True
       self.setupPreopLoadedTargets()
-      self.invokeEvent(self.SuccessfullyPreprocessedEvent)
+      self.invokeEvent(self.PreprocessingSuccessfulEvent)
       # self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID(self.mpReviewColorNode.GetID())
 
   def loadMpReviewProcessedData(self, directory):
@@ -711,6 +711,8 @@ class SliceTrackerSession(SessionBase):
   def loadPreopTargets(self):
     if self.data.initialTargets:
       return True
+    if not os.path.exists(self.data.initialTargetsPath):
+      return False
     mostRecentTargets = self.getMostRecentTargetsFile(self.data.initialTargetsPath)
     success = False
     if mostRecentTargets:
@@ -890,7 +892,7 @@ class SliceTrackerSession(SessionBase):
         break
 
   def skipSeries(self, series):
-    volume = self.logic.getOrCreateVolumeForSeries(series)
+    volume = self.getOrCreateVolumeForSeries(series)
     name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(volume.GetName())
     result = self.data.createResult(name+suffix)
     result.volumes.fixed = volume

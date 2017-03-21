@@ -115,3 +115,6 @@ class SliceTrackerTrainingPlugin(SliceTrackerPlugin):
   def onCaseClosed(self, caller, event, callData):
     self.simulatePreopPhaseButton.enabled = False
     self.simulateIntraopPhaseButton.enabled = False
+
+  def onPreprocessingSuccessful(self, caller, event):
+    self.simulateIntraopPhaseButton.enabled = self.session.trainingMode

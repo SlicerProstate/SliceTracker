@@ -161,7 +161,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     super(SliceTrackerOverviewStep, self).setupSessionObservers()
     self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
     self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
-    self.session.addEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
     self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
@@ -169,7 +168,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     SliceTrackerStep.removeSessionEventObservers(self)
     self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
     self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
-    self.session.removeEventObserver(self.session.SuccessfullyPreprocessedEvent, self.onSuccessfulPreProcessing)
     self.session.removeEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
@@ -271,7 +269,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.updateCaseButtons()
     self.clearData()
 
-  def onSuccessfulPreProcessing(self, caller, event):
+  def onPreprocessingSuccessful(self, caller, event):
     self.configureRedSliceNodeForPreopData()
     self.promptUserAndApplyBiasCorrectionIfNeeded()
 
@@ -323,7 +321,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(self.returnFromPreProcessingModule)
     self.layoutManager.selectModule(self.MODULE_NAME)
     slicer.mrmlScene.Clear(0)
-    self.simulateIntraopPhaseButton.enabled = self.session.trainingMode
     self.session.loadPreProcessedData()
 
   def invokePreProcessing(self):

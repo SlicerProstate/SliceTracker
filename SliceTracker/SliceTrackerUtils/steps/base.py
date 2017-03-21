@@ -29,10 +29,12 @@ class StepBase(GeneralModuleMixin):
     return os.path.dirname(slicer.util.modulePath(self.MODULE_NAME))
 
   def getSetting(self, setting, moduleName=None, default=None):
-    return GeneralModuleMixin.getSetting(self, setting, moduleName=self.MODULE_NAME, default=default)
+    return GeneralModuleMixin.getSetting(self, setting, moduleName=moduleName if moduleName else self.MODULE_NAME,
+                                         default=default)
 
   def setSetting(self, setting, value, moduleName=None):
-    return GeneralModuleMixin.setSetting(self, setting, value, moduleName=self.MODULE_NAME)
+    return GeneralModuleMixin.setSetting(self, setting, value,
+                                         moduleName=moduleName if moduleName else self.MODULE_NAME)
 
 
 class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
@@ -106,14 +108,16 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
     self.session.addEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
     self.session.addEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
-    self.session.addEventObserver(self.session.SuccessfullyLoadedMetadataEvent, self.onLoadingMetadataSuccessful)
+    self.session.addEventObserver(self.session.LoadingMetadataSuccessfulEvent, self.onLoadingMetadataSuccessful)
+    self.session.addEventObserver(self.session.PreprocessingSuccessfulEvent, self.onPreprocessingSuccessful)
 
   def removeSessionEventObservers(self):
     self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
     self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
     self.session.removeEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
     self.session.removeEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
-    self.session.removeEventObserver(self.session.SuccessfullyLoadedMetadataEvent, self.onLoadingMetadataSuccessful)
+    self.session.removeEventObserver(self.session.LoadingMetadataSuccessfulEvent, self.onLoadingMetadataSuccessful)
+    self.session.removeEventObserver(self.session.PreprocessingSuccessfulEvent, self.onPreprocessingSuccessful)
 
   def onLayoutChanged(self):
     pass
@@ -142,6 +146,9 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   @logmethod(logging.INFO)
   def onLoadingMetadataSuccessful(self, caller, event):
+    pass
+
+  def onPreprocessingSuccessful(self, caller, event):
     pass
 
   def setupFourUpView(self, volume):
