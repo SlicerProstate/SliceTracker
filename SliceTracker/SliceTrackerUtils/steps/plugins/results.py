@@ -4,7 +4,7 @@ import vtk
 import qt
 import logging
 from ...constants import SliceTrackerConstants as constants
-from SlicerProstateUtils.decorators import logmethod
+from SlicerProstateUtils.decorators import logmethod, onModuleSelected
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 
 from SlicerProstateUtils.helpers import SliceAnnotation
@@ -50,6 +50,14 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
   @visualEffectsVisible.setter
   def visualEffectsVisible(self, visible):
     self.visualEffectsGroupBox.visible = visible
+
+  @property
+  def visualEffectsTitle(self):
+    return self.visualEffectsGroupBox.title
+
+  @visualEffectsTitle.setter
+  def visualEffectsTitle(self, title):
+    self.visualEffectsGroupBox.title = title
 
   @property
   def titleVisible(self):
@@ -159,7 +167,9 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.opacitySpinBox.valueChanged.connect(self.onOpacitySpinBoxChanged)
     self.opacitySlider.valueChanged.connect(self.onOpacitySliderChanged)
 
-  def onLayoutChanged(self):
+  @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
+  def onLayoutChanged(self, layout=None):
+    self.removeSliceAnnotations()
     if not self.currentResult:
       return
     self.setupRegistrationResultView()

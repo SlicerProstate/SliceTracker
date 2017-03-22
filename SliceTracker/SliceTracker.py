@@ -127,8 +127,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, iconSize=iconSize, checkable=True, toolTip="Display annotations", checked=True)
 
     viewSettingButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton,
-                          self.showAnnotationsButton, self.crosshairButton,   self.wlEffectsToolButton,
-                          self.settingsButton]
+                          self.crosshairButton,   self.wlEffectsToolButton, self.settingsButton]
 
     for step in self.session.steps:
       viewSettingButtons += step.viewSettingButtons

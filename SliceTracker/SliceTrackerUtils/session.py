@@ -68,7 +68,7 @@ class SliceTrackerSession(SessionBase):
   IncomingPreopDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent + 110
 
   IncomingIntraopDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent + 111
-  NewImageDataReceivedEvent = SlicerProstateEvents.NewImageDataReceivedEvent
+  NewImageSeriesReceivedEvent = SlicerProstateEvents.NewImageDataReceivedEvent
 
   DICOMReceiverStatusChanged = SlicerProstateEvents.StatusChangedEvent
   DICOMReceiverStoppedEvent = SlicerProstateEvents.DICOMReceiverStoppedEvent
@@ -145,7 +145,6 @@ class SliceTrackerSession(SessionBase):
     if self._zFrameRegistrationSuccessful:
       self.save()
       self.invokeEvent(self.ZFrameRegistrationSuccessfulEvent)
-      self.invokeEventForMostRecentEligibleSeries()
 
   @property
   def activeResult(self):
@@ -265,6 +264,7 @@ class SliceTrackerSession(SessionBase):
     self.seriesList = []
     self.alreadyLoadedSeries = {}
     self._activeResult = None
+    self._currentSeries = None
 
   def __del__(self):
     pass
@@ -294,7 +294,7 @@ class SliceTrackerSession(SessionBase):
     return next((x for x in self.steps if x.NAME == stepName), None)
 
   def isRunning(self):
-    return self.directory is not None
+    return not self.directory in [None, '']
 
   def clearData(self):
     self.resetAndInitializeMembers()
@@ -309,6 +309,7 @@ class SliceTrackerSession(SessionBase):
       self.close(save=False)
     else:
       self.loadCaseData()
+      self.invokeEvent(self.CaseOpenedEvent)
 
   def createNewCase(self, destination):
     # TODO: self.continueOldCase = False
@@ -320,6 +321,7 @@ class SliceTrackerSession(SessionBase):
     self.createDirectory(self.preprocessedDirectory)
     self.createDirectory(self.outputDirectory)
     self.startPreopDICOMReceiver()
+    self.newCaseCreated = False
     self.invokeEvent(self.NewCaseStartedEvent)
 
   def close(self, save=False):
@@ -430,7 +432,7 @@ class SliceTrackerSession(SessionBase):
   def importDICOMSeries(self, newFileList):
     indexer = ctk.ctkDICOMIndexer()
 
-    receivedFiles = []
+    newSeries = []
     for currentIndex, currentFile in enumerate(newFileList, start=1):
       self.invokeEvent(SlicerProstateEvents.NewFileIndexedEvent,
                        ["Indexing file %s" % currentFile, len(newFileList), currentIndex].__str__())
@@ -438,17 +440,17 @@ class SliceTrackerSession(SessionBase):
       currentFile = os.path.join(self.intraopDICOMDirectory, currentFile)
       indexer.addFile(slicer.dicomDatabase, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
-      receivedFiles.append(currentFile)
       if series not in self.seriesList:
         self.seriesList.append(series)
+        newSeries.append(series)
         self.loadableList[series] = self.createLoadableFileListForSeries(series)
     self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
 
-    if len(receivedFiles):
+    if len(newFileList):
       if self.data.usePreopData:
-        self.verifyPatientIDEquality(receivedFiles)
-      self.invokeEvent(SlicerProstateEvents.NewImageDataReceivedEvent, receivedFiles.__str__())
-      self.invokeEventForMostRecentEligibleSeries()
+        self.verifyPatientIDEquality(newFileList)
+      self.invokeEvent(self.NewImageSeriesReceivedEvent, newSeries.__str__())
+      # self.invokeEventForMostRecentEligibleSeries()
 
   def verifyPatientIDEquality(self, receivedFiles):
     seriesNumberPatientID = self.getAdditionalInformationForReceivedSeries(receivedFiles)
@@ -524,26 +526,6 @@ class SliceTrackerSession(SessionBase):
       "PatientName": self.getDICOMValue(currentFile, DICOMTAGS.PATIENT_NAME),
       "SeriesDescription": self.getDICOMValue(currentFile, DICOMTAGS.SERIES_DESCRIPTION)}
 
-  def invokeEventForMostRecentEligibleSeries(self):
-    if self.isPreProcessing():
-      return
-    event = self.NeedleImageReceivedEvent
-    substring = self.getSetting("NEEDLE_IMAGE")
-    callData = None
-
-    if not self.data.getMostRecentApprovedCoverProstateRegistration():
-      event = self.InitiateSegmentationEvent
-      substring = self.getSetting("COVER_PROSTATE")
-      callData = str(False)
-      if not self.zFrameRegistrationSuccessful:
-        event = self.InitiateZFrameCalibrationEvent
-        substring = self.getSetting("COVER_TEMPLATE")
-        callData = self.currentSeries
-    self.currentSeries = self.getSeriesForSubstring(substring)
-
-    if self.currentSeries and event:
-      self.invokeEvent(event, callData)
-
   def getSeriesForSubstring(self, substring):
     for series in reversed(self.seriesList):
       if substring in series:
@@ -593,11 +575,9 @@ class SliceTrackerSession(SessionBase):
   def setupPreopLoadedTargets(self):
     targets = self.data.initialTargets
     ModuleWidgetMixin.setFiducialNodeVisibility(targets, show=True)
-    # self.targetTableModel.targetList = targets
     self.applyDefaultTargetDisplayNode(targets)
     self.markupsLogic.JumpSlicesToNthPointInMarkup(targets.GetID(), 0)
     # self.targetTable.selectRow(0)
-    # self.targetTable.enabled = True
     # self.updateDisplacementChartTargetSelectorTable()
 
   def applyDefaultTargetDisplayNode(self, targetNode, new=False):
@@ -729,15 +709,18 @@ class SliceTrackerSession(SessionBase):
   def getMostRecentTargetsFile(self, path):
     return self.getMostRecentFile(path, FileExtension.FCSV)
 
-  def getColorForSelectedSeries(self):
-    style = "" if self.currentSeries is None else STYLE.YELLOW_BACKGROUND
-    if not self.isTrackingPossible(self.currentSeries):
-      if self.data.registrationResultWasApproved(self.currentSeries) or \
-              (self.zFrameRegistrationSuccessful and self.getSetting("COVER_TEMPLATE") in self.currentSeries):
+  def getColorForSelectedSeries(self, series=None):
+    series = series if series else self.currentSeries
+    if series in [None, '']:
+      return STYLE.WHITE_BACKGROUND
+    style = STYLE.YELLOW_BACKGROUND
+    if not self.isTrackingPossible(series):
+      if self.data.registrationResultWasApproved(series) or \
+              (self.zFrameRegistrationSuccessful and self.getSetting("COVER_TEMPLATE") in series):
         style = STYLE.GREEN_BACKGROUND
-      elif self.data.registrationResultWasSkipped(self.currentSeries):
+      elif self.data.registrationResultWasSkipped(series):
         style = STYLE.RED_BACKGROUND
-      elif self.data.registrationResultWasRejected(self.currentSeries):
+      elif self.data.registrationResultWasRejected(series):
         style = STYLE.GRAY_BACKGROUND
     return style
 

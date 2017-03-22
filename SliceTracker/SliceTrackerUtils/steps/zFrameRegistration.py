@@ -11,7 +11,7 @@ from ..algorithms.zFrameRegistration import LineMarkerRegistration, OpenSourceZF
 from ..constants import SliceTrackerConstants
 from base import SliceTrackerLogicBase, SliceTrackerStep
 
-from SlicerProstateUtils.decorators import logmethod
+from SlicerProstateUtils.decorators import logmethod, onModuleSelected
 from SlicerProstateUtils.helpers import SliceAnnotation
 
 
@@ -440,15 +440,16 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     # TODO
     pass
 
-  def onLayoutChanged(self):
-    pass
+  @onModuleSelected(SliceTrackerStep.MODULE_NAME)
+  def onLayoutChanged(self, layout=None):
+    print "dlnaslkdnsakl"
 
   def onInitiateZFrameCalibration(self, caller, event):
     self.active = True
 
     templateVolume = self.session.currentSeriesVolume
     if self.templateVolume and templateVolume is not self.templateVolume:
-      if not slicer.util.confirmYesNoDisplay("It looks like another %s was received. Do you want to use this one for"
+      if not slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one for "
                                              "calibration?" % self.getSetting("COVER_TEMPLATE")):
         return
     self.templateVolume = templateVolume

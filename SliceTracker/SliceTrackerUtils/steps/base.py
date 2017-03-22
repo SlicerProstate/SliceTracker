@@ -4,7 +4,7 @@ from abc import ABCMeta, abstractmethod
 
 from ..session import SliceTrackerSession
 
-from SlicerProstateUtils.decorators import logmethod, beforeRunProcessEvents
+from SlicerProstateUtils.decorators import logmethod, beforeRunProcessEvents, onModuleSelected
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin, GeneralModuleMixin
 from ..constants import SliceTrackerConstants
 
@@ -105,21 +105,24 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   def setupSessionObservers(self):
     self.session.addEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
+    self.session.addEventObserver(self.session.CaseOpenedEvent, self.onCaseOpened)
     self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
-    self.session.addEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+    self.session.addEventObserver(self.session.NewImageSeriesReceivedEvent, self.onNewImageSeriesReceived)
     self.session.addEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
     self.session.addEventObserver(self.session.LoadingMetadataSuccessfulEvent, self.onLoadingMetadataSuccessful)
     self.session.addEventObserver(self.session.PreprocessingSuccessfulEvent, self.onPreprocessingSuccessful)
 
   def removeSessionEventObservers(self):
     self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
+    self.session.removeEventObserver(self.session.CaseOpenedEvent, self.onCaseOpened)
     self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
-    self.session.removeEventObserver(self.session.NewImageDataReceivedEvent, self.onNewImageDataReceived)
+    self.session.removeEventObserver(self.session.NewImageSeriesReceivedEvent, self.onNewImageSeriesReceived)
     self.session.removeEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
     self.session.removeEventObserver(self.session.LoadingMetadataSuccessfulEvent, self.onLoadingMetadataSuccessful)
     self.session.removeEventObserver(self.session.PreprocessingSuccessfulEvent, self.onPreprocessingSuccessful)
 
-  def onLayoutChanged(self):
+  @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
+  def onLayoutChanged(self, layout=None):
     pass
 
   def setupAdditionalViewSettingButtons(self):
@@ -132,12 +135,15 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   def onNewCaseStarted(self, caller, event):
     pass
 
+  def onCaseOpened(self, caller, event):
+    pass
+
   @vtk.calldata_type(vtk.VTK_STRING)
   def onCaseClosed(self, caller, event, callData):
     pass
 
   @vtk.calldata_type(vtk.VTK_STRING)
-  def onNewImageDataReceived(self, caller, event, callData):
+  def onNewImageSeriesReceived(self, caller, event, callData):
     pass
 
   @vtk.calldata_type(vtk.VTK_STRING)

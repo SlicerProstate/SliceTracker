@@ -24,10 +24,10 @@ class SliceTrackerTrainingPlugin(SliceTrackerPlugin):
   def setup(self):
     self.collapsibleTrainingArea = ctk.ctkCollapsibleButton()
     self.collapsibleTrainingArea.collapsed = True
-    self.collapsibleTrainingArea.text = "Training"
+    self.collapsibleTrainingArea.text = "Training Incoming Data Simulation"
 
-    self.simulatePreopPhaseButton = self.createButton("Simulate preop phase", enabled=False)
-    self.simulateIntraopPhaseButton = self.createButton("Simulate intraop phase", enabled=False)
+    self.simulatePreopPhaseButton = self.createButton("Simulate preop reception", enabled=False)
+    self.simulateIntraopPhaseButton = self.createButton("Simulate intraop reception", enabled=False)
 
     self.trainingsAreaLayout = qt.QGridLayout(self.collapsibleTrainingArea)
     self.trainingsAreaLayout.addWidget(self.createHLayout([self.simulatePreopPhaseButton,

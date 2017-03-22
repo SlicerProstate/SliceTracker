@@ -11,6 +11,7 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/steps/plugins/training.py
   SliceTrackerUtils/steps/plugins/results.py
   SliceTrackerUtils/steps/plugins/targets.py
+  SliceTrackerUtils/steps/plugins/case.py
   SliceTrackerUtils/steps/overview.py
   SliceTrackerUtils/steps/segmentation.py
   SliceTrackerUtils/steps/zFrameRegistration.py
@@ -28,6 +29,10 @@ set(MODULE_PYTHON_SCRIPTS
 set(MODULE_PYTHON_RESOURCES
   Resources/Colors/mpReviewColors.csv
   Resources/Icons/icon-cancelSegmentation.png
+  Resources/Icons/icon-new.png
+  Resources/Icons/icon-open.png
+  Resources/Icons/icon-close.png
+  Resources/Icons/icon-complete.png
   Resources/Icons/icon-redo.png
   Resources/Icons/icon-undo.png
   Resources/Icons/icon-greenCheck.png

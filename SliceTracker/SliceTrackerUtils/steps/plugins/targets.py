@@ -6,7 +6,7 @@ from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase, StepBase
 
 from SlicerProstateUtils.mixins import ModuleLogicMixin
-from SlicerProstateUtils.decorators import logmethod
+from SlicerProstateUtils.decorators import logmethod, onModuleSelected
 from SlicerProstateUtils.helpers import SliceAnnotation
 
 
@@ -307,6 +307,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
 
   @currentTargets.setter
   def currentTargets(self, targets):
+    self.disableTargetMovingMode()
     self._currentTargets = targets
     self.targetTableModel.targetList = targets
     if not targets:
@@ -346,7 +347,8 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
   def setupConnections(self):
     self.targetTable.connect('clicked(QModelIndex)', self.onTargetSelectionChanged)
 
-  def onLayoutChanged(self):
+  @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
+  def onLayoutChanged(self, layout=None):
     self.disableTargetMovingMode()
 
   @vtk.calldata_type(vtk.VTK_STRING)

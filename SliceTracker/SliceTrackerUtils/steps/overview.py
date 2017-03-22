@@ -7,14 +7,14 @@ import slicer
 import vtk
 from SlicerProstateUtils.constants import COLOR
 from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
-from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox, IncomingDataMessageBox
+from SlicerProstateUtils.helpers import IncomingDataMessageBox
 
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.results import SliceTrackerRegistrationResultsPlugin
 from plugins.targets import SliceTrackerTargetTablePlugin
 from plugins.training import SliceTrackerTrainingPlugin
+from plugins.case import SliceTrackerCaseManagerPlugin
 from ..constants import SliceTrackerConstants as constants
-from ..helpers import NewCaseSelectionNameWidget
 from ..sessionData import RegistrationResult
 
 
@@ -45,25 +45,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   NAME = "Overview"
   LogicClass = SliceTrackerOverViewStepLogic
 
-  @property
-  def caseRootDir(self):
-    return self.casesRootDirectoryButton.directory
-
-  @caseRootDir.setter
-  def caseRootDir(self, path):
-    try:
-      exists = os.path.exists(path)
-    except TypeError:
-      exists = False
-    self.setSetting('CasesRootLocation', path if exists else None)
-    self.casesRootDirectoryButton.text = self.truncatePath(path) if exists else "Choose output directory"
-    self.casesRootDirectoryButton.toolTip = path
-    self.openCaseButton.enabled = exists
-    self.createNewCaseButton.enabled = exists
 
   def __init__(self):
     super(SliceTrackerOverviewStep, self).__init__()
-    self.caseRootDir = self.getSetting('CasesRootLocation', self.MODULE_NAME)
     self.notifyUserAboutNewData = True
 
   def cleanup(self):
@@ -72,8 +56,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   @logmethod(logging.DEBUG)
   def clearData(self):
-    self.updateCaseButtons()
-    self.caseWatchBox.reset()
     self.trackTargetsButton.enabled = False
     self.skipIntraopSeriesButton.enabled = False
     self.updateIntraopSeriesSelectorTable()
@@ -83,62 +65,41 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     #   self.customStatusProgressBar.hide()
 
   def setup(self):
-    self.setupCaseInformationArea()
+    self.caseManagerPlugin = SliceTrackerCaseManagerPlugin()
     self.trainingPlugin = SliceTrackerTrainingPlugin()
 
     self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
     self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series",
                                                      enabled=False)
-    self.closeCaseButton = self.createButton("Close case", toolTip="Close case without completing it", enabled=False)
-    self.completeCaseButton = self.createButton('Case completed', enabled=False)
     self.setupIntraopSeriesSelector()
 
-    self.createNewCaseButton = self.createButton("New case")
-    self.openCaseButton = self.createButton("Open case")
-
-    self.regResultsPlugin = SliceTrackerRegistrationResultsPlugin()
-    self.regResultsPlugin.resultSelectorVisible = False
-    self.regResultsPlugin.titleVisible = False
-    self.regResultsPlugin.registrationTypeButtonsVisible = False
-    self.regResultsPlugin.hide()
-    self.addPlugin(self.regResultsPlugin)
+    self.setupRegistrationResultsPlugin()
 
     self.targetTablePlugin = SliceTrackerTargetTablePlugin()
     self.addPlugin(self.targetTablePlugin)
 
-    self.layout().addWidget(self.collapsibleDirectoryConfigurationArea, 0, 0, 1, 2)
-    self.layout().addWidget(self.createNewCaseButton, 1, 0)
-    self.layout().addWidget(self.openCaseButton, 1, 1)
-    self.layout().addWidget(self.closeCaseButton, 2, 0)
-    self.layout().addWidget(self.completeCaseButton, 2, 1)
-    self.layout().addWidget(self.trainingPlugin, 3, 0, 1, 2)
-    self.layout().addWidget(self.targetTablePlugin, 4, 0, 1, 2)
-    self.layout().addWidget(self.intraopSeriesSelector, 5, 0, 1, 2)
-    self.layout().addWidget(self.regResultsPlugin, 6, 0, 1, 2)
-    self.layout().addWidget(self.trackTargetsButton, 7, 0)
-    self.layout().addWidget(self.skipIntraopSeriesButton, 7, 1)
+    self.layout().addWidget(self.caseManagerPlugin, 0, 0, 1, 2)
+    self.layout().addWidget(self.trainingPlugin, 1, 0, 1, 2)
+    self.layout().addWidget(self.targetTablePlugin, 2, 0, 1, 2)
+    self.layout().addWidget(self.intraopSeriesSelector, 3, 0, 1, 2)
+    self.layout().addWidget(self.regResultsCollapsibleButton, 4, 0, 1, 2)
+    self.layout().addWidget(self.trackTargetsButton, 5, 0)
+    self.layout().addWidget(self.skipIntraopSeriesButton, 5, 1)
     # self.layout().setRowStretch(8, 1)
 
-  def setupCaseInformationArea(self):
-    self.setupCaseWatchBox()
-    self.casesRootDirectoryButton = self.createDirectoryButton(text="Choose cases root location",
-                                                               caption="Choose cases root location",
-                                                               directory=self.getSetting('CasesRootLocation',
-                                                                                         self.MODULE_NAME))
-    self.collapsibleDirectoryConfigurationArea = ctk.ctkCollapsibleButton()
-    self.collapsibleDirectoryConfigurationArea.collapsed = True
-    self.collapsibleDirectoryConfigurationArea.text = "Case Directory Settings"
-    self.directoryConfigurationLayout = qt.QGridLayout(self.collapsibleDirectoryConfigurationArea)
-    self.directoryConfigurationLayout.addWidget(qt.QLabel("Cases Root Directory"), 1, 0, 1, 1)
-    self.directoryConfigurationLayout.addWidget(self.casesRootDirectoryButton, 1, 1, 1, 1)
-    self.directoryConfigurationLayout.addWidget(self.caseWatchBox, 2, 0, 1, qt.QSizePolicy.ExpandFlag)
-
-  def setupCaseWatchBox(self):
-    watchBoxInformation = [WatchBoxAttribute('CurrentCaseDirectory', 'Directory'),
-                           WatchBoxAttribute('CurrentPreopDICOMDirectory', 'Preop DICOM Directory: '),
-                           WatchBoxAttribute('CurrentIntraopDICOMDirectory', 'Intraop DICOM Directory: '),
-                           WatchBoxAttribute('mpReviewDirectory', 'mpReview Directory: ')]
-    self.caseWatchBox = BasicInformationWatchBox(watchBoxInformation, title="Current Case")
+  def setupRegistrationResultsPlugin(self):
+    self.regResultsCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.regResultsCollapsibleButton.collapsed = True
+    self.regResultsCollapsibleButton.text = "Registration Evaluation"
+    self.regResultsCollapsibleButton.hide()
+    self.regResultsCollapsibleLayout= qt.QGridLayout(self.regResultsCollapsibleButton)
+    self.regResultsPlugin = SliceTrackerRegistrationResultsPlugin()
+    self.regResultsPlugin.resultSelectorVisible = False
+    self.regResultsPlugin.titleVisible = False
+    self.regResultsPlugin.visualEffectsTitle = ""
+    self.regResultsPlugin.registrationTypeButtonsVisible = False
+    self.addPlugin(self.regResultsPlugin)
+    self.regResultsCollapsibleLayout.addWidget(self.regResultsPlugin)
 
   def setupIntraopSeriesSelector(self):
     self.intraopSeriesSelector = qt.QComboBox()
@@ -147,14 +108,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setupConnections(self):
     super(SliceTrackerOverviewStep, self).setupConnections()
-    self.createNewCaseButton.clicked.connect(self.onCreateNewCaseButtonClicked)
-    self.casesRootDirectoryButton.directoryChanged.connect(lambda: setattr(self, "caseRootDir",
-                                                                           self.casesRootDirectoryButton.directory))
-    self.openCaseButton.clicked.connect(self.onOpenCaseButtonClicked)
-    self.closeCaseButton.clicked.connect(self.onCloseCaseButtonClicked)
     self.skipIntraopSeriesButton.clicked.connect(self.onSkipIntraopSeriesButtonClicked)
     self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
-    self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
     self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.onIntraopSeriesSelectionChanged)
 
   def setupSessionObservers(self):
@@ -175,13 +130,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.session.skip(self.intraopSeriesSelector.currentText)
     self.updateIntraopSeriesSelectorTable()
 
-  def onCloseCaseButtonClicked(self):
-    self.session.close(save=slicer.util.confirmYesNoDisplay("Save the case data?", title="Close Case",
-                                                            windowTitle="SliceTracker"))
-
-  def onCompleteCaseButtonClicked(self):
-    self.session.complete()
-
   def onTrackTargetsButtonClicked(self):
     self.session.takeActionForCurrentSeries()
 
@@ -201,15 +149,18 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
             self.session.data.registrationResultWasRejected(selectedSeries):
       if self.getSetting("COVER_PROSTATE") in selectedSeries and not self.session.data.usePreopData:
         self.setupRedSlicePreview(selectedSeries)
-        self.regResultsPlugin.hide()
+        self.regResultsCollapsibleButton.show()
         self.targetTablePlugin.currentTargets = None
       else:
         self.currentResult = self.session.data.getApprovedOrLastResultForSeries(selectedSeries).name
-        self.regResultsPlugin.show()
-        self.targetTablePlugin.currentTargets = self.currentResult.targets.approved
+        self.layoutManager.setLayout(constants.LAYOUT_SIDE_BY_SIDE)
+        self.regResultsPlugin.onLayoutChanged()
+        self.regResultsCollapsibleButton.show()
+        self.targetTablePlugin.currentTargets = self.currentResult.targets.approved if self.currentResult.approved \
+                                                else self.currentResult.targets.bSpline
     else:
       self.currentResult = None
-      self.regResultsPlugin.hide()
+      self.regResultsCollapsibleButton.hide()
       self.setupRedSlicePreview(selectedSeries)
       self.targetTablePlugin.currentTargets = None
 
@@ -217,15 +168,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     trackingPossible = trackingPossible and not self.session.data.completed
     self.trackTargetsButton.setEnabled(trackingPossible)
     self.skipIntraopSeriesButton.setEnabled(trackingPossible and self.session.isEligibleForSkipping(selectedSeries))
-
-  def onCreateNewCaseButtonClicked(self):
-    if not self.checkAndWarnUserIfCaseInProgress():
-      return
-    self.caseDialog = NewCaseSelectionNameWidget(self.caseRootDir)
-    selectedButton = self.caseDialog.exec_()
-    if selectedButton == qt.QMessageBox.Ok:
-      self.session.createNewCase(self.caseDialog.newCaseDirectory)
-      self.updateCaseWatchBox()
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onCurrentSeriesChanged(self, caller, event, callData=None):
@@ -252,21 +194,11 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def onLoadingMetadataSuccessful(self, caller, event):
     self.active = True
-    self.updateCaseButtons()
-
-  @logmethod(logging.INFO)
-  def onNewCaseStarted(self, caller, event):
-    self.updateCaseButtons()
-
-  @logmethod(logging.INFO)
-  def onCaseOpened(self, caller, event):
-    self.updateCaseButtons()
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onCaseClosed(self, caller, event, callData):
     if callData != "None":
       slicer.util.infoDisplay(callData, windowTitle="SliceTracker")
-    self.updateCaseButtons()
     self.clearData()
 
   def onPreprocessingSuccessful(self, caller, event):
@@ -276,29 +208,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onActivation(self):
     super(SliceTrackerOverviewStep, self).onActivation()
     self.updateIntraopSeriesSelectorTable()
-
-  def updateCaseWatchBox(self):
-    self.caseWatchBox.setInformation("CurrentCaseDirectory", os.path.relpath(self.session.directory, self.caseRootDir),
-                                     toolTip=self.session.directory)
-    self.caseWatchBox.setInformation("CurrentPreopDICOMDirectory", os.path.relpath(self.session.preopDICOMDirectory,
-                                                                                   self.caseRootDir),
-                                     toolTip=self.session.preopDICOMDirectory)
-    self.caseWatchBox.setInformation("CurrentIntraopDICOMDirectory", os.path.relpath(self.session.intraopDICOMDirectory,
-                                                                                     self.caseRootDir),
-                                     toolTip=self.session.intraopDICOMDirectory)
-    self.caseWatchBox.setInformation("mpReviewDirectory", os.path.relpath(self.session.preprocessedDirectory,
-                                                                          self.caseRootDir),
-                                     toolTip=self.session.preprocessedDirectory)
-
-  def updateCaseButtons(self):
-    self.closeCaseButton.enabled = self.session.directory is not None
-    self.completeCaseButton.enabled = self.session.directory is not None
-
-  def checkAndWarnUserIfCaseInProgress(self):
-    if self.session.isRunning():
-      if not slicer.util.confirmYesNoDisplay("Current case will be closed. Do you want to proceed?"):
-        return False
-    return True
 
   @logmethod(logging.INFO)
   def onPreopReceptionFinished(self, caller=None, event=None):
@@ -347,30 +256,26 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     progress.close()
     return success
 
-  def onOpenCaseButtonClicked(self):
-    if not self.checkAndWarnUserIfCaseInProgress():
-      return
-    self.session.directory = qt.QFileDialog.getExistingDirectory(self.parent().window(), "Select Case Directory",
-                                                                 self.caseRootDir) # TODO: move caseRootDir to session
-
   @vtk.calldata_type(vtk.VTK_STRING)
-  def onNewImageDataReceived(self, caller, event, callData):
+  def onNewImageSeriesReceived(self, caller, event, callData):
+    newImageSeries = ast.literal_eval(callData)
     # self.customStatusProgressBar.text = "New image data has been received."
     self.updateIntraopSeriesSelectorTable()
-    # selectedSeries = self.intraopSeriesSelector.currentText
+    selectedSeries = self.intraopSeriesSelector.currentText
 
-    # if selectedSeries != "" and self.logic.isTrackingPossible(selectedSeries):
-    #   self.takeActionOnSelectedSeries(newSeriesNumbers, selectedSeries)
+    if selectedSeries != "" and self.session.isTrackingPossible(selectedSeries):
+      self.takeActionOnSelectedSeries(newImageSeries, selectedSeries)
 
-  def takeActionOnSelectedSeries(self, newSeriesNumbers, selectedSeries):
+  def takeActionOnSelectedSeries(self, newImageSeries, selectedSeries):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+    newImageSeriesNumbers = [RegistrationResult.getSeriesNumberFromString(s) for s in newImageSeries]
     if self.getSetting("COVER_TEMPLATE") in selectedSeries and not self.session.zFrameRegistrationSuccessful:
       # TODO: zFrameRegistrationStep
       self.onTrackTargetsButtonClicked()
       return
 
-    if self.active and selectedSeriesNumber in newSeriesNumbers and \
-      self.logic.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
+    if self.active and selectedSeriesNumber in newImageSeriesNumbers and \
+      self.session.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
       if self.notifyUserAboutNewData and not self.session.data.completed:
         dialog = IncomingDataMessageBox()
         self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
@@ -397,6 +302,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
     self.intraopSeriesSelector.setCurrentIndex(currentIndex)
     self.intraopSeriesSelector.blockSignals(False)
+    self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText))
     self.selectMostRecentEligibleSeries()
 
   def selectMostRecentEligibleSeries(self):

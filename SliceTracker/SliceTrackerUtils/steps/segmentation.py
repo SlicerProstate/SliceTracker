@@ -8,6 +8,7 @@ from Editor import EditorWidget
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from VolumeClipToLabel import VolumeClipToLabelWidget
 from SlicerProstateUtils.helpers import TargetCreationWidget, SliceAnnotation
+from SlicerProstateUtils.decorators import onModuleSelected
 from ..constants import SliceTrackerConstants
 
 
@@ -42,22 +43,21 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
                                         "install VolumeClip.", "Missing Extension")
 
     self.setupTargetingStepUIElements()
+    self.setupSegmentationUIElements()
 
+  def setupSegmentationUIElements(self):
     iconSize = qt.QSize(24, 24)
     self.volumeClipGroupBox = qt.QWidget()
     self.volumeClipGroupBoxLayout = qt.QVBoxLayout()
     self.volumeClipGroupBox.setLayout(self.volumeClipGroupBoxLayout)
-
     self.volumeClipToLabelWidget = VolumeClipToLabelWidget(self.volumeClipGroupBox)
     self.volumeClipToLabelWidget.setup()
     if qt.QSettings().value('Developer/DeveloperMode').lower() == 'true':
       self.volumeClipToLabelWidget.reloadCollapsibleButton.hide()
     self.volumeClipToLabelWidget.selectorsGroupBox.hide()
     self.volumeClipToLabelWidget.colorGroupBox.hide()
-
     self.editorWidgetButton = self.createButton("", icon=self.settingsIcon, toolTip="Show Label Editor",
                                                 enabled=False, iconSize=iconSize)
-
     self.setupEditorWidget()
     self.segmentationGroupBox = qt.QGroupBox()
     self.segmentationGroupBoxLayout = qt.QGridLayout()
@@ -65,7 +65,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.volumeClipToLabelWidget.segmentationButtons.layout().addWidget(self.editorWidgetButton)
     self.segmentationGroupBoxLayout.addWidget(self.volumeClipGroupBox, 0, 0)
     self.segmentationGroupBoxLayout.addWidget(self.editorWidgetParent, 1, 0)
-
     self.finishedSegmentationStepButton = self.createButton("Apply Registration", icon=self.greenCheckIcon,
                                                             iconSize=iconSize, toolTip="Run Registration.")
     self.finishedSegmentationStepButton.setFixedHeight(45)
@@ -161,7 +160,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.finishedSegmentationStepButton.text = text
     self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
 
-  def onLayoutChanged(self):
+  @onModuleSelected(SliceTrackerStep.MODULE_NAME)
+  def onLayoutChanged(self, layout=None):
     print "onLayoutChanged in %s " % self.NAME
     if self.layoutManager.layout == SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE:
       self.setupSideBySideSegmentationView()
@@ -225,7 +225,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.session.data.inputMarkupNode = self.volumeClipToLabelWidget.logic.inputMarkupNode
     if not self.session.data.usePreopData and not self.retryMode:
       self.createCoverProstateRegistrationResultManually()
-      self.session.invokeEventForMostRecentEligibleSeries()
     else:
       self.session.onInvokeRegistration(initial=True, retryMode=self.retryMode)
 
