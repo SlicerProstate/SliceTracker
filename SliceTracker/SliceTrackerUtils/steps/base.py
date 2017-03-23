@@ -121,7 +121,7 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.session.removeEventObserver(self.session.LoadingMetadataSuccessfulEvent, self.onLoadingMetadataSuccessful)
     self.session.removeEventObserver(self.session.PreprocessingSuccessfulEvent, self.onPreprocessingSuccessful)
 
-  @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
+  @onModuleSelected(StepBase.MODULE_NAME)
   def onLayoutChanged(self, layout=None):
     pass
 
