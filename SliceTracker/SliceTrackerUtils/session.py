@@ -14,7 +14,7 @@ from SlicerProstateUtils.events import SlicerProstateEvents
 from SlicerProstateUtils.helpers import IncomingDataWindow, SmartDICOMReceiver
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 
-from SlicerProstateUtils.decorators import logmethod, singleton, onReturnProcessEvents, onExceptionReturnNone
+from SlicerProstateUtils.decorators import logmethod, singleton, onReturnProcessEvents, onExceptionReturnNone, onModuleSelected
 from SlicerProstateUtils.decorators import onExceptionReturnFalse
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
@@ -248,12 +248,10 @@ class SliceTrackerSession(SessionBase):
     self.registrationLogic = SliceTrackerRegistrationLogic()
     self._steps = []
     self.resetAndInitializeMembers()
+    self.addMrmlSceneClearObserver()
 
   def resetAndInitializeMembers(self):
-    from mpReview import mpReviewLogic
-    self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name"))
-    self.segmentedColorName = self.getSetting("Segmentation_Color_Name")
-    self.segmentedLabelValue = self.mpReviewColorNode.GetColorIndexByName(self.segmentedColorName)
+    self.initializeColorNodes()
     self.directory = None
     self.data = SessionData()
     self.data.addEventObserver(self.data.NewResultCreatedEvent, self.onNewRegistrationResultCreated)
@@ -266,8 +264,25 @@ class SliceTrackerSession(SessionBase):
     self._activeResult = None
     self._currentSeries = None
 
+  def initializeColorNodes(self):
+    from mpReview import mpReviewLogic
+    self.mpReviewColorNode, self.structureNames = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name"))
+    self.segmentedColorName = self.getSetting("Segmentation_Color_Name")
+    self.segmentedLabelValue = self.mpReviewColorNode.GetColorIndexByName(self.segmentedColorName)
+
   def __del__(self):
-    pass
+    self.clearData()
+    if self.mrmlSceneObserver:
+      self.mrmlSceneObserver = slicer.mrmlScene.RemoveObserver(self.mrmlSceneObserver)
+
+  def addMrmlSceneClearObserver(self):
+
+    @onModuleSelected(self.MODULE_NAME)
+    def onMrmlSceneCleared(caller, event):
+      logging.debug("called onMrmlSceneCleared in %s" % self.__class__.__name__)
+      self.initializeColorNodes()
+
+    self.mrmlSceneObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndCloseEvent, onMrmlSceneCleared)
 
   @onExceptionReturnFalse
   def isCurrentSeriesCoverProstateInNonPreopMode(self):

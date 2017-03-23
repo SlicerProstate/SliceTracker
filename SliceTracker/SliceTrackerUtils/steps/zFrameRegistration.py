@@ -57,7 +57,11 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
     self.loadTemplateConfigFile()
 
   def cleanup(self):
-    pass
+    super(SliceTrackerZFrameRegistrationStepLogic, self).cleanup()
+
+  @onModuleSelected(SliceTrackerStep.MODULE_NAME)
+  def onMrmlSceneCleared(self, caller, event):
+    self.resetAndInitializeData()
 
   def clearOldNodes(self):
     self.clearOldNodesByName(self.ZFRAME_TEMPLATE_NAME)
@@ -439,10 +443,6 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
   def save(self, directory):
     # TODO
     pass
-
-  @onModuleSelected(SliceTrackerStep.MODULE_NAME)
-  def onLayoutChanged(self, layout=None):
-    print "dlnaslkdnsakl"
 
   def onInitiateZFrameCalibration(self, caller, event):
     self.active = True

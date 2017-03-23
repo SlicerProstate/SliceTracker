@@ -24,6 +24,14 @@ class StepBase(GeneralModuleMixin):
     self.modulePath = self.getModulePath()
     self.resourcesPath = os.path.join(self.modulePath, "Resources")
     self.session = SliceTrackerSession()
+    self.mrmlSceneObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndCloseEvent, self.onMrmlSceneCleared)
+
+  def onMrmlSceneCleared(self, caller, event):
+    pass
+
+  def cleanup(self):
+    if self.mrmlSceneObserver:
+      self.mrmlSceneObserver = slicer.mrmlScene.RemoveObserver(self.mrmlSceneObserver)
 
   def getModulePath(self):
     return os.path.dirname(slicer.util.modulePath(self.MODULE_NAME))
@@ -82,9 +90,6 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   def setupIcons(self):
     pass
-
-  def cleanup(self):
-    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
   def setup(self):
     NotImplementedError("This method needs to be implemented for %s" % self.NAME)
