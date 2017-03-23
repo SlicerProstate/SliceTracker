@@ -50,18 +50,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.session.addEventObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
     self.demoMode = False
 
-    slicer.app.connect('aboutToQuit()', self.onSlicerQuits)
-
-  def onSlicerQuits(self):
-    if self.session.isRunning():
-      if slicer.util.confirmYesNoDisplay("Case is still running! Slicer is about to be closed. Do you want to mark the "
-                                         "current case as completed? Otherwise it will only be closed and can be "
-                                         "resumed at a later time"):
-        self.session.complete()
-      else:
-        self.session.close(save=slicer.util.confirmYesNoDisplay("Do you want to save the case data?"))
-    self.cleanup()
-
   def enter(self):
     if not slicer.dicomDatabase:
       slicer.util.errorDisplay("Slicer DICOMDatabase was not found. In order to be able to use SliceTracker, you will "

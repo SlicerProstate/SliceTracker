@@ -45,6 +45,11 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
   def __init__(self):
     super(SliceTrackerCaseManagerPlugin, self).__init__()
     self.caseRootDir = self.getSetting('CasesRootLocation', self.MODULE_NAME)
+    slicer.app.connect('aboutToQuit()', self.onSlicerQuits)
+
+  def onSlicerQuits(self):
+    if self.session.isRunning():
+      self.onCloseCaseButtonClicked()
 
   def clearData(self):
     self.update()
@@ -53,7 +58,6 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
     self.newIcon = self.createIcon('icon-new.png')
     self.openIcon = self.createIcon('icon-open.png')
     self.closeIcon = self.createIcon('icon-close.png')
-    self.completeIcon = self.createIcon('icon-complete.png')
 
   def setup(self):
     iconSize = qt.QSize(36, 36)
@@ -61,8 +65,6 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
     self.openCaseButton = self.createButton("", icon=self.openIcon, iconSize=iconSize, toolTip="Open case")
     self.closeCaseButton = self.createButton("", icon=self.closeIcon, iconSize=iconSize,
                                              toolTip="Close case with resume support", enabled=False)
-    self.completeCaseButton = self.createButton("", icon=self.completeIcon, iconSize=iconSize, enabled=False,
-                                                toolTip="Close case and mark as completed (no resume supported)")
     self.setupCaseWatchBox()
     self.casesRootDirectoryButton = self.createDirectoryButton(text="Choose cases root location",
                                                                caption="Choose cases root location",
@@ -79,7 +81,7 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
     self.caseGroupBox = qt.QGroupBox("Case")
     self.caseGroupBoxLayout = qt.QFormLayout(self.caseGroupBox)
     self.caseGroupBoxLayout.addWidget(self.createHLayout([self.createNewCaseButton, self.openCaseButton,
-                                                          self.closeCaseButton, self.completeCaseButton]))
+                                                          self.closeCaseButton]))
     self.caseGroupBoxLayout.addWidget(self.caseDirectoryInformationArea)
     self.layout().addWidget(self.caseGroupBox)
 
@@ -94,7 +96,6 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
     self.createNewCaseButton.clicked.connect(self.onCreateNewCaseButtonClicked)
     self.openCaseButton.clicked.connect(self.onOpenCaseButtonClicked)
     self.closeCaseButton.clicked.connect(self.onCloseCaseButtonClicked)
-    self.completeCaseButton.clicked.connect(self.onCompleteCaseButtonClicked)
     self.casesRootDirectoryButton.directoryChanged.connect(lambda: setattr(self, "caseRootDir",
                                                                            self.casesRootDirectoryButton.directory))
 
@@ -113,11 +114,12 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
                                                                  self.caseRootDir)
 
   def onCloseCaseButtonClicked(self):
-    self.session.close(save=slicer.util.confirmYesNoDisplay("Save the case data?", title="Close Case",
-                                                            windowTitle="SliceTracker"))
-
-  def onCompleteCaseButtonClicked(self):
-    self.session.complete()
+    if slicer.util.confirmYesNoDisplay("Do you want to mark this case as completed? ", title="Complete Case",
+                                       windowTitle="SliceTracker"):
+      self.session.complete()
+    else:
+      self.session.close(save=slicer.util.confirmYesNoDisplay("Save the case data?", title="Close Case",
+                                                              windowTitle="SliceTracker"))
 
   @logmethod(logging.INFO)
   def onNewCaseStarted(self, caller, event):
@@ -156,7 +158,6 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
 
   def updateCaseButtons(self):
     self.closeCaseButton.enabled = self.session.directory is not None
-    self.completeCaseButton.enabled = self.session.directory is not None
 
   def checkAndWarnUserIfCaseInProgress(self):
     if self.session.isRunning():
