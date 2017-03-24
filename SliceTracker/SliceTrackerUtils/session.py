@@ -344,8 +344,9 @@ class SliceTrackerSession(SessionBase):
       return
     message = None
     if save:
-      success, failedMessage = self.save()
-      message = "Case data has been save successfully." if success else failedMessage
+      success, failedFileNames = self.data.close(self.outputDirectory)
+      message = "Case data has been save successfully." if success else \
+        "The following data failed to saved:\n %s" % failedFileNames
     self.resetAndInitializeMembers()
     self.invokeEvent(self.CloseCaseEvent, str(message))
 
@@ -576,8 +577,7 @@ class SliceTrackerSession(SessionBase):
     if slicer.util.confirmYesNoDisplay("A %s session has been found for the selected case. Do you want to %s?" \
               % ("completed" if self.data.completed else "started",
                  "open it" if self.data.completed else "continue this session")):
-      # TODO: if completed, read only!
-      self.data.resumed = True
+      self.data.resumed = not self.data.completed
       if self.data.usePreopData:
         self.loadPreProcessedData()
       else:
@@ -741,6 +741,7 @@ class SliceTrackerSession(SessionBase):
 
   def isTrackingPossible(self, series):
     if self.data.completed:
+      logging.debug("No tracking possible. Case has been marked as completed!")
       return False
     if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
       if self.getSetting("NEEDLE_IMAGE") in series:

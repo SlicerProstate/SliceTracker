@@ -45,10 +45,11 @@ class SessionData(ModuleLogicMixin):
 
   @resumed.setter
   def resumed(self, value):
-    assert not self.completed
-    self._resumed = value
-    if self._resumed:
+    if value and self.completed:
+      raise ValueError("Completed case is not supposed to be resumed.")
+    if value and not self.completed:
       self.resumeTimeStamps.append(self.getTime())
+    self._resumed = value
 
   def __init__(self):
     self.resetAndInitializeData()
@@ -190,10 +191,12 @@ class SessionData(ModuleLogicMixin):
       "logfile": os.path.basename(self.getSlicerErrorLogPath())
     }
 
-  def save(self, outputDir):
+  def close(self, outputDir):
     if not self.completed:
       self.closedLogTimeStamps.append(self.generateLogfileTimeStampDict())
+    return self.save(outputDir)
 
+  def save(self, outputDir):
     if not os.path.exists(outputDir):
       self.createDirectory(outputDir)
 

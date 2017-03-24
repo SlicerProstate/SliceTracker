@@ -114,12 +114,15 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
                                                                  self.caseRootDir)
 
   def onCloseCaseButtonClicked(self):
-    if slicer.util.confirmYesNoDisplay("Do you want to mark this case as completed? ", title="Complete Case",
-                                       windowTitle="SliceTracker"):
-      self.session.complete()
+    if self.session.data.completed:
+      self.session.close(save=False)
     else:
-      self.session.close(save=slicer.util.confirmYesNoDisplay("Save the case data?", title="Close Case",
-                                                              windowTitle="SliceTracker"))
+      if slicer.util.confirmYesNoDisplay("Do you want to mark this case as completed? ", title="Complete Case",
+                                         windowTitle="SliceTracker"):
+        self.session.complete()
+      else:
+        self.session.close(save=slicer.util.confirmYesNoDisplay("Save the case data?", title="Close Case",
+                                                                windowTitle="SliceTracker"))
 
   @logmethod(logging.INFO)
   def onNewCaseStarted(self, caller, event):
