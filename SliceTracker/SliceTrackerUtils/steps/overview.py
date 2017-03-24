@@ -127,8 +127,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
   def onSkipIntraopSeriesButtonClicked(self):
-    self.session.skip(self.intraopSeriesSelector.currentText)
-    self.updateIntraopSeriesSelectorTable()
+    if slicer.util.confirmYesNoDisplay("Do you really want to skip this series?", windowTitle="Skip series?"):
+      self.session.skip(self.intraopSeriesSelector.currentText)
+      self.updateIntraopSeriesSelectorTable()
 
   def onTrackTargetsButtonClicked(self):
     self.session.takeActionForCurrentSeries()
