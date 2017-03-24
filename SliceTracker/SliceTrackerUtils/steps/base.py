@@ -6,7 +6,8 @@ from ..session import SliceTrackerSession
 
 from SlicerProstateUtils.decorators import logmethod, beforeRunProcessEvents, onModuleSelected
 from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin, GeneralModuleMixin
-from ..constants import SliceTrackerConstants
+from ..constants import SliceTrackerConstants as constants
+
 
 class StepBase(GeneralModuleMixin):
 
@@ -49,6 +50,7 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   ActivatedEvent = vtk.vtkCommand.UserEvent + 150
   DeactivatedEvent = vtk.vtkCommand.UserEvent + 151
+  AvailableLayoutsChangedEvent = vtk.vtkCommand.UserEvent + 152
 
   NAME = None
   LogicClass = None
@@ -130,6 +132,11 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   def onLayoutChanged(self, layout=None):
     pass
 
+  def setAvailableLayouts(self, layouts):
+    if not all([l in constants.ALLOWED_LAYOUTS for l in layouts]):
+      raise ValueError("Not all of the delivered layouts are allowed to be used in SliceTracker")
+    self.invokeEvent(self.AvailableLayoutsChangedEvent, str(layouts))
+
   def setupAdditionalViewSettingButtons(self):
     pass
 
@@ -164,7 +171,7 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   def setupFourUpView(self, volume):
     self.setBackgroundToVolumeID(volume.GetID())
-    self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_FOUR_UP)
+    self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
 
   def setBackgroundToVolumeID(self, volumeID):
     for compositeNode in self._compositeNodes:
@@ -190,12 +197,12 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     #   self.setDefaultFOV(self.yellowSliceLogic, 1.0)
     #   self.setDefaultFOV(self.greenSliceLogic, 1.0)
     # el
-    if self.layoutManager.layout == SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY:
+    if self.layoutManager.layout == constants.LAYOUT_RED_SLICE_ONLY:
       self.setDefaultFOV(self.redSliceLogic)
-    elif self.layoutManager.layout == SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE:
+    elif self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
       self.setDefaultFOV(self.redSliceLogic)
       self.setDefaultFOV(self.yellowSliceLogic)
-    elif self.layoutManager.layout == SliceTrackerConstants.LAYOUT_FOUR_UP:
+    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
       self.setDefaultFOV(self.redSliceLogic)
       self.yellowSliceLogic.FitSliceToAll()
       self.greenSliceLogic.FitSliceToAll()
@@ -207,7 +214,7 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.setFOV(sliceLogic, [FOV[0] * factor, FOV[1] * factor, FOV[2]])
 
   def setupRedSlicePreview(self, selectedSeries):
-    self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY)
+    self.layoutManager.setLayout(constants.LAYOUT_RED_SLICE_ONLY)
     self.hideAllFiducialNodes()
     try:
       result = self.session.data.getResultsBySeries(selectedSeries)[0]
@@ -229,6 +236,11 @@ class SliceTrackerStep(SliceTrackerWidgetBase):
   def addPlugin(self, plugin):
     assert hasattr(plugin, "active"), "Plugin needs to be a subclass of %s" % SliceTrackerPlugin.__class__.__name__
     self._plugins.append(plugin)
+    plugin.addEventObserver(self.AvailableLayoutsChangedEvent, self.onPluginAvailableLayoutChanged)
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onPluginAvailableLayoutChanged(self, caller, event, callData):
+    self.invokeEvent(self.AvailableLayoutsChangedEvent, callData)
 
   def onActivation(self):
     self._activatePlugins()

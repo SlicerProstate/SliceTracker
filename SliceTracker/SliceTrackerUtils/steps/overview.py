@@ -45,7 +45,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   NAME = "Overview"
   LogicClass = SliceTrackerOverViewStepLogic
 
-
   def __init__(self):
     super(SliceTrackerOverviewStep, self).__init__()
     self.notifyUserAboutNewData = True
@@ -271,7 +270,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
     newImageSeriesNumbers = [RegistrationResult.getSeriesNumberFromString(s) for s in newImageSeries]
     if self.getSetting("COVER_TEMPLATE") in selectedSeries and not self.session.zFrameRegistrationSuccessful:
-      # TODO: zFrameRegistrationStep
       self.onTrackTargetsButtonClicked()
       return
 

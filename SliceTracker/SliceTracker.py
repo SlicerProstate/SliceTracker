@@ -5,6 +5,7 @@ from SliceTrackerUtils.configuration import SliceTrackerConfiguration
 from SliceTrackerUtils.constants import SliceTrackerConstants
 from SliceTrackerUtils.session import SliceTrackerSession
 
+from SliceTrackerUtils.steps.base import SliceTrackerStep
 from SliceTrackerUtils.steps.overview import SliceTrackerOverviewStep
 from SliceTrackerUtils.steps.zFrameRegistration import SliceTrackerZFrameRegistrationStep
 from SliceTrackerUtils.steps.evaluation import SliceTrackerEvaluationStep
@@ -111,6 +112,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.redOnlyLayoutButton = RedSliceLayoutButton()
     self.sideBySideLayoutButton = SideBySideLayoutButton()
     self.fourUpLayoutButton = FourUpLayoutButton()
+    self.layoutButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton]
     self.crosshairButton = CrosshairButton()
     self.wlEffectsToolButton = WindowLevelEffectsButton()
     self.settingsButton = ModuleSettingsButton(self.moduleName)
@@ -134,6 +136,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def setupTabBarNavigation(self):
     self.tabWidget = SliceTrackerTabWidget()
+    self.tabWidget.addEventObserver(self.tabWidget.AvailableLayoutsChangedEvent, self.onAvailableLayoutsChanged)
     self.layout.addWidget(self.tabWidget)
 
     # TODO
@@ -169,6 +172,11 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def onCurrentSeriesChanged(self, caller, event, callData):
     self.intraopWatchBox.sourceFile = self.session.loadableList[callData][0] if callData else None
 
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onAvailableLayoutsChanged(self, caller, event, callData):
+    layouts = ast.literal_eval(callData)
+    for layoutButton in self.layoutButtons:
+      layoutButton.enabled = layoutButton.LAYOUT in layouts
 
 class SliceTrackerLogic(ModuleLogicMixin):
 
@@ -176,7 +184,9 @@ class SliceTrackerLogic(ModuleLogicMixin):
     pass
 
 
-class SliceTrackerTabWidget(qt.QTabWidget):
+class SliceTrackerTabWidget(qt.QTabWidget, ModuleWidgetMixin):
+
+  AvailableLayoutsChangedEvent = SliceTrackerStep.AvailableLayoutsChangedEvent
 
   def __init__(self):
     super(SliceTrackerTabWidget, self).__init__()
@@ -189,10 +199,16 @@ class SliceTrackerTabWidget(qt.QTabWidget):
     self.tabBar().hide()
 
   def _createTabs(self):
+    # TODO: cleanup on reload?
     for step in self.session.steps:
       logging.debug("Adding tab for %s step" % step.NAME)
       self.addTab(step, step.NAME)
       step.addEventObserver(step.ActivatedEvent, self.onStepActivated)
+      step.addEventObserver(self.AvailableLayoutsChangedEvent, self.onStepAvailableLayoutChanged)
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onStepAvailableLayoutChanged(self, caller, event, callData):
+    self.invokeEvent(self.AvailableLayoutsChangedEvent, callData)
 
   def onStepActivated(self, caller, event):
     name = caller.GetAttribute("Name")
