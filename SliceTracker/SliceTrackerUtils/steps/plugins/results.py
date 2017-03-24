@@ -167,6 +167,27 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.opacitySpinBox.valueChanged.connect(self.onOpacitySpinBoxChanged)
     self.opacitySlider.valueChanged.connect(self.onOpacitySliderChanged)
 
+  @logmethod(logging.INFO)
+  def onCurrentResultChanged(self, caller, event):
+    if not self.currentResult:
+      self.setAvailableLayouts([constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_FOUR_UP])
+      self.setupRedSlicePreview(self.session.currentSeries)
+      return
+    if self.currentResult.approved or self.currentResult.rejected:
+      if self.getSetting("COVER_PROSTATE") in self.currentResult.name and not self.session.data.usePreopData:
+        self.setAvailableLayouts([constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_FOUR_UP])
+        self.setupRedSlicePreview(self.session.currentSeries)
+      else:
+        self.setAvailableLayouts([constants.LAYOUT_FOUR_UP,
+                                  constants.LAYOUT_SIDE_BY_SIDE if self.currentResult.volumes.moving else
+                                  constants.LAYOUT_RED_SLICE_ONLY])
+        self.layoutManager.layout = constants.LAYOUT_SIDE_BY_SIDE
+    elif self.currentResult.skipped:
+      self.setAvailableLayouts([constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_FOUR_UP])
+      self.setupRedSlicePreview(self.session.currentSeries)
+    else:
+      self.setAvailableLayouts([constants.LAYOUT_FOUR_UP, constants.LAYOUT_SIDE_BY_SIDE])
+
   @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
   def onLayoutChanged(self, layout=None):
     self.removeSliceAnnotations()
@@ -244,12 +265,13 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       self.revealCursor = CompareVolumes.LayerReveal()
 
   def onRegistrationResultSelected(self, seriesText, registrationType=None):
-    # self.disableTargetMovingMode()
     if not seriesText:
       return
     self.hideAllFiducialNodes()
     self.currentResult = seriesText
-    if registrationType:
+    if self.currentResult.skipped:
+      self.setupSkippedRegistrationResultSliceViews()
+    elif registrationType:
       self.checkButtonByRegistrationType(registrationType)
     elif self.currentResult.approved:
       self.displayApprovedRegistrationResults()
@@ -327,6 +349,9 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.setFiducialNodeVisibility(self.session.data.initialTargets,
                                     show=self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE)
 
+  def setupSkippedRegistrationResultSliceViews(self):
+    self.setBackgroundToVolumeID(self.currentResult.volumes.fixed.GetID())
+
   def setupRegistrationResultSliceViews(self, registrationType):
     if self.layoutManager.layout in [constants.LAYOUT_SIDE_BY_SIDE, constants.LAYOUT_RED_SLICE_ONLY]:
       self.redCompositeNode.SetForegroundVolumeID(None)
@@ -369,7 +394,10 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       self.addFourUpSliceAnnotations()
       self.setDefaultOrientation()
     else:
-      self.addSideBySideSliceAnnotations()
+      if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
+        self.addSideBySideSliceAnnotations()
+      elif self.layoutManager.layout == constants.LAYOUT_RED_SLICE_ONLY:
+        self.addRedOnlySliceAnnotations()
       self.setAxialOrientation()
 
   def removeSliceAnnotations(self):
@@ -392,10 +420,16 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   def addFourUpSliceAnnotations(self):
     self.removeSliceAnnotations()
-    self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, yPos=50,
-                                                 fontSize=20))
-    self.addNewImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, fontSize=15)
-    self.addOldImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, fontSize=15)
+    if not (self.currentResult.skipped or (self.getSetting("COVER_PROSTATE") in self.currentResult.name and
+                                             not self.session.data.usePreopData)):
+      self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT,
+                                                   yPos=50, fontSize=20))
+      self.addNewImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, fontSize=15)
+      self.addOldImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, fontSize=15)
+    self.addRegistrationResultStatusAnnotation(self.redWidget)
+
+  def addRedOnlySliceAnnotations(self):
+    self.removeSliceAnnotations()
     self.addRegistrationResultStatusAnnotation(self.redWidget)
 
   def addNewImageAnnotation(self, widget, text, fontSize=20):

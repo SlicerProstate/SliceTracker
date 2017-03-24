@@ -63,7 +63,6 @@ class SessionBase(ModuleLogicMixin):
 @singleton
 class SliceTrackerSession(SessionBase):
 
-  # TODO: implement events that are invoked once data changes so that underlying steps can react to it
   IncomingDataSkippedEvent = SlicerProstateEvents.IncomingDataSkippedEvent
   IncomingPreopDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent + 110
 
@@ -76,11 +75,6 @@ class SliceTrackerSession(SessionBase):
   NewCaseStartedEvent = vtk.vtkCommand.UserEvent + 501
   CloseCaseEvent = vtk.vtkCommand.UserEvent + 502
   CaseOpenedEvent = vtk.vtkCommand.UserEvent + 503
-
-  # TODO: not sure about the following events
-  NeedleImageReceivedEvent = vtk.vtkCommand.UserEvent + 128
-  VibeImageReceivedEvent = vtk.vtkCommand.UserEvent + 129
-  OtherImageReceivedEvent = vtk.vtkCommand.UserEvent + 130
 
   ZFrameRegistrationSuccessfulEvent = vtk.vtkCommand.UserEvent + 140
   PreprocessingSuccessfulEvent = vtk.vtkCommand.UserEvent + 141
@@ -95,8 +89,7 @@ class SliceTrackerSession(SessionBase):
   InitiateRegistrationEvent = vtk.vtkCommand.UserEvent + 162
   InitiateEvaluationEvent = vtk.vtkCommand.UserEvent + 163
 
-  # TODO: add events
-  ActiveResultChangedEvent = vtk.vtkCommand.UserEvent + 234
+  CurrentResultChangedEvent = vtk.vtkCommand.UserEvent + 234
   ApprovedEvent = RegistrationResult.ApprovedEvent
   SkippedEvent = RegistrationResult.SkippedEvent
   RejectedEvent = RegistrationResult.RejectedEvent
@@ -147,22 +140,24 @@ class SliceTrackerSession(SessionBase):
       self.invokeEvent(self.ZFrameRegistrationSuccessfulEvent)
 
   @property
-  def activeResult(self):
-    return self._getActiveResult()
+  def currentResult(self):
+    return self._getCurrentResult()
 
   @onExceptionReturnNone
-  def _getActiveResult(self):
-    return self.data.registrationResults[self._activeResult]
+  def _getCurrentResult(self):
+    return self.data.registrationResults[self._currentResult]
 
-  @activeResult.setter
-  def activeResult(self, series):
-    if self.activeResult is not None:
-      self.activeResult.removeEventObservers()
-    self._activeResult = series
-    if self.activeResult:
+  @currentResult.setter
+  def currentResult(self, series):
+    if self.currentResult and self.currentResult.name == series:
+      return
+    if self.currentResult is not None:
+      self.currentResult.removeEventObservers()
+    self._currentResult = series
+    if self.currentResult:
       for event in RegistrationResult.StatusEvents.values():
-        self.activeResult.addEventObserver(event, self.onRegistrationResultStatusChanged)
-    # self.invokeEvent(self.ActiveResultChangedEvent)
+        self.currentResult.addEventObserver(event, self.onRegistrationResultStatusChanged)
+    self.invokeEvent(self.CurrentResultChangedEvent)
 
   @property
   def currentSeries(self):
@@ -261,7 +256,7 @@ class SliceTrackerSession(SessionBase):
     self.loadableList = {}
     self.seriesList = []
     self.alreadyLoadedSeries = {}
-    self._activeResult = None
+    self._currentResult = None
     self._currentSeries = None
 
   def initializeColorNodes(self):
@@ -314,7 +309,6 @@ class SliceTrackerSession(SessionBase):
   def clearData(self):
     self.resetAndInitializeMembers()
 
-  @logmethod(logging.INFO)
   def processDirectory(self):
     self.newCaseCreated = getattr(self, "newCaseCreated", False)
     if self.newCaseCreated:
@@ -571,7 +565,6 @@ class SliceTrackerSession(SessionBase):
     else:
       self.openSavedSession()
 
-  @logmethod(logging.INFO)
   def openSavedSession(self):
     self.load()
     if slicer.util.confirmYesNoDisplay("A %s session has been found for the selected case. Do you want to %s?" \
@@ -872,12 +865,11 @@ class SliceTrackerSession(SessionBase):
     if self._loading:
       return
     self.save()
-    # self.invokeEventForMostRecentEligibleSeries()
     self.invokeEvent(self.RegistrationStatusChangedEvent)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewRegistrationResultCreated(self, caller, event, callData):
-    self.activeResult = callData
+    self.currentResult = callData
 
   def skipAllUnregisteredPreviousSeries(self, series):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)

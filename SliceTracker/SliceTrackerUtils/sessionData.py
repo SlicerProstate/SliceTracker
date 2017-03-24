@@ -85,10 +85,11 @@ class SessionData(ModuleLogicMixin):
     result = self.getResult(series)
     return result if result else self.createResult(series)
 
-  def createResult(self, series):
+  def createResult(self, series, invokeEvent=True):
     assert series not in self.registrationResults.keys()
     self.registrationResults[series] = RegistrationResult(series)
-    self.invokeEvent(self.NewResultCreatedEvent, self.registrationResults[series].name)
+    if invokeEvent is True:
+      self.invokeEvent(self.NewResultCreatedEvent, series)
     return self.registrationResults[series]
 
   def load(self, filename):
@@ -133,7 +134,7 @@ class SessionData(ModuleLogicMixin):
     for jsonResult in data["results"]:
       name = jsonResult["name"]
       logging.debug("processing %s" % name)
-      result = self.createResult(name)
+      result = self.createResult(name, invokeEvent=False)
 
       # TODO: the following should not be here since it is widget depending
       # self.customProgressBar.visible = True

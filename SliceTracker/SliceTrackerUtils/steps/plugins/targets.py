@@ -218,7 +218,7 @@ class ZFrameGuidanceComputation(StepBase, ModuleLogicMixin):
   def calculateZFrameHoleAndDepth(self, index):
     targetPosition = self.getTargetPosition(self.targetList, index)
     (start, end, indexX, indexY, depth, inRange) = self.computeNearestPath(targetPosition)
-    logging.info("start:{}, end:{}, indexX:{}, indexY:{}, depth:{}, inRange:{}".format(start, end, indexX, indexY, depth, inRange))
+    logging.debug("start:{}, end:{}, indexX:{}, indexY:{}, depth:{}, inRange:{}".format(start, end, indexX, indexY, depth, inRange))
     self.needleStartEndPositions[index] = (start, end)
     self.computedHoles[index] = [indexX, indexY]
     self.computedDepth[index] = [inRange, round(depth/10, 1)]

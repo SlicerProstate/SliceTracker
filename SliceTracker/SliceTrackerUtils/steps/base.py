@@ -15,11 +15,11 @@ class StepBase(GeneralModuleMixin):
 
   @property
   def currentResult(self):
-    return self.session.activeResult
+    return self.session.currentResult
 
   @currentResult.setter
   def currentResult(self, value):
-    self.session.activeResult = value
+    self.session.currentResult = value
 
   def __init__(self):
     self.modulePath = self.getModulePath()
@@ -69,9 +69,11 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.invokeEvent(self.ActivatedEvent if self.active else self.DeactivatedEvent)
     if self.active:
       self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
+      self.session.addEventObserver(self.session.CurrentResultChangedEvent, self.onCurrentResultChanged)
       self.onActivation()
     else:
       self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
+      self.session.removeEventObserver(self.session.CurrentResultChangedEvent, self.onCurrentResultChanged)
       self.onDeactivation()
 
   def __init__(self):
@@ -104,6 +106,9 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
 
   def onDeactivation(self):
     raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
+
+  def onCurrentResultChanged(self, caller, event):
+    pass
 
   def setupSliceWidgets(self):
     self.createSliceWidgetClassMembers("Red")
@@ -143,7 +148,6 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   def resetViewSettingButtons(self):
     pass
 
-  @logmethod(logging.INFO)
   def onNewCaseStarted(self, caller, event):
     pass
 
@@ -162,7 +166,6 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   def onCurrentSeriesChanged(self, caller, event, callData=None):
     pass
 
-  @logmethod(logging.INFO)
   def onLoadingMetadataSuccessful(self, caller, event):
     pass
 
@@ -232,7 +235,6 @@ class SliceTrackerStep(SliceTrackerWidgetBase):
     self.parameterNode.SetAttribute("Name", self.NAME)
     super(SliceTrackerStep, self).__init__()
 
-  @logmethod(logging.INFO)
   def addPlugin(self, plugin):
     assert hasattr(plugin, "active"), "Plugin needs to be a subclass of %s" % SliceTrackerPlugin.__class__.__name__
     self._plugins.append(plugin)

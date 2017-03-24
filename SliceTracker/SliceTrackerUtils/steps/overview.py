@@ -137,31 +137,32 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
     self.session.currentSeries = selectedSeries
     if selectedSeries:
-      print "onIntraopSeriesSelectionChanged called"
       trackingPossible = self.session.isTrackingPossible(selectedSeries)
       self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
     self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries())
-      # TODO: self.updateLayoutButtons(trackingPossible, selectedSeries)
 
   def configureViewersForSelectedIntraopSeries(self, selectedSeries):
     if self.session.data.registrationResultWasApproved(selectedSeries) or \
             self.session.data.registrationResultWasRejected(selectedSeries):
       if self.getSetting("COVER_PROSTATE") in selectedSeries and not self.session.data.usePreopData:
-        self.setupRedSlicePreview(selectedSeries)
-        self.regResultsCollapsibleButton.show()
-        self.targetTablePlugin.currentTargets = None
+        result = self.session.data.getResult(selectedSeries)
+        self.currentResult = result.name if result else None
+        self.regResultsPlugin.onLayoutChanged()
+        self.regResultsCollapsibleButton.hide()
       else:
         self.currentResult = self.session.data.getApprovedOrLastResultForSeries(selectedSeries).name
-        self.layoutManager.setLayout(constants.LAYOUT_SIDE_BY_SIDE)
-        self.regResultsPlugin.onLayoutChanged()
         self.regResultsCollapsibleButton.show()
-        self.targetTablePlugin.currentTargets = self.currentResult.targets.approved if self.currentResult.approved \
-                                                else self.currentResult.targets.bSpline
+        self.regResultsPlugin.onLayoutChanged()
+      self.targetTablePlugin.currentTargets = self.currentResult.targets.approved if self.currentResult.approved \
+        else self.currentResult.targets.bSpline
     else:
-      self.currentResult = None
+      result = self.session.data.getResult(selectedSeries)
+      self.currentResult = result.name if result else None
+      self.regResultsPlugin.onLayoutChanged()
       self.regResultsCollapsibleButton.hide()
-      self.setupRedSlicePreview(selectedSeries)
+      if not self.session.data.registrationResultWasSkipped(selectedSeries):
+        self.regResultsPlugin.cleanup()
       self.targetTablePlugin.currentTargets = None
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
