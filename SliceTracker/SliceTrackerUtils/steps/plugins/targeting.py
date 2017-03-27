@@ -59,9 +59,10 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
 
   def onDeactivation(self):
     self.fiducialsWidget.reset()
+    self.removeSliceAnnotations()
 
   def onStartTargetingButtonClicked(self):
-    # TODO: add annotation in viewer for making mode visible to user
+    self.addSliceAnnotations()
     self.startTargetingButton.enabled = False
     self.fiducialsWidget.visible = True
     self.targetTablePlugin.visible = False
@@ -74,7 +75,22 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
     self.fiducialsWidget.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
     self.onTargetListModified()
 
+  def addSliceAnnotations(self):
+    self.removeSliceAnnotations()
+    widgets = [self.yellowWidget] if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE else \
+      [self.redWidget, self.yellowWidget, self.greenWidget]
+    for widget in widgets:
+      self.sliceAnnotations.append(SliceAnnotation(widget, "Targeting Mode", opacity=0.5, verticalAlign="top",
+                                                   horizontalAlign="center"))
+
+  def removeSliceAnnotations(self):
+    self.sliceAnnotations = getattr(self, "sliceAnnotations", [])
+    for annotation in self.sliceAnnotations:
+      annotation.remove()
+    self.sliceAnnotations = []
+
   def onFinishTargetingStepButtonClicked(self):
+    self.removeSliceAnnotations()
     self.fiducialsWidget.stopPlacing()
     self.startTargetingButton.enabled = True
     self.startTargetingButton.text = "Modify targets"
