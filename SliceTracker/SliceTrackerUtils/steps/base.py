@@ -79,6 +79,7 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   def __init__(self):
     qt.QWidget.__init__(self)
     StepBase.__init__(self)
+    self._plugins = []
     if self.LogicClass:
       self.logic = self.LogicClass()
     self.setLayout(qt.QGridLayout())
@@ -102,10 +103,10 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     NotImplementedError("This method needs to be implemented for %s" % self.NAME)
 
   def onActivation(self):
-    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
+    self._activatePlugins()
 
   def onDeactivation(self):
-    raise NotImplementedError("This method needs to be implemented for %s" % self.NAME)
+    self._deactivatePlugins()
 
   def onCurrentResultChanged(self, caller, event):
     pass
@@ -141,6 +142,25 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     if not all([l in constants.ALLOWED_LAYOUTS for l in layouts]):
       raise ValueError("Not all of the delivered layouts are allowed to be used in SliceTracker")
     self.invokeEvent(self.AvailableLayoutsChangedEvent, str(layouts))
+
+  def addPlugin(self, plugin):
+    assert hasattr(plugin, "active"), "Plugin needs to be a subclass of %s" % SliceTrackerPlugin.__class__.__name__
+    self._plugins.append(plugin)
+    plugin.addEventObserver(self.AvailableLayoutsChangedEvent, self.onPluginAvailableLayoutChanged)
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onPluginAvailableLayoutChanged(self, caller, event, callData):
+    self.invokeEvent(self.AvailableLayoutsChangedEvent, callData)
+
+  def _activatePlugins(self):
+    self.__setPluginsActivated(True)
+
+  def _deactivatePlugins(self):
+    self.__setPluginsActivated(False)
+
+  def __setPluginsActivated(self, activated):
+    for plugin in self._plugins:
+      plugin.active = activated
 
   def setupAdditionalViewSettingButtons(self):
     pass
@@ -231,34 +251,8 @@ class SliceTrackerStep(SliceTrackerWidgetBase):
 
   def __init__(self):
     self.viewSettingButtons = []
-    self._plugins = []
     self.parameterNode.SetAttribute("Name", self.NAME)
     super(SliceTrackerStep, self).__init__()
-
-  def addPlugin(self, plugin):
-    assert hasattr(plugin, "active"), "Plugin needs to be a subclass of %s" % SliceTrackerPlugin.__class__.__name__
-    self._plugins.append(plugin)
-    plugin.addEventObserver(self.AvailableLayoutsChangedEvent, self.onPluginAvailableLayoutChanged)
-
-  @vtk.calldata_type(vtk.VTK_STRING)
-  def onPluginAvailableLayoutChanged(self, caller, event, callData):
-    self.invokeEvent(self.AvailableLayoutsChangedEvent, callData)
-
-  def onActivation(self):
-    self._activatePlugins()
-
-  def onDeactivation(self):
-    self._deactivatePlugins()
-
-  def _activatePlugins(self):
-    self.__setPluginsActivated(True)
-
-  def _deactivatePlugins(self):
-    self.__setPluginsActivated(False)
-
-  def __setPluginsActivated(self, activated):
-    for plugin in self._plugins:
-      plugin.active = activated
 
   def __del__(self):
     self.removeEventObservers()

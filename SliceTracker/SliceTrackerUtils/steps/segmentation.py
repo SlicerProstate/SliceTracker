@@ -7,8 +7,9 @@ import vtk
 from Editor import EditorWidget
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from VolumeClipToLabel import VolumeClipToLabelWidget
-from SlicerProstateUtils.helpers import TargetCreationWidget, SliceAnnotation
+from SlicerProstateUtils.helpers import SliceAnnotation
 from SlicerProstateUtils.decorators import onModuleSelected
+from plugins.targeting import SliceTrackerTargetingPlugin
 from ..constants import SliceTrackerConstants
 
 
@@ -32,7 +33,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.resetAndInitialize()
 
   def resetAndInitialize(self):
-    self.retryMode = False
+    self.session.retryMode = False
 
   def setup(self):
     self.setupIcons()
@@ -42,7 +43,10 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       return slicer.util.warningDisplay("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and "
                                         "install VolumeClip.", "Missing Extension")
 
-    self.setupTargetingStepUIElements()
+    self.targetingPlugin = SliceTrackerTargetingPlugin()
+    self.addPlugin(self.targetingPlugin)
+
+    self.layout().addWidget(self.targetingPlugin)
     self.setupSegmentationUIElements()
 
   def setupSegmentationUIElements(self):
@@ -86,26 +90,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.editorWidget.setup()
     self.editorParameterNode = self.editUtil.getParameterNode()
 
-  def setupTargetingStepUIElements(self):
-    self.targetingGroupBox = qt.QGroupBox()
-    self.targetingGroupBoxLayout = qt.QFormLayout()
-    self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
-
-    self.fiducialsWidget = TargetCreationWidget(self.targetingGroupBoxLayout)
-    self.fiducialsWidget.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
-    self.startTargetingButton = self.createButton("Set targets", enabled=True,
-                                                  toolTip="Click this button to start setting targets")
-    self.finishTargetingButton = self.createButton("Done setting targets", enabled=False,
-                                                   toolTip="Click this button to continue after setting targets")
-
-    self.targetingGroupBoxLayout.addRow(self.createHLayout([self.startTargetingButton, self.finishTargetingButton]))
-    self.layout().addWidget(self.targetingGroupBox)
-
   def setupConnections(self):
     super(SliceTrackerSegmentationStep, self).setupConnections()
-    self.fiducialsWidget.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
-    self.startTargetingButton.clicked.connect(self.onStartTargetingButtonClicked)
-    self.finishTargetingButton.clicked.connect(self.onFinishTargetingStepButtonClicked)
     self.finishedSegmentationStepButton.clicked.connect(self.onFinishedStep)
 
   def onActivation(self):
@@ -113,7 +99,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.finishedSegmentationStepButton.enabled = False
     self.volumeClipToLabelWidget.logic.colorNode = self.session.mpReviewColorNode
     self.volumeClipToLabelWidget.onColorSelected(self.session.segmentedLabelValue)
-    self.startTargetingButton.enabled = not self.session.data.usePreopData
     self.session.fixedVolume = self.session.currentSeriesVolume
     if not self.session.fixedVolume:
       return
@@ -122,21 +107,20 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
                                                   self.onSegmentationFinished)
     self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationStartedEvent,
                                                   self.onSegmentationStarted)
-    if self.session.data.usePreopData or self.retryMode:
+    if self.session.data.usePreopData or self.session.retryMode:
       self.volumeClipToLabelWidget.quickSegmentationButton.click()
 
   def onDeactivation(self):
     super(SliceTrackerSegmentationStep, self).onDeactivation()
-    self.fiducialsWidget.reset()
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onInitiateSegmentation(self, caller, event, callData):
     self.resetAndInitialize()
-    self.retryMode = ast.literal_eval(callData)
+    self.session.retryMode = ast.literal_eval(callData)
     self.configureUIElements()
     if self.getSetting("COVER_PROSTATE") in self.session.currentSeries:
       if self.session.data.usePreopData:
-        if self.retryMode:
+        if self.session.retryMode:
           if not self.loadLatestCoverProstateResultData():
             self.loadInitialData()
         else:
@@ -153,7 +137,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.session.movingTargets = self.session.data.initialTargets
 
   def configureUIElements(self):
-    self.targetingGroupBox.visible = not self.session.data.usePreopData and not self.retryMode
     text = "Apply Registration"
     if self.getSetting("COVER_PROSTATE") in self.session.currentSeries and not self.session.data.usePreopData:
       text = "Finish"
@@ -181,8 +164,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
   def setupSideBySideSegmentationView(self):
     # TODO: red slice view should not be possible to set target
     coverProstate = self.session.data.getMostRecentApprovedCoverProstateRegistration()
-    redVolume = coverProstate.volumes.fixed if self.retryMode and coverProstate else self.session.data.initialVolume
-    redLabel = coverProstate.labels.fixed if self.retryMode and coverProstate else self.session.data.initialLabel
+    redVolume = coverProstate.volumes.fixed if self.session.retryMode and coverProstate else self.session.data.initialVolume
+    redLabel = coverProstate.labels.fixed if self.session.retryMode and coverProstate else self.session.data.initialLabel
 
     if redVolume and redLabel:
       self.redCompositeNode.SetBackgroundVolumeID(redVolume.GetID())
@@ -223,32 +206,15 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.disableEditorWidgetAndResetEditorTool()
     self.session.data.clippingModelNode = self.volumeClipToLabelWidget.logic.clippingModelNode
     self.session.data.inputMarkupNode = self.volumeClipToLabelWidget.logic.inputMarkupNode
-    if not self.session.data.usePreopData and not self.retryMode:
+    if not self.session.data.usePreopData and not self.session.retryMode:
       self.createCoverProstateRegistrationResultManually()
     else:
-      self.session.onInvokeRegistration(initial=True, retryMode=self.retryMode)
+      self.session.onInvokeRegistration(initial=True, retryMode=self.session.retryMode)
 
   def disableEditorWidgetAndResetEditorTool(self, enabledButton=False):
     self.editorWidgetParent.hide()
     self.editorParameterNode.SetParameter('effect', 'DefaultTool')
     self.editorWidgetButton.setEnabled(enabledButton)
-
-  def onStartTargetingButtonClicked(self):
-    # TODO: add annotation in viewer for making mode visible to user
-    self.startTargetingButton.enabled = False
-    self.setupFourUpView(self.session.currentSeriesVolume)
-    self.fiducialsWidget.createNewFiducialNode(name="IntraopTargets")
-    self.fiducialsWidget.startPlacing()
-
-  def onFinishTargetingStepButtonClicked(self):
-    self.fiducialsWidget.stopPlacing()
-    if not slicer.util.confirmYesNoDisplay("Are you done setting targets and renaming them?"):
-      return
-    self.startTargetingButton.enabled = False
-    self.finishTargetingButton.enabled = False
-    self.session.movingTargets = self.fiducialsWidget.currentNode
-    self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
-    self.session.setupPreopLoadedTargets()
 
   def createCoverProstateRegistrationResultManually(self):
     fixedVolume = self.session.currentSeriesVolume
@@ -262,10 +228,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     result.volumes.fixed = fixedVolume
     result.labels.fixed = self.session.fixedLabel
     result.approve(approvedRegistrationType)
-
-  def onTargetListModified(self, caller, event):
-    self.finishTargetingButton.enabled = self.fiducialsWidget.currentNode is not None and \
-                                         self.fiducialsWidget.currentNode.GetNumberOfFiducials()
 
   def setupSessionObservers(self):
     super(SliceTrackerSegmentationStep, self).setupSessionObservers()
@@ -285,14 +247,14 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     _, suffix = self.session.getRegistrationResultNameAndGeneratedSuffix(self.session.currentSeries)
     labelNode.SetName(labelNode.GetName() + suffix)
     self.session.fixedLabel = labelNode
-    if self.session.data.usePreopData or self.retryMode:
+    if self.session.data.usePreopData or self.session.retryMode:
       self.setAxialOrientation()
     self.openSegmentationComparisonStep()
     self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
 
   def openSegmentationComparisonStep(self):
     self.removeMissingPreopDataAnnotation()
-    if self.session.data.usePreopData or self.retryMode:
+    if self.session.data.usePreopData or self.session.retryMode:
       self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE)
       self.setupScreenForSegmentationComparison("red", self.session.movingVolume, self.session.movingLabel)
       self.setupScreenForSegmentationComparison("yellow", self.session.fixedVolume, self.session.fixedLabel)

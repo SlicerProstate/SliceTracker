@@ -50,7 +50,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.notifyUserAboutNewData = True
 
   def cleanup(self):
-    self.seriesModel.clear()
+    self._seriesModel.clear()
     self.trackTargetsButton.setEnabled(False)
 
   @logmethod(logging.DEBUG)
@@ -59,9 +59,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.skipIntraopSeriesButton.enabled = False
     self.updateIntraopSeriesSelectorTable()
     slicer.mrmlScene.Clear(0)
-    # if self.customStatusProgressBar:
-    #   self.customStatusProgressBar.reset()
-    #   self.customStatusProgressBar.hide()
 
   def setup(self):
     self.caseManagerPlugin = SliceTrackerCaseManagerPlugin()
@@ -102,8 +99,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setupIntraopSeriesSelector(self):
     self.intraopSeriesSelector = qt.QComboBox()
-    self.seriesModel = qt.QStandardItemModel()
-    self.intraopSeriesSelector.setModel(self.seriesModel)
+    self._seriesModel = qt.QStandardItemModel()
+    self.intraopSeriesSelector.setModel(self._seriesModel)
 
   def setupConnections(self):
     super(SliceTrackerOverviewStep, self).setupConnections()
@@ -286,10 +283,10 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def updateIntraopSeriesSelectorTable(self):
     self.intraopSeriesSelector.blockSignals(True)
     currentIndex = self.intraopSeriesSelector.currentIndex
-    self.seriesModel.clear()
+    self._seriesModel.clear()
     for series in self.session.seriesList:
       sItem = qt.QStandardItem(series)
-      self.seriesModel.appendRow(sItem)
+      self._seriesModel.appendRow(sItem)
       color = COLOR.YELLOW
       if self.session.data.registrationResultWasApproved(series) or \
         (self.getSetting("COVER_TEMPLATE") in series and
@@ -299,7 +296,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         color = COLOR.RED
       elif self.session.data.registrationResultWasRejected(series):
         color = COLOR.GRAY
-      self.seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
+      self._seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
     self.intraopSeriesSelector.setCurrentIndex(currentIndex)
     self.intraopSeriesSelector.blockSignals(False)
     self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText))
@@ -314,7 +311,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       substring = self.getSetting("COVER_TEMPLATE") \
         if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
     for item in list(reversed(range(len(self.session.seriesList)))):
-      series = self .seriesModel.item(item).text()
+      series = self ._seriesModel.item(item).text()
       if substring in series:
         if index != -1:
           if self.session.data.registrationResultWasApprovedOrRejected(series) or \

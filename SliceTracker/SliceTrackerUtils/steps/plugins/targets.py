@@ -359,12 +359,12 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
   def onActivation(self):
     self.moveTargetMode = False
     self.currentlyMovedTargetModelIndex = None
-    # self.connectKeyEventObservers()
+    self.connectKeyEventObservers()
 
   @logmethod(logging.INFO)
   def onDeactivation(self):
     self.disableTargetMovingMode()
-    # self.disconnectKeyEventObservers()
+    self.disconnectKeyEventObservers()
 
   def connectKeyEventObservers(self):
     interactors = [self.yellowSliceViewInteractor]
@@ -385,16 +385,16 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
       return
     if not self.targetTableModel.computeCursorDistances:
       self.targetTableModel.computeCursorDistances = True
-      # self.calcCursorTargetsDistance()
-      # self.crosshairButton.addEventObserver(self.crosshairButton.CursorPositionModifiedEvent,
-      #                                       self.calcCursorTargetsDistance)
+      self.calcCursorTargetsDistance()
+      self.crosshairButton.addEventObserver(self.crosshairButton.CursorPositionModifiedEvent,
+                                            self.calcCursorTargetsDistance)
 
   def onKeyReleasedEvent(self, caller, event):
     if not caller.GetKeySym() == 'd':
       return
     self.targetTableModel.computeCursorDistances = False
-    # self.crosshairButton.removeEventObserver(self.crosshairButton.CursorPositionModifiedEvent,
-    #                                          self.calcCursorTargetsDistance)
+    self.crosshairButton.removeEventObserver(self.crosshairButton.CursorPositionModifiedEvent,
+                                             self.calcCursorTargetsDistance)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def calcCursorTargetsDistance(self, caller, event, callData):
