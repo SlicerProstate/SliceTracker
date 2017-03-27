@@ -1,31 +1,20 @@
 import qt
 import vtk
-import slicer
 import logging
 from ...constants import SliceTrackerConstants as constants
-from ..base import SliceTrackerPlugin, SliceTrackerLogicBase, StepBase
+from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 
-from SlicerProstateUtils.decorators import logmethod, onModuleSelected
+from SlicerProstateUtils.decorators import logmethod
 from SlicerProstateUtils.helpers import SliceAnnotation
 from SlicerProstateUtils.helpers import TargetCreationWidget
 from targets import SliceTrackerTargetTablePlugin
 
 
-class SliceTrackerTargetingLogic(SliceTrackerLogicBase):
-
-  def __init__(self):
-    super(SliceTrackerTargetingLogic, self).__init__()
-
-  def cleanup(self):
-    pass
-
-
 class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
 
   NAME = "Targeting"
-  LogicClass = SliceTrackerTargetingLogic
-
-  TargetingFinishedEvent = vtk.vtkCommand.UserEvent + 335
+  TargetingStartedEvent = vtk.vtkCommand.UserEvent + 335
+  TargetingFinishedEvent = vtk.vtkCommand.UserEvent + 336
 
   def __init__(self):
     super(SliceTrackerTargetingPlugin, self).__init__()
@@ -74,6 +63,7 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
 
     self.fiducialsWidget.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
     self.onTargetListModified()
+    self.invokeEvent(self.TargetingStartedEvent)
 
   def addSliceAnnotations(self):
     self.removeSliceAnnotations()
@@ -96,7 +86,6 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
     self.startTargetingButton.text = "Modify targets"
     self.stopTargetingButton.enabled = False
     self.session.movingTargets = self.fiducialsWidget.currentNode
-    # self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
     self.session.setupPreopLoadedTargets()
 
     self.fiducialsWidget.visible = False

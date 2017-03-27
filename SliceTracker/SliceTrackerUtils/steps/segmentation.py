@@ -45,6 +45,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
     self.targetingPlugin = SliceTrackerTargetingPlugin()
     self.addPlugin(self.targetingPlugin)
+    self.targetingPlugin.addEventObserver(self.targetingPlugin.TargetingStartedEvent, self.onTargetingStarted)
+    self.targetingPlugin.addEventObserver(self.targetingPlugin.TargetingFinishedEvent, self.onTargetingFinished)
 
     self.layout().addWidget(self.targetingPlugin)
     self.setupSegmentationUIElements()
@@ -295,3 +297,10 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     else:
       return self.session.fixedVolume is not None and self.session.fixedLabel is not None \
              and self.session.movingTargets is not None
+
+  def onTargetingStarted(self, caller, event):
+    self.volumeClipGroupBox.enabled = False
+
+  def onTargetingFinished(self, caller, event):
+    self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
+    self.volumeClipGroupBox.enabled = True
