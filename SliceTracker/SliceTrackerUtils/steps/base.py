@@ -192,13 +192,15 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   def onPreprocessingSuccessful(self, caller, event):
     pass
 
-  def setupFourUpView(self, volume):
-    self.setBackgroundToVolumeID(volume.GetID())
+  def setupFourUpView(self, volume, clearLabels=True):
+    self.setBackgroundToVolumeID(volume.GetID(), clearLabels)
     self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
 
-  def setBackgroundToVolumeID(self, volumeID):
-    for compositeNode in self._compositeNodes:
-      compositeNode.SetLabelVolumeID(None)
+  def setBackgroundToVolumeID(self, volumeID, clearLabels=True):
+    for compositeNode, sliceNode in zip(self._compositeNodes, self._sliceNodes):
+      if clearLabels:
+        compositeNode.SetLabelVolumeID(None)
+      sliceNode.SetUseLabelOutline(True)
       compositeNode.SetForegroundVolumeID(None)
       compositeNode.SetBackgroundVolumeID(volumeID)
     self.setDefaultOrientation()

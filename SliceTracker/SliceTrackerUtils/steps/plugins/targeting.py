@@ -1,10 +1,8 @@
 import qt
 import vtk
-import logging
 from ...constants import SliceTrackerConstants as constants
-from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
+from ..base import SliceTrackerPlugin
 
-from SlicerProstateUtils.decorators import logmethod
 from SlicerProstateUtils.helpers import SliceAnnotation
 from SlicerProstateUtils.helpers import TargetCreationWidget
 from targets import SliceTrackerTargetTablePlugin
@@ -56,7 +54,7 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
     self.fiducialsWidget.visible = True
     self.targetTablePlugin.visible = False
 
-    self.setupFourUpView(self.session.currentSeriesVolume)
+    self.setupFourUpView(self.session.currentSeriesVolume, clearLabels=False)
     if not self.fiducialsWidget.currentNode:
       self.fiducialsWidget.createNewFiducialNode(name="IntraopTargets")
     self.fiducialsWidget.startPlacing()
@@ -95,7 +93,6 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
 
     self.invokeEvent(self.TargetingFinishedEvent)
 
-  @logmethod(logging.INFO)
   def onTargetListModified(self, caller=None, event=None):
     self.targetTablePlugin.currentTargets = self.fiducialsWidget.currentNode
     self.stopTargetingButton.enabled = self.isTargetListValid()

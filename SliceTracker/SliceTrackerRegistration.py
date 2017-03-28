@@ -193,8 +193,8 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
       initialTransform = slicer.mrmlScene.GetNodeByID(initialTransform)
 
     # TODO: label value should be delivered by parameterNode
-    self.dilateMask(result.fixedLabel, dilateValue=8)
-    self.doRigidRegistration(movingBinaryVolume=result.movingLabel,
+    self.dilateMask(result.labels.fixed, dilateValue=1)
+    self.doRigidRegistration(movingBinaryVolume=result.labels.moving,
                              initialTransform=initialTransform if initialTransform else None)
     self.doBSplineRegistration(initialTransform=result.transforms.rigid, useScaleVersor3D=True, useScaleSkewVersor3D=True,
                                useAffine=True)
