@@ -811,6 +811,9 @@ class SliceTrackerSession(SessionBase):
   def applyInitialRegistration(self, retryMode, progressCallback=None):
     if not retryMode:
       self.data.initializeRegistrationResults()
+
+    self.runBRAINSResample(inputVolume=self.fixedLabel, referenceVolume=self.fixedVolume,
+                           outputVolume=self.fixedLabel)
     self._runRegistration(self.fixedVolume, self.fixedLabel, self.movingVolume,
                           self.movingLabel, self.movingTargets, progressCallback)
 
@@ -850,10 +853,12 @@ class SliceTrackerSession(SessionBase):
       if targetNodes[regType]:
         slicer.mrmlScene.AddNode(targetNodes[regType])
 
-  def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform):
+  def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform=None):
 
     params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
-              'warpTransform': warpTransform, 'interpolationMode': 'NearestNeighbor', 'pixelType':'short'}
+              'interpolationMode': 'NearestNeighbor', 'pixelType':'short'}
+    if warpTransform:
+      params['warpTransform'] = warpTransform
 
     logging.debug('About to run BRAINSResample CLI with those params: %s' % params)
     slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
