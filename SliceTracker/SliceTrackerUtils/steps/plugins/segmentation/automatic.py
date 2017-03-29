@@ -17,12 +17,22 @@ class SliceTrackerAutomaticSegmentationLogic(SliceTrackerLogicBase):
   DeepLearningFinishedEvent = vtk.vtkCommand.UserEvent + 439
   DeepLearningStatusChangedEvent = vtk.vtkCommand.UserEvent + 440
 
-  INPUT_VOLUME_FILE_NAME = "prostate"
-  OUTPUT_LABEL_FILE_NAME = "prostate_label"
+  @property
+  def inputVolumeFileName(self):
+    if not self.inputVolume:
+      raise ValueError("InputVolume was not set!")
+    return "{}{}".format(self.replaceUnwantedCharacters(self.inputVolume.GetName()), FileExtension.NRRD)
+
+  @property
+  def outputLabelFileName(self):
+    if not self.inputVolume:
+      raise ValueError("InputVolume was not set!")
+    return "{}_label{}".format(self.replaceUnwantedCharacters(self.inputVolume.GetName()), FileExtension.NRRD)
 
   def __init__(self):
     super(SliceTrackerAutomaticSegmentationLogic, self).__init__()
     self.tempDir = os.path.join("/tmp", "SliceTracker")
+    self.inputVolume = None
     if not os.path.exists(self.tempDir):
       self.createDirectory(self.tempDir)
 
@@ -31,16 +41,17 @@ class SliceTrackerAutomaticSegmentationLogic(SliceTrackerLogicBase):
       shutil.rmtree(self.tempDir)
     except os.error:
       pass
+    self.inputVolume = None
 
   def run(self, inputVolume):
     if not inputVolume:
       raise ValueError("No input volume found for initializing prostate segmentation deep learning.")
 
-    self.saveNodeData(inputVolume, self.tempDir, FileExtension.NRRD, name=self.INPUT_VOLUME_FILE_NAME)
+    self.inputVolume = inputVolume
+    self.saveNodeData(inputVolume, self.tempDir, FileExtension.NRRD, overwrite=True)
     self.invokeEvent(self.DeepLearningStartedEvent)
     self._runDocker()
-    success, outputLabel = slicer.util.loadLabelVolume(os.path.join(self.tempDir,
-                                                                    self.OUTPUT_LABEL_FILE_NAME + FileExtension.NRRD),
+    success, outputLabel = slicer.util.loadLabelVolume(os.path.join(self.tempDir, self.outputLabelFileName),
                                                        returnNode=True)
     if success:
       self.smoothSegmentation(outputLabel)
@@ -53,10 +64,8 @@ class SliceTrackerAutomaticSegmentationLogic(SliceTrackerLogicBase):
     cmd.extend(('/usr/local/bin/docker', 'run', '-t', '-v')) # TODO: adapt for Windows
     cmd.append(self.tempDir + ':' + deepInferRemoteDirectory)
     cmd.append('deepinfer/prostate-segmenter-cpu')
-    cmd.extend(("--InputVolume", os.path.join(deepInferRemoteDirectory,
-                                              self.INPUT_VOLUME_FILE_NAME + FileExtension.NRRD)))
-    cmd.extend(("--OutputLabel", os.path.join(deepInferRemoteDirectory,
-                                              self.OUTPUT_LABEL_FILE_NAME + FileExtension.NRRD)))
+    cmd.extend(("--InputVolume", os.path.join(deepInferRemoteDirectory, self.inputVolumeFileName)))
+    cmd.extend(("--OutputLabel", os.path.join(deepInferRemoteDirectory, self.outputLabelFileName)))
     logging.debug(', '.join(map(str, cmd)).replace(",", ""))
     try:
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -89,6 +98,7 @@ class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase
 
   def cleanup(self):
     super(SliceTrackerAutomaticSegmentationPlugin, self).cleanup()
+    self.logic.cleanup()
 
   def setup(self):
     # TODO: button needed?
