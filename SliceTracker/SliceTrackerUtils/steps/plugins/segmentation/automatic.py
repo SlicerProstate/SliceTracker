@@ -101,7 +101,6 @@ class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase
     self.logic.cleanup()
 
   def setup(self):
-    # TODO: button needed?
     self.startAutomaticSegmentationButton = self.createButton("Run")
     # self.layout().addWidget(self.startAutomaticSegmentationButton)
 

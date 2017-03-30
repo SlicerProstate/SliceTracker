@@ -5,6 +5,8 @@ from ..base import SliceTrackerPlugin
 
 from SlicerProstateUtils.helpers import SliceAnnotation
 from SlicerProstateUtils.helpers import TargetCreationWidget
+from SlicerProstateUtils.decorators import logmethod
+import logging
 from targets import SliceTrackerTargetTablePlugin
 
 
@@ -17,18 +19,26 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
   def __init__(self):
     super(SliceTrackerTargetingPlugin, self).__init__()
 
+  def setupIcons(self):
+    self.setTargetsIcon = self.createIcon("icon-addFiducial.png")
+    self.modifyTargetsIcon = self.createIcon("icon-modifyFiducial.png")
+    self.finishIcon = self.createIcon("icon-apply.png")
+
   def setup(self):
     self.targetTablePlugin = SliceTrackerTargetTablePlugin()
     self.addPlugin(self.targetTablePlugin)
-    self.layout().addWidget(self.targetTablePlugin, 0, 0, 1, 2)
 
-    self.targetingGroupBox = qt.QGroupBox()
+    iconSize = qt.QSize(36, 36)
+    self.targetingGroupBox = qt.QGroupBox("Target Placement")
     self.targetingGroupBoxLayout = qt.QFormLayout()
     self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
     self.fiducialsWidget = TargetCreationWidget()
-    self.startTargetingButton = self.createButton("Place targets", enabled=True, toolTip="Start setting targets")
-    self.stopTargetingButton = self.createButton("Done", enabled=False, toolTip="Finish setting targets")
+    self.startTargetingButton = self.createButton("", enabled=True, icon=self.setTargetsIcon, iconSize=iconSize,
+                                                  toolTip="Start placing targets")
+    self.stopTargetingButton = self.createButton("", enabled=False, icon=self.finishIcon, iconSize=iconSize,
+                                                 toolTip="Finish placing targets")
     self.buttons = self.createHLayout([self.startTargetingButton, self.stopTargetingButton])
+    self.targetingGroupBoxLayout.addRow(self.targetTablePlugin)
     self.targetingGroupBoxLayout.addRow(self.fiducialsWidget)
     self.targetingGroupBoxLayout.addRow(self.buttons)
     self.layout().addWidget(self.targetingGroupBox, 1, 0, 2, 2)
@@ -37,12 +47,26 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
     self.startTargetingButton.clicked.connect(self.onStartTargetingButtonClicked)
     self.stopTargetingButton.clicked.connect(self.onFinishTargetingStepButtonClicked)
 
+  def noPreopAndTargetsWereNotDefined(self):
+    return (not self.session.data.usePreopData and not self.session.movingTargets) or self.session.retryMode
+
   def onActivation(self):
+    self.fiducialsWidget.visible = True
+    self.targetTablePlugin.visible = False
+
+    if not self.noPreopAndTargetsWereNotDefined():
+      self.fiducialsWidget.visible = False
+      self.fiducialsWidget.currentNode = self.session.movingTargets
+      self.targetTablePlugin.visible = True
+      self.targetTablePlugin.currentTargets = self.session.movingTargets
+
     self.startTargetingButton.enabled = True
-    self.startTargetingButton.text = "Place targets"
+    self.startTargetingButton.icon = self.setTargetsIcon \
+      if self.noPreopAndTargetsWereNotDefined() else self.modifyTargetsIcon
+    self.startTargetingButton.toolTip = "{} targets".format("Place" if self.noPreopAndTargetsWereNotDefined()
+                                                            else "Modify")
     self.stopTargetingButton.enabled = False
     self.targetingGroupBox.visible = not self.session.data.usePreopData and not self.session.retryMode
-    self.targetTablePlugin.visible = False
 
   def onDeactivation(self):
     self.fiducialsWidget.reset()
@@ -78,23 +102,24 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
     self.sliceAnnotations = []
 
   def onFinishTargetingStepButtonClicked(self):
+    self.fiducialsWidget.removeEventObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
     self.removeSliceAnnotations()
     self.fiducialsWidget.stopPlacing()
     self.startTargetingButton.enabled = True
-    self.startTargetingButton.text = "Modify targets"
+    self.startTargetingButton.icon = self.modifyTargetsIcon
+    self.startTargetingButton.toolTip = "Modify targets"
     self.stopTargetingButton.enabled = False
     self.session.movingTargets = self.fiducialsWidget.currentNode
     self.session.setupPreopLoadedTargets()
 
     self.fiducialsWidget.visible = False
     self.targetTablePlugin.visible = True
-
-    self.fiducialsWidget.removeEventObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
+    self.targetTablePlugin.currentTargets = self.fiducialsWidget.currentNode
 
     self.invokeEvent(self.TargetingFinishedEvent)
 
+  @logmethod(logging.INFO)
   def onTargetListModified(self, caller=None, event=None):
-    self.targetTablePlugin.currentTargets = self.fiducialsWidget.currentNode
     self.stopTargetingButton.enabled = self.isTargetListValid()
 
   def isTargetListValid(self):

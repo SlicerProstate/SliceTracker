@@ -80,6 +80,7 @@ class SliceTrackerSession(SessionBase):
   PreprocessingSuccessfulEvent = vtk.vtkCommand.UserEvent + 141
   FailedPreprocessedEvent = vtk.vtkCommand.UserEvent + 142
   LoadingMetadataSuccessfulEvent = vtk.vtkCommand.UserEvent + 143
+  SegmentationCancelledEvent = vtk.vtkCommand.UserEvent + 144
 
   CurrentSeriesChangedEvent = vtk.vtkCommand.UserEvent + 151
   RegistrationStatusChangedEvent = vtk.vtkCommand.UserEvent + 152
@@ -260,6 +261,7 @@ class SliceTrackerSession(SessionBase):
     self._currentSeries = None
     self.retryMode = False
     self.lastSelectedModelIndex = None
+    self.previousStep = None
 
   def initializeColorNodes(self):
     from mpReview import mpReviewLogic

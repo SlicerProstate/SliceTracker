@@ -69,15 +69,18 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   def setupButtons(self):
 
-    iconSize = qt.QSize(24, 24)
+    iconSize = qt.QSize(36, 36)
     self.quickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=iconSize,
-                                                     checkable=True, objectName="quickSegmentationButton", enabled=False)
-    self.applySegmentationButton = self.createButton("", icon=self.greenCheckIcon, iconSize=iconSize,
-                                                     enabled=False, objectName="applyButton")
-    self.cancelSegmentationButton = self.createButton("", icon=self.cancelSegmentationIcon,
-                                                      iconSize=iconSize, enabled=False, objectName="cancelButton")
-    self.undoButton = self.createButton("", icon=self.undoIcon, iconSize=iconSize, enabled=False, objectName="undoButton")
-    self.redoButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False, objectName="redoButton")
+                                                     checkable=True, objectName="quickSegmentationButton", enabled=False,
+                                                     toolTip="Start quick mode segmentation")
+    self.applySegmentationButton = self.createButton("", icon=self.applySegmentationIcon, iconSize=iconSize,
+                                                     enabled=False, objectName="applyButton", toolTip="Apply")
+    self.cancelSegmentationButton = self.createButton("", icon=self.cancelSegmentationIcon, iconSize=iconSize,
+                                                      enabled=False, objectName="cancelButton", toolTip="Cancel")
+    self.undoButton = self.createButton("", icon=self.undoIcon, iconSize=iconSize, enabled=False, toolTip="Undo",
+                                        objectName="undoButton")
+    self.redoButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False, toolTip="Redo",
+                                        objectName="redoButton")
 
     self.segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
                                               self.cancelSegmentationButton, self.undoButton, self.redoButton])
@@ -120,7 +123,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.layout.addWidget(self.selectorsGroupBox)
 
   def setupIcons(self):
-    self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
+    self.applySegmentationIcon = self.createIcon('icon-apply.png')
     self.quickSegmentationIcon = self.createIcon('icon-quickSegmentation.png')
     self.cancelSegmentationIcon = self.createIcon('icon-cancelSegmentation.png')
     self.undoIcon = self.createIcon('icon-undo.png')

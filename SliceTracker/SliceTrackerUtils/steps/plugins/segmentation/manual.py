@@ -1,4 +1,5 @@
 import qt
+import vtk
 import slicer
 from ...base import SliceTrackerPlugin
 from VolumeClipToLabel import VolumeClipToLabelWidget
@@ -13,6 +14,7 @@ from SlicerProstateUtils.decorators import onModuleSelected
 class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
 
   NAME = "ManualSegmentation"
+  SegmentationCancelledEvent = vtk.vtkCommand.UserEvent + 437
 
   @property
   def clippingModelNode(self):
@@ -35,7 +37,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
       return slicer.util.warningDisplay("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and "
                                         "install VolumeClip.", "Missing Extension")
 
-    iconSize = qt.QSize(24, 24)
+    iconSize = qt.QSize(36, 36)
     self.volumeClipGroupBox = qt.QWidget()
     self.volumeClipGroupBoxLayout = qt.QVBoxLayout()
     self.volumeClipGroupBox.setLayout(self.volumeClipGroupBoxLayout)
@@ -48,7 +50,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.editorWidgetButton = self.createButton("", icon=self.settingsIcon, toolTip="Show Label Editor",
                                                 enabled=False, iconSize=iconSize)
     self.setupEditorWidget()
-    self.segmentationGroupBox = qt.QGroupBox()
+    self.segmentationGroupBox = qt.QGroupBox("VolumeClip Segmentation")
     self.segmentationGroupBoxLayout = qt.QGridLayout()
     self.segmentationGroupBox.setLayout(self.segmentationGroupBoxLayout)
     self.volumeClipToLabelWidget.segmentationButtons.layout().addWidget(self.editorWidgetButton)
@@ -99,6 +101,8 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.volumeClipToLabelWidget.imageVolumeSelector.setCurrentNode(self.session.fixedVolume)
     self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
                                                   self.onSegmentationFinished)
+    self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
+                                                  lambda caller, event: self.invokeEvent(self.SegmentationCancelledEvent))
     self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationStartedEvent,
                                                   self.onSegmentationStarted)
     if (self.session.data.usePreopData or self.session.retryMode) and self.getSetting("Use_Deep_Learning") == "false":
@@ -107,6 +111,8 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
   def onDeactivation(self):
     self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
                                                      self.onSegmentationFinished)
+    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
+                                                     lambda caller, event: self.invokeEvent(self.SegmentationCancelledEvent))
     self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationStartedEvent,
                                                      self.onSegmentationStarted)
 

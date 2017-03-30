@@ -35,13 +35,14 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.session.retryMode = False
 
   def setupIcons(self):
-    self.greenCheckIcon = self.createIcon('icon-greenCheck.png')
+    self.finishStepIcon = self.createIcon('icon-start.png')
+    self.backIcon = self.createIcon('icon-back.png')
 
   def setup(self):
-    self.setupTargetingPlugin()
     self.setupManualSegmentationPlugin()
+    self.setupTargetingPlugin()
     self.setupAutomaticSegmentationPlugin()
-    self.setupFinishButton()
+    self.setupNavigationButtons()
 
   def setupTargetingPlugin(self):
     self.targetingPlugin = SliceTrackerTargetingPlugin()
@@ -54,6 +55,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.manualSegmentationPlugin = SliceTrackerManualSegmentationPlugin()
     self.manualSegmentationPlugin.addEventObserver(self.manualSegmentationPlugin.SegmentationStartedEvent,
                                                    self.onSegmentationStarted)
+    self.manualSegmentationPlugin.addEventObserver(self.manualSegmentationPlugin.SegmentationCancelledEvent,
+                                                   self.onSegmentationCancelled)
     self.manualSegmentationPlugin.addEventObserver(self.manualSegmentationPlugin.SegmentationFinishedEvent,
                                                    self.onSegmentationFinished)
     self.addPlugin(self.manualSegmentationPlugin)
@@ -62,28 +65,31 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
   def setupAutomaticSegmentationPlugin(self):
     self.automaticSegmentationPlugin = SliceTrackerAutomaticSegmentationPlugin()
     self.automaticSegmentationPlugin.addEventObserver(self.automaticSegmentationPlugin.SegmentationStartedEvent,
-                                                      self.onSegmentationStarted)
+                                                      self.onAutomaticSegmentationStarted)
     self.automaticSegmentationPlugin.addEventObserver(self.automaticSegmentationPlugin.SegmentationFinishedEvent,
-                                                      self.onSegmentationFinished)
+                                                      self.onAutomaticSegmentationFinished)
     self.addPlugin(self.automaticSegmentationPlugin)
     # self.layout().addWidget(self.automaticSegmentationPlugin)
 
-  def setupFinishButton(self):
-    iconSize = qt.QSize(24, 24)
-    self.finishedSegmentationStepButton = self.createButton("Apply Registration", icon=self.greenCheckIcon,
-                                                            iconSize=iconSize, toolTip="Run Registration.")
-    self.finishedSegmentationStepButton.setFixedHeight(45)
-    self.layout().addWidget(self.finishedSegmentationStepButton, 2, 0)
+  def setupNavigationButtons(self):
+    iconSize = qt.QSize(36, 36)
+    self.backButton = self.createButton("", icon=self.backIcon, iconSize=iconSize,
+                                        toolTip="Return to last step")
+    self.finishStepButton = self.createButton("", icon=self.finishStepIcon, iconSize=iconSize,
+                                              toolTip="Run Registration")
+    self.finishStepButton.setFixedHeight(45)
+    self.layout().addWidget(self.createHLayout([self.backButton, self.finishStepButton]))
 
   def setupConnections(self):
     super(SliceTrackerSegmentationStep, self).setupConnections()
-    self.finishedSegmentationStepButton.clicked.connect(self.onFinishedStep)
+    self.backButton.clicked.connect(self.onBackButtonClicked)
+    self.finishStepButton.clicked.connect(self.onFinishStepButtonClicked)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onInitiateSegmentation(self, caller, event, callData):
     self.resetAndInitialize()
     self.session.retryMode = ast.literal_eval(callData)
-    self.configureUIElements()
+    self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
     if self.getSetting("COVER_PROSTATE") in self.session.currentSeries:
       if self.session.data.usePreopData:
         if self.session.retryMode:
@@ -97,20 +103,13 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       self.loadLatestCoverProstateResultData()
     self.active = True
 
-  def configureUIElements(self):
-    text = "Apply Registration"
-    if self.getSetting("COVER_PROSTATE") in self.session.currentSeries and not self.session.data.usePreopData:
-      text = "Finish"
-    self.finishedSegmentationStepButton.text = text
-    self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
-
   def loadInitialData(self):
     self.session.movingLabel = self.session.data.initialLabel
     self.session.movingVolume = self.session.data.initialVolume
     self.session.movingTargets = self.session.data.initialTargets
 
   def onActivation(self):
-    self.finishedSegmentationStepButton.enabled = False
+    self.finishStepButton.enabled = False
     self.session.fixedVolume = self.session.currentSeriesVolume
     if not self.session.fixedVolume:
       return
@@ -169,7 +168,13 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       return True
     return False
 
-  def onFinishedStep(self):
+  def onBackButtonClicked(self):
+    if self.session.retryMode:
+      self.session.retryMode = False
+    if self.session.previousStep:
+      self.session.previousStep.active = True
+
+  def onFinishStepButtonClicked(self):
     self.manualSegmentationPlugin.disableEditorWidgetButton()
     self.session.data.clippingModelNode = self.manualSegmentationPlugin.clippingModelNode
     self.session.data.inputMarkupNode = self.manualSegmentationPlugin.inputMarkupNode
@@ -199,9 +204,24 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     super(SliceTrackerSegmentationStep, self).removeSessionEventObservers()
     self.session.removeEventObserver(self.session.InitiateSegmentationEvent, self.onInitiateSegmentation)
 
+  def onAutomaticSegmentationStarted(self, caller, event):
+    self.manualSegmentationPlugin.enabled = False
+    self.onSegmentationStarted(caller, event)
+
   def onSegmentationStarted(self, caller, event):
     self.targetingPlugin.enabled = False
-    self.finishedSegmentationStepButton.enabled = False
+    self.backButton.enabled = False
+    self.finishStepButton.enabled = False
+
+  def onSegmentationCancelled(self, caller, event):
+    self.backButton.enabled = True
+    self.targetingPlugin.enabled = True
+    self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onAutomaticSegmentationFinished(self, caller, event, labelNode):
+    self.manualSegmentationPlugin.enabled = True
+    self.onSegmentationFinished(caller, event, labelNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def onSegmentationFinished(self, caller, event, labelNode):
@@ -211,7 +231,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     if self.session.data.usePreopData or self.session.retryMode:
       self.setAxialOrientation()
     self.openSegmentationComparisonStep()
-    self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
+    self.backButton.enabled = True
+    self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
 
   def openSegmentationComparisonStep(self):
     self.removeMissingPreopDataAnnotation()
@@ -260,7 +281,9 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   def onTargetingStarted(self, caller, event):
     self.manualSegmentationPlugin.enabled = False
+    self.backButton.enabled = False
 
   def onTargetingFinished(self, caller, event):
-    self.finishedSegmentationStepButton.setEnabled(1 if self.inputsAreSet() else 0)
+    self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
     self.manualSegmentationPlugin.enabled = True
+    self.backButton.enabled = True

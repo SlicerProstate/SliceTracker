@@ -26,8 +26,12 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
     super(SliceTrackerEvaluationStep, self).__init__()
 
+  def setupIcons(self):
+    self.retryIcon = self.createIcon("icon-retry.png")
+    self.approveIcon = self.createIcon("icon-thumbsUp.png")
+    self.rejectIcon = self.createIcon("icon-thumbsDown.png")
+
   def setup(self):
-    self.setupIcons()
     self.registrationEvaluationGroupBox = qt.QGroupBox()
     self.registrationEvaluationGroupBoxLayout = qt.QGridLayout()
     self.registrationEvaluationGroupBox.setLayout(self.registrationEvaluationGroupBoxLayout)
@@ -48,9 +52,12 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.layout().addWidget(self.registrationEvaluationGroupBox)
 
   def setupRegistrationValidationButtons(self):
-    self.approveRegistrationResultButton = self.createButton("Approve", toolTip="Approve")
-    self.retryRegistrationButton = self.createButton("Retry", toolTip="Retry")
-    self.rejectRegistrationResultButton = self.createButton("Reject", toolTip="Reject")
+    iconSize = qt.QSize(36, 36)
+    self.approveRegistrationResultButton = self.createButton("", icon=self.approveIcon, iconSize=iconSize,
+                                                             toolTip="Approve")
+    self.retryRegistrationButton = self.createButton("", icon=self.retryIcon, iconSize=iconSize, toolTip="Retry")
+    self.rejectRegistrationResultButton = self.createButton("", icon=self.rejectIcon, iconSize=iconSize,
+                                                            toolTip="Reject")
     self.registrationEvaluationButtonsGroupBox = self.createHLayout([self.retryRegistrationButton,
                                                                      self.approveRegistrationResultButton,
                                                                      self.rejectRegistrationResultButton])

@@ -51,6 +51,7 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
   ActivatedEvent = vtk.vtkCommand.UserEvent + 150
   DeactivatedEvent = vtk.vtkCommand.UserEvent + 151
   AvailableLayoutsChangedEvent = vtk.vtkCommand.UserEvent + 152
+  LayoutClass = qt.QGridLayout
 
   NAME = None
   LogicClass = None
@@ -82,7 +83,7 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     self._plugins = []
     if self.LogicClass:
       self.logic = self.LogicClass()
-    self.setLayout(qt.QGridLayout())
+    self.setLayout(self.LayoutClass())
     self.setupIcons()
     self.setup()
     self.setupAdditionalViewSettingButtons()

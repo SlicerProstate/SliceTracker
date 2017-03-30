@@ -340,6 +340,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
 
   NAME = "ZFrame Registration"
   LogicClass = SliceTrackerZFrameRegistrationStepLogic
+  LayoutClass = qt.QVBoxLayout
 
   def __init__(self):
     self.annotationLogic = slicer.modules.annotations.logic()
@@ -362,39 +363,41 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.zFrameIcon = self.createIcon('icon-zframe.png')
     self.needleIcon = self.createIcon('icon-needle.png')
     self.templateIcon = self.createIcon('icon-template.png')
+    self.startIcon = self.createIcon('icon-start.png')
+    self.approveIcon = self.createIcon("icon-apply.png")
+    self.retryIcon = self.createIcon("icon-retry.png")
 
   def setup(self):
-    self.zFrameRegistrationGroupBox = qt.QGroupBox()
-    self.zFrameRegistrationGroupBoxGroupBoxLayout = qt.QGridLayout()
-    self.zFrameRegistrationGroupBox.setLayout(self.zFrameRegistrationGroupBoxGroupBoxLayout)
+    self.setupManualIndexesGroupBox()
+    self.setupActionButtons()
 
-    self.applyZFrameRegistrationButton = self.createButton("Run ZFrame Registration", enabled=False)
+    self.layout().addWidget(self.zFrameRegistrationManualIndexesGroupBox)
+    self.layout().addWidget(self.createHLayout([self.runZFrameRegistrationButton, self.retryZFrameRegistrationButton,
+                                                self.approveZFrameRegistrationButton]))
+    self.layout().addStretch(1)
 
+  def setupManualIndexesGroupBox(self):
     self.zFrameRegistrationManualIndexesGroupBox = qt.QGroupBox("Use manual start/end indexes")
     self.zFrameRegistrationManualIndexesGroupBox.setCheckable(True)
     self.zFrameRegistrationManualIndexesGroupBoxLayout = qt.QGridLayout()
     self.zFrameRegistrationManualIndexesGroupBox.setLayout(self.zFrameRegistrationManualIndexesGroupBoxLayout)
     self.zFrameRegistrationManualIndexesGroupBox.checked = False
-
     self.zFrameRegistrationStartIndex = qt.QSpinBox()
     self.zFrameRegistrationEndIndex = qt.QSpinBox()
-
     hBox = self.createHLayout([qt.QLabel("start"), self.zFrameRegistrationStartIndex,
-                               qt.QLabel("end"),self.zFrameRegistrationEndIndex])
+                               qt.QLabel("end"), self.zFrameRegistrationEndIndex])
     self.zFrameRegistrationManualIndexesGroupBoxLayout.addWidget(hBox, 1, 1, qt.Qt.AlignRight)
 
-    self.approveZFrameRegistrationButton = self.createButton("Confirm registration accuracy",
-                                                             enabled=self.zFrameRegistrationClass is LineMarkerRegistration)
-    self.retryZFrameRegistrationButton = self.createButton("Reset", enabled=False,
-                                                           visible=self.zFrameRegistrationClass is OpenSourceZFrameRegistration)
-
-    buttons = self.createVLayout([self.applyZFrameRegistrationButton, self.approveZFrameRegistrationButton,
-                                  self.retryZFrameRegistrationButton])
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.addWidget(self.createHLayout([buttons,
-                                                                                self.zFrameRegistrationManualIndexesGroupBox]))
-
-    self.zFrameRegistrationGroupBoxGroupBoxLayout.setRowStretch(1, 1)
-    self.layout().addWidget(self.zFrameRegistrationGroupBox)
+  def setupActionButtons(self):
+    iconSize = qt.QSize(36, 36)
+    self.runZFrameRegistrationButton = self.createButton("", icon=self.startIcon, iconSize=iconSize, enabled=False,
+                                                         toolTip="Run ZFrame Registration")
+    self.approveZFrameRegistrationButton = self.createButton("", icon=self.approveIcon, iconSize=iconSize,
+                                                             enabled=self.zFrameRegistrationClass is LineMarkerRegistration,
+                                                             toolTip="Confirm registration accuracy", )
+    self.retryZFrameRegistrationButton = self.createButton("", icon=self.retryIcon, iconSize=iconSize, enabled=False,
+                                                           visible=self.zFrameRegistrationClass is OpenSourceZFrameRegistration,
+                                                           toolTip="Reset")
 
   def setupAdditionalViewSettingButtons(self):
     iconSize = qt.QSize(24, 24)
@@ -407,7 +410,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
   def setupConnections(self):
     self.retryZFrameRegistrationButton.clicked.connect(self.onRetryZFrameRegistrationButtonClicked)
     self.approveZFrameRegistrationButton.clicked.connect(self.onApproveZFrameRegistrationButtonClicked)
-    self.applyZFrameRegistrationButton.clicked.connect(self.onApplyZFrameRegistrationButtonClicked)
+    self.runZFrameRegistrationButton.clicked.connect(self.onApplyZFrameRegistrationButtonClicked)
 
     self.showZFrameModelButton.connect('toggled(bool)', self.onShowZFrameModelToggled)
     self.showTemplateButton.connect('toggled(bool)', self.onShowZFrameTemplateToggled)
@@ -492,7 +495,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       self.addZFrameInstructions()
 
   def resetZFrameRegistration(self):
-    self.applyZFrameRegistrationButton.enabled = False
+    self.runZFrameRegistrationButton.enabled = False
     self.approveZFrameRegistrationButton.enabled = False
     self.retryZFrameRegistrationButton.enabled = False
 
@@ -509,7 +512,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       if isinstance(node, slicer.vtkMRMLAnnotationROINode):
         self.removeROIObserver()
         self.coverTemplateROI = node
-        self.applyZFrameRegistrationButton.enabled = self.isRegistrationPossible()
+        self.runZFrameRegistrationButton.enabled = self.isRegistrationPossible()
 
     if self.roiObserverTag:
       self.removeROIObserver()

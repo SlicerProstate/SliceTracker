@@ -38,10 +38,17 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-new.png
   Resources/Icons/icon-open.png
   Resources/Icons/icon-close.png
+  Resources/Icons/icon-addFiducial.png
+  Resources/Icons/icon-modifyFiducial.png
+  Resources/Icons/icon-back.png
+  Resources/Icons/icon-start.png
+  Resources/Icons/icon-retry.png
+  Resources/Icons/icon-thumbsUp.png
+  Resources/Icons/icon-thumbsDown.png
   Resources/Icons/icon-complete.png
   Resources/Icons/icon-redo.png
   Resources/Icons/icon-undo.png
-  Resources/Icons/icon-greenCheck.png
+  Resources/Icons/icon-apply.png
   Resources/Icons/icon-newImageData.png
   Resources/Icons/icon-quickSegmentation.png
   Resources/Icons/icon-settings.png

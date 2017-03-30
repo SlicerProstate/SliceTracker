@@ -90,7 +90,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.textInfoIcon = self.createIcon('icon-text-info.png')
 
   def setupPatientWatchBox(self):
-    WatchBoxAttribute.TRUNCATE_LENGTH = 15
+    WatchBoxAttribute.TRUNCATE_LENGTH = 20
     self.patientWatchBoxInformation = [WatchBoxAttribute('PatientName', 'Name: ', DICOMTAGS.PATIENT_NAME, masked=self.demoMode),
                                        WatchBoxAttribute('PatientID', 'PID: ', DICOMTAGS.PATIENT_ID, masked=self.demoMode),
                                        WatchBoxAttribute('DOB', 'DOB: ', DICOMTAGS.PATIENT_BIRTH_DATE, masked=self.demoMode),
@@ -216,8 +216,11 @@ class SliceTrackerTabWidget(qt.QTabWidget, ModuleWidgetMixin):
     if index is not None:
       self.setCurrentIndex(index)
 
+  @logmethod(logging.DEBUG)
   def onCurrentTabChanged(self, index):
     for idx, step in enumerate(self.session.steps):
       if index != idx:
+        if step.active:
+          self.session.previousStep = step
         step.active = False
     self.session.steps[index].active = True
