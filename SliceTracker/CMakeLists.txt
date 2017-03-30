@@ -12,6 +12,7 @@ set(MODULE_PYTHON_SCRIPTS
   SliceTrackerUtils/steps/plugins/results.py
   SliceTrackerUtils/steps/plugins/targets.py
   SliceTrackerUtils/steps/plugins/targeting.py
+  SliceTrackerUtils/steps/plugins/needle.py
   SliceTrackerUtils/steps/plugins/segmentation/__init__.py
   SliceTrackerUtils/steps/plugins/segmentation/base.py
   SliceTrackerUtils/steps/plugins/segmentation/manual.py
