@@ -286,6 +286,15 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
   LogicClass = SliceTrackerTargetTableLogic
 
   @property
+  def lastSelectedModelIndex(self):
+    return self.session.lastSelectedModelIndex
+
+  @lastSelectedModelIndex.setter
+  def lastSelectedModelIndex(self, modelIndex):
+    assert self.currentTargets is not None
+    self.session.lastSelectedModelIndex = modelIndex
+
+  @property
   def movingEnabled(self):
     self._movingEnabled = getattr(self, "_movingEnabled", False)
     return self._movingEnabled
@@ -317,6 +326,8 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
       if coverProstate:
         self.targetTableModel.coverProstateTargetList = coverProstate.targets.approved
     self.targetTable.enabled = targets is not None
+    if self.currentTargets:
+      self.onTargetSelectionChanged()
 
   def __init__(self, **kwargs):
     super(SliceTrackerTargetTablePlugin, self).__init__()
@@ -360,6 +371,8 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.moveTargetMode = False
     self.currentlyMovedTargetModelIndex = None
     self.connectKeyEventObservers()
+    if self.currentTargets:
+      self.onTargetSelectionChanged()
 
   @logmethod(logging.INFO)
   def onDeactivation(self):
@@ -410,8 +423,6 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.targetTableModel.cursorPosition = ras
 
   def onTargetSelectionChanged(self, modelIndex=None):
-
-    # TODO: think about current targets
     # onCurrentResultSelected event
     if not modelIndex:
       self.getAndSelectTargetFromTable()

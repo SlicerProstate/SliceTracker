@@ -259,6 +259,7 @@ class SliceTrackerSession(SessionBase):
     self._currentResult = None
     self._currentSeries = None
     self.retryMode = False
+    self.lastSelectedModelIndex = None
 
   def initializeColorNodes(self):
     from mpReview import mpReviewLogic
