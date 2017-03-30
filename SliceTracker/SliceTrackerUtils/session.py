@@ -511,8 +511,10 @@ class SliceTrackerSession(SessionBase):
     for series in self.seriesList:
       currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
       if currentSeriesNumber == seriesNumber:
-        # TODO: remove files from filesystem self.loadableList[series] all files
         self.seriesList.remove(series)
+        for seriesFile in self.loadableList[series]:
+          logging.debug("removing {} from filesystem".format(seriesFile))
+          os.remove(seriesFile)
         del self.loadableList[series]
 
   def makeSeriesNumberDescription(self, dcmFile):
