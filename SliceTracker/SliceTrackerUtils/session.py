@@ -889,6 +889,7 @@ class SliceTrackerSession(SessionBase):
 
   @logmethod(logging.INFO)
   def onRegistrationResultStatusChanged(self, caller, event):
+    self.skipAllUnregisteredPreviousSeries(self.currentResult.name)
     self._loading = getattr(self, "_loading", None)
     if self._loading:
       return
@@ -904,7 +905,7 @@ class SliceTrackerSession(SessionBase):
     for series in [series for series in self.seriesList if not self.getSetting("COVER_TEMPLATE") in series]:
       currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
       if currentSeriesNumber < selectedSeriesNumber and self.isTrackingPossible(series):
-        results = self.registrationResults.getResultsBySeriesNumber(currentSeriesNumber)
+        results = self.data.getResultsBySeriesNumber(currentSeriesNumber)
         if len(results) == 0:
           self.skipSeries(series)
       elif currentSeriesNumber >= selectedSeriesNumber:
