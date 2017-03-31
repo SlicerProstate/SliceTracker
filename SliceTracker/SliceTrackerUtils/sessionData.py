@@ -72,6 +72,7 @@ class SessionData(ModuleLogicMixin):
     self.initialTargetsPath = None
 
     self.zFrameTransform = None
+    self.zFrameVolume = None
 
     self._savedRegistrationResults = []
     self.initializeRegistrationResults()
@@ -121,8 +122,12 @@ class SessionData(ModuleLogicMixin):
                                                       data["initialTargets"], slicer.util.loadMarkupsFiducialList)
         self.initialTargetsPath = os.path.join(directory, data["initialTargets"])
 
-      if "zFrameTransform" in data.keys():
-        self.zFrameTransform = self._loadOrGetFileData(directory, data["zFrameTransform"], slicer.util.loadTransform)
+      if "zFrameRegistration" in data.keys():
+        zFrameRegistration = data["zFrameRegistration"]
+        self.zFrameTransform = self._loadOrGetFileData(directory, zFrameRegistration["transform"],
+                                                       slicer.util.loadTransform)
+        self.zFrameVolume = self._loadOrGetFileData(directory, zFrameRegistration["volume"],
+                                                       slicer.util.loadVolume)
 
       if "initialVolume" in data.keys():
         self.initialVolume = self._loadOrGetFileData(directory, data["initialVolume"], slicer.util.loadVolume)
@@ -236,10 +241,14 @@ class SessionData(ModuleLogicMixin):
       self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
       return name + FileExtension.NRRD
 
-    def saveZFrameTransformation():
+    def saveZFrameTransformationAndVolume():
+      zFrameData = {}
       success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5, overwrite=True)
+      zFrameData["transform"] = name + FileExtension.H5
       self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-      return name + FileExtension.H5
+      success, name = self.saveNodeData(self.zFrameVolume, outputDir, FileExtension.NRRD, overwrite=True)
+      zFrameData["volume"] = name + FileExtension.NRRD
+      return zFrameData
 
     def createResultsList():
       results = []
@@ -269,8 +278,8 @@ class SessionData(ModuleLogicMixin):
 
     addProcedureEvents()
 
-    if self.zFrameTransform:
-      data["zFrameTransform"] = saveZFrameTransformation() # TODO: filename
+    if self.zFrameTransform and self.zFrameVolume:
+      data["zFrameRegistration"] = saveZFrameTransformationAndVolume()
 
     if self.initialTargets:
       data["initialTargets"] = saveInitialTargets()

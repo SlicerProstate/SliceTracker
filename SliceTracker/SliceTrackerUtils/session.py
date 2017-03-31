@@ -127,6 +127,15 @@ class SliceTrackerSession(SessionBase):
     return os.path.join(self.directory, "SliceTrackerOutputs")
 
   @property
+  def approvedCoverTemplate(self):
+    return self.data.zFrameVolume
+
+  @approvedCoverTemplate.setter
+  def approvedCoverTemplate(self, volume):
+    self.data.zFrameVolume = volume
+    self.zFrameRegistrationSuccessful = volume is not None
+
+  @property
   def zFrameRegistrationSuccessful(self):
     self._zFrameRegistrationSuccessful = getattr(self, "_zFrameRegistrationSuccessful", None)
     return self.data.zFrameTransform is not None and self._zFrameRegistrationSuccessful
@@ -747,9 +756,19 @@ class SliceTrackerSession(SessionBase):
         return self.data.getMostRecentApprovedCoverProstateRegistration()
       elif self.getSetting("COVER_PROSTATE") in series:
         return self.zFrameRegistrationSuccessful
-      elif self.getSetting("COVER_TEMPLATE") in series:
-        return not self.zFrameRegistrationSuccessful # TODO: Think about this
+      elif self.isCoverTemplateTrackable(series):
+        return True
     return False
+
+  def isCoverTemplateTrackable(self, series):
+    if not self.getSetting("COVER_TEMPLATE") in series:
+      return False
+    if not self.approvedCoverTemplate:
+      return True
+    currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
+    vName = self.approvedCoverTemplate.GetName()
+    approvedSeriesNumber = int(vName.split(":" if vName.find(":") > -1 else "-")[0])
+    return currentSeriesNumber > approvedSeriesNumber
 
   def isInGeneralTrackable(self, series):
     return self.isAnyListItemInString(series, [self.getSetting("COVER_TEMPLATE"), self.getSetting("COVER_PROSTATE"),

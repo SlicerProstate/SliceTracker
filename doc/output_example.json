@@ -3,7 +3,10 @@
   "biasCorrected": true,
   "initialVolume": "VOLUME-PREOP-N4.nrrd",
   "initialTargets": "PreopTargets.fcsv",
-  "zFrameTransform": "2-ZFrameTransform.h5",
+  "zFrameRegistration": {
+    "volume": "2-CoverTemplate.nrrd",
+    "transform": "2-ZFrameTransform.h5"
+  },
   "procedureEvents": {
     "caseStarted": "2017-03-07T15:23:20.38Z",
     "caseClosed": [

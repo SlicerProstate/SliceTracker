@@ -54,8 +54,8 @@ class SliceTrackerAutomaticSegmentationLogic(SliceTrackerLogicBase):
     success, outputLabel = slicer.util.loadLabelVolume(os.path.join(self.tempDir, self.outputLabelFileName),
                                                        returnNode=True)
     if success:
-      self.smoothSegmentation(outputLabel)
       self.dilateMask(outputLabel)
+      self.smoothSegmentation(outputLabel)
       self.invokeEvent(self.DeepLearningFinishedEvent, outputLabel)
 
   def _runDocker(self):

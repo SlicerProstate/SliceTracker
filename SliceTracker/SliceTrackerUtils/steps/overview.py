@@ -288,9 +288,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       sItem = qt.QStandardItem(series)
       self._seriesModel.appendRow(sItem)
       color = COLOR.YELLOW
-      if self.session.data.registrationResultWasApproved(series) or \
-        (self.getSetting("COVER_TEMPLATE") in series and
-           self.session.zFrameRegistrationSuccessful):
+      if self.session.data.registrationResultWasApproved(series) or not self.session.isCoverTemplateTrackable(series):
         color = COLOR.GREEN
       elif self.session.data.registrationResultWasSkipped(series):
         color = COLOR.RED

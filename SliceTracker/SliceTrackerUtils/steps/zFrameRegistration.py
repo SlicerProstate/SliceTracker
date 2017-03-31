@@ -3,6 +3,7 @@ import qt, vtk
 import csv, re, numpy
 import logging
 import slicer
+import ast
 
 import SimpleITK as sitk
 import sitkUtils
@@ -449,14 +450,27 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
 
   def onInitiateZFrameCalibration(self, caller, event):
     self.active = True
-
-    templateVolume = self.session.currentSeriesVolume
-    if self.templateVolume and templateVolume is not self.templateVolume:
-      if not slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one for "
-                                             "calibration?" % self.getSetting("COVER_TEMPLATE")):
-        return
-    self.templateVolume = templateVolume
+    self.templateVolume = self.session.currentSeriesVolume
     self.initiateZFrameRegistrationStep()
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onNewImageSeriesReceived(self, caller, event, callData):
+    # TODO: control here to automatically activate the step
+    if not self.active:
+      return
+    newImageSeries = ast.literal_eval(callData)
+    for series in reversed(newImageSeries):
+      if self.getSetting("COVER_TEMPLATE") in series:
+        if self.templateVolume and series != self.templateVolume.GetName():
+          if not slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one for "
+                                                 "calibration?" % self.getSetting("COVER_TEMPLATE")):
+            return
+        self.session.currentSeries = series
+        templateVolume = self.session.currentSeriesVolume
+        self.removeZFrameInstructionAnnotation()
+        self.templateVolume = templateVolume
+        self.initiateZFrameRegistrationStep()
+        return
 
   # @vtk.calldata_type(vtk.VTK_STRING)
   # def onCurrentSeriesChanged(self, caller, event, callData=None):
@@ -529,9 +543,11 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     mrmlScene = self.annotationLogic.GetMRMLScene()
     selectionNode = mrmlScene.GetNthNodeByClass(0, "vtkMRMLSelectionNode")
     selectionNode.SetReferenceActivePlaceNodeClassName("vtkMRMLAnnotationROINode")
+    # self.annotationLogic.StopPlaceMode(False) # BUG: http://na-mic.org/Mantis/view.php?id=4355
     self.annotationLogic.StartPlaceMode(False)
 
   def addZFrameInstructions(self, step=1):
+    self.removeZFrameInstructionAnnotation()
     self.zFrameStep = step
     text = SliceTrackerConstants.ZFrame_INSTRUCTION_STEPS[self.zFrameStep]
     self.zFrameInstructionAnnotation = SliceAnnotation(self.redWidget, text, yPos=55, horizontalAlign="center",
@@ -605,7 +621,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.redSliceNode.SetSliceVisible(False)
     if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
       self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
-    self.session.zFrameRegistrationSuccessful = True
+    self.session.approvedCoverTemplate = self.templateVolume
 
   def onRetryZFrameRegistrationButtonClicked(self):
     self.removeZFrameInstructionAnnotation()

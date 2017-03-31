@@ -17,10 +17,17 @@
     "biasCorrected": { "type": "boolean" },
     "initialVolume": { "type": "string" },
     "initialTargets": { "type": "string" },
-    "zFrameTransform": { "$ref": "#/definitions/TRANSFORM_FILE" },
+    "zFrameRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "volume": { "$ref": "#/definitions/NRRD_FILE" },
+        "transform": { "$ref": "#/definitions/TRANSFORM_FILE" }
+      }, "require": ["volume", "transform"]
+    },
     "results": { "$ref": "#/definitions/RESULTS" }
   },
-  "required": ["procedureEvents", "usedPreopData", "initialVolume", "zFrameTransform", "results"],
+  "required": ["procedureEvents", "usedPreopData", "initialVolume", "zFrameRegistration", "results"],
   "definitions": {
     "RESULTS": {
       "type": "array",
@@ -111,6 +118,10 @@
     "FIDUCIALS_FILE": {
       "type": "string",
       "pattern": "^([0-9])+-([a-z,A-Z])+-approved.fcsv$"
+    },
+    "NRRD_FILE": {
+      "type": "string",
+      "pattern": ".nrrd$"
     },
     "TIMESTAMP": {
       "type": "string",
