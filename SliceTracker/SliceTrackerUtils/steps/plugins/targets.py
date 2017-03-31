@@ -60,20 +60,31 @@ class CustomTargetTableModel(qt.QAbstractTableModel, StepBase):
     self.logic = logic
     self._cursorPosition = None
     self._targetList = None
+    self._guidanceComputations = []
     self.currentGuidanceComputation = None
     self.targetList = targets
     self.computeCursorDistances = False
     self.currentTargetIndex = -1
     self.observer = None
+    self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
-  @logmethod(logging.INFO)
   def getOrCreateNewGuidanceComputation(self, targetList):
     if not targetList:
       return None
-    guidance = ZFrameGuidanceComputation(targetList)
+    guidance = None
+    for crntGuidance in self._guidanceComputations:
+      if crntGuidance.targetList is targetList:
+        guidance = crntGuidance
+        break
+    if not guidance:
+      self._guidanceComputations.append(ZFrameGuidanceComputation(targetList))
+      guidance = self._guidanceComputations[-1]
     if self._targetList is targetList:
       self.updateHoleAndDepth()
     return guidance
+
+  def onZFrameRegistrationSuccessful(self, caller, event):
+    self._guidanceComputations = []
 
   def updateHoleAndDepth(self, caller=None, event=None):
     self.dataChanged(self.index(0, 3), self.index(self.rowCount() - 1, 4))

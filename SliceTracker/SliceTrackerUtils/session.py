@@ -142,8 +142,6 @@ class SliceTrackerSession(SessionBase):
 
   @zFrameRegistrationSuccessful.setter
   def zFrameRegistrationSuccessful(self, value):
-    if value == self._zFrameRegistrationSuccessful:
-      return
     self._zFrameRegistrationSuccessful = value
     if self._zFrameRegistrationSuccessful:
       self.save()

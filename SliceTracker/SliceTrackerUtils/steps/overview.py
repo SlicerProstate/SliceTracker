@@ -261,19 +261,19 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.updateIntraopSeriesSelectorTable()
     selectedSeries = self.intraopSeriesSelector.currentText
 
-    if not self.active:
-      return
     if selectedSeries != "" and self.session.isTrackingPossible(selectedSeries):
       self.takeActionOnSelectedSeries(newImageSeries, selectedSeries)
 
   def takeActionOnSelectedSeries(self, newImageSeries, selectedSeries):
+    if not self.active:
+      return
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
     newImageSeriesNumbers = [RegistrationResult.getSeriesNumberFromString(s) for s in newImageSeries]
     if self.getSetting("COVER_TEMPLATE") in selectedSeries and not self.session.zFrameRegistrationSuccessful:
       self.onTrackTargetsButtonClicked()
       return
 
-    if self.active and selectedSeriesNumber in newImageSeriesNumbers and \
+    if selectedSeriesNumber in newImageSeriesNumbers and \
       self.session.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
       if self.notifyUserAboutNewData and not self.session.data.completed:
         dialog = IncomingDataMessageBox()
@@ -290,7 +290,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       sItem = qt.QStandardItem(series)
       self._seriesModel.appendRow(sItem)
       color = COLOR.YELLOW
-      if self.session.data.registrationResultWasApproved(series) or not self.session.isCoverTemplateTrackable(series):
+      if self.session.data.registrationResultWasApproved(series) or (self.getSetting("COVER_TEMPLATE") in series and
+                                                                   not self.session.isCoverTemplateTrackable(series)):
         color = COLOR.GREEN
       elif self.session.data.registrationResultWasSkipped(series):
         color = COLOR.RED
@@ -300,11 +301,10 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.intraopSeriesSelector.setCurrentIndex(currentIndex)
     self.intraopSeriesSelector.blockSignals(False)
     self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText))
-    self.selectMostRecentEligibleSeries()
+    if self.active:
+      self.selectMostRecentEligibleSeries()
 
   def selectMostRecentEligibleSeries(self):
-    if not self.active:
-      self.intraopSeriesSelector.blockSignals(True)
     substring = self.getSetting("NEEDLE_IMAGE")
     index = -1
     if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
@@ -323,7 +323,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         index = self.intraopSeriesSelector.findText(series)
     rowCount = self.intraopSeriesSelector.model().rowCount()
     self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
-    self.intraopSeriesSelector.blockSignals(False)
 
   def configureRedSliceNodeForPreopData(self):
     if not self.session.data.initialVolume or not self.session.data.initialTargets:
