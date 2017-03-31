@@ -449,9 +449,8 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     pass
 
   def onInitiateZFrameCalibration(self, caller, event):
-    self.active = True
     self.templateVolume = self.session.currentSeriesVolume
-    self.initiateZFrameRegistrationStep()
+    self.active = True
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageSeriesReceived(self, caller, event, callData):
@@ -572,8 +571,6 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       self.zFrameClickObserver = None
 
   def onApplyZFrameRegistrationButtonClicked(self):
-    # progress = self.createProgressDialog(maximum=2, value=1)
-    # progress.labelText = '\nZFrame registration'
     zFrameTemplateVolume = self.templateVolume
     try:
       if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
@@ -597,19 +594,15 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
                                          startSlice=start, endSlice=end)
       else:
         self.logic.runZFrameRegistration(zFrameTemplateVolume, self.zFrameRegistrationClass)
-
       self.applyZFrameTransform()
 
     except AttributeError as exc:
-      # progress.close()
       slicer.util.errorDisplay("An error occurred. For further information click 'Show Details...'",
                    windowTitle=self.__class__.__name__, detailedText=str(exc.message))
     else:
       self.setBackgroundToVolumeID(zFrameTemplateVolume.GetID())
       self.approveZFrameRegistrationButton.enabled = True
       self.retryZFrameRegistrationButton.enabled = True
-      # progress.setValue(2)
-      # progress.close()
 
   def applyZFrameTransform(self):
     for node in [node for node in

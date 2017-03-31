@@ -60,24 +60,17 @@ class CustomTargetTableModel(qt.QAbstractTableModel, StepBase):
     self.logic = logic
     self._cursorPosition = None
     self._targetList = None
-    self._guidanceComputations = []
     self.currentGuidanceComputation = None
     self.targetList = targets
     self.computeCursorDistances = False
     self.currentTargetIndex = -1
     self.observer = None
 
+  @logmethod(logging.INFO)
   def getOrCreateNewGuidanceComputation(self, targetList):
     if not targetList:
       return None
-    guidance = None
-    for crntGuidance in self._guidanceComputations:
-      if crntGuidance.targetList is targetList:
-        guidance = crntGuidance
-        break
-    if not guidance:
-      self._guidanceComputations.append(ZFrameGuidanceComputation(targetList))
-      guidance = self._guidanceComputations[-1]
+    guidance = ZFrameGuidanceComputation(targetList)
     if self._targetList is targetList:
       self.updateHoleAndDepth()
     return guidance

@@ -261,6 +261,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.updateIntraopSeriesSelectorTable()
     selectedSeries = self.intraopSeriesSelector.currentText
 
+    if not self.active:
+      return
     if selectedSeries != "" and self.session.isTrackingPossible(selectedSeries):
       self.takeActionOnSelectedSeries(newImageSeries, selectedSeries)
 
