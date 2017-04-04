@@ -5,7 +5,6 @@ import slicer
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.results import SliceTrackerRegistrationResultsPlugin
 from plugins.targets import SliceTrackerTargetTablePlugin
-from SlicerProstateUtils.decorators import onModuleSelected
 
 
 class SliceTrackerEvaluationStepLogic(SliceTrackerLogicBase):
@@ -92,11 +91,6 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     for result in [r for r in results if r is not self.currentResult]:
       result.reject()
     self.currentResult.reject()
-
-  @onModuleSelected(SliceTrackerStep.MODULE_NAME)
-  def onLayoutChanged(self, layout=None):
-    # self.disableTargetMovingMode()
-    pass
 
   def onInitiateEvaluation(self, caller, event):
     self.active = True

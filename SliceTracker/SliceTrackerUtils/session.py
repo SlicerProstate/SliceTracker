@@ -350,7 +350,7 @@ class SliceTrackerSession(SessionBase):
     message = None
     if save:
       success, failedFileNames = self.data.close(self.outputDirectory)
-      message = "Case data has been save successfully." if success else \
+      message = "Case data has been saved successfully." if success else \
         "The following data failed to saved:\n %s" % failedFileNames
     self.resetAndInitializeMembers()
     self.invokeEvent(self.CloseCaseEvent, str(message))

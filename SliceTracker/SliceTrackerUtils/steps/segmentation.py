@@ -34,6 +34,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
   def resetAndInitialize(self):
     self.session.retryMode = False
 
+
   def setupIcons(self):
     self.finishStepIcon = self.createIcon('icon-start.png')
     self.backIcon = self.createIcon('icon-back.png')
@@ -87,8 +88,11 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onInitiateSegmentation(self, caller, event, callData):
+    self._initiateSegmentation(ast.literal_eval(callData))
+
+  def _initiateSegmentation(self, retryMode=False):
     self.resetAndInitialize()
-    self.session.retryMode = ast.literal_eval(callData)
+    self.session.retryMode = retryMode
     self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
     if self.getSetting("COVER_PROSTATE") in self.session.currentSeries:
       if self.session.data.usePreopData:
@@ -217,6 +221,23 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.backButton.enabled = True
     self.targetingPlugin.enabled = True
     self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onNewImageSeriesReceived(self, caller, event, callData):
+    # TODO: control here to automatically activate the step
+    if not self.active:
+      return
+    newImageSeries = ast.literal_eval(callData)
+    for series in reversed(newImageSeries):
+      if self.getSetting("COVER_PROSTATE") in series:
+        if series != self.session.currentSeries:
+          if not slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one?"
+                                                  % self.getSetting("COVER_PROSTATE")):
+            return
+          self.session.currentSeries = series
+          self._initiateSegmentation()
+          self.onActivation()
+          return
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def onAutomaticSegmentationFinished(self, caller, event, labelNode):

@@ -138,9 +138,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.tabWidget = SliceTrackerTabWidget()
     self.tabWidget.addEventObserver(self.tabWidget.AvailableLayoutsChangedEvent, self.onAvailableLayoutsChanged)
     self.layout.addWidget(self.tabWidget)
-
-    # TODO
-    # self.tabWidget.hideTabs()
+    self.tabWidget.hideTabs()
 
   def setupConnections(self):
     self.showAnnotationsButton.connect('toggled(bool)', self.onShowAnnotationsToggled)
