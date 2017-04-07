@@ -1,0 +1,16 @@
+@startuml
+
+package "SliceTracker" {
+  [OverView]
+  [ZFrameCalibration]
+  [Segmentation]
+  [Evaluation]
+
+  [Session]
+
+  database "RegistrationResults" {
+
+  }
+}
+
+@enduml

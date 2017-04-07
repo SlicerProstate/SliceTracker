@@ -29,6 +29,7 @@ package "SliceTrackerPlugins" #DDDDDD {
   SliceTrackerPlugin <|-- SliceTrackerTrainingPlugin
   SliceTrackerPlugin <|-- SliceTrackerRegistrationResultsPlugin
   SliceTrackerPlugin <|-- SliceTrackerTargetTablePlugin
+  SliceTrackerPlugin <|-- SliceTrackerTargetingPlugin
 
 
   SliceTrackerTrainingPlugin <.. SliceTrackerOverviewStep::trainingPlugin
@@ -38,8 +39,6 @@ package "SliceTrackerPlugins" #DDDDDD {
   SliceTrackerRegistrationResultsLogic <.. SliceTrackerRegistrationResultsPlugin::LogicClass: uses
 
   SliceTrackerTargetTableLogic <.. SliceTrackerTargetTablePlugin::LogicClass: uses
-
-
 }
 
 @enduml

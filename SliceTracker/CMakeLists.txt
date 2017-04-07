@@ -59,7 +59,6 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-template.png
   Resources/Icons/icon-text-info.png
   Resources/Icons/icon-zframe.png
-  Resources/Icons/SliceTracker.png
   Resources/Icons/${MODULE_NAME}.png
   Resources/zframe/zframe-model.vtk
   Resources/zframe/zframe-config.csv
