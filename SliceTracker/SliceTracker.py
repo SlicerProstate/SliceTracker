@@ -16,6 +16,7 @@ from SlicerProstateUtils.constants import DICOMTAGS
 from SlicerProstateUtils.decorators import logmethod
 from SlicerProstateUtils.helpers import WatchBoxAttribute, DICOMBasedInformationWatchBox
 from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from SlicerProstateUtils.widgets import CustomStatusProgressbar
 from slicer.ScriptedLoadableModule import *
 
 
@@ -76,7 +77,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                  SliceTrackerSegmentationStep, SliceTrackerEvaluationStep]:
       self.session.registerStep(step())
 
-    self.customStatusProgressBar = self.getOrCreateCustomProgressBar()
+    self.customStatusProgressBar = CustomStatusProgressbar()
     self.setupIcons()
     self.setupPatientWatchBox()
     self.setupViewSettingGroupBox()

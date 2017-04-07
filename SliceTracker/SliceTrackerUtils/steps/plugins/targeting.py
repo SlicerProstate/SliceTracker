@@ -4,7 +4,7 @@ from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin
 
 from SlicerProstateUtils.helpers import SliceAnnotation
-from SlicerProstateUtils.helpers import TargetCreationWidget
+from SlicerProstateUtils.widgets import TargetCreationWidget
 from SlicerProstateUtils.decorators import logmethod
 import logging
 from targets import SliceTrackerTargetTablePlugin

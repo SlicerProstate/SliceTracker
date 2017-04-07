@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import ast
 from SlicerProstateUtils.constants import FileExtension
+from SlicerProstateUtils.widgets import CustomStatusProgressbar
 
 from base import SliceTrackerSegmentationPluginBase
 from ...base import SliceTrackerLogicBase
@@ -121,7 +122,7 @@ class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onStatusChanged(self, caller, event, callData):
-    statusBar = self.getOrCreateCustomProgressBar()
+    statusBar = CustomStatusProgressbar()
     if not statusBar.visible:
       statusBar.show()
     status = ast.literal_eval(str(callData))
