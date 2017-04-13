@@ -38,8 +38,6 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-new.png
   Resources/Icons/icon-open.png
   Resources/Icons/icon-close.png
-  Resources/Icons/icon-addFiducial.png
-  Resources/Icons/icon-modifyFiducial.png
   Resources/Icons/icon-back.png
   Resources/Icons/icon-start.png
   Resources/Icons/icon-retry.png
@@ -59,6 +57,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-template.png
   Resources/Icons/icon-text-info.png
   Resources/Icons/icon-zframe.png
+  Resources/Icons/SliceTracker.png
   Resources/Icons/${MODULE_NAME}.png
   Resources/zframe/zframe-model.vtk
   Resources/zframe/zframe-config.csv

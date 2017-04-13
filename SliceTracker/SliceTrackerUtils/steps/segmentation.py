@@ -265,7 +265,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       self.manualSegmentationPlugin.enableEditorWidgetButton()
       self.centerLabelsOnVisibleSliceWidgets()
     elif not self.session.movingTargets:
-      self.targetingPlugin.onStartTargetingButtonClicked()
+      self.targetingPlugin.startTargeting()
     else:
       for sliceNode in self._sliceNodes:
         sliceNode.SetUseLabelOutline(True)

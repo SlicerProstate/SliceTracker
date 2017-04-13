@@ -5,8 +5,6 @@ from ..base import SliceTrackerPlugin
 
 from SlicerProstateUtils.helpers import SliceAnnotation
 from SlicerProstateUtils.widgets import TargetCreationWidget
-from SlicerProstateUtils.decorators import logmethod
-import logging
 from targets import SliceTrackerTargetTablePlugin
 
 
@@ -19,39 +17,27 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
   def __init__(self):
     super(SliceTrackerTargetingPlugin, self).__init__()
 
-  def setupIcons(self):
-    self.setTargetsIcon = self.createIcon("icon-addFiducial.png")
-    self.modifyTargetsIcon = self.createIcon("icon-modifyFiducial.png")
-    self.finishIcon = self.createIcon("icon-apply.png")
-
   def setup(self):
     self.targetTablePlugin = SliceTrackerTargetTablePlugin()
     self.addPlugin(self.targetTablePlugin)
 
-    iconSize = qt.QSize(36, 36)
     self.targetingGroupBox = qt.QGroupBox("Target Placement")
     self.targetingGroupBoxLayout = qt.QFormLayout()
     self.targetingGroupBox.setLayout(self.targetingGroupBoxLayout)
-    self.fiducialsWidget = TargetCreationWidget()
-    self.startTargetingButton = self.createButton("", enabled=True, icon=self.setTargetsIcon, iconSize=iconSize,
-                                                  toolTip="Start placing targets")
-    self.stopTargetingButton = self.createButton("", enabled=False, icon=self.finishIcon, iconSize=iconSize,
-                                                 toolTip="Finish placing targets")
-    self.buttons = self.createHLayout([self.startTargetingButton, self.stopTargetingButton])
+    self.fiducialsWidget = TargetCreationWidget(DEFAULT_FIDUCIAL_LIST_NAME="IntraopTargets",
+                                                ICON_SIZE=qt.QSize(36, 36))
+    self.fiducialsWidget.addEventObserver(self.fiducialsWidget.TargetingStartedEvent, self.onTargetingStarted)
+    self.fiducialsWidget.addEventObserver(self.fiducialsWidget.TargetingFinishedEvent, self.onTargetingFinished)
     self.targetingGroupBoxLayout.addRow(self.targetTablePlugin)
     self.targetingGroupBoxLayout.addRow(self.fiducialsWidget)
-    self.targetingGroupBoxLayout.addRow(self.buttons)
+    self.targetingGroupBoxLayout.addRow(self.fiducialsWidget.buttons)
     self.layout().addWidget(self.targetingGroupBox, 1, 0, 2, 2)
-
-  def setupConnections(self):
-    self.startTargetingButton.clicked.connect(self.onStartTargetingButtonClicked)
-    self.stopTargetingButton.clicked.connect(self.onFinishTargetingStepButtonClicked)
 
   def noPreopAndTargetsWereNotDefined(self):
     return (not self.session.data.usePreopData and not self.session.movingTargets) or self.session.retryMode
 
   def onActivation(self):
-    self.fiducialsWidget.visible = True
+    self.fiducialsWidget.show()
     self.targetTablePlugin.visible = False
 
     if not self.noPreopAndTargetsWereNotDefined():
@@ -60,31 +46,20 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
       self.targetTablePlugin.visible = True
       self.targetTablePlugin.currentTargets = self.session.movingTargets
 
-    self.startTargetingButton.enabled = True
-    self.startTargetingButton.icon = self.setTargetsIcon \
-      if self.noPreopAndTargetsWereNotDefined() else self.modifyTargetsIcon
-    self.startTargetingButton.toolTip = "{} targets".format("Place" if self.noPreopAndTargetsWereNotDefined()
-                                                            else "Modify")
-    self.stopTargetingButton.enabled = False
     self.targetingGroupBox.visible = not self.session.data.usePreopData and not self.session.retryMode
 
   def onDeactivation(self):
     self.fiducialsWidget.reset()
     self.removeSliceAnnotations()
 
-  def onStartTargetingButtonClicked(self):
-    self.addSliceAnnotations()
-    self.startTargetingButton.enabled = False
-    self.fiducialsWidget.visible = True
-    self.targetTablePlugin.visible = False
-
-    self.setupFourUpView(self.session.currentSeriesVolume, clearLabels=False)
-    if not self.fiducialsWidget.currentNode:
-      self.fiducialsWidget.createNewFiducialNode(name="IntraopTargets")
+  def startTargeting(self):
     self.fiducialsWidget.startPlacing()
 
-    self.fiducialsWidget.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
-    self.onTargetListModified()
+  def onTargetingStarted(self, caller, event):
+    self.addSliceAnnotations()
+    self.fiducialsWidget.show()
+    self.targetTablePlugin.visible = False
+    self.setupFourUpView(self.session.currentSeriesVolume, clearLabels=False)
     self.invokeEvent(self.TargetingStartedEvent)
 
   def addSliceAnnotations(self):
@@ -101,26 +76,15 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
       annotation.remove()
     self.sliceAnnotations = []
 
-  def onFinishTargetingStepButtonClicked(self):
-    self.fiducialsWidget.removeEventObserver(vtk.vtkCommand.ModifiedEvent, self.onTargetListModified)
+  def onTargetingFinished(self, caller, event):
     self.removeSliceAnnotations()
-    self.fiducialsWidget.stopPlacing()
-    self.startTargetingButton.enabled = True
-    self.startTargetingButton.icon = self.modifyTargetsIcon
-    self.startTargetingButton.toolTip = "Modify targets"
-    self.stopTargetingButton.enabled = False
-    self.session.movingTargets = self.fiducialsWidget.currentNode
-    self.session.setupPreopLoadedTargets()
-
-    self.fiducialsWidget.visible = False
-    self.targetTablePlugin.visible = True
-    self.targetTablePlugin.currentTargets = self.fiducialsWidget.currentNode
+    if self.fiducialsWidget.hasTargetListAtLeastOneTarget():
+      self.session.movingTargets = self.fiducialsWidget.currentNode
+      self.session.setupPreopLoadedTargets()
+      self.fiducialsWidget.visible = False
+      self.targetTablePlugin.visible = True
+      self.targetTablePlugin.currentTargets = self.fiducialsWidget.currentNode
+    else:
+      self.session.movingTargets = None
 
     self.invokeEvent(self.TargetingFinishedEvent)
-
-  @logmethod(logging.INFO)
-  def onTargetListModified(self, caller=None, event=None):
-    self.stopTargetingButton.enabled = self.isTargetListValid()
-
-  def isTargetListValid(self):
-    return self.fiducialsWidget.currentNode is not None and self.fiducialsWidget.currentNode.GetNumberOfFiducials()
