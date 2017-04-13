@@ -2,9 +2,11 @@
 
 package "RegistrationResults" #DDDDDD {
 
-  class RegistrationResults {
+  class SessionData {
+    .. events ..
+    + NewResultCreatedEvent
     .. properties ..
-    + activeResult
+    + resumed
     + completed
     __
     + startTimeStamp: localtime
@@ -32,7 +34,7 @@ package "RegistrationResults" #DDDDDD {
 
   }
 
-  ModuleLogicMixin <|-- RegistrationResults
+  ModuleLogicMixin <|-- SessionData
 
   class RegistrationStatus {
     + UNDEFINED_STATUS = "undefined"
@@ -51,6 +53,9 @@ package "RegistrationResults" #DDDDDD {
     + skip()
     + reject()
   }
+
+  ModuleLogicMixin <|-- RegistrationStatus
+
 
   class RegistrationResult {
     + {static} getSeriesNumberFromString
@@ -75,6 +80,7 @@ package "RegistrationResults" #DDDDDD {
     + save(directory)
   }
 
+  ModuleLogicMixin <|-- AbstractRegistrationData
   AbstractRegistrationData <|-- RegistrationTypeData
 
   class RegistrationTypeData {
@@ -116,7 +122,7 @@ package "RegistrationResults" #DDDDDD {
   Labels <.. RegistrationResult::_labels
   Transforms <.. RegistrationResult::_transforms
 
-  RegistrationResult <.. RegistrationResults::_registrationResults
+  SessionData::_registrationResults ..> RegistrationResult
 }
 
 @enduml

@@ -364,12 +364,22 @@ class SliceTrackerSession(SessionBase):
     self.close(save=True)
 
   def load(self):
-    self._loading = True
-    slicer.app.layoutManager().blockSignals(True)
     filename = os.path.join(self.outputDirectory, SliceTrackerConstants.JSON_FILENAME)
-    if not os.path.exists(filename):
-      return
-    self.data.load(filename)
+    completed = self.data.wasSessionCompleted(filename)
+    if slicer.util.confirmYesNoDisplay("A %s session has been found for the selected case. Do you want to %s?" \
+                                        % ("completed" if completed else "started",
+                                           "open it" if completed else "continue this session")):
+      slicer.app.layoutManager().blockSignals(True)
+      self._loading = True
+      self.data.load(filename)
+      self.postProcessLoadedSessionData()
+      self._loading = False
+      slicer.app.layoutManager().blockSignals(False)
+      self.invokeEvent(self.LoadingMetadataSuccessfulEvent)
+    else:
+      self.clearData()
+
+  def postProcessLoadedSessionData(self):
     coverProstate = self.data.getMostRecentApprovedCoverProstateRegistration()
     if coverProstate:
       if not self.data.initialVolume:
@@ -379,9 +389,13 @@ class SliceTrackerSession(SessionBase):
         self.data.preopLabel = coverProstate.labels.moving
     if self.data.zFrameTransform:
       self._zFrameRegistrationSuccessful = True
-    self._loading = False
-    slicer.app.layoutManager().blockSignals(False)
-    self.invokeEvent(self.LoadingMetadataSuccessfulEvent)
+    self.data.resumed = not self.data.completed
+    if self.data.usePreopData:
+      self.loadPreProcessedData()
+    else:
+      if self.data.initialTargets:
+        self.setupPreopLoadedTargets()
+      self.startIntraopDICOMReceiver()
 
   def startPreopDICOMReceiver(self):
     self.resetPreopDICOMReceiver()
@@ -580,18 +594,6 @@ class SliceTrackerSession(SessionBase):
 
   def openSavedSession(self):
     self.load()
-    if slicer.util.confirmYesNoDisplay("A %s session has been found for the selected case. Do you want to %s?" \
-              % ("completed" if self.data.completed else "started",
-                 "open it" if self.data.completed else "continue this session")):
-      self.data.resumed = not self.data.completed
-      if self.data.usePreopData:
-        self.loadPreProcessedData()
-      else:
-        if self.data.initialTargets:
-          self.setupPreopLoadedTargets()
-        self.startIntraopDICOMReceiver()
-    else:
-      self.clearData()
 
   def setupPreopLoadedTargets(self):
     targets = self.data.initialTargets

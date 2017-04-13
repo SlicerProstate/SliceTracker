@@ -1,44 +1,76 @@
 @startuml
 
-package "SliceTrackerPlugins" #DDDDDD {
-
   abstract class SliceTrackerPlugin {
     + {abstract} LogicClass
   }
 
-  SliceTrackerWidgetBase <|-- SliceTrackerPlugin
+  class SliceTrackerLogicBase
+  SliceTrackerLogicBase <.. SliceTrackerPlugin::LogicClass: uses instance of
 
-  class SliceTrackerTrainingPlugin {
+
+package "SliceTracker Plugins" #DDDDDD {
+
+  package "Training Management" #FDADDF {
+
+    class SliceTrackerTrainingPlugin {
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerTrainingPlugin
   }
 
-  class SliceTrackerRegistrationResultsPlugin {
-    + LogicClass
-    + onLayoutChanged()
+  package "Registration Results Management" #FDADDF {
+
+    class SliceTrackerRegistrationResultsPlugin {
+      + LogicClass
+      + onLayoutChanged()
+    }
+
+    class SliceTrackerRegistrationResultsLogic
+
+    SliceTrackerPlugin <|-- SliceTrackerRegistrationResultsPlugin
+    SliceTrackerRegistrationResultsPlugin::LogicClass ..> SliceTrackerRegistrationResultsLogic: uses
+
   }
 
-  class SliceTrackerRegistrationResultsLogic
+  package "Target Management" #FDDDDD {
 
-  class SliceTrackerTargetTablePlugin {
-    + LogicClass
+    class SliceTrackerTargetTablePlugin {
+      + LogicClass
+    }
+
+    class SliceTrackerTargetTableLogic {
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerTargetTablePlugin
+    SliceTrackerTargetTablePlugin::LogicClass ..> SliceTrackerTargetTableLogic: uses
+
   }
 
-  class SliceTrackerTargetTableLogic {
+  package "Case Management" #DDF0DD {
+
+    class SliceTrackerCaseManagerPlugin {
+      + LogicClass
+    }
+
+    class SliceTrackerCaseManagerLogic {
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerCaseManagerPlugin
+    SliceTrackerCaseManagerPlugin::LogicClass ..> SliceTrackerCaseManagerLogic: uses
   }
 
+  package "Future Plugins" #DDFFDD {
+    class SliceTrackerNeedleSegmentationPlugin {
+      + LogicClass
+    }
 
-  SliceTrackerPlugin <|-- SliceTrackerTrainingPlugin
-  SliceTrackerPlugin <|-- SliceTrackerRegistrationResultsPlugin
-  SliceTrackerPlugin <|-- SliceTrackerTargetTablePlugin
-  SliceTrackerPlugin <|-- SliceTrackerTargetingPlugin
+    SliceTrackerPlugin <|-- SliceTrackerNeedleSegmentationPlugin
+    SliceTrackerNeedleSegmentationPlugin::LogicClass ..> SliceTrackerNeedleSegmentationLogic: uses
+  }
 
-
-  SliceTrackerTrainingPlugin <.. SliceTrackerOverviewStep::trainingPlugin
-
-  SliceTrackerRegistrationResultsPlugin <.. SliceTrackerOverviewStep::regResultPlugin
-  SliceTrackerLogicBase <|-- SliceTrackerRegistrationResultsLogic
-  SliceTrackerRegistrationResultsLogic <.. SliceTrackerRegistrationResultsPlugin::LogicClass: uses
-
-  SliceTrackerTargetTableLogic <.. SliceTrackerTargetTablePlugin::LogicClass: uses
 }
+
+SliceTrackerWidgetBase <|-- SliceTrackerPlugin
+
 
 @enduml

@@ -1,5 +1,7 @@
 @startuml
 
+!include SliceTrackerPlugins.puml
+
 package "SliceTrackerSteps" #DDDDDD {
 
   class SliceTrackerTabWidget {
@@ -72,8 +74,11 @@ package "SliceTrackerSteps" #DDDDDD {
     + onLayoutChanged()
     + trainingPlugin
     + regResultPlugin
+    + targetTablePlugin
   }
 
+  SliceTrackerTrainingPlugin <.. SliceTrackerOverviewStep::trainingPlugin
+  SliceTrackerTargetTablePlugin <.. SliceTrackerOverviewStep::targetTablePlugin
 
   class SliceTrackerSegmentationStep {
     + onLayoutChanged()
@@ -90,6 +95,8 @@ package "SliceTrackerSteps" #DDDDDD {
   }
 
   SliceTrackerRegistrationResultsPlugin <.. SliceTrackerEvaluationStep::regResultPlugin
+  SliceTrackerRegistrationResultsPlugin <.. SliceTrackerOverviewStep::regResultPlugin
+
 
   'class OverViewStepLogic
   'class SegmentationStepLogic

@@ -7,6 +7,7 @@ from collections import OrderedDict
 from SlicerProstateUtils.constants import FileExtension
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 from SlicerProstateUtils.decorators import onExceptionReturnNone, logmethod
+from SlicerProstateUtils.widgets import CustomStatusProgressbar
 
 
 class SessionData(ModuleLogicMixin):
@@ -17,12 +18,6 @@ class SessionData(ModuleLogicMixin):
 
   _completed = False
   _resumed = False
-
-  @property
-  @onExceptionReturnNone
-  def originalTargets(self):
-    # TODO: need to rename this to something telling us more about what targets since those are not needed to be original
-    return self.getMostRecentApprovedCoverProstateRegistration().targets.original
 
   @property
   @onExceptionReturnNone
@@ -51,6 +46,13 @@ class SessionData(ModuleLogicMixin):
       self.resumeTimeStamps.append(self.getTime())
     self._resumed = value
 
+  @staticmethod
+  def wasSessionCompleted(filename):
+    with open(filename) as data_file:
+      data = json.load(data_file)
+      procedureEvents = data["procedureEvents"]
+      return "caseCompleted" in procedureEvents.keys()
+
   def __init__(self):
     self.resetAndInitializeData()
 
@@ -76,8 +78,8 @@ class SessionData(ModuleLogicMixin):
 
     self._savedRegistrationResults = []
     self.initializeRegistrationResults()
-    # TODO: the following should not be here since it is widget depending
-    # self.customProgressBar = self.getOrCreateCustomProgressBar()
+
+    self.customProgressBar = CustomStatusProgressbar()
 
   def initializeRegistrationResults(self):
     self.registrationResults = OrderedDict()
@@ -93,26 +95,27 @@ class SessionData(ModuleLogicMixin):
       self.invokeEvent(self.NewResultCreatedEvent, series)
     return self.registrationResults[series]
 
+  def readProcedureEvents(self, procedureEvents):
+    self.startTimeStamp = procedureEvents["caseStarted"]
+    self.completed = "caseCompleted" in procedureEvents.keys()
+    if self.completed:
+      self.completedLogTimeStamp = procedureEvents["caseCompleted"]
+    if "caseClosed" in procedureEvents.keys():
+      self.closedLogTimeStamps = procedureEvents["caseClosed"]
+    if "caseResumed" in procedureEvents.keys():
+      self.resumeTimeStamps = procedureEvents["caseResumed"]
+
   def load(self, filename):
     directory = os.path.dirname(filename)
     self.resetAndInitializeData()
     self.alreadyLoadedFileNames = {}
     with open(filename) as data_file:
+      self.customProgressBar.visible = True
+      self.customProgressBar.text = "Reading meta information"
       logging.debug("reading json file %s" % filename)
       data = json.load(data_file)
 
-      def readProcedureEvents():
-        procedureEvents = data["procedureEvents"]
-        self.startTimeStamp = procedureEvents["caseStarted"]
-        self.completed = "caseCompleted" in procedureEvents.keys()
-        if self.completed:
-          self.completedLogTimeStamp = procedureEvents["caseCompleted"]
-        if "caseClosed" in procedureEvents.keys():
-          self.closedLogTimeStamps = procedureEvents["caseClosed"]
-        if "caseResumed" in procedureEvents.keys():
-          self.resumeTimeStamps = procedureEvents["caseResumed"]
-
-      readProcedureEvents()
+      self.readProcedureEvents(data["procedureEvents"])
 
       self.usePreopData = data["usedPreopData"]
       self.biasCorrectionDone = data["biasCorrected"]
@@ -134,18 +137,17 @@ class SessionData(ModuleLogicMixin):
 
       self.loadResults(data, directory)
     self.registrationResults = OrderedDict(sorted(self.registrationResults.items()))  # TODO: sort here?
+    return True
 
   def loadResults(self, data, directory):
-    for jsonResult in data["results"]:
+    if len(data["results"]):
+      self.customProgressBar.maximum = len(data["results"])
+    for index, jsonResult in enumerate(data["results"], start=1):
       name = jsonResult["name"]
       logging.debug("processing %s" % name)
       result = self.createResult(name, invokeEvent=False)
-
-      # TODO: the following should not be here since it is widget depending
-      # self.customProgressBar.visible = True
-      # self.customProgressBar.maximum = len(data["results"])
-      # self.customProgressBar.updateStatus("Loading series registration result %s" % result.name, index+1)
-      # slicer.app.processEvents()
+      self.customProgressBar.updateStatus("Loading series registration result %s" % result.name, index)
+      slicer.app.processEvents()
 
       for attribute, value in jsonResult.iteritems():
         logging.debug("found %s: %s" % (attribute, value))
@@ -171,10 +173,7 @@ class SessionData(ModuleLogicMixin):
           result.timestamp = value["time"]
         else:
           setattr(result, attribute, value)
-      # if result not in self._savedRegistrationResults:
-      #   self._savedRegistrationResults.append(result)
-        # TODO: the following should not be here since it is widget depending
-        # self.customProgressBar.text = "Finished loading registration results"
+        self.customProgressBar.text = "Finished loading registration results"
 
   def _loadResultFileData(self, dictionary, directory, loadFunction, setFunction):
     for regType, filename in dictionary.iteritems():
@@ -308,20 +307,17 @@ class SessionData(ModuleLogicMixin):
   @logmethod(level=logging.INFO)
   def saveRegistrationResults(self, outputDir):
     failedToSave = []
-    # TODO: the following should not be here since it is widget depending
-    # self.customProgressBar.visible = True
-    for result in self.getResultsAsList():
-      # TODO: the following should not be here since it is widget depending
-      # self.customProgressBar.maximum = len(self._registrationResults)
-      # self.customProgressBar.updateStatus("Saving registration result for series %s" % result.name, index + 1)
-      # slicer.app.processEvents()
+    self.customProgressBar.visible = True
+    for index, result in enumerate(self.getResultsAsList(), start=1):
+      self.customProgressBar.maximum = len(self.registrationResults)
+      self.customProgressBar.updateStatus("Saving registration result for series %s" % result.name, index)
+      slicer.app.processEvents()
       print self._savedRegistrationResults
       if result not in self._savedRegistrationResults:
         successfulList, failedList = result.save(outputDir)
         failedToSave += failedList
         self._savedRegistrationResults.append(result)
-    # TODO: the following should not be here since it is widget depending
-    # self.customProgressBar.text = "Registration data successfully saved" if len(failedToSave) == 0 else "Error/s occurred during saving"
+    self.customProgressBar.text = "Registration data successfully saved" if len(failedToSave) == 0 else "Error/s occurred during saving"
     return failedToSave
 
   def _registrationResultHasStatus(self, series, status, method=all):
