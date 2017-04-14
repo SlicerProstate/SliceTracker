@@ -1,7 +1,6 @@
 import sys, os
 import qt, vtk
-import csv, re, numpy
-import logging
+import csv, numpy
 import slicer
 import ast
 
@@ -12,11 +11,14 @@ from ..algorithms.zFrameRegistration import LineMarkerRegistration, OpenSourceZF
 from ..constants import SliceTrackerConstants
 from base import SliceTrackerLogicBase, SliceTrackerStep
 
-from SlicerProstateUtils.decorators import logmethod, onModuleSelected
+from SlicerProstateUtils.decorators import onModuleSelected
 from SlicerProstateUtils.helpers import SliceAnnotation
+from SlicerProstateUtils.metaclasses import Singleton
 
 
 class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
+
+  __metaclass__ = Singleton
 
   ZFRAME_MODEL_PATH = 'zframe-model.vtk'
   ZFRAME_TEMPLATE_CONFIG_FILE_NAME = 'ProstateTemplate.csv'
@@ -86,9 +88,9 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
       slicer.mrmlScene.RemoveNode(collection.GetItemAsObject(index))
 
   def setupSliceWidgets(self):
-    widget = slicer.app.layoutManager().sliceWidget("Red")
-    self.redSliceView = widget.sliceView()
-    self.redSliceLogic = widget.sliceLogic()
+    self.redSliceWidget = slicer.app.layoutManager().sliceWidget("Red")
+    self.redSliceView = self.redSliceWidget.sliceView()
+    self.redSliceLogic = self.redSliceWidget.sliceLogic()
 
   def loadTemplateConfigFile(self):
     self.templateIndex = []
@@ -127,11 +129,11 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
     for row in self.templateConfig:
       p, n = self.extractPointsAndNormalVectors(row)
 
-      tempTubeFilter = self.createTubeFilter(p[0], p[1], radius=1.0, numSides=18)
+      tempTubeFilter = self.createVTKTubeFilter(p[0], p[1], radius=1.0, numSides=18)
       templateModelAppend.AddInputData(tempTubeFilter.GetOutput())
       templateModelAppend.Update()
 
-      pathTubeFilter = self.createTubeFilter(p[0], p[2], radius=0.8, numSides=18)
+      pathTubeFilter = self.createVTKTubeFilter(p[0], p[2], radius=0.8, numSides=18)
       pathModelAppend.AddInputData(pathTubeFilter.GetOutput())
       pathModelAppend.Update()
 
@@ -140,11 +142,10 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
       self.templateMaxDepth.append(row[6])
 
     self.tempModelNode.SetAndObservePolyData(templateModelAppend.GetOutput())
-    modelDisplayNode = self.tempModelNode.GetDisplayNode()
-    modelDisplayNode.SetColor(0.5,0,1)
+    self.tempModelNode.GetDisplayNode().SetColor(0.5,0,1)
+
     self.pathModelNode.SetAndObservePolyData(pathModelAppend.GetOutput())
-    modelDisplayNode = self.pathModelNode.GetDisplayNode()
-    modelDisplayNode.SetColor(0.8,0.5,1)
+    self.pathModelNode.GetDisplayNode().SetColor(0.8,0.5,1)
 
   def extractPointsAndNormalVectors(self, row):
     p1 = numpy.array(row[0:3])
@@ -155,19 +156,6 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
     l = row[6]
     p3 = p1 + l * n
     return [p1, p2, p3], n
-
-  def createTubeFilter(self, start, end, radius, numSides):
-    lineSource = vtk.vtkLineSource()
-    lineSource.SetPoint1(start)
-    lineSource.SetPoint2(end)
-    tubeFilter = vtk.vtkTubeFilter()
-
-    tubeFilter.SetInputConnection(lineSource.GetOutputPort())
-    tubeFilter.SetRadius(radius)
-    tubeFilter.SetNumberOfSides(numSides)
-    tubeFilter.CappingOn()
-    tubeFilter.Update()
-    return tubeFilter
 
   def checkAndCreateTemplateModelNode(self):
     if self.tempModelNode is None:
@@ -207,35 +195,24 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
       self.pathVectors.append(numpy.array([tvec[0] - offset[0], tvec[1] - offset[1], tvec[2] - offset[2]]))
       i += 1
 
-  def _setModelVisibility(self, node, visible):
-    dnode = node.GetDisplayNode()
-    if dnode is not None:
-      dnode.SetVisibility(visible)
-
-  def _setModelSliceIntersectionVisibility(self, node, visible):
-    dnode = node.GetDisplayNode()
-    if dnode is not None:
-      dnode.SetSliceIntersectionVisibility(visible)
-
   def setZFrameVisibility(self, visibility):
-    self._setModelVisibility(self.zFrameModelNode, visibility)
-    self._setModelSliceIntersectionVisibility(self.zFrameModelNode, visibility)
+    self.setNodeVisibility(self.zFrameModelNode, visibility)
+    self.setNodeSliceIntersectionVisibility(self.zFrameModelNode, visibility)
 
   def setTemplateVisibility(self, visibility):
-    self._setModelVisibility(self.tempModelNode, visibility)
+    self.setNodeVisibility(self.tempModelNode, visibility)
 
   def setTemplatePathVisibility(self, visibility):
     self.showTemplatePath = visibility
-    self._setModelVisibility(self.pathModelNode, visibility)
-    self._setModelSliceIntersectionVisibility(self.pathModelNode, visibility)
+    self.setNodeVisibility(self.pathModelNode, visibility)
+    self.setNodeSliceIntersectionVisibility(self.pathModelNode, visibility)
 
   def setNeedlePathVisibility(self, visibility):
     self.showNeedlePath = visibility
     if self.needleModelNode:
-      self._setModelVisibility(self.needleModelNode, visibility)
-      self._setModelSliceIntersectionVisibility(self.needleModelNode, visibility)
+      self.setNodeVisibility(self.needleModelNode, visibility)
+      self.setNodeSliceIntersectionVisibility(self.needleModelNode, visibility)
 
-  @logmethod(logging.INFO)
   def runZFrameRegistration(self, inputVolume, algorithm, **kwargs):
     registration = algorithm(inputVolume)
     if isinstance(registration, OpenSourceZFrameRegistration):
@@ -252,21 +229,8 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
     coverTemplateROI.GetRASBounds(bounds)
     pMin = [bounds[0], bounds[2], bounds[4]]
     pMax = [bounds[1], bounds[3], bounds[5]]
-    return [self.getIJKForXYZ(pMin)[2], self.getIJKForXYZ(center)[2], self.getIJKForXYZ(pMax)[2]]
-
-  def getIJKForXYZ(self, p):
-    def roundInt(value):
-      try:
-        return int(round(value))
-      except ValueError:
-        return 0
-
-    xyz = self.redSliceView.convertRASToXYZ(p)
-    layerLogic = self.redSliceLogic.GetBackgroundLayer()
-    xyToIJK = layerLogic.GetXYToIJKTransform()
-    ijkFloat = xyToIJK.TransformDoublePoint(xyz)
-    ijk = [roundInt(value) for value in ijkFloat]
-    return ijk
+    return [self.getIJKForXYZ(self.redSliceWidget, pMin)[2], self.getIJKForXYZ(self.redSliceWidget, center)[2],
+            self.getIJKForXYZ(self.redSliceWidget, pMax)[2]]
 
   def getStartEndWithConnectedComponents(self, volume, center):
     address = sitkUtils.GetSlicerITKReadWriteAddress(volume.GetName())
@@ -295,46 +259,6 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
         continue
       break
     return end
-
-  @staticmethod
-  def getIslandCount(image, index):
-    imageSize = image.GetSize()
-    index = [0, 0, index]
-    extractor = sitk.ExtractImageFilter()
-    extractor.SetSize([imageSize[0], imageSize[1], 0])
-    extractor.SetIndex(index)
-    slice = extractor.Execute(image)
-    cc = sitk.ConnectedComponentImageFilter()
-    cc.Execute(slice)
-    return cc.GetObjectCount()
-
-  def createMaskedVolume(self, inputVolume, labelVolume):
-    maskedVolume = slicer.vtkMRMLScalarVolumeNode()
-    maskedVolume.SetName("maskedTemplateVolume")
-    slicer.mrmlScene.AddNode(maskedVolume)
-    params = {'InputVolume': inputVolume, 'MaskVolume': labelVolume, 'OutputVolume': maskedVolume}
-    slicer.cli.run(slicer.modules.maskscalarvolume, None, params, wait_for_completion=True)
-    return maskedVolume
-
-  def createLabelMapFromCroppedVolume(self, volume):
-    labelVolume = self.volumesLogic.CreateAndAddLabelVolume(volume, "labelmap")
-    imagedata = labelVolume.GetImageData()
-    imageThreshold = vtk.vtkImageThreshold()
-    imageThreshold.SetInputData(imagedata)
-    imageThreshold.ThresholdBetween(0, 2000)
-    imageThreshold.SetInValue(1)
-    imageThreshold.Update()
-    labelVolume.SetAndObserveImageData(imageThreshold.GetOutput())
-    return labelVolume
-
-  def createCroppedVolume(self, inputVolume, roi):
-    cropVolumeParameterNode = slicer.vtkMRMLCropVolumeParametersNode()
-    cropVolumeParameterNode.SetROINodeID(roi.GetID())
-    cropVolumeParameterNode.SetInputVolumeNodeID(inputVolume.GetID())
-    cropVolumeParameterNode.SetVoxelBased(True)
-    self.cropVolumeLogic.Apply(cropVolumeParameterNode)
-    croppedVolume = slicer.mrmlScene.GetNodeByID(cropVolumeParameterNode.GetOutputVolumeNodeID())
-    return croppedVolume
 
 
 class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
@@ -576,8 +500,9 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
         self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
         self.zFrameCroppedVolume = self.logic.createCroppedVolume(zFrameTemplateVolume, self.coverTemplateROI)
-        self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume)
-        self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume)
+        self.zFrameLabelVolume = self.logic.createLabelMapFromCroppedVolume(self.zFrameCroppedVolume, "labelmap")
+        self.zFrameMaskedVolume = self.logic.createMaskedVolume(zFrameTemplateVolume, self.zFrameLabelVolume,
+                                                                outputVolumeName="maskedTemplateVolume")
         self.zFrameMaskedVolume.SetName(zFrameTemplateVolume.GetName() + "-label")
 
         if not self.zFrameRegistrationManualIndexesGroupBox.checked:

@@ -4,6 +4,7 @@ import numpy
 import logging
 from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase, StepBase
+from ..zFrameRegistration import SliceTrackerZFrameRegistrationStepLogic
 
 from SlicerProstateUtils.mixins import ModuleLogicMixin
 from SlicerProstateUtils.decorators import logmethod, onModuleSelected
@@ -172,13 +173,9 @@ class ZFrameGuidanceComputation(StepBase, ModuleLogicMixin):
 
   SUPPORTED_EVENTS = [vtk.vtkCommand.ModifiedEvent]
 
-  @property
-  def zFrameRegistration(self):
-    self._zFrameRegistration = getattr(self, "_zFramRegistration", self.session.getStep("ZFrame Registration"))
-    return self._zFrameRegistration
-
   def __init__(self, targetList):
     StepBase.__init__(self)
+    self.zFrameRegistration = SliceTrackerZFrameRegistrationStepLogic()
     self.targetList = targetList
     self.observer = self.targetList.AddObserver(self.targetList.PointModifiedEvent, self.calculate)
     self.reset()
@@ -235,8 +232,8 @@ class ZFrameGuidanceComputation(StepBase, ModuleLogicMixin):
     needleEnd = None
 
     p = numpy.array(pos)
-    for i, orig in enumerate(self.zFrameRegistration.logic.pathOrigins):
-      vec = self.zFrameRegistration.logic.pathVectors[i]
+    for i, orig in enumerate(self.zFrameRegistration.pathOrigins):
+      vec = self.zFrameRegistration.pathVectors[i]
       op = p - orig
       aproj = numpy.inner(op, vec)
       perp = op-aproj*vec
@@ -252,9 +249,9 @@ class ZFrameGuidanceComputation(StepBase, ModuleLogicMixin):
     inRange = False
 
     if minIndex != -1:
-      indexX = self.zFrameRegistration.logic.templateIndex[minIndex][0]
-      indexY = self.zFrameRegistration.logic.templateIndex[minIndex][1]
-      if 0 < minDepth < self.zFrameRegistration.logic.templateMaxDepth[minIndex]:
+      indexX = self.zFrameRegistration.templateIndex[minIndex][0]
+      indexY = self.zFrameRegistration.templateIndex[minIndex][1]
+      if 0 < minDepth < self.zFrameRegistration.templateMaxDepth[minIndex]:
         inRange = True
         needleStart, needleEnd = self.getNeedleStartEndPointFromPathOrigins(minIndex)
       # else:
@@ -263,11 +260,11 @@ class ZFrameGuidanceComputation(StepBase, ModuleLogicMixin):
     return needleStart, needleEnd, indexX, indexY, minDepth, inRange
 
   def getNeedleStartEndPointFromPathOrigins(self, index):
-    start = self.zFrameRegistration.logic.pathOrigins[index]
-    v = self.zFrameRegistration.logic.pathVectors[index]
+    start = self.zFrameRegistration.pathOrigins[index]
+    v = self.zFrameRegistration.pathVectors[index]
     nl = numpy.linalg.norm(v)
     n = v / nl  # normal vector
-    l = self.zFrameRegistration.logic.templateMaxDepth[index]
+    l = self.zFrameRegistration.templateMaxDepth[index]
     end = start + l * n
     return start, end
 

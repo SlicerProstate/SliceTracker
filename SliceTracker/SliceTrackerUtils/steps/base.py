@@ -1,6 +1,5 @@
 import logging, os
 import qt, vtk, slicer
-from abc import ABCMeta, abstractmethod
 
 from ..session import SliceTrackerSession
 
@@ -263,14 +262,11 @@ class SliceTrackerStep(SliceTrackerWidgetBase):
 
 class SliceTrackerLogicBase(StepBase, ModuleLogicMixin):
 
-  __metaclass__ = ABCMeta
-
   def __init__(self):
     StepBase.__init__(self)
 
-  @abstractmethod
   def cleanup(self):
-    pass
+    return NotImplementedError
 
 
 class SliceTrackerPlugin(SliceTrackerWidgetBase):
