@@ -36,15 +36,39 @@ package "SliceTracker Plugins" #DDDDDD {
 
     class SliceTrackerTargetTablePlugin {
       + LogicClass
+      + targetTableModel
     }
 
     class SliceTrackerTargetTableLogic {
     }
 
+    class ZFrameGuidanceComputation {
+    }
+
+    class CustomTargetTableModel {
+      # _guidanceComputations
+    }
+
     SliceTrackerPlugin <|-- SliceTrackerTargetTablePlugin
     SliceTrackerTargetTablePlugin::LogicClass ..> SliceTrackerTargetTableLogic: uses
+    SliceTrackerTargetTablePlugin::targetTableModel ..> CustomTargetTableModel: uses
+    ZFrameGuidanceComputation <.. CustomTargetTableModel::_guidanceComputations
+  }
+
+  package "Targeting" #FDDDFF {
+
+    class SliceTrackerTargetingPlugin {
+      + LogicClass
+    }
+
+    class SliceTrackerTargetTargetingLogic {
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerTargetingPlugin
+    SliceTrackerTargetingPlugin::LogicClass ..> SliceTrackerTargetTargetingLogic: uses
 
   }
+
 
   package "Case Management" #DDF0DD {
 
@@ -66,6 +90,52 @@ package "SliceTracker Plugins" #DDDDDD {
 
     SliceTrackerPlugin <|-- SliceTrackerNeedleSegmentationPlugin
     SliceTrackerNeedleSegmentationPlugin::LogicClass ..> SliceTrackerNeedleSegmentationLogic: uses
+  }
+
+  package "Segmentation Management" #5555FF {
+
+    class SliceTrackerSegmentationPluginBase {
+      .. event ..
+      + SegmentationStartedEvent
+      + SegmentationFinishedEvent
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerSegmentationPluginBase
+
+    class SliceTrackerAutomaticSegmentationPlugin {
+      + LogicClass
+    }
+    class SliceTrackerAutomaticSegmentationLogic
+
+    SliceTrackerSegmentationPluginBase <|--SliceTrackerAutomaticSegmentationPlugin
+    SliceTrackerAutomaticSegmentationLogic <.. SliceTrackerAutomaticSegmentationPlugin::LogicClass: uses
+
+
+    class SliceTrackerManualSegmentationPlugin {
+      .. event ..
+      + SegmentationCancelledEvent
+      __
+      + volumeClipToLabelWidget
+    }
+
+    SliceTrackerSegmentationPluginBase <|--SliceTrackerManualSegmentationPlugin
+    VolumeClipToLabelWidget <.. SliceTrackerManualSegmentationPlugin::volumeClipToLabelWidget: uses
+
+    class VolumeClipToLabelWidget {
+      .. event ..
+      + SegmentationFinishedEvent
+      + SegmentationStartedEvent
+      + SegmentationCanceledEvent
+      --
+      + logic
+    }
+
+    class VolumeClipToLabelLogic {
+    }
+
+    VolumeClipToLabelWidget::logic ..> VolumeClipToLabelLogic: uses
+
+
   }
 
 }
