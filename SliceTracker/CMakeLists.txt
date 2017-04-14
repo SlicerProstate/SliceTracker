@@ -43,7 +43,6 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-retry.png
   Resources/Icons/icon-thumbsUp.png
   Resources/Icons/icon-thumbsDown.png
-  Resources/Icons/icon-complete.png
   Resources/Icons/icon-redo.png
   Resources/Icons/icon-undo.png
   Resources/Icons/icon-apply.png

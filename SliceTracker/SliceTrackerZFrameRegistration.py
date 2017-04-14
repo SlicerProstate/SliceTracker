@@ -167,8 +167,6 @@ class SliceTrackerZFrameRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLog
 
   def __init__(self):
     ScriptedLoadableModuleLogic.__init__(self)
-    self.volumesLogic = slicer.modules.volumes.logic()
-    self.markupsLogic = slicer.modules.markups.logic()
     self.registrationResult = None
 
   def run(self, parameterNode, progressCallback=None):
