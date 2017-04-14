@@ -1,0 +1,51 @@
+@startuml
+
+package "Session" #DDDDDD {
+
+  abstract class SessionBase {
+    .. events ..
+    DirectoryChangedEvent: vtk.vtkCommand.UserEvent
+    .. properties ..
+    + directory
+    --
+    + {abstract} load()
+    + {abstract} save()
+  }
+
+
+  Singleton <-- SliceTrackerSession
+  SessionBase <-- SliceTrackerSession
+
+  class SliceTrackerSession {
+    .. events ..
+    --
+    .. properties ..
+    + preopDICOMDirectory
+    + intraopDICOMDirectory
+    + preprocessedDirectory
+    + outputDirectory
+    + currentSeries
+    --
+    + steps
+    + trainingMode: boolean
+    --
+    + intraopLabel
+    + regResults: RegistrationResults
+    __
+    + createNewCase(destination)
+    + openCase(directory)
+    + closeCase()
+    + completeCase()
+    + registerStep(step)
+    + startIntraopDICOMReceiver()
+    + stopIntraopDICOMReceiver()
+    + importDICOMSeries(newFileList)
+    + makeSeriesNumberDescription(dcmFile): string
+    + createLoadableFileListForSeries(series): list
+  }
+}
+
+  SliceTrackerStep <.. SliceTrackerSession::steps: has [0..n]
+  RegistrationResults <.. SliceTrackerSession::regResults : use
+
+@enduml

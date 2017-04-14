@@ -1,0 +1,175 @@
+{
+  "usedPreopData": true,
+  "biasCorrected": true,
+  "initialVolume": "VOLUME-PREOP-N4.nrrd",
+  "initialTargets": "PreopTargets.fcsv",
+  "zFrameRegistration": {
+    "volume": "2-CoverTemplate.nrrd",
+    "transform": "2-ZFrameTransform.h5"
+  },
+  "procedureEvents": {
+    "caseStarted": "2017-03-07T15:23:20.38Z",
+    "caseClosed": [
+      {
+        "time": "2017-03-07T16:33:20.38Z",
+        "logfile": "Slicer_25707_20170308_144138.log"
+      }
+    ]
+  },
+  "results": [
+    {
+      "name": "3: AXIAL T2 COVER PROSTATE 3mm 0gap at iso",
+      "receivedTime": "2017-03-07T15:38:20.38Z",
+      "status": {
+        "state": "approved",
+        "time": "2017-03-07T16:39:20.38Z"
+      },
+      "registrationType": "bSpline",
+      "labels": {
+        "fixed": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd",
+      	"moving": "t2-label.nrrd"
+      },
+      "volumes": {
+        "fixed": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso.nrrd",
+        "moving": "VOLUME-PREOP-N4_1.nrrd",
+        "bSpline": "3-VOLUME-bSpline.nrrd",
+        "affine": "3-VOLUME-affine.nrrd",
+        "rigid": "3-VOLUME-rigid.nrrd"
+      },
+      "transforms": {
+        "bSpline": "3-TRANSFORM-bSpline.h5",
+        "affine": "3-TRANSFORM-affine.h5",
+        "rigid": "3-TRANSFORM-rigid.h5"
+      },
+      "targets": {
+        "original": "targets-PREOP.fcsv",
+        "bSpline": "3-TARGETS-bSpline.fcsv",
+        "affine": "3-TARGETS-affine.fcsv",
+        "rigid": "3-TARGETS-rigid.fcsv",
+        "approved": {
+          "userModified": [
+            false
+          ],
+          "fileName": "3-TARGETS-approved.fcsv"
+	  	  }
+      },
+      "score": 5
+    },
+    {
+      "name": "5: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
+      "receivedTime": "2017-03-07T15:43:20.38Z",
+      "status": {
+        "state": "approved",
+        "time": "2017-03-07T16:44:20.38Z"
+      },
+      "registrationType": "bSpline",
+      "labels": {
+        "fixed": "5-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label.nrrd",
+        "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd"
+      },
+      "transforms": {
+        "bSpline": "5-TRANSFORM-bSpline.h5",
+        "affine": "5-TRANSFORM-affine.h5",
+        "rigid": "5-TRANSFORM-rigid.h5"
+      },
+      "targets": {
+        "original": "3-TARGETS-approved.fcsv",
+        "bSpline": "5-TARGETS-bSpline.fcsv",
+        "affine": "5-TARGETS-affine.fcsv",
+        "rigid": "5-TARGETS-rigid.fcsv",
+        "approved": {
+          "userModified": [
+            true
+          ],
+          "fileName": "5-TARGETS-approved.fcsv"
+        }
+      },
+      "volumes": {
+        "bSpline": "5-VOLUME-bSpline.nrrd",
+        "affine": "5-VOLUME-affine.nrrd",
+        "rigid": "5-VOLUME-rigid.nrrd",
+        "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso.nrrd",
+        "fixed": "5-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd"
+      }
+    },
+    {
+      "name": "6: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
+      "receivedTime": "2017-03-07T15:48:20.38Z",
+      "status": {
+        "state": "rejected",
+        "time": "2017-03-07T16:49:20.38Z"
+      },
+      "labels": {
+        "fixed": "6-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label.nrrd",
+        "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd"
+      },
+      "transforms": {
+        "bSpline": "6-TRANSFORM-bSpline.h5",
+        "affine": "6-TRANSFORM-affine.h5",
+        "rigid": "6-TRANSFORM-rigid.h5"
+      },
+      "targets": {
+        "bSpline": "6-TARGETS-bSpline.fcsv",
+        "affine": "6-TARGETS-affine.fcsv",
+        "rigid": "6-TARGETS-rigid.fcsv",
+        "original": "3-TARGETS-approved.fcsv"
+      },
+      "volumes": {
+        "bSpline": "6-VOLUME-bSpline.nrrd",
+        "affine": "6-VOLUME-affine.nrrd",
+        "rigid": "6-VOLUME-rigid.nrrd",
+        "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso.nrrd",
+        "fixed": "6-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd"
+      }
+    },
+    {
+      "name": "9: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
+      "receivedTime": "2017-03-07T15:51:20.38Z",
+      "status": {
+        "state": "skipped",
+        "time": "2017-03-07T16:51:43.38Z"
+      },
+      "volumes": {
+        "fixed": "9-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd"
+      }
+    },
+    {
+      "name": "10: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0_Retry_1",
+      "receivedTime": "2017-03-07T15:53:20.38Z",
+      "status": {
+        "state": "approved",
+        "time": "2017-03-07T16:54:43.38Z"
+      },      "suffix": "_Retry_1",
+      "registrationType": "bSpline",
+      "labels": {
+        "fixed": "10-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label_Retry_1.nrrd",
+        "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd"
+      },
+      "transforms": {
+        "bSpline": "10-TRANSFORM-bSpline_Retry_1.h5",
+        "affine": "10-TRANSFORM-affine_Retry_1.h5",
+        "rigid": "10-TRANSFORM-rigid_Retry_1.h5"
+      },
+      "targets": {
+        "original": "3-TARGETS-approved.fcsv",
+        "bSpline": "10-TARGETS-bSpline_Retry_1.fcsv",
+        "affine": "10-TARGETS-affine_Retry_1.fcsv",
+        "rigid": "10-TARGETS-rigid_Retry_1.fcsv",
+        "approved": {
+          "userModified": [
+            false
+          ],
+          "fileName": "10-TARGETS-approved.fcsv"
+        }
+      },
+      "score": 5,
+      "volumes": {
+        "fixed": "10-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0.nrrd",
+        "moving": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso.nrrd",
+        "bSpline": "10-VOLUME-bSpline_Retry_1.nrrd",
+        "affine": "10-VOLUME-affine_Retry_1.nrrd",
+        "rigid": "10-VOLUME-rigid_Retry_1.nrrd"
+      }
+    }
+  ]
+}

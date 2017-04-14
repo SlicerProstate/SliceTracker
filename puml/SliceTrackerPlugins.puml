@@ -1,0 +1,146 @@
+@startuml
+
+  abstract class SliceTrackerPlugin {
+    + {abstract} LogicClass
+  }
+
+  class SliceTrackerLogicBase
+  SliceTrackerLogicBase <.. SliceTrackerPlugin::LogicClass: uses instance of
+
+
+package "SliceTracker Plugins" #DDDDDD {
+
+  package "Training Management" #FDADDF {
+
+    class SliceTrackerTrainingPlugin {
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerTrainingPlugin
+  }
+
+  package "Registration Results Management" #FDADDF {
+
+    class SliceTrackerRegistrationResultsPlugin {
+      + LogicClass
+      + onLayoutChanged()
+    }
+
+    class SliceTrackerRegistrationResultsLogic
+
+    SliceTrackerPlugin <|-- SliceTrackerRegistrationResultsPlugin
+    SliceTrackerRegistrationResultsPlugin::LogicClass ..> SliceTrackerRegistrationResultsLogic: uses
+
+  }
+
+  package "Target Management" #FDDDDD {
+
+    class SliceTrackerTargetTablePlugin {
+      + LogicClass
+      + targetTableModel
+    }
+
+    class SliceTrackerTargetTableLogic {
+    }
+
+    class ZFrameGuidanceComputation {
+    }
+
+    class CustomTargetTableModel {
+      # _guidanceComputations
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerTargetTablePlugin
+    SliceTrackerTargetTablePlugin::LogicClass ..> SliceTrackerTargetTableLogic: uses
+    SliceTrackerTargetTablePlugin::targetTableModel ..> CustomTargetTableModel: uses
+    ZFrameGuidanceComputation <.. CustomTargetTableModel::_guidanceComputations
+  }
+
+  package "Targeting" #FDDDFF {
+
+    class SliceTrackerTargetingPlugin {
+      + LogicClass
+    }
+
+    class SliceTrackerTargetTargetingLogic {
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerTargetingPlugin
+    SliceTrackerTargetingPlugin::LogicClass ..> SliceTrackerTargetTargetingLogic: uses
+
+  }
+
+
+  package "Case Management" #DDF0DD {
+
+    class SliceTrackerCaseManagerPlugin {
+      + LogicClass
+    }
+
+    class SliceTrackerCaseManagerLogic {
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerCaseManagerPlugin
+    SliceTrackerCaseManagerPlugin::LogicClass ..> SliceTrackerCaseManagerLogic: uses
+  }
+
+  package "Future Plugins" #DDFFDD {
+    class SliceTrackerNeedleSegmentationPlugin {
+      + LogicClass
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerNeedleSegmentationPlugin
+    SliceTrackerNeedleSegmentationPlugin::LogicClass ..> SliceTrackerNeedleSegmentationLogic: uses
+  }
+
+  package "Segmentation Management" #5555FF {
+
+    class SliceTrackerSegmentationPluginBase {
+      .. event ..
+      + SegmentationStartedEvent
+      + SegmentationFinishedEvent
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerSegmentationPluginBase
+
+    class SliceTrackerAutomaticSegmentationPlugin {
+      + LogicClass
+    }
+    class SliceTrackerAutomaticSegmentationLogic
+
+    SliceTrackerSegmentationPluginBase <|--SliceTrackerAutomaticSegmentationPlugin
+    SliceTrackerAutomaticSegmentationLogic <.. SliceTrackerAutomaticSegmentationPlugin::LogicClass: uses
+
+
+    class SliceTrackerManualSegmentationPlugin {
+      .. event ..
+      + SegmentationCancelledEvent
+      __
+      + volumeClipToLabelWidget
+    }
+
+    SliceTrackerSegmentationPluginBase <|--SliceTrackerManualSegmentationPlugin
+    VolumeClipToLabelWidget <.. SliceTrackerManualSegmentationPlugin::volumeClipToLabelWidget: uses
+
+    class VolumeClipToLabelWidget {
+      .. event ..
+      + SegmentationFinishedEvent
+      + SegmentationStartedEvent
+      + SegmentationCanceledEvent
+      --
+      + logic
+    }
+
+    class VolumeClipToLabelLogic {
+    }
+
+    VolumeClipToLabelWidget::logic ..> VolumeClipToLabelLogic: uses
+
+
+  }
+
+}
+
+SliceTrackerWidgetBase <|-- SliceTrackerPlugin
+
+
+@enduml

@@ -1,0 +1,147 @@
+{
+  "id" :"https://raw.githubusercontent.com/slicerprostate/slicetracker/master/doc/output_schema.json#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "procedureEvents": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "caseStarted": { "$ref": "#/definitions/TIMESTAMP" },
+        "caseClosed": { "$ref": "#/definitions/TIMESTAMP_LOGFILE_LIST" },
+        "caseResumed": { "$ref": "#/definitions/TIMESTAMP_LIST" },
+        "caseCompleted": { "$ref": "#/definitions/TIMESTAMP_LOGFILE" }
+      }, "require": ["caseStarted", "caseClosed"]
+    },
+    "usedPreopData": { "type": "boolean" },
+    "biasCorrected": { "type": "boolean" },
+    "initialVolume": { "type": "string" },
+    "initialTargets": { "type": "string" },
+    "zFrameRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "volume": { "$ref": "#/definitions/NRRD_FILE" },
+        "transform": { "$ref": "#/definitions/TRANSFORM_FILE" }
+      }, "require": ["volume", "transform"]
+    },
+    "results": { "$ref": "#/definitions/RESULTS" }
+  },
+  "required": ["procedureEvents", "usedPreopData", "initialVolume", "zFrameRegistration", "results"],
+  "definitions": {
+    "RESULTS": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/RESULT" }
+    },
+    "RESULT": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string"},
+        "receivedTime": { "$ref": "#/definitions/TIMESTAMP" },
+        "status": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "state": {"type": "string",
+              "enum": [ "approved", "skipped", "rejected"]
+            },
+            "time": { "$ref": "#/definitions/TIMESTAMP" }
+          }, "required": ["state", "time"]
+        },
+        "registrationType": { "$ref": "#/definitions/REGISTRATION_TYPE" },
+        "score": { "type": "number" },
+        "suffix": {
+          "type": "string",
+          "pattern": "^_Retry_([0-9])+$"
+        },
+        "labels": { "$ref": "#/definitions/VOLUME_TYPES" },
+        "transforms": { "$ref": "#/definitions/REGISTRATION_TYPES" },
+        "volumes": {
+          "allOf": [
+            {	"$ref": "#/definitions/REGISTRATION_TYPES" },
+            {	"$ref": "#/definitions/VOLUME_TYPES" }
+          ]
+        },
+        "targets": { "$ref": "#/definitions/TARGETS" }
+      },
+      "required": ["name", "status", "receivedTime"]
+    },
+    "REGISTRATION_TYPE": {
+      "type": "string",
+      "enum": ["rigid", "affine", "bSpline"
+      ]
+    },
+    "REGISTRATION_TYPES": {
+      "type": "object",
+      "properties": {
+        "rigid": { "type": "string" },
+        "affine": { "type": "string" },
+        "bSpline": { "type": "string" }
+      }
+    },
+    "VOLUME_TYPES": {
+      "type": "object",
+      "properties": {
+        "fixed": { "type": "string" },
+        "moving": { "type": "string" }
+      }
+    },
+    "TARGETS" : {
+      "allOf": [
+        {	"$ref": "#/definitions/REGISTRATION_TYPES" },
+        {
+          "properties": {
+            "original": { "type": "string" },
+            "approved": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "userModified": {
+                  "type": "array",
+                  "items": {
+                    "type": "boolean"
+                  }
+                },
+                "fileName": { "$ref": "#/definitions/FIDUCIALS_FILE" }
+              }, "required": ["userModified"]
+            }
+          }, "required": ["original", "rigid", "affine", "bSpline"]
+        }
+      ],
+      "required": ["original"]
+    },
+    "TRANSFORM_FILE": {
+      "type": "string",
+      "pattern": "^([0-9])+-([a-z,A-Z])+.h5$"
+    },
+    "FIDUCIALS_FILE": {
+      "type": "string",
+      "pattern": "^([0-9])+-([a-z,A-Z])+-approved.fcsv$"
+    },
+    "NRRD_FILE": {
+      "type": "string",
+      "pattern": ".nrrd$"
+    },
+    "TIMESTAMP": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "TIMESTAMP_LIST": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/TIMESTAMP" }
+    },
+    "TIMESTAMP_LOGFILE_LIST": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/TIMESTAMP_LOGFILE" }
+    },
+    "TIMESTAMP_LOGFILE": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "time": { "$ref": "#/definitions/TIMESTAMP" },
+        "logfile": { "type": "string" }
+      }, "required": ["time", "logfile"]
+    }
+  }
+}

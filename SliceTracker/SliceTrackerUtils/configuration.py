@@ -47,3 +47,5 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
     if not self.getSetting("Demo_Mode"):
       self.setSetting("Demo_Mode", config.get('Modes', 'Demo_Mode'))
 
+    if not self.getSetting("Use_Deep_Learning"):
+      self.setSetting("Use_Deep_Learning", config.get('Segmentation', 'Use_Deep_Learning'))

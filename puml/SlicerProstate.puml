@@ -1,0 +1,25 @@
+@startuml
+
+package "SlicerProstate" #DDDDDD {
+  class ModuleWidgetMixin {
+    .. properties ..
+    + layoutManager
+    --
+    + {static} truncatePath(path)
+    + createSliceWidgetClassMembers(name)
+    + getAllVisibleWidgets()
+    + getOrCreateCustomProgressBar()
+    + setFOV(sliceLogic, FOV)
+    + removeNodeFromMRMLScene(node)
+    + refreshViewNodeIDs(node, sliceNodes)
+    + removeViewNodeIDs(node, sliceNodes)
+    + jumpSliceNodeToTarget(sliceNode, targetNode, index)
+    + resetToRegularViewMode()
+    + confirmOrSaveDialog(message)
+    ...
+  }
+  class ModuleLogicMixin
+
+}
+
+@enduml

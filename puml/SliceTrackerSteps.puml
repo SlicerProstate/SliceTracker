@@ -1,0 +1,132 @@
+@startuml
+
+!include SliceTrackerPlugins.puml
+
+package "SliceTrackerSteps" #DDDDDD {
+
+  class SliceTrackerTabWidget {
+    + session
+    + __init__(session)
+    # _createTabs()
+    + onCurrentTabChanged(step)
+  }
+
+  abstract class StepBase {
+    + MODULE_NAME = "SliceTracker"
+    __
+    + session
+    + modulePath: string
+    + resourcesPath
+    __
+    + getModulePath(): string
+    + getSetting(self, setting, moduleName=None, default=None)
+    + setSetting(self, setting, value, moduleName=None)
+  }
+
+  abstract class SliceTrackerWidgetBase {
+    + {abstract} NAME: string
+    + {abstract} LogicClass
+    + {abstract} setup()
+    + {abstract} cleanup()
+    + {abstract} setupConnections()
+    + {abstract} onLayoutChanged()
+    + setupSessionObservers()
+    + setupSliceWidgets()
+    + setupAdditionalViewSettingButtons()
+    + resetViewSettingButtons()
+    + onNewCaseStarted()
+    + onCaseClosed()
+    + onIncomingDataSkipped()
+    + onNewImageDataReceived()
+    + onCoverTemplateReceived()
+    + onZFrameRegistrationSuccessful()
+  }
+
+  StepBase <|-- SliceTrackerWidgetBase
+
+  abstract class SliceTrackerStep {
+    # _plugins
+    .. events ..
+    ActivatedEvent: vtk.vtkCommand.UserEvent
+    DeactivatedEvent: vtk.vtkCommand.UserEvent
+    .. properties ..
+    + active: bool
+    __
+    + onActivation()
+    + onDeactivation()
+    + removeSessionEventObservers()
+  }
+
+  SliceTrackerWidgetBase <|-- SliceTrackerStep
+  SliceTrackerPlugin <.. SliceTrackerStep::_plugins: has [0..n]
+
+
+  abstract class SliceTrackerLogicBase {
+    .. abstract methods ..
+    + {abstract} cleanup()
+    __
+    + getOrCreateVolumeForSeries(series)
+  }
+
+  StepBase <|-- SliceTrackerLogicBase
+
+  class SliceTrackerOverviewStep {
+    + onLayoutChanged()
+    + trainingPlugin
+    + regResultPlugin
+    + targetTablePlugin
+  }
+
+  SliceTrackerTrainingPlugin <.. SliceTrackerOverviewStep::trainingPlugin
+  SliceTrackerTargetTablePlugin <.. SliceTrackerOverviewStep::targetTablePlugin
+
+  class SliceTrackerSegmentationStep {
+    + onLayoutChanged()
+  }
+
+  class SliceTrackerZFrameRegistrationStep {
+    + onLayoutChanged()
+  }
+
+  class SliceTrackerEvaluationStep {
+    + regResultPlugin
+    __
+    + onLayoutChanged()
+  }
+
+  SliceTrackerRegistrationResultsPlugin <.. SliceTrackerEvaluationStep::regResultPlugin
+  SliceTrackerRegistrationResultsPlugin <.. SliceTrackerOverviewStep::regResultPlugin
+
+
+  'class OverViewStepLogic
+  'class SegmentationStepLogic
+  'class ZFrameRegistrationStepLogic
+  'class EvaluationStepLogic
+  '
+  SliceTrackerLogicBase <|-- OverViewStepLogic
+  SliceTrackerLogicBase <|-- SegmentationStepLogic
+  SliceTrackerLogicBase <|-- ZFrameRegistrationStepLogic
+  SliceTrackerLogicBase <|-- EvaluationStepLogic
+
+  SliceTrackerStep <|-- SliceTrackerOverviewStep
+  SliceTrackerStep <|-- SliceTrackerSegmentationStep
+  SliceTrackerStep <|-- SliceTrackerZFrameRegistrationStep
+  SliceTrackerStep <|-- SliceTrackerEvaluationStep
+
+  OverViewStepLogic <.. SliceTrackerOverviewStep: uses
+  SegmentationStepLogic <.. SliceTrackerSegmentationStep: uses
+  ZFrameRegistrationStepLogic <.. SliceTrackerZFrameRegistrationStep: uses
+  EvaluationStepLogic <.. SliceTrackerEvaluationStep: uses
+
+  SliceTrackerLogicBase <.. SliceTrackerWidgetBase::LogicClass : uses
+}
+
+QTabWidget <|-- SliceTrackerTabWidget
+QWidget <|-- SliceTrackerWidgetBase
+ModuleWidgetMixin <|-- SliceTrackerWidgetBase
+ModuleLogicMixin <|-- SliceTrackerLogicBase
+
+SliceTrackerSession <.. StepBase::session : uses
+'SliceTrackerSession "0" --> "*" SliceTrackerStep
+
+@enduml

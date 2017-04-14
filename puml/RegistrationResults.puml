@@ -1,0 +1,128 @@
+@startuml
+
+package "RegistrationResults" #DDDDDD {
+
+  class SessionData {
+    .. events ..
+    + NewResultCreatedEvent
+    .. properties ..
+    + resumed
+    + completed
+    __
+    + startTimeStamp: localtime
+    + resumeTimeStamps: list(localtime)
+    + closedTimeStamps: list(localtime)
+    * completedTimeStamp
+    + usePreopData: boolean
+    + biasCorrectionDone: boolean
+
+    + clippingModelNode
+    + inputMarkupNode
+
+    + initialVolume
+    + initialTargets
+
+    # _savedRegistrationResults: list
+    # _registrationResults: OrderedDict
+    __
+    + resetAndInitializeData()
+    + load(directory, filename)
+    + save(outputDir)
+
+    # _loadResultFileData(directory, filename, loadFunction, setFunction)
+    # _loadOrGetFileData(directory, filename, loadFunction)
+
+  }
+
+  ModuleLogicMixin <|-- SessionData
+
+  class RegistrationStatus {
+    + UNDEFINED_STATUS = "undefined"
+    + SKIPPED_STATUS = "skipped"
+    + APPROVED_STATUS = "approved"
+    + REJECTED_STATUS = "rejected"
+    .. properties ..
+    + approved
+    + skipped
+    + rejected
+    --
+    + status
+    --
+    + hasStatus(expected): bool
+    + approve()
+    + skip()
+    + reject()
+  }
+
+  ModuleLogicMixin <|-- RegistrationStatus
+
+
+  class RegistrationResult {
+    + {static} getSeriesNumberFromString
+    # _targets
+    # _volumes
+    # _labels
+    # _transforms
+  }
+
+  RegistrationStatus <|-- RegistrationResult
+
+  class AbstractRegistrationData {
+    + FILE_EXTENSION
+    --
+    + {abstract} initializeMembers()
+    + {abstract} asList(): list
+    + {abstract} asDict(): dict
+    --
+    + getFileName(node): string
+    + getFileNameByAttributeName(name): string
+    + getAllFileNames(): string[]
+    + save(directory)
+  }
+
+  ModuleLogicMixin <|-- AbstractRegistrationData
+  AbstractRegistrationData <|-- RegistrationTypeData
+
+  class RegistrationTypeData {
+    + rigid
+    + affine
+    + bSpline
+  }
+
+  class Labels {
+    + FILE_EXTENSION: FileExtension.NRRD
+    + fixed
+    + moving
+  }
+
+  class Volumes {
+    + FILE_EXTENSION: FileExtension.NRRD
+    + fixed
+    + moving
+  }
+
+  class Transforms {
+    + FILE_EXTENSION: FileExtension.H5
+  }
+
+  class Targets {
+    + FILE_EXTENSION: FileExtension.FCSV
+    + original
+    + approved
+    + approve(registrationType)
+  }
+
+  AbstractRegistrationData <|-- Labels
+  RegistrationTypeData <|-- Volumes
+  RegistrationTypeData <|-- Transforms
+  RegistrationTypeData <|-- Targets
+
+  Volumes <.. RegistrationResult::_volumes
+  Targets <.. RegistrationResult::_targets
+  Labels <.. RegistrationResult::_labels
+  Transforms <.. RegistrationResult::_transforms
+
+  SessionData::_registrationResults ..> RegistrationResult
+}
+
+@enduml

@@ -1,0 +1,28 @@
+@startuml
+
+!include SlicerProstate.puml
+!include RegistrationResults.puml
+!include SliceTrackerSession.puml
+!include SliceTrackerSteps.puml
+
+
+ModuleWidgetMixin <|-- SliceTrackerWidget
+SliceTrackerConstants <|-- SliceTrackerWidget
+
+
+class SliceTrackerWidget {
+  .. properties ..
+  + session
+  + stepManager
+  --
+
+  + enter(
+  + setup()
+  + cleanup()
+
+}
+
+SliceTrackerSession <.. SliceTrackerWidget::session: uses
+SliceTrackerStepManager <.. SliceTrackerWidget::stepManager
+
+@enduml
