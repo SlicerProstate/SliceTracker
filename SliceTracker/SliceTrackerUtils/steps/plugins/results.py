@@ -4,10 +4,10 @@ import vtk
 import qt
 import logging
 from ...constants import SliceTrackerConstants as constants
-from SlicerProstateUtils.decorators import logmethod, onModuleSelected
+from SlicerDevelopmentToolboxUtils.decorators import logmethod, onModuleSelected
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 
-from SlicerProstateUtils.helpers import SliceAnnotation
+from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
 
 
 class SliceTrackerRegistrationResultsLogic(SliceTrackerLogicBase):

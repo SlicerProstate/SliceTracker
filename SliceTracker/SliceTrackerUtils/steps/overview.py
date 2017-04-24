@@ -5,9 +5,9 @@ import ctk
 import qt
 import slicer
 import vtk
-from SlicerProstateUtils.constants import COLOR
-from SlicerProstateUtils.decorators import logmethod, onReturnProcessEvents
-from SlicerProstateUtils.helpers import IncomingDataMessageBox
+from SlicerDevelopmentToolboxUtils.constants import COLOR
+from SlicerDevelopmentToolboxUtils.decorators import logmethod, onReturnProcessEvents
+from SlicerDevelopmentToolboxUtils.widgets import ExtendedQMessageBox
 
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.results import SliceTrackerRegistrationResultsPlugin
@@ -344,5 +344,17 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         self.logic.applyBiasCorrection()
         progress.setValue(2)
         progress.close()
-
     # TODO: self.movingVolumeSelector.setCurrentNode(self.logic.preopVolume)
+
+
+class IncomingDataMessageBox(ExtendedQMessageBox):
+
+  def __init__(self, parent=None):
+    super(IncomingDataMessageBox, self).__init__(parent)
+    self.setWindowTitle("Incoming image data")
+    self.textLabel = qt.QLabel("New data has been received. What do you want do?")
+    self.layout().addWidget(self.textLabel, 0, 1)
+    self.setIcon(qt.QMessageBox.Question)
+    trackButton = self.addButton(qt.QPushButton('Track targets'), qt.QMessageBox.AcceptRole)
+    self.addButton(qt.QPushButton('Postpone'), qt.QMessageBox.NoRole)
+    self.setDefaultButton(trackButton)

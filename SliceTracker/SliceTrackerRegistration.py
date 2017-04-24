@@ -1,10 +1,10 @@
 import argparse, sys, os, logging
 import qt, slicer
 from slicer.ScriptedLoadableModule import *
-from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
+from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from SliceTrackerUtils.sessionData import *
 from SliceTrackerUtils.constants import SliceTrackerConstants
-from SlicerProstateUtils.decorators import onReturnProcessEvents
+from SlicerDevelopmentToolboxUtils.decorators import onReturnProcessEvents
 
 
 class SliceTrackerRegistration(ScriptedLoadableModule):
@@ -13,7 +13,7 @@ class SliceTrackerRegistration(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker Registration"
     self.parent.categories = ["Radiology"]
-    self.parent.dependencies = []
+    self.parent.dependencies = ["SlicerDevelopmentToolbox"]
     self.parent.contributors = ["Peter Behringer (SPL), Christian Herz (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ SliceTracker Registration facilitates support of MRI-guided targeted prostate biopsy. """
     self.parent.acknowledgementText = """Surgical Planning Laboratory, Brigham and Women's Hospital, Harvard

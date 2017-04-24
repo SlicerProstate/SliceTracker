@@ -5,8 +5,8 @@ import slicer
 import shutil
 import subprocess
 import ast
-from SlicerProstateUtils.constants import FileExtension
-from SlicerProstateUtils.widgets import CustomStatusProgressbar
+from SlicerDevelopmentToolboxUtils.constants import FileExtension
+from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 
 from base import SliceTrackerSegmentationPluginBase
 from ...base import SliceTrackerLogicBase

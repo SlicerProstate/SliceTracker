@@ -3,8 +3,8 @@ import qt, vtk, slicer
 
 from ..session import SliceTrackerSession
 
-from SlicerProstateUtils.decorators import logmethod, beforeRunProcessEvents, onModuleSelected
-from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin, GeneralModuleMixin
+from SlicerDevelopmentToolboxUtils.decorators import logmethod, beforeRunProcessEvents, onModuleSelected
+from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin, GeneralModuleMixin
 from ..constants import SliceTrackerConstants as constants
 
 

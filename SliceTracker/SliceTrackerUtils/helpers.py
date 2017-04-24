@@ -4,7 +4,7 @@ import qt
 import re
 import slicer
 
-from SlicerProstateUtils.mixins import ModuleWidgetMixin
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
 
 
 class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):

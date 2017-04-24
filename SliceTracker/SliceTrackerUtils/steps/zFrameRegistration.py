@@ -11,9 +11,9 @@ from ..algorithms.zFrameRegistration import LineMarkerRegistration, OpenSourceZF
 from ..constants import SliceTrackerConstants
 from base import SliceTrackerLogicBase, SliceTrackerStep
 
-from SlicerProstateUtils.decorators import onModuleSelected
-from SlicerProstateUtils.helpers import SliceAnnotation
-from SlicerProstateUtils.metaclasses import Singleton
+from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
+from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
+from SlicerDevelopmentToolboxUtils.metaclasses import Singleton
 
 
 class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):

@@ -4,7 +4,7 @@ from Editor import EditorWidget
 import EditorLib
 
 from slicer.ScriptedLoadableModule import *
-from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
+from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from SliceTrackerUtils.algorithms.zFrameRegistration import OpenSourceZFrameRegistration
 
 
@@ -14,7 +14,7 @@ class SliceTrackerZFrameRegistration(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker ZFrame Registration"
     self.parent.categories = ["Radiology"]
-    self.parent.dependencies = []
+    self.parent.dependencies = ["SlicerDevelopmentToolbox"]
     self.parent.contributors = ["Christian Herz (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """  """
     self.parent.acknowledgementText = """Surgical Planning Laboratory, Brigham and Women's Hospital, Harvard

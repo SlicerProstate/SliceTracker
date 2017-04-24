@@ -3,8 +3,8 @@ import vtk
 from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin
 
-from SlicerProstateUtils.helpers import SliceAnnotation
-from SlicerProstateUtils.widgets import TargetCreationWidget
+from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
+from SlicerDevelopmentToolboxUtils.widgets import TargetCreationWidget
 from targets import SliceTrackerTargetTablePlugin
 
 

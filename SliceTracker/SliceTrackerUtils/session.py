@@ -7,15 +7,16 @@ import slicer
 from sessionData import SessionData, RegistrationResult, RegistrationTypeData
 from constants import SliceTrackerConstants
 
-from exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
+from .exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 
-from SlicerProstateUtils.constants import DICOMTAGS, FileExtension, STYLE
-from SlicerProstateUtils.events import SlicerProstateEvents
-from SlicerProstateUtils.helpers import IncomingDataWindow, SmartDICOMReceiver
-from SlicerProstateUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
+from SlicerDevelopmentToolboxUtils.constants import DICOMTAGS, FileExtension, STYLE
+from SlicerDevelopmentToolboxUtils.events import SlicerDevelopmentToolboxEvents
+from SlicerDevelopmentToolboxUtils.helpers import SmartDICOMReceiver
+from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
+from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow
 
-from SlicerProstateUtils.decorators import logmethod, singleton, onReturnProcessEvents, onExceptionReturnNone, onModuleSelected
-from SlicerProstateUtils.decorators import onExceptionReturnFalse
+from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton, onReturnProcessEvents, onExceptionReturnNone, onModuleSelected
+from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
@@ -63,14 +64,14 @@ class SessionBase(ModuleLogicMixin):
 @singleton
 class SliceTrackerSession(SessionBase):
 
-  IncomingDataSkippedEvent = SlicerProstateEvents.IncomingDataSkippedEvent
-  IncomingPreopDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent + 110
+  IncomingDataSkippedEvent = SlicerDevelopmentToolboxEvents.IncomingDataSkippedEvent
+  IncomingPreopDataReceiveFinishedEvent = SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent + 110
 
-  IncomingIntraopDataReceiveFinishedEvent = SlicerProstateEvents.IncomingDataReceiveFinishedEvent + 111
-  NewImageSeriesReceivedEvent = SlicerProstateEvents.NewImageDataReceivedEvent
+  IncomingIntraopDataReceiveFinishedEvent = SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent + 111
+  NewImageSeriesReceivedEvent = SlicerDevelopmentToolboxEvents.NewImageDataReceivedEvent
 
-  DICOMReceiverStatusChanged = SlicerProstateEvents.StatusChangedEvent
-  DICOMReceiverStoppedEvent = SlicerProstateEvents.DICOMReceiverStoppedEvent
+  DICOMReceiverStatusChanged = SlicerDevelopmentToolboxEvents.StatusChangedEvent
+  DICOMReceiverStoppedEvent = SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent
 
   NewCaseStartedEvent = vtk.vtkCommand.UserEvent + 501
   CloseCaseEvent = vtk.vtkCommand.UserEvent + 502
@@ -401,11 +402,11 @@ class SliceTrackerSession(SessionBase):
     self.resetPreopDICOMReceiver()
     self.preopDICOMReceiver = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDirectory,
                                                  skipText="No preoperative images available")
-    self.preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataSkippedEvent,
+    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataSkippedEvent,
                                              self.onSkippingPreopDataReception)
-    self.preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataCanceledEvent,
+    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataCanceledEvent,
                                              lambda caller, event: self.close())
-    self.preopDICOMReceiver.addEventObserver(SlicerProstateEvents.IncomingDataReceiveFinishedEvent,
+    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent,
                                              self.onPreopDataReceptionFinished)
     self.preopDICOMReceiver.show()
 
@@ -435,10 +436,10 @@ class SliceTrackerSession(SessionBase):
       self._observeIntraopDICOMReceiverEvents()
       self.intraopDICOMReceiver.start(not (self.trainingMode or self.data.completed))
     else:
-      self.invokeEvent(SlicerProstateEvents.DICOMReceiverStoppedEvent)
+      self.invokeEvent(SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent)
     self.importDICOMSeries(self.getFileList(self.intraopDICOMDirectory))
     if self.intraopDICOMReceiver:
-      self.intraopDICOMReceiver.forceStatusChangeEvent()
+      self.intraopDICOMReceiver.forceStatusChangeEventUpdate()
 
   def resetIntraopDICOMReceiver(self):
     self.intraopDICOMReceiver = getattr(self, "intraopDICOMReceiver", None)
@@ -449,13 +450,13 @@ class SliceTrackerSession(SessionBase):
   def _observeIntraopDICOMReceiverEvents(self):
     self.intraopDICOMReceiver.addEventObserver(self.intraopDICOMReceiver.IncomingDataReceiveFinishedEvent,
                                                self.onDICOMSeriesReceived)
-    # self.intraopDICOMReceiver.addEventObserver(SlicerProstateEvents.StatusChangedEvent,
+    # self.intraopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.StatusChangedEvent,
     #                                            self.onDICOMReceiverStatusChanged)
-    # self.intraopDICOMReceiver.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent,
+    # self.intraopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent,
     #                                            self.onSmartDICOMReceiverStopped)
 
-    # self.logic.addEventObserver(SlicerProstateEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
-    # self.logic.addEventObserver(SlicerProstateEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
+    # self.logic.addEventObserver(SlicerDevelopmentToolboxEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
+    # self.logic.addEventObserver(SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
 
 
   @vtk.calldata_type(vtk.VTK_STRING)
@@ -469,7 +470,7 @@ class SliceTrackerSession(SessionBase):
 
     newSeries = []
     for currentIndex, currentFile in enumerate(newFileList, start=1):
-      self.invokeEvent(SlicerProstateEvents.NewFileIndexedEvent,
+      self.invokeEvent(SlicerDevelopmentToolboxEvents.NewFileIndexedEvent,
                        ["Indexing file %s" % currentFile, len(newFileList), currentIndex].__str__())
       slicer.app.processEvents()
       currentFile = os.path.join(self.intraopDICOMDirectory, currentFile)
