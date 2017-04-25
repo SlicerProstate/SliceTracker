@@ -1,6 +1,8 @@
 import ast
-import vtk
+import os
 import logging
+import qt
+import vtk
 
 from SliceTrackerUtils.configuration import SliceTrackerConfiguration
 from SliceTrackerUtils.constants import SliceTrackerConstants
@@ -12,12 +14,12 @@ from SliceTrackerUtils.steps.zFrameRegistration import SliceTrackerZFrameRegistr
 from SliceTrackerUtils.steps.evaluation import SliceTrackerEvaluationStep
 from SliceTrackerUtils.steps.segmentation import SliceTrackerSegmentationStep
 
-from SlicerProstateUtils.buttons import *
-from SlicerProstateUtils.constants import DICOMTAGS
-from SlicerProstateUtils.decorators import logmethod
-from SlicerProstateUtils.helpers import WatchBoxAttribute, DICOMBasedInformationWatchBox
-from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
-from SlicerProstateUtils.widgets import CustomStatusProgressbar
+from SlicerDevelopmentToolboxUtils.buttons import *
+from SlicerDevelopmentToolboxUtils.constants import DICOMTAGS
+from SlicerDevelopmentToolboxUtils.decorators import logmethod
+from SlicerDevelopmentToolboxUtils.helpers import WatchBoxAttribute
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar, DICOMBasedInformationWatchBox
 from slicer.ScriptedLoadableModule import *
 
 
@@ -27,7 +29,7 @@ class SliceTracker(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker"
     self.parent.categories = ["Radiology"]
-    self.parent.dependencies = ["SlicerProstate", "mpReview", "mpReviewPreprocessor"]
+    self.parent.dependencies = ["SlicerDevelopmentToolbox", "mpReview", "mpReviewPreprocessor"]
     self.parent.contributors = ["Christian Herz (SPL), Peter Behringer (SPL), Andriy Fedorov (SPL)"]
     self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy.
       See <a href=\"https://www.gitbook.com/book/slicerprostate/slicetracker/details\">the documentation</a> for
@@ -50,7 +52,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.session.steps = []
     self.session.removeEventObservers()
     self.session.addEventObserver(self.session.CloseCaseEvent, lambda caller, event: self.cleanup())
-    self.session.addEventObserver(SlicerProstateEvents.NewFileIndexedEvent, self.onNewFileIndexed)
+    self.session.addEventObserver(SlicerDevelopmentToolboxEvents.NewFileIndexedEvent, self.onNewFileIndexed)
     self.demoMode = False
 
   def enter(self):

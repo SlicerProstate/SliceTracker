@@ -4,10 +4,12 @@ import ctk
 import vtk
 import qt
 import logging
-from ...constants import SliceTrackerConstants as constants
+
 from ...helpers import NewCaseSelectionNameWidget
-from SlicerProstateUtils.decorators import logmethod
-from SlicerProstateUtils.helpers import WatchBoxAttribute, BasicInformationWatchBox
+
+from SlicerDevelopmentToolboxUtils.decorators import logmethod
+from SlicerDevelopmentToolboxUtils.helpers import WatchBoxAttribute
+from SlicerDevelopmentToolboxUtils.widgets import BasicInformationWatchBox
 
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 

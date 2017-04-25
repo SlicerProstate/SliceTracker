@@ -8,7 +8,7 @@ import EditorLib
 from ....constants import SliceTrackerConstants
 from base import SliceTrackerSegmentationPluginBase
 
-from SlicerProstateUtils.decorators import onModuleSelected
+from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 
 
 class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):

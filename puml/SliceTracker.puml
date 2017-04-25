@@ -1,6 +1,6 @@
 @startuml
 
-!include SlicerProstate.puml
+!include SlicerDevelopmentToolbox.puml
 !include RegistrationResults.puml
 !include SliceTrackerSession.puml
 !include SliceTrackerSteps.puml

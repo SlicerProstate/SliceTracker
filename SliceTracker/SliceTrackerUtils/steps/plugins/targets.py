@@ -6,9 +6,9 @@ from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase, StepBase
 from ..zFrameRegistration import SliceTrackerZFrameRegistrationStepLogic
 
-from SlicerProstateUtils.mixins import ModuleLogicMixin
-from SlicerProstateUtils.decorators import logmethod, onModuleSelected
-from SlicerProstateUtils.helpers import SliceAnnotation
+from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin
+from SlicerDevelopmentToolboxUtils.decorators import logmethod, onModuleSelected
+from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
 
 
 class CustomTargetTableModel(qt.QAbstractTableModel, StepBase):

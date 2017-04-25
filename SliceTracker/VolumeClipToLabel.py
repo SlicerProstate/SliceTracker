@@ -2,7 +2,7 @@ import slicer, qt, vtk
 import os, logging
 from slicer.ScriptedLoadableModule import *
 
-from SlicerProstateUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 
 from EditorLib import ColorBox
 
@@ -13,7 +13,7 @@ class VolumeClipToLabel(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "Volume clip to label"
     self.parent.categories = ["Segmentation"]
-    self.parent.dependencies = ["SlicerProstate"]
+    self.parent.dependencies = ["SlicerDevelopmentToolbox"]
     self.parent.contributors = ["Christian Herz (SPL), Peter Behringer (SPL)"]
     self.parent.helpText = """ VolumeClipLabel uses the VolumeClip for creating a label map"""
     self.parent.acknowledgementText = """Surgical Planning Laboratory, Brigham and Women's Hospital, Harvard

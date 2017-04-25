@@ -4,10 +4,10 @@ import os, json
 import shutil
 from collections import OrderedDict
 
-from SlicerProstateUtils.constants import FileExtension
-from SlicerProstateUtils.mixins import ModuleLogicMixin
-from SlicerProstateUtils.decorators import onExceptionReturnNone, logmethod
-from SlicerProstateUtils.widgets import CustomStatusProgressbar
+from SlicerDevelopmentToolboxUtils.constants import FileExtension
+from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin
+from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnNone, logmethod
+from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 
 
 class SessionData(ModuleLogicMixin):

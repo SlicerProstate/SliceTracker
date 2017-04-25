@@ -9,8 +9,8 @@ import slicer
 from ...constants import SliceTrackerConstants
 from ..base import SliceTrackerPlugin
 
-from SlicerProstateUtils.helpers import SampleDataDownloader
-from SlicerProstateUtils.decorators import *
+from SlicerDevelopmentToolboxUtils.helpers import SampleDataDownloader
+from SlicerDevelopmentToolboxUtils.decorators import *
 
 
 class SliceTrackerTrainingPlugin(SliceTrackerPlugin):

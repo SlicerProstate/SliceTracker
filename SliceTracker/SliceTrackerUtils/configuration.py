@@ -1,6 +1,6 @@
 import ConfigParser
 import inspect, os
-from SlicerProstateUtils.mixins import ModuleWidgetMixin
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
 
 
 class SliceTrackerConfiguration(ModuleWidgetMixin):

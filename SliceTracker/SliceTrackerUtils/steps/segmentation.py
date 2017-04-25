@@ -4,8 +4,8 @@ import qt
 import slicer
 import vtk
 from base import SliceTrackerLogicBase, SliceTrackerStep
-from SlicerProstateUtils.helpers import SliceAnnotation
-from SlicerProstateUtils.decorators import onModuleSelected
+from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
+from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 from plugins.targeting import SliceTrackerTargetingPlugin
 from plugins.segmentation.manual import SliceTrackerManualSegmentationPlugin
 from plugins.segmentation.automatic import SliceTrackerAutomaticSegmentationPlugin

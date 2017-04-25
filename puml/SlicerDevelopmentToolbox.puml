@@ -1,6 +1,6 @@
 @startuml
 
-package "SlicerProstate" #DDDDDD {
+package "SlicerDevelopmentToolbox" #DDDDDD {
   class ModuleWidgetMixin {
     .. properties ..
     + layoutManager
