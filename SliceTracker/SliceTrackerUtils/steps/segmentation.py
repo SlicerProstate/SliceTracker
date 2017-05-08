@@ -228,7 +228,9 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
     self.backButton.enabled = True
     self.targetingPlugin.enabled = True
-    self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
+    if self.inputsAreSet():
+      self.openSegmentationComparisonStep()
+    self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0) # TODO: need to revise that
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageSeriesReceived(self, caller, event, callData):
@@ -258,20 +260,20 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     _, suffix = self.session.getRegistrationResultNameAndGeneratedSuffix(self.session.currentSeries)
     labelNode.SetName(labelNode.GetName() + suffix)
     self.session.fixedLabel = labelNode
-    if self.session.data.usePreopData or self.session.retryMode:
-      self.setAxialOrientation()
-    self.openSegmentationComparisonStep()
-    self.backButton.enabled = True
     self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
+    self.backButton.enabled = True
+    self.openSegmentationComparisonStep()
 
   def openSegmentationComparisonStep(self):
+    self.manualSegmentationPlugin.enableEditorWidgetButton()
+    if self.session.data.usePreopData or self.session.retryMode:
+      self.setAxialOrientation()
     self.removeMissingPreopDataAnnotation()
     self.targetingPlugin.enabled = True
     if self.session.data.usePreopData or self.session.retryMode:
       self.layoutManager.setLayout(constants.LAYOUT_SIDE_BY_SIDE)
       self.setupScreenForSegmentationComparison("red", self.session.movingVolume, self.session.movingLabel)
       self.setupScreenForSegmentationComparison("yellow", self.session.fixedVolume, self.session.fixedLabel)
-      self.manualSegmentationPlugin.enableEditorWidgetButton()
       self.centerLabelsOnVisibleSliceWidgets()
     elif not self.session.movingTargets:
       self.targetingPlugin.startTargeting()

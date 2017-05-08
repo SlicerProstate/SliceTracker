@@ -111,17 +111,27 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
 
   def onDeactivation(self):
     super(SliceTrackerManualSegmentationPlugin, self).onDeactivation()
-    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
-                                                     self.onSegmentationFinished)
-    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
-                                                     lambda caller, event: self.invokeEvent(self.SegmentationCancelledEvent))
     self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationStartedEvent,
                                                      self.onSegmentationStarted)
+    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
+                                                     self.onSegmentationCancelled)
+    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
+                                                     self.onSegmentationFinished)
 
   def onSegmentationStarted(self, caller, event):
+    self.disableEditorWidgetButton()
     self.setupFourUpView(self.session.fixedVolume)
     self.setDefaultOrientation()
     self.invokeEvent(self.SegmentationStartedEvent)
+
+  def onSegmentationCancelled(self, caller, event):
+    self.disableEditorWidgetButton()
+    self.invokeEvent(self.SegmentationCancelledEvent)
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onSegmentationFinished(self, caller, event, labelNode):
+    self.enableEditorWidgetButton()
+    self.invokeEvent(self.SegmentationFinishedEvent, labelNode)
 
   def disableEditorWidgetAndResetEditorTool(self, enabledButton=False):
     self.editorWidgetParent.hide()
