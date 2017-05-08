@@ -18,6 +18,7 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
     super(SliceTrackerTargetingPlugin, self).__init__()
 
   def setup(self):
+    super(SliceTrackerTargetingPlugin, self).setup()
     self.targetTablePlugin = SliceTrackerTargetTablePlugin()
     self.addPlugin(self.targetTablePlugin)
 
@@ -37,6 +38,7 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
     return (not self.session.data.usePreopData and not self.session.movingTargets) or self.session.retryMode
 
   def onActivation(self):
+    super(SliceTrackerTargetingPlugin, self).onActivation()
     self.fiducialsWidget.show()
     self.targetTablePlugin.visible = False
 
@@ -49,6 +51,7 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
     self.targetingGroupBox.visible = not self.session.data.usePreopData and not self.session.retryMode
 
   def onDeactivation(self):
+    super(SliceTrackerTargetingPlugin, self).onDeactivation()
     self.fiducialsWidget.reset()
     self.removeSliceAnnotations()
 

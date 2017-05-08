@@ -3,6 +3,8 @@ import slicer
 
 class SliceTrackerConstants(object):
 
+  MODULE_NAME = "SliceTracker"
+
   PREOP_SAMPLE_DATA_URL = 'https://github.com/SlicerProstate/SliceTracker/releases/download/test-data/Preop-deid.zip'
   INTRAOP_SAMPLE_DATA_URL = 'https://github.com/SlicerProstate/SliceTracker/releases/download/test-data/Intraop-deid.zip'
 

@@ -1,140 +1,63 @@
-import logging, os
-import qt, vtk, slicer
+import vtk
+from SlicerDevelopmentToolboxUtils.decorators import beforeRunProcessEvents, onModuleSelected
+from SlicerDevelopmentToolboxUtils.module.base import WidgetBase
+from SlicerDevelopmentToolboxUtils.module.logic import LogicBase
 
+from ..constants import SliceTrackerConstants as constants
 from ..session import SliceTrackerSession
 
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, beforeRunProcessEvents, onModuleSelected
-from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin, GeneralModuleMixin
-from ..constants import SliceTrackerConstants as constants
 
+class SliceTrackerWidgetBase(WidgetBase):
 
-class StepBase(GeneralModuleMixin):
+  MODULE_NAME = constants.MODULE_NAME
 
-  MODULE_NAME = "SliceTracker"
+  SessionClass = SliceTrackerSession
 
-  @property
-  def currentResult(self):
-    return self.session.currentResult
-
-  @currentResult.setter
-  def currentResult(self, value):
-    self.session.currentResult = value
+  AvailableLayoutsChangedEvent = vtk.vtkCommand.UserEvent + 4233
 
   def __init__(self):
-    self.modulePath = self.getModulePath()
-    self.resourcesPath = os.path.join(self.modulePath, "Resources")
-    self.session = SliceTrackerSession()
-    self.mrmlSceneObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndCloseEvent, self.onMrmlSceneCleared)
-
-  def onMrmlSceneCleared(self, caller, event):
-    pass
-
-  def cleanup(self):
-    if self.mrmlSceneObserver:
-      self.mrmlSceneObserver = slicer.mrmlScene.RemoveObserver(self.mrmlSceneObserver)
-
-  def getModulePath(self):
-    return os.path.dirname(slicer.util.modulePath(self.MODULE_NAME))
-
-  def getSetting(self, setting, moduleName=None, default=None):
-    return GeneralModuleMixin.getSetting(self, setting, moduleName=moduleName if moduleName else self.MODULE_NAME,
-                                         default=default)
-
-  def setSetting(self, setting, value, moduleName=None):
-    return GeneralModuleMixin.setSetting(self, setting, value,
-                                         moduleName=moduleName if moduleName else self.MODULE_NAME)
-
-
-class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
-
-  ActivatedEvent = vtk.vtkCommand.UserEvent + 150
-  DeactivatedEvent = vtk.vtkCommand.UserEvent + 151
-  AvailableLayoutsChangedEvent = vtk.vtkCommand.UserEvent + 152
-  LayoutClass = qt.QGridLayout
-
-  NAME = None
-  LogicClass = None
-
-  @property
-  def active(self):
-    self._activated = getattr(self, "_activated", False)
-    return self._activated
-
-  @active.setter
-  def active(self, value):
-    if self.active == value:
-      return
-    self._activated = value
-    logging.debug("%s %s" % ("activated" if self.active else "deactivate", self.NAME))
-    self.invokeEvent(self.ActivatedEvent if self.active else self.DeactivatedEvent)
-    if self.active:
-      self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
-      self.session.addEventObserver(self.session.CurrentResultChangedEvent, self.onCurrentResultChanged)
-      self.onActivation()
-    else:
-      self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
-      self.session.removeEventObserver(self.session.CurrentResultChangedEvent, self.onCurrentResultChanged)
-      self.onDeactivation()
-
-  def __init__(self):
-    qt.QWidget.__init__(self)
-    StepBase.__init__(self)
-    self._plugins = []
-    if self.LogicClass:
-      self.logic = self.LogicClass()
-    self.setLayout(self.LayoutClass())
-    self.setupIcons()
-    self.setup()
-    self.setupAdditionalViewSettingButtons()
-    self.setupSliceWidgets()
-    self.setupSessionObservers()
-    self.setupConnections()
-
-  def __del__(self):
-    self.removeSessionEventObservers()
-
-  def setupIcons(self):
-    pass
+    super(SliceTrackerWidgetBase, self).__init__()
 
   def setup(self):
-    NotImplementedError("This method needs to be implemented for %s" % self.NAME)
-
-  def setupConnections(self):
-    NotImplementedError("This method needs to be implemented for %s" % self.NAME)
-
-  def onActivation(self):
-    self._activatePlugins()
-
-  def onDeactivation(self):
-    self._deactivatePlugins()
-
-  def onCurrentResultChanged(self, caller, event):
-    pass
+    self.setupSliceWidgets()
+    self.setupAdditionalViewSettingButtons()
 
   def setupSliceWidgets(self):
     self.createSliceWidgetClassMembers("Red")
     self.createSliceWidgetClassMembers("Yellow")
     self.createSliceWidgetClassMembers("Green")
 
+  def setupAdditionalViewSettingButtons(self):
+    pass
+
   def setupSessionObservers(self):
-    self.session.addEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
-    self.session.addEventObserver(self.session.CaseOpenedEvent, self.onCaseOpened)
-    self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
+    super(SliceTrackerWidgetBase, self).setupSessionObservers()
     self.session.addEventObserver(self.session.NewImageSeriesReceivedEvent, self.onNewImageSeriesReceived)
     self.session.addEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
     self.session.addEventObserver(self.session.LoadingMetadataSuccessfulEvent, self.onLoadingMetadataSuccessful)
     self.session.addEventObserver(self.session.PreprocessingSuccessfulEvent, self.onPreprocessingSuccessful)
 
   def removeSessionEventObservers(self):
-    self.session.removeEventObserver(self.session.NewCaseStartedEvent, self.onNewCaseStarted)
-    self.session.removeEventObserver(self.session.CaseOpenedEvent, self.onCaseOpened)
-    self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
+    super(SliceTrackerWidgetBase, self).removeSessionEventObservers()
     self.session.removeEventObserver(self.session.NewImageSeriesReceivedEvent, self.onNewImageSeriesReceived)
     self.session.removeEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
     self.session.removeEventObserver(self.session.LoadingMetadataSuccessfulEvent, self.onLoadingMetadataSuccessful)
     self.session.removeEventObserver(self.session.PreprocessingSuccessfulEvent, self.onPreprocessingSuccessful)
 
-  @onModuleSelected(StepBase.MODULE_NAME)
+  def onActivation(self):
+    self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
+    self.session.addEventObserver(self.session.CurrentResultChangedEvent, self.onCurrentResultChanged)
+    super(SliceTrackerWidgetBase, self).onActivation()
+
+  def onDeactivation(self):
+    self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
+    self.session.removeEventObserver(self.session.CurrentResultChangedEvent, self.onCurrentResultChanged)
+    super(SliceTrackerWidgetBase, self).onDeactivation()
+
+  def onCurrentResultChanged(self, caller, event):
+    pass
+
+  @onModuleSelected(constants.MODULE_NAME)
   def onLayoutChanged(self, layout=None):
     pass
 
@@ -144,38 +67,14 @@ class SliceTrackerWidgetBase(qt.QWidget, StepBase, ModuleWidgetMixin):
     self.invokeEvent(self.AvailableLayoutsChangedEvent, str(layouts))
 
   def addPlugin(self, plugin):
-    assert hasattr(plugin, "active"), "Plugin needs to be a subclass of %s" % SliceTrackerPlugin.__class__.__name__
-    self._plugins.append(plugin)
+    super(SliceTrackerWidgetBase, self).addPlugin(plugin)
     plugin.addEventObserver(self.AvailableLayoutsChangedEvent, self.onPluginAvailableLayoutChanged)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onPluginAvailableLayoutChanged(self, caller, event, callData):
     self.invokeEvent(self.AvailableLayoutsChangedEvent, callData)
 
-  def _activatePlugins(self):
-    self.__setPluginsActivated(True)
-
-  def _deactivatePlugins(self):
-    self.__setPluginsActivated(False)
-
-  def __setPluginsActivated(self, activated):
-    for plugin in self._plugins:
-      plugin.active = activated
-
-  def setupAdditionalViewSettingButtons(self):
-    pass
-
   def resetViewSettingButtons(self):
-    pass
-
-  def onNewCaseStarted(self, caller, event):
-    pass
-
-  def onCaseOpened(self, caller, event):
-    pass
-
-  @vtk.calldata_type(vtk.VTK_STRING)
-  def onCaseClosed(self, caller, event, callData):
     pass
 
   @vtk.calldata_type(vtk.VTK_STRING)
@@ -256,17 +155,14 @@ class SliceTrackerStep(SliceTrackerWidgetBase):
     self.parameterNode.SetAttribute("Name", self.NAME)
     super(SliceTrackerStep, self).__init__()
 
-  def __del__(self):
-    self.removeEventObservers()
 
+class SliceTrackerLogicBase(LogicBase):
 
-class SliceTrackerLogicBase(StepBase, ModuleLogicMixin):
+  MODULE_NAME = constants.MODULE_NAME
+  SessionClass = SliceTrackerSession
 
   def __init__(self):
-    StepBase.__init__(self)
-
-  def cleanup(self):
-    return NotImplementedError
+    super(SliceTrackerLogicBase, self).__init__()
 
 
 class SliceTrackerPlugin(SliceTrackerWidgetBase):

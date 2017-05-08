@@ -19,9 +19,6 @@ class SliceTrackerCaseManagerLogic(SliceTrackerLogicBase):
   def __init__(self):
     super(SliceTrackerCaseManagerLogic, self).__init__()
 
-  def cleanup(self):
-    pass
-
 
 class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
 
@@ -62,6 +59,7 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
     self.closeIcon = self.createIcon('icon-close.png')
 
   def setup(self):
+    super(SliceTrackerCaseManagerPlugin, self).setup()
     iconSize = qt.QSize(36, 36)
     self.createNewCaseButton = self.createButton("", icon=self.newIcon, iconSize=iconSize, toolTip="Start a new case")
     self.openCaseButton = self.createButton("", icon=self.openIcon, iconSize=iconSize, toolTip="Open case")

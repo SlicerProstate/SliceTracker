@@ -293,6 +293,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.retryIcon = self.createIcon("icon-retry.png")
 
   def setup(self):
+    super(SliceTrackerZFrameRegistrationStep, self).setup()
     self.setupManualIndexesGroupBox()
     self.setupActionButtons()
 

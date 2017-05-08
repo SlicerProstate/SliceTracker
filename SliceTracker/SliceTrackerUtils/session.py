@@ -1,7 +1,5 @@
 import os, logging
 import vtk, ctk, ast
-import shutil
-from abc import ABCMeta, abstractmethod
 
 import slicer
 from sessionData import SessionData, RegistrationResult, RegistrationTypeData
@@ -12,57 +10,18 @@ from .exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesErr
 from SlicerDevelopmentToolboxUtils.constants import DICOMTAGS, FileExtension, STYLE
 from SlicerDevelopmentToolboxUtils.events import SlicerDevelopmentToolboxEvents
 from SlicerDevelopmentToolboxUtils.helpers import SmartDICOMReceiver
-from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
 from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow
+from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton
+from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse, onReturnProcessEvents, onExceptionReturnNone
+from SlicerDevelopmentToolboxUtils.module.session import StepBasedSession
 
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton, onReturnProcessEvents, onExceptionReturnNone, onModuleSelected
-from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
 
-class SessionBase(ModuleLogicMixin):
-
-  __metaclass__ = ABCMeta
-
-  DirectoryChangedEvent = vtk.vtkCommand.UserEvent + 203
-
-  _directory = None
-
-  @property
-  def directory(self):
-    return self._directory
-
-  @directory.setter
-  def directory(self, value):
-    if value:
-      if not os.path.exists(value):
-        self.createDirectory(value)
-    elif not value and self._directory:
-      if self.getDirectorySize(self._directory) == 0:
-        shutil.rmtree(self.directory)
-    self._directory = value
-    if self._directory:
-      self.processDirectory()
-    self.invokeEvent(self.DirectoryChangedEvent, self.directory)
-
-  def __init__(self):
-    pass
-
-  @abstractmethod
-  def load(self):
-    pass
-
-  @abstractmethod
-  def processDirectory(self):
-    pass
-
-  def save(self):
-    pass
-
-
 @singleton
-class SliceTrackerSession(SessionBase):
+class SliceTrackerSession(StepBasedSession):
 
   IncomingDataSkippedEvent = SlicerDevelopmentToolboxEvents.IncomingDataSkippedEvent
   IncomingPreopDataReceiveFinishedEvent = SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent + 110
@@ -72,10 +31,6 @@ class SliceTrackerSession(SessionBase):
 
   DICOMReceiverStatusChanged = SlicerDevelopmentToolboxEvents.StatusChangedEvent
   DICOMReceiverStoppedEvent = SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent
-
-  NewCaseStartedEvent = vtk.vtkCommand.UserEvent + 501
-  CloseCaseEvent = vtk.vtkCommand.UserEvent + 502
-  CaseOpenedEvent = vtk.vtkCommand.UserEvent + 503
 
   ZFrameRegistrationSuccessfulEvent = vtk.vtkCommand.UserEvent + 140
   PreprocessingSuccessfulEvent = vtk.vtkCommand.UserEvent + 141
@@ -92,23 +47,14 @@ class SliceTrackerSession(SessionBase):
   InitiateEvaluationEvent = vtk.vtkCommand.UserEvent + 163
 
   CurrentResultChangedEvent = vtk.vtkCommand.UserEvent + 234
+
   ApprovedEvent = RegistrationResult.ApprovedEvent
   SkippedEvent = RegistrationResult.SkippedEvent
   RejectedEvent = RegistrationResult.RejectedEvent
 
   ResultEvents = [ApprovedEvent, SkippedEvent, RejectedEvent]
 
-  MODULE_NAME = "SliceTracker"
-
-  @property
-  def steps(self):
-    return self._steps
-
-  @steps.setter
-  def steps(self, value):
-    for step in self.steps:
-      step.removeSessionEventObservers()
-    self._steps = value
+  MODULE_NAME = SliceTrackerConstants.MODULE_NAME
 
   @property
   def preprocessedDirectory(self):
@@ -248,11 +194,9 @@ class SliceTrackerSession(SessionBase):
     self._fixedLabel = value
 
   def __init__(self):
-    SessionBase.__init__(self)
+    StepBasedSession.__init__(self)
     self.registrationLogic = SliceTrackerRegistrationLogic()
-    self._steps = []
     self.resetAndInitializeMembers()
-    self.addMrmlSceneClearObserver()
 
   def resetAndInitializeMembers(self):
     self.initializeColorNodes()
@@ -278,18 +222,14 @@ class SliceTrackerSession(SessionBase):
     self.segmentedLabelValue = self.mpReviewColorNode.GetColorIndexByName(self.segmentedColorName)
 
   def __del__(self):
+    super(SliceTrackerSession, self).__del__()
     self.clearData()
-    if self.mrmlSceneObserver:
-      self.mrmlSceneObserver = slicer.mrmlScene.RemoveObserver(self.mrmlSceneObserver)
 
-  def addMrmlSceneClearObserver(self):
+  def clearData(self):
+    self.resetAndInitializeMembers()
 
-    @onModuleSelected(self.MODULE_NAME)
-    def onMrmlSceneCleared(caller, event):
-      logging.debug("called onMrmlSceneCleared in %s" % self.__class__.__name__)
-      self.initializeColorNodes()
-
-    self.mrmlSceneObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndCloseEvent, onMrmlSceneCleared)
+  def onMrmlSceneCleared(self, caller, event):
+    self.initializeColorNodes()
 
   @onExceptionReturnFalse
   def isCurrentSeriesCoverProstateInNonPreopMode(self):
@@ -301,25 +241,8 @@ class SliceTrackerSession(SessionBase):
   def isCaseDirectoryValid(self):
     return os.path.exists(self.preopDICOMDirectory) and os.path.exists(self.intraopDICOMDirectory)
 
-  def getSetting(self, setting, moduleName=None, default=None):
-    return SessionBase.getSetting(self, setting, moduleName=self.MODULE_NAME, default=default)
-
-  def setSetting(self, setting, value, moduleName=None):
-    return SessionBase.setSetting(self, setting, value, moduleName=self.MODULE_NAME)
-
-  def registerStep(self, step):
-    logging.debug("Registering step %s" % step.NAME)
-    if step not in self.steps:
-      self.steps.append(step)
-
-  def getStep(self, stepName):
-    return next((x for x in self.steps if x.NAME == stepName), None)
-
   def isRunning(self):
     return not self.directory in [None, '']
-
-  def clearData(self):
-    self.resetAndInitializeMembers()
 
   def processDirectory(self):
     self.newCaseCreated = getattr(self, "newCaseCreated", False)
@@ -782,6 +705,10 @@ class SliceTrackerSession(SessionBase):
 
   def isEligibleForSkipping(self, series):
     return not self.isAnyListItemInString(series,[self.getSetting("COVER_PROSTATE"), self.getSetting("COVER_TEMPLATE")])
+
+  def isLoading(self):
+    self._loading = getattr(self, "_loading", False)
+    return self._loading
 
   def takeActionForCurrentSeries(self):
     event = None

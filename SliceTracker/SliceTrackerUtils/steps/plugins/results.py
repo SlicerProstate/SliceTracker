@@ -15,9 +15,6 @@ class SliceTrackerRegistrationResultsLogic(SliceTrackerLogicBase):
   def __init__(self):
     super(SliceTrackerRegistrationResultsLogic, self).__init__()
 
-  def cleanup(self):
-    pass
-
 
 class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
@@ -81,6 +78,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.revealCursorIcon = self.createIcon('icon-revealCursor.png')
 
   def setup(self):
+    super(SliceTrackerRegistrationResultsPlugin, self).setup()
     self.registrationResultsGroupBox = qt.QGroupBox("Registration Results")
     self.registrationResultsGroupBoxLayout = qt.QGridLayout()
     self.registrationResultsGroupBox.setLayout(self.registrationResultsGroupBoxLayout)
@@ -178,13 +176,16 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   @logmethod(logging.INFO)
   def onActivation(self):
+    super(SliceTrackerRegistrationResultsPlugin, self).onActivation()
     if not self.currentResult:
       return
     self.updateRegistrationResultSelector()
+    self.onCurrentResultChanged()
     defaultLayout = self.getSetting("DEFAULT_EVALUATION_LAYOUT")
     self.onLayoutChanged(getattr(constants, defaultLayout, constants.LAYOUT_SIDE_BY_SIDE))
 
   def onDeactivation(self):
+    super(SliceTrackerRegistrationResultsPlugin, self).onDeactivation()
     self.cleanup()
 
   @vtk.calldata_type(vtk.VTK_STRING)
@@ -192,7 +193,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.cleanup()
 
   @logmethod(logging.INFO)
-  def onCurrentResultChanged(self, caller, event):
+  def onCurrentResultChanged(self, caller=None, event=None):
     if not self.active:
       return
     if not self.currentResult or self.currentResult.skipped:

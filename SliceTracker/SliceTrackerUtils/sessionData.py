@@ -436,7 +436,7 @@ class AbstractRegistrationData(ModuleLogicMixin):
         fileNames[regType] = self.getFileName(node)
     return fileNames
 
-  @logmethod(level=logging.INFO)
+  # @logmethod(level=logging.INFO)
   def save(self, directory):
     assert self.FILE_EXTENSION is not None
     savedSuccessfully = []

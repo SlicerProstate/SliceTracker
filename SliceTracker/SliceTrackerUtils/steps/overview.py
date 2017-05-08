@@ -7,7 +7,7 @@ import slicer
 import vtk
 from SlicerDevelopmentToolboxUtils.constants import COLOR
 from SlicerDevelopmentToolboxUtils.decorators import logmethod, onReturnProcessEvents
-from SlicerDevelopmentToolboxUtils.widgets import ExtendedQMessageBox
+from SlicerDevelopmentToolboxUtils.widgets import ExtendedQMessageBox, CustomStatusProgressbar
 
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.results import SliceTrackerRegistrationResultsPlugin
@@ -22,9 +22,6 @@ class SliceTrackerOverViewStepLogic(SliceTrackerLogicBase):
 
   def __init__(self):
     super(SliceTrackerOverViewStepLogic, self).__init__()
-
-  def cleanup(self):
-    pass
 
   def applyBiasCorrection(self):
     outputVolume = slicer.vtkMRMLScalarVolumeNode()
@@ -61,6 +58,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     slicer.mrmlScene.Clear(0)
 
   def setup(self):
+    super(SliceTrackerOverviewStep, self).setup()
     self.caseManagerPlugin = SliceTrackerCaseManagerPlugin()
     self.trainingPlugin = SliceTrackerTrainingPlugin()
 
@@ -187,6 +185,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     else:
       self.session.close()
 
+  @logmethod(logging.INFO)
   def onRegistrationStatusChanged(self, caller, event):
     self.active = True
 
@@ -256,25 +255,35 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageSeriesReceived(self, caller, event, callData):
-    newImageSeries = ast.literal_eval(callData)
-    # self.customStatusProgressBar.text = "New image data has been received."
+    if not self.session.isLoading():
+      customStatusProgressBar = CustomStatusProgressbar()
+      customStatusProgressBar.text = "New image data has been received."
+    
     self.updateIntraopSeriesSelectorTable()
-    selectedSeries = self.intraopSeriesSelector.currentText
 
-    if selectedSeries != "" and self.session.isTrackingPossible(selectedSeries):
-      self.takeActionOnSelectedSeries(newImageSeries, selectedSeries)
-
-  def takeActionOnSelectedSeries(self, newImageSeries, selectedSeries):
-    if not self.active:
+    if not self.active or self.session.isLoading():
       return
-    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-    newImageSeriesNumbers = [RegistrationResult.getSeriesNumberFromString(s) for s in newImageSeries]
+    selectedSeries = self.intraopSeriesSelector.currentText
+    if selectedSeries != "" and self.session.isTrackingPossible(selectedSeries):
+      selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+
+      newImageSeries = ast.literal_eval(callData)
+      newImageSeriesNumbers = [RegistrationResult.getSeriesNumberFromString(s) for s in newImageSeries]
+      if selectedSeriesNumber in newImageSeriesNumbers:
+        self.takeActionOnSelectedSeries()
+
+  def onCaseOpened(self, caller, event):
+    if self.active and not self.session.isLoading():
+      self.selectMostRecentEligibleSeries()
+      self.takeActionOnSelectedSeries()
+
+  def takeActionOnSelectedSeries(self):
+    selectedSeries = self.intraopSeriesSelector.currentText
     if self.getSetting("COVER_TEMPLATE") in selectedSeries and not self.session.zFrameRegistrationSuccessful:
       self.onTrackTargetsButtonClicked()
       return
 
-    if selectedSeriesNumber in newImageSeriesNumbers and \
-      self.session.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
+    if self.session.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
       if self.notifyUserAboutNewData and not self.session.data.completed:
         dialog = IncomingDataMessageBox()
         self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
@@ -301,11 +310,14 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.intraopSeriesSelector.setCurrentIndex(currentIndex)
     self.intraopSeriesSelector.blockSignals(False)
     self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText))
-    if self.active:
+    if self.active and not self.session.isLoading():
       self.selectMostRecentEligibleSeries()
 
   def selectMostRecentEligibleSeries(self):
     substring = self.getSetting("NEEDLE_IMAGE")
+    self.intraopSeriesSelector.blockSignals(True)
+    self.intraopSeriesSelector.setCurrentIndex(-1)
+    self.intraopSeriesSelector.blockSignals(False)
     index = -1
     if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
       substring = self.getSetting("COVER_TEMPLATE") \
@@ -322,6 +334,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       elif self.getSetting("VIBE_IMAGE") in series and index == -1:
         index = self.intraopSeriesSelector.findText(series)
     rowCount = self.intraopSeriesSelector.model().rowCount()
+
     self.intraopSeriesSelector.setCurrentIndex(index if index != -1 else (rowCount-1 if rowCount else -1))
 
   def configureRedSliceNodeForPreopData(self):

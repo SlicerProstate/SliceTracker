@@ -12,9 +12,6 @@ class SliceTrackerEvaluationStepLogic(SliceTrackerLogicBase):
   def __init__(self):
     super(SliceTrackerEvaluationStepLogic, self).__init__()
 
-  def cleanup(self):
-    pass
-
 
 class SliceTrackerEvaluationStep(SliceTrackerStep):
 
@@ -31,6 +28,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.rejectIcon = self.createIcon("icon-thumbsDown.png")
 
   def setup(self):
+    super(SliceTrackerEvaluationStep, self).setup()
     self.registrationEvaluationGroupBox = qt.QGroupBox()
     self.registrationEvaluationGroupBoxLayout = qt.QGridLayout()
     self.registrationEvaluationGroupBox.setLayout(self.registrationEvaluationGroupBoxLayout)
