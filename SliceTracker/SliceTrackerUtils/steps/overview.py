@@ -57,14 +57,20 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.updateIntraopSeriesSelectorTable()
     slicer.mrmlScene.Clear(0)
 
+  def setupIcons(self):
+    self.trackIcon = self.createIcon('icon-track.png')
+    self.skipIcon = self.createIcon('icon-skip.png')
+
   def setup(self):
     super(SliceTrackerOverviewStep, self).setup()
+    iconSize = qt.QSize(24, 24)
     self.caseManagerPlugin = SliceTrackerCaseManagerPlugin()
     self.trainingPlugin = SliceTrackerTrainingPlugin()
 
-    self.trackTargetsButton = self.createButton("Track targets", toolTip="Track targets", enabled=False)
-    self.skipIntraopSeriesButton = self.createButton("Skip", toolTip="Skip the currently selected series",
-                                                     enabled=False)
+    self.trackTargetsButton = self.createButton("", icon=self.trackIcon, iconSize=iconSize, toolTip="Track targets",
+                                                enabled=False)
+    self.skipIntraopSeriesButton = self.createButton("", icon=self.skipIcon, iconSize=iconSize,
+                                                     toolTip="Skip selected series", enabled=False)
     self.setupIntraopSeriesSelector()
 
     self.setupRegistrationResultsPlugin()
@@ -72,13 +78,12 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.targetTablePlugin = SliceTrackerTargetTablePlugin()
     self.addPlugin(self.targetTablePlugin)
 
-    self.layout().addWidget(self.caseManagerPlugin, 0, 0, 1, 2)
-    self.layout().addWidget(self.trainingPlugin, 1, 0, 1, 2)
-    self.layout().addWidget(self.targetTablePlugin, 2, 0, 1, 2)
-    self.layout().addWidget(self.intraopSeriesSelector, 3, 0, 1, 2)
-    self.layout().addWidget(self.regResultsCollapsibleButton, 4, 0, 1, 2)
-    self.layout().addWidget(self.trackTargetsButton, 5, 0)
-    self.layout().addWidget(self.skipIntraopSeriesButton, 5, 1)
+    self.layout().addWidget(self.caseManagerPlugin, 0, 0)
+    self.layout().addWidget(self.trainingPlugin, 1, 0)
+    self.layout().addWidget(self.targetTablePlugin, 2, 0)
+    self.layout().addWidget(self.createHLayout([self.intraopSeriesSelector, self.trackTargetsButton,
+                                                self.skipIntraopSeriesButton]), 3, 0)
+    self.layout().addWidget(self.regResultsCollapsibleButton, 4, 0)
     # self.layout().setRowStretch(8, 1)
 
   def setupRegistrationResultsPlugin(self):
@@ -97,6 +102,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setupIntraopSeriesSelector(self):
     self.intraopSeriesSelector = qt.QComboBox()
+    self.intraopSeriesSelector.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
     self._seriesModel = qt.QStandardItemModel()
     self.intraopSeriesSelector.setModel(self._seriesModel)
 

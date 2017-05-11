@@ -53,6 +53,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-needle.png
   Resources/Icons/icon-revealCursor.png
   Resources/Icons/icon-skip.png
+  Resources/Icons/icon-track.png
   Resources/Icons/icon-template.png
   Resources/Icons/icon-text-info.png
   Resources/Icons/icon-zframe.png
