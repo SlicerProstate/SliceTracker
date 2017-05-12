@@ -20,12 +20,6 @@ class SessionData(ModuleLogicMixin):
   _resumed = False
 
   @property
-  @onExceptionReturnNone
-  def intraopLabel(self):
-    # TODO: should it always return the most recent approved cover prostate segmentation?
-    return self.getMostRecentApprovedCoverProstateRegistration().labels.fixed
-
-  @property
   def completed(self):
     return self._completed
 
@@ -212,22 +206,14 @@ class SessionData(ModuleLogicMixin):
     shutil.copy(logFilePath, os.path.join(outputDir, os.path.basename(logFilePath)))
     successfullySavedFileNames.append(os.path.join(outputDir, os.path.basename(logFilePath)))
 
-    def saveIntraopSegmentation():
-      if self.intraopLabel:
-        seriesNumber = self.intraopLabel.GetName().split(":")[0]
-        success, name = self.saveNodeData(self.intraopLabel, outputDir, FileExtension.NRRD,
-                                          name=seriesNumber + "-LABEL", overwrite=True)
+    def saveManualSegmentation():
+      if self.clippingModelNode:
+        success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK, overwrite=True)
         self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
-        if self.clippingModelNode:
-          success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK,
-                                            name=seriesNumber + "-MODEL", overwrite=True)
-          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-
-        if self.inputMarkupNode:
-          success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV,
-                                            name=seriesNumber + "-VolumeClip_points", overwrite=True)
-          self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
+      if self.inputMarkupNode:
+        success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV, overwrite=True)
+        self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
     def saveInitialTargets():
       success, name = self.saveNodeData(self.initialTargets, outputDir, FileExtension.FCSV,
@@ -255,7 +241,7 @@ class SessionData(ModuleLogicMixin):
         results.append(result.asDict())
       return results
 
-    saveIntraopSegmentation()
+    saveManualSegmentation()
 
     data = {
       "usedPreopData": self.usePreopData,

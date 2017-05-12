@@ -159,6 +159,11 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
       self.colorSpin.setValue(labelValue)
 
   def onImageVolumeSelected(self, node):
+    try:
+      self.logic.seriesNumber = node.GetName().split(": ")[0]
+    except:
+      self.logic.seriesNumber = None
+
     self.setBackgroundVolumeForAllVisibleSliceViews(node)
     self.quickSegmentationButton.setEnabled(node!=None)
     self.colorPatch.setEnabled(node!=None)
@@ -274,6 +279,7 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   def __init__(self, outputLabelValue=None):
     ScriptedLoadableModuleLogic.__init__(self)
+    self.seriesNumber = None
     self.clippingModelNode = None
     self.clippingModelDisplayNode = None
     self.inputMarkupNode = None
@@ -352,7 +358,8 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   def createAndConfigureClippingModelDisplayNode(self):
     self.clippingModelNode = slicer.vtkMRMLModelNode()
-    self.clippingModelNode.SetName('clipModelNode')
+    prefix = "{}-".format(self.seriesNumber) if self.seriesNumber else ""
+    self.clippingModelNode.SetName('%sVolumeClip-MODEL'%prefix)
     slicer.mrmlScene.AddNode(self.clippingModelNode)
 
     self.clippingModelDisplayNode = slicer.vtkMRMLModelDisplayNode()
@@ -366,8 +373,9 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.clippingModelNode.SetAndObserveDisplayNodeID(self.clippingModelDisplayNode.GetID())
 
   def createNewFiducialNode(self):
+    prefix = "{}-".format(self.seriesNumber) if self.seriesNumber else ""
     self.inputMarkupNode = slicer.mrmlScene.GetNodeByID(self.markupsLogic.AddNewFiducialNode())
-    self.inputMarkupNode.SetName('inputMarkupNode')
+    self.inputMarkupNode.SetName('%sVolumeClip-POINTS'%prefix)
 
   def labelMapFromClippingModel(self, inputVolume, outputLabelValue=1, outputLabelMap=None):
     if not outputLabelMap:
