@@ -256,7 +256,6 @@ class SliceTrackerSession(StepBasedSession):
       self.invokeEvent(self.CaseOpenedEvent)
 
   def createNewCase(self, destination):
-    # TODO: self.continueOldCase = False
     self.newCaseCreated = True
     self.resetAndInitializeMembers()
     self.directory = destination
@@ -406,31 +405,39 @@ class SliceTrackerSession(StepBasedSession):
     self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
 
     if len(newFileList):
-      if self.data.usePreopData:
-        self.verifyPatientIDEquality(newFileList)
+      self.verifyPatientIDEquality(newFileList)
       self.invokeEvent(self.NewImageSeriesReceivedEvent, newSeries.__str__())
-      # self.invokeEventForMostRecentEligibleSeries()
 
   def verifyPatientIDEquality(self, receivedFiles):
     seriesNumberPatientID = self.getAdditionalInformationForReceivedSeries(receivedFiles)
-    dicomFileName = self.getFileList(self.preopDICOMDirectory)[0]
-    currentInfo = self.getPatientInformation(os.path.join(self.preopDICOMDirectory, dicomFileName))
+    dicomFileName = self.getPatientIDValidationSource()
+    if not dicomFileName:
+      return
+    currentInfo = self.getPatientInformation(dicomFileName)
     currentID = currentInfo["PatientID"]
     patientName = currentInfo["PatientName"]
     for seriesNumber, receivedInfo in seriesNumberPatientID.iteritems():
       patientID = receivedInfo["PatientID"]
       if patientID is not None and patientID != currentID:
-        message = 'WARNING:\n' \
-                  'Current case:\n' \
-                  '  Patient ID: {0}\n' \
-                  '  Patient Name: {1}\n' \
-                  'Received image\n' \
-                  '  Patient ID: {2}\n' \
-                  '  Patient Name : {3}\n\n' \
-                  'Do you want to keep this series? '.format(currentID, patientName,
-                                                             patientID, receivedInfo["PatientName"])
-        if not slicer.util.confirmYesNoDisplay(message, title="Patient IDs Not Matching", windowTitle="SliceTracker"):
+        m = 'WARNING:\n' \
+            'Current case:\n' \
+            '  Patient ID: {0}\n' \
+            '  Patient Name: {1}\n' \
+            'Received image\n' \
+            '  Patient ID: {2}\n' \
+            '  Patient Name : {3}\n\n' \
+            'Do you want to keep this series? '.format(currentID, patientName, patientID, receivedInfo["PatientName"])
+        if not slicer.util.confirmYesNoDisplay(m, title="Patient IDs Not Matching", windowTitle="SliceTracker"):
           self.deleteSeriesFromSeriesList(seriesNumber)
+
+  def getPatientIDValidationSource(self):
+    # TODO: For loading case purposes it would be nice to keep track which series were accepted
+    if len(self.loadableList.keys()) > 1:
+      keylist = self.loadableList.keys()
+      keylist.sort(key=lambda x: RegistrationResult.getSeriesNumberFromString(x))
+      return self.loadableList[keylist[0]][0]
+    else:
+      return None
 
   def getOrCreateVolumeForSeries(self, series):
     try:
