@@ -449,7 +449,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     currentTargetsSliceNodes = []
     if self.layoutManager.layout in [constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_SIDE_BY_SIDE]:
       targets = self.session.data.initialTargets
-      if self.session.currentSeries and self.getSetting("VIBE_IMAGE") in self.session.currentSeries:
+      if self.session.currentSeries and self.session.seriesTypeManager.isVibe(self.session.currentSeries):
         targets = self.targetTableModel.targetList
       self.jumpSliceNodeToTarget(self.redSliceNode, targets, targetIndex)
       self.logic.setTargetSelected(targets, selected=False)

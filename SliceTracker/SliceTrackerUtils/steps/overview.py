@@ -1,21 +1,22 @@
+import ast
 import logging
 import os
-import ast
+
 import ctk
 import qt
 import slicer
 import vtk
 from SlicerDevelopmentToolboxUtils.constants import COLOR
 from SlicerDevelopmentToolboxUtils.decorators import logmethod, onReturnProcessEvents
-from SlicerDevelopmentToolboxUtils.widgets import ExtendedQMessageBox, CustomStatusProgressbar
-
+from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 from base import SliceTrackerLogicBase, SliceTrackerStep
+from plugins.case import SliceTrackerCaseManagerPlugin
 from plugins.results import SliceTrackerRegistrationResultsPlugin
 from plugins.targets import SliceTrackerTargetTablePlugin
 from plugins.training import SliceTrackerTrainingPlugin
-from plugins.case import SliceTrackerCaseManagerPlugin
 from ..constants import SliceTrackerConstants as constants
 from ..sessionData import RegistrationResult
+from ..helpers import IncomingDataMessageBox, SeriesTypeToolButton
 
 
 class SliceTrackerOverViewStepLogic(SliceTrackerLogicBase):
@@ -48,10 +49,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def cleanup(self):
     self._seriesModel.clear()
-    self.trackTargetsButton.setEnabled(False)
-
-  @logmethod(logging.DEBUG)
-  def clearData(self):
+    self.changeSeriesTypeButton.enabled = False
     self.trackTargetsButton.enabled = False
     self.skipIntraopSeriesButton.enabled = False
     self.updateIntraopSeriesSelectorTable()
@@ -67,6 +65,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.caseManagerPlugin = SliceTrackerCaseManagerPlugin()
     self.trainingPlugin = SliceTrackerTrainingPlugin()
 
+
+    self.changeSeriesTypeButton = SeriesTypeToolButton(self)
     self.trackTargetsButton = self.createButton("", icon=self.trackIcon, iconSize=iconSize, toolTip="Track targets",
                                                 enabled=False)
     self.skipIntraopSeriesButton = self.createButton("", icon=self.skipIcon, iconSize=iconSize,
@@ -81,8 +81,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.layout().addWidget(self.caseManagerPlugin, 0, 0)
     self.layout().addWidget(self.trainingPlugin, 1, 0)
     self.layout().addWidget(self.targetTablePlugin, 2, 0)
-    self.layout().addWidget(self.createHLayout([self.intraopSeriesSelector, self.trackTargetsButton,
-                                                self.skipIntraopSeriesButton]), 3, 0)
+    self.layout().addWidget(self.createHLayout([self.intraopSeriesSelector, self.changeSeriesTypeButton,
+                                                self.trackTargetsButton, self.skipIntraopSeriesButton]), 3, 0)
     self.layout().addWidget(self.regResultsCollapsibleButton, 4, 0)
     # self.layout().setRowStretch(8, 1)
 
@@ -115,6 +115,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def setupSessionObservers(self):
     super(SliceTrackerOverviewStep, self).setupSessionObservers()
     self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
+    self.session.addEventObserver(self.session.SeriesTypeManuallyAssignedEvent, self.onSeriesTypeManuallyAssigned)
     self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
@@ -122,6 +123,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def removeSessionEventObservers(self):
     SliceTrackerStep.removeSessionEventObservers(self)
     self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
+    self.session.removeEventObserver(self.session.SeriesTypeManuallyAssignedEvent, self.onSeriesTypeManuallyAssigned)
     self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.removeEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
@@ -141,12 +143,13 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       trackingPossible = self.session.isTrackingPossible(selectedSeries)
       self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
+      self.changeSeriesTypeButton.setSeries(selectedSeries)
     self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries())
 
   def configureViewersForSelectedIntraopSeries(self, selectedSeries):
     if self.session.data.registrationResultWasApproved(selectedSeries) or \
             self.session.data.registrationResultWasRejected(selectedSeries):
-      if self.getSetting("COVER_PROSTATE") in selectedSeries and not self.session.data.usePreopData:
+      if self.session.seriesTypeManager.isCoverProstate(selectedSeries) and not self.session.data.usePreopData:
         result = self.session.data.getResult(selectedSeries)
         self.currentResult = result.name if result else None
         self.regResultsPlugin.onLayoutChanged()
@@ -168,8 +171,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
     trackingPossible = trackingPossible and not self.session.data.completed
-    self.trackTargetsButton.setEnabled(trackingPossible)
-    self.skipIntraopSeriesButton.setEnabled(trackingPossible and self.session.isEligibleForSkipping(selectedSeries))
+    self.changeSeriesTypeButton.enabled = not self.session.data.exists(selectedSeries)
+    self.trackTargetsButton.enabled = trackingPossible
+    self.skipIntraopSeriesButton.enabled = trackingPossible and self.session.isEligibleForSkipping(selectedSeries)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onCurrentSeriesChanged(self, caller, event, callData=None):
@@ -202,7 +206,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onCaseClosed(self, caller, event, callData):
     if callData != "None":
       slicer.util.infoDisplay(callData, windowTitle="SliceTracker")
-    self.clearData()
+    self.cleanup()
 
   def onPreprocessingSuccessful(self, caller, event):
     self.configureRedSliceNodeForPreopData()
@@ -210,6 +214,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def onActivation(self):
     super(SliceTrackerOverviewStep, self).onActivation()
+    self.updateIntraopSeriesSelectorTable()
+
+  def onSeriesTypeManuallyAssigned(self, caller, event):
     self.updateIntraopSeriesSelectorTable()
 
   @logmethod(logging.INFO)
@@ -253,7 +260,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     success = False
     if self.mpReviewPreprocessorLogic.patientFound():
       success = True
-      self.mpReviewPreprocessorLogic.convertData(outputDir=self.session.preprocessedDirectory, copyDICOM=False,
+      self.mpReviewPreprocessorLogic.processData(outputDir=self.session.preprocessedDirectory, copyDICOM=False,
                                                  progressCallback=updateProgressBar)
     progress.canceled.disconnect(self.mpReviewPreprocessorLogic.cancelProcess)
     progress.close()
@@ -285,7 +292,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def takeActionOnSelectedSeries(self):
     selectedSeries = self.intraopSeriesSelector.currentText
-    if self.getSetting("COVER_TEMPLATE") in selectedSeries and not self.session.zFrameRegistrationSuccessful:
+    if self.session.seriesTypeManager.isCoverTemplate(selectedSeries) and not self.session.zFrameRegistrationSuccessful:
       self.onTrackTargetsButtonClicked()
       return
 
@@ -305,8 +312,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       sItem = qt.QStandardItem(series)
       self._seriesModel.appendRow(sItem)
       color = COLOR.YELLOW
-      if self.session.data.registrationResultWasApproved(series) or (self.getSetting("COVER_TEMPLATE") in series and
-                                                                   not self.session.isCoverTemplateTrackable(series)):
+      if self.session.data.registrationResultWasApproved(series) or \
+        (self.session.seriesTypeManager.isCoverTemplate(series) and not self.session.isCoverTemplateTrackable(series)):
         color = COLOR.GREEN
       elif self.session.data.registrationResultWasSkipped(series):
         color = COLOR.RED
@@ -337,7 +344,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
             break
         index = self.intraopSeriesSelector.findText(series)
         break
-      elif self.getSetting("VIBE_IMAGE") in series and index == -1:
+      elif self.session.seriesTypeManager.isVibe(series) and index == -1:
         index = self.intraopSeriesSelector.findText(series)
     rowCount = self.intraopSeriesSelector.model().rowCount()
 
@@ -363,17 +370,3 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         self.logic.applyBiasCorrection()
         progress.setValue(2)
         progress.close()
-    # TODO: self.movingVolumeSelector.setCurrentNode(self.logic.preopVolume)
-
-
-class IncomingDataMessageBox(ExtendedQMessageBox):
-
-  def __init__(self, parent=None):
-    super(IncomingDataMessageBox, self).__init__(parent)
-    self.setWindowTitle("Incoming image data")
-    self.textLabel = qt.QLabel("New data has been received. What do you want do?")
-    self.layout().addWidget(self.textLabel, 0, 1)
-    self.setIcon(qt.QMessageBox.Question)
-    trackButton = self.addButton(qt.QPushButton('Track targets'), qt.QMessageBox.AcceptRole)
-    self.addButton(qt.QPushButton('Postpone'), qt.QMessageBox.NoRole)
-    self.setDefaultButton(trackButton)

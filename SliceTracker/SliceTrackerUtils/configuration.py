@@ -18,6 +18,7 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
     if not self.getSetting("ZFrame_Registration_Class_Name"):
       self.setSetting("ZFrame_Registration_Class_Name", config.get('ZFrame Registration', 'class'))
 
+
     if not self.getSetting("COVER_PROSTATE"):
       self.setSetting("COVER_PROSTATE", config.get('Series Descriptions', 'COVER_PROSTATE'))
     if not self.getSetting("COVER_TEMPLATE"):
@@ -26,6 +27,13 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
       self.setSetting("NEEDLE_IMAGE", config.get('Series Descriptions', 'NEEDLE_IMAGE'))
     if not self.getSetting("VIBE_IMAGE"):
       self.setSetting("VIBE_IMAGE", config.get('Series Descriptions', 'VIBE_IMAGE'))
+    if not self.getSetting("OTHER_IMAGE"):
+      self.setSetting("OTHER_IMAGE", config.get('Series Descriptions', 'OTHER_IMAGE'))
+
+    if not self.getSetting("SERIES_TYPES"):
+      seriesTypes = [config.get('Series Descriptions',x) for x in ['COVER_TEMPLATE', 'COVER_PROSTATE', 'NEEDLE_IMAGE',
+                                                                   'VIBE_IMAGE', 'OTHER_IMAGE']]
+      self.setSetting("SERIES_TYPES", seriesTypes)
 
     if not self.getSetting("Rating_Enabled"):
       self.setSetting("Rating_Enabled", config.getboolean('Rating', 'Enabled'))

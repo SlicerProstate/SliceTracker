@@ -100,7 +100,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
       return
     # self.redOnlyLayoutButton.enabled = False
     # self.sideBySideLayoutButton.enabled = True
-    self.rejectRegistrationResultButton.enabled = not self.getSetting("COVER_PROSTATE") in self.currentResult.name
+    self.rejectRegistrationResultButton.enabled = not self.session.seriesTypeManager.isCoverProstate(self.currentResult.name)
     self.currentResult.save(self.session.outputDirectory)
     self.currentResult.printSummary()
     if not self.logic.isVolumeExtentValid(self.currentResult.volumes.bSpline):

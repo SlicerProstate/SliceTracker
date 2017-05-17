@@ -4,6 +4,7 @@ import vtk, ctk, ast
 import slicer
 from sessionData import SessionData, RegistrationResult, RegistrationTypeData
 from constants import SliceTrackerConstants
+from helpers import SeriesTypeManager
 
 from .exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 
@@ -52,6 +53,8 @@ class SliceTrackerSession(StepBasedSession):
   SkippedEvent = RegistrationResult.SkippedEvent
   RejectedEvent = RegistrationResult.RejectedEvent
 
+  SeriesTypeManuallyAssignedEvent = SeriesTypeManager.SeriesTypeManuallyAssignedEvent
+
   ResultEvents = [ApprovedEvent, SkippedEvent, RejectedEvent]
 
   MODULE_NAME = SliceTrackerConstants.MODULE_NAME
@@ -75,17 +78,20 @@ class SliceTrackerSession(StepBasedSession):
 
   @property
   def approvedCoverTemplate(self):
-    return self.data.zFrameVolume
+    try:
+      return self.data.zFrameRegistrationResult.volume
+    except AttributeError:
+      return None
 
   @approvedCoverTemplate.setter
   def approvedCoverTemplate(self, volume):
-    self.data.zFrameVolume = volume
+    self.data.zFrameRegistrationResult.volume = volume
     self.zFrameRegistrationSuccessful = volume is not None
 
   @property
   def zFrameRegistrationSuccessful(self):
     self._zFrameRegistrationSuccessful = getattr(self, "_zFrameRegistrationSuccessful", None)
-    return self.data.zFrameTransform is not None and self._zFrameRegistrationSuccessful
+    return self.data.zFrameRegistrationResult is not None and self._zFrameRegistrationSuccessful
 
   @zFrameRegistrationSuccessful.setter
   def zFrameRegistrationSuccessful(self, value):
@@ -196,9 +202,14 @@ class SliceTrackerSession(StepBasedSession):
   def __init__(self):
     StepBasedSession.__init__(self)
     self.registrationLogic = SliceTrackerRegistrationLogic()
+    self.seriesTypeManager = SeriesTypeManager()
+    self.seriesTypeManager.addEventObserver(self.seriesTypeManager.SeriesTypeManuallyAssignedEvent,
+                                            lambda caller, event: self.invokeEvent(self.SeriesTypeManuallyAssignedEvent))
+
     self.resetAndInitializeMembers()
 
   def resetAndInitializeMembers(self):
+    self.seriesTypeManager.clear()
     self.initializeColorNodes()
     self.directory = None
     self.data = SessionData()
@@ -233,7 +244,7 @@ class SliceTrackerSession(StepBasedSession):
 
   @onExceptionReturnFalse
   def isCurrentSeriesCoverProstateInNonPreopMode(self):
-    return self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData
+    return self.seriesTypeManager.isCoverProstate(self.currentSeries) and not self.data.usePreopData
 
   def isPreProcessing(self):
     return slicer.util.selectedModule() != self.MODULE_NAME
@@ -310,7 +321,7 @@ class SliceTrackerSession(StepBasedSession):
       self.data.initialTargets = coverProstate.targets.original
       if self.data.usePreopData:  # TODO: makes sense?
         self.data.preopLabel = coverProstate.labels.moving
-    if self.data.zFrameTransform:
+    if self.data.zFrameRegistrationResult:
       self._zFrameRegistrationSuccessful = True
     self.data.resumed = not self.data.completed
     if self.data.usePreopData:
@@ -670,7 +681,7 @@ class SliceTrackerSession(StepBasedSession):
     style = STYLE.YELLOW_BACKGROUND
     if not self.isTrackingPossible(series):
       if self.data.registrationResultWasApproved(series) or \
-              (self.zFrameRegistrationSuccessful and self.getSetting("COVER_TEMPLATE") in series):
+              (self.zFrameRegistrationSuccessful and self.seriesTypeManager.isCoverTemplate(series)):
         style = STYLE.GREEN_BACKGROUND
       elif self.data.registrationResultWasSkipped(series):
         style = STYLE.RED_BACKGROUND
@@ -683,16 +694,16 @@ class SliceTrackerSession(StepBasedSession):
       logging.debug("No tracking possible. Case has been marked as completed!")
       return False
     if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
-      if self.getSetting("NEEDLE_IMAGE") in series:
+      if self.seriesTypeManager.isGuidance(series):
         return self.data.getMostRecentApprovedCoverProstateRegistration()
-      elif self.getSetting("COVER_PROSTATE") in series:
+      elif self.seriesTypeManager.isCoverProstate(series):
         return self.zFrameRegistrationSuccessful
       elif self.isCoverTemplateTrackable(series):
         return True
     return False
 
   def isCoverTemplateTrackable(self, series):
-    if not self.getSetting("COVER_TEMPLATE") in series:
+    if not self.seriesTypeManager.isCoverTemplate(series):
       return False
     if not self.approvedCoverTemplate:
       return True
@@ -702,8 +713,9 @@ class SliceTrackerSession(StepBasedSession):
     return currentSeriesNumber > approvedSeriesNumber
 
   def isInGeneralTrackable(self, series):
-    return self.isAnyListItemInString(series, [self.getSetting("COVER_TEMPLATE"), self.getSetting("COVER_PROSTATE"),
-                                               self.getSetting("NEEDLE_IMAGE")])
+    seriesType = self.seriesTypeManager.getSeriesType(series)
+    return self.isAnyListItemInString(seriesType, [self.getSetting("COVER_TEMPLATE"), self.getSetting("COVER_PROSTATE"),
+                                                   self.getSetting("NEEDLE_IMAGE")])
 
   def resultHasNotBeenProcessed(self, series):
     return not (self.data.registrationResultWasApproved(series) or
@@ -711,7 +723,8 @@ class SliceTrackerSession(StepBasedSession):
                 self.data.registrationResultWasRejected(series))
 
   def isEligibleForSkipping(self, series):
-    return not self.isAnyListItemInString(series,[self.getSetting("COVER_PROSTATE"), self.getSetting("COVER_TEMPLATE")])
+    seriesType = self.seriesTypeManager.getSeriesType(series)
+    return not self.isAnyListItemInString(seriesType,[self.getSetting("COVER_PROSTATE"), self.getSetting("COVER_TEMPLATE")])
 
   def isLoading(self):
     self._loading = getattr(self, "_loading", False)
@@ -720,12 +733,12 @@ class SliceTrackerSession(StepBasedSession):
   def takeActionForCurrentSeries(self):
     event = None
     callData = None
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries:
+    if self.seriesTypeManager.isCoverProstate(self.currentSeries):
       event = self.InitiateSegmentationEvent
       callData = str(False)
-    elif self.getSetting("COVER_TEMPLATE") in self.currentSeries:
+    elif self.seriesTypeManager.isCoverTemplate(self.currentSeries):
       event = self.InitiateZFrameCalibrationEvent
-    elif self.getSetting("NEEDLE_IMAGE") in self.currentSeries:
+    elif self.seriesTypeManager.isGuidance(self.currentSeries):
       self.onInvokeRegistration(initial=False)
       return
     if event:
@@ -839,7 +852,7 @@ class SliceTrackerSession(StepBasedSession):
 
   def skipAllUnregisteredPreviousSeries(self, series):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
-    for series in [series for series in self.seriesList if not self.getSetting("COVER_TEMPLATE") in series]:
+    for series in [series for series in self.seriesList if not self.seriesTypeManager.isCoverTemplate(series)]:
       currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
       if currentSeriesNumber < selectedSeriesNumber and self.isTrackingPossible(series):
         results = self.data.getResultsBySeriesNumber(currentSeriesNumber)

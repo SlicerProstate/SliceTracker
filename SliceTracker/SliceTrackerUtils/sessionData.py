@@ -9,6 +9,8 @@ from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnNone, logmethod
 from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 
+from helpers import SeriesTypeManager
+
 
 class SessionData(ModuleLogicMixin):
 
@@ -51,6 +53,7 @@ class SessionData(ModuleLogicMixin):
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
+    self.seriesTypeManager = SeriesTypeManager()
     self.startTimeStamp = self.getTime()
     self.resumeTimeStamps = []
     self.closedLogTimeStamps = []
@@ -67,8 +70,7 @@ class SessionData(ModuleLogicMixin):
     self.initialTargets = None
     self.initialTargetsPath = None
 
-    self.zFrameTransform = None
-    self.zFrameVolume = None
+    self.zFrameRegistrationResult = None
 
     self._savedRegistrationResults = []
     self.initializeRegistrationResults()
@@ -78,9 +80,9 @@ class SessionData(ModuleLogicMixin):
   def initializeRegistrationResults(self):
     self.registrationResults = OrderedDict()
 
-  def getOrCreateResult(self, series):
-    result = self.getResult(series)
-    return result if result else self.createResult(series)
+  def createZFrameRegistrationResult(self, series):
+    self.zFrameRegistrationResult = ZFrameRegistrationResult(series)
+    return self.zFrameRegistrationResult
 
   def createResult(self, series, invokeEvent=True):
     assert series not in self.registrationResults.keys()
@@ -121,10 +123,14 @@ class SessionData(ModuleLogicMixin):
 
       if "zFrameRegistration" in data.keys():
         zFrameRegistration = data["zFrameRegistration"]
-        self.zFrameTransform = self._loadOrGetFileData(directory, zFrameRegistration["transform"],
-                                                       slicer.util.loadTransform)
-        self.zFrameVolume = self._loadOrGetFileData(directory, zFrameRegistration["volume"],
-                                                       slicer.util.loadVolume)
+        volume = self._loadOrGetFileData(directory, zFrameRegistration["volume"], slicer.util.loadVolume)
+        transform = self._loadOrGetFileData(directory, zFrameRegistration["transform"], slicer.util.loadTransform)
+        name = zFrameRegistration["name"] if zFrameRegistration.has_key("name") else volume.GetName()
+        self.zFrameRegistrationResult = ZFrameRegistrationResult(name)
+        self.zFrameRegistrationResult.volume = volume
+        self.zFrameRegistrationResult.transform = transform
+        if zFrameRegistration["seriesType"]:
+          self.seriesTypeManager.assign(self.zFrameRegistrationResult.name, zFrameRegistration["seriesType"])
 
       if "initialVolume" in data.keys():
         self.initialVolume = self._loadOrGetFileData(directory, data["initialVolume"], slicer.util.loadVolume)
@@ -165,6 +171,9 @@ class SessionData(ModuleLogicMixin):
         elif attribute == 'status':
           result.status = value["state"]
           result.timestamp = value["time"]
+        elif attribute == 'seriesType':
+          seriesType = jsonResult["seriesType"] if jsonResult.has_key("seriesType") else None
+          self.seriesTypeManager.assign(name, seriesType)
         else:
           setattr(result, attribute, value)
         self.customProgressBar.text = "Finished loading registration results"
@@ -226,15 +235,6 @@ class SessionData(ModuleLogicMixin):
       self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
       return name + FileExtension.NRRD
 
-    def saveZFrameTransformationAndVolume():
-      zFrameData = {}
-      success, name = self.saveNodeData(self.zFrameTransform, outputDir, FileExtension.H5, overwrite=True)
-      zFrameData["transform"] = name + FileExtension.H5
-      self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
-      success, name = self.saveNodeData(self.zFrameVolume, outputDir, FileExtension.NRRD, overwrite=True)
-      zFrameData["volume"] = name + FileExtension.NRRD
-      return zFrameData
-
     def createResultsList():
       results = []
       for result in sorted(self.getResultsAsList(), key=lambda r: r.seriesNumber):
@@ -263,8 +263,8 @@ class SessionData(ModuleLogicMixin):
 
     addProcedureEvents()
 
-    if self.zFrameTransform and self.zFrameVolume:
-      data["zFrameRegistration"] = saveZFrameTransformationAndVolume()
+    if self.zFrameRegistrationResult:
+      data["zFrameRegistration"] = self.zFrameRegistrationResult.save(outputDir)
 
     if self.initialTargets:
       data["initialTargets"] = saveInitialTargets()
@@ -329,8 +329,9 @@ class SessionData(ModuleLogicMixin):
     return self.registrationResults.values()
 
   def getMostRecentApprovedCoverProstateRegistration(self):
+    seriesTypeManager = SeriesTypeManager()
     for result in self.registrationResults.values():
-      if self.getSetting("COVER_PROSTATE", "SliceTracker", default="COVER_PROSTATE") in result.name and result.approved:
+      if seriesTypeManager.isCoverProstate(result.name) and result.approved:
         return result
     return None
 
@@ -346,9 +347,10 @@ class SessionData(ModuleLogicMixin):
 
   @onExceptionReturnNone
   def getMostRecentApprovedTransform(self):
+    seriesTypeManager = SeriesTypeManager()
     results = sorted(self.registrationResults.values(), key=lambda s: s.seriesNumber)
     for result in reversed(results):
-      if result.approved and self.getSetting("COVER_PROSTATE", "SliceTracker", "COVER_PROSTATE") not in result.name:
+      if result.approved and not seriesTypeManager.isCoverProstate(result.name):
         return result.getTransform(result.registrationType)
     return None
 
@@ -611,18 +613,7 @@ class RegistrationStatus(ModuleLogicMixin):
     }
 
 
-class RegistrationResult(RegistrationStatus):
-
-  REGISTRATION_TYPE_NAMES = ['rigid', 'affine', 'bSpline']
-
-  @staticmethod
-  def getSeriesNumberFromString(text):
-    return int(text.split(": ")[0])
-
-  @property
-  @onExceptionReturnNone
-  def approvedVolume(self):
-    return self.getVolume(self.registrationType)
+class RegistrationResultBase(ModuleLogicMixin):
 
   @property
   def name(self):
@@ -645,6 +636,28 @@ class RegistrationResult(RegistrationStatus):
     return self._seriesDescription
 
   @property
+  def seriesType(self):
+    seriesTypeManager = SeriesTypeManager()
+    return seriesTypeManager.getSeriesType(self.name)
+
+  def __init__(self, series):
+    self.name = series
+
+
+class RegistrationResult(RegistrationResultBase, RegistrationStatus):
+
+  REGISTRATION_TYPE_NAMES = ['rigid', 'affine', 'bSpline']
+
+  @staticmethod
+  def getSeriesNumberFromString(text):
+    return int(text.split(": ")[0])
+
+  @property
+  @onExceptionReturnNone
+  def approvedVolume(self):
+    return self.getVolume(self.registrationType)
+
+  @property
   def targetsWereModified(self):
     return len(self.targets.modifiedTargets) > 0
 
@@ -653,8 +666,9 @@ class RegistrationResult(RegistrationStatus):
     return str(self.seriesNumber) + "-CMD-PARAMETERS" + self.suffix + FileExtension.TXT
 
   def __init__(self, series):
-    super(RegistrationResult, self).__init__()
-    self.name = series
+    RegistrationStatus.__init__(self)
+    RegistrationResultBase.__init__(self, series)
+
     self.receivedTimestamp = self.getTime()
 
     self.volumes = Volumes()
@@ -698,7 +712,7 @@ class RegistrationResult(RegistrationStatus):
     assert registrationType in self.REGISTRATION_TYPE_NAMES
     self.registrationType = registrationType
     self.targets.approve(registrationType)
-    super(RegistrationResult, self).approve()
+    RegistrationStatus.approve(self)
 
   def printSummary(self):
     logging.debug('# ___________________________  registration output  ________________________________')
@@ -736,9 +750,11 @@ class RegistrationResult(RegistrationStatus):
     return modified
 
   def asDict(self):
+    seriesTypeManager = SeriesTypeManager()
     dictionary = super(RegistrationResult, self).asDict()
     dictionary.update({
       "name": self.name,
+      "seriesType": seriesTypeManager.getSeriesType(self.name),
       "receivedTime": self.receivedTimestamp
     })
     if self.approved or self.rejected:
@@ -760,4 +776,28 @@ class RegistrationResult(RegistrationStatus):
         "userModified": self.getApprovedTargetsModifiedStatus(),
         "fileName": self.targets.getFileNameByAttributeName("approved")
       }
+    return dictionary
+
+
+class ZFrameRegistrationResult(RegistrationResultBase):
+
+  def __init__(self, series):
+    RegistrationResultBase.__init__(self, series)
+    self.volume = None
+    self.transform = None
+
+  def save(self, outputDir):
+    seriesTypeManager = SeriesTypeManager()
+    dictionary = {
+      "name": self.name,
+      "seriesType": seriesTypeManager.getSeriesType(self.name)
+    }
+    savedSuccessfully = []
+    failedToSave = []
+    success, name = self.saveNodeData(self.transform, outputDir, FileExtension.H5, overwrite=True)
+    dictionary["transform"] = name + FileExtension.H5
+    self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+    success, name = self.saveNodeData(self.volume, outputDir, FileExtension.NRRD, overwrite=True)
+    dictionary["volume"] = name + FileExtension.NRRD
+    self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
     return dictionary

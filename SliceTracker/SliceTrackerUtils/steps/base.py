@@ -1,7 +1,7 @@
 import vtk
 from SlicerDevelopmentToolboxUtils.decorators import beforeRunProcessEvents, onModuleSelected
 from SlicerDevelopmentToolboxUtils.module.base import WidgetBase
-from SlicerDevelopmentToolboxUtils.module.logic import LogicBase
+from SlicerDevelopmentToolboxUtils.module.logic import SessionBasedLogicBase
 
 from ..constants import SliceTrackerConstants as constants
 from ..session import SliceTrackerSession
@@ -156,7 +156,7 @@ class SliceTrackerStep(SliceTrackerWidgetBase):
     super(SliceTrackerStep, self).__init__()
 
 
-class SliceTrackerLogicBase(LogicBase):
+class SliceTrackerLogicBase(SessionBasedLogicBase):
 
   MODULE_NAME = constants.MODULE_NAME
   SessionClass = SliceTrackerSession

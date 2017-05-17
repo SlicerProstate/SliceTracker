@@ -21,9 +21,11 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "name": { "type": "string" },
+        "seriesType": {"type": "string" },
         "volume": { "$ref": "#/definitions/NRRD_FILE" },
         "transform": { "$ref": "#/definitions/TRANSFORM_FILE" }
-      }, "require": ["volume", "transform"]
+      }, "require": ["name","volume", "transform"]
     },
     "results": { "$ref": "#/definitions/RESULTS" }
   },
@@ -37,7 +39,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string"},
+        "name": { "type": "string" },
+        "seriesType": {"type": "string" },
         "receivedTime": { "$ref": "#/definitions/TIMESTAMP" },
         "status": {
           "type": "object",

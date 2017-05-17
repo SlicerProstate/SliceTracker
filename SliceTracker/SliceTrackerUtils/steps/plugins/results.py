@@ -203,7 +203,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.setAvailableLayouts([constants.LAYOUT_FOUR_UP, constants.LAYOUT_SIDE_BY_SIDE])
 
   def onResultApprovedOrRejected(self):
-    if self.getSetting("COVER_PROSTATE") in self.currentResult.name and not self.session.data.usePreopData:
+    if self.session.seriesTypeManager.isCoverProstate(self.currentResult.name) and not self.session.data.usePreopData:
       self.onNoResultAvailable()
     else:
       self.setAvailableLayouts([constants.LAYOUT_FOUR_UP, constants.LAYOUT_SIDE_BY_SIDE if
@@ -423,7 +423,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   def addFourUpSliceAnnotations(self):
     self.removeSliceAnnotations()
-    if not (self.currentResult.skipped or (self.getSetting("COVER_PROSTATE") in self.currentResult.name and
+    if not (self.currentResult.skipped or (self.session.seriesTypeManager.isCoverProstate(self.currentResult.name) and
                                              not self.session.data.usePreopData)):
       self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT,
                                                    yPos=50, fontSize=20))
