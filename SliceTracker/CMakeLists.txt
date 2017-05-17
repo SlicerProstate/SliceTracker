@@ -36,6 +36,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Colors/mpReviewColors.csv
   Resources/Icons/icon-cancelSegmentation.png
   Resources/Icons/icon-new.png
+  Resources/Icons/icon-edit.png
   Resources/Icons/icon-open.png
   Resources/Icons/icon-close.png
   Resources/Icons/icon-back.png

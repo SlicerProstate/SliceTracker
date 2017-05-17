@@ -16,7 +16,7 @@ from plugins.targets import SliceTrackerTargetTablePlugin
 from plugins.training import SliceTrackerTrainingPlugin
 from ..constants import SliceTrackerConstants as constants
 from ..sessionData import RegistrationResult
-from ..helpers import IncomingDataMessageBox, SeriesTypeToolButton
+from ..helpers import IncomingDataMessageBox, SeriesTypeToolButton, SeriesTypeManager
 
 
 class SliceTrackerOverViewStepLogic(SliceTrackerLogicBase):
@@ -66,7 +66,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.trainingPlugin = SliceTrackerTrainingPlugin()
 
 
-    self.changeSeriesTypeButton = SeriesTypeToolButton(self)
+    self.changeSeriesTypeButton = SeriesTypeToolButton()
     self.trackTargetsButton = self.createButton("", icon=self.trackIcon, iconSize=iconSize, toolTip="Track targets",
                                                 enabled=False)
     self.skipIntraopSeriesButton = self.createButton("", icon=self.skipIcon, iconSize=iconSize,
@@ -171,7 +171,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
     trackingPossible = trackingPossible and not self.session.data.completed
-    self.changeSeriesTypeButton.enabled = not self.session.data.exists(selectedSeries)
+    self.changeSeriesTypeButton.enabled = not self.session.data.exists(selectedSeries) # TODO: take zFrameRegistration into account
     self.trackTargetsButton.enabled = trackingPossible
     self.skipIntraopSeriesButton.enabled = trackingPossible and self.session.isEligibleForSkipping(selectedSeries)
 
@@ -328,6 +328,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def selectMostRecentEligibleSeries(self):
     substring = self.getSetting("NEEDLE_IMAGE")
+    seriesTypeManager = SeriesTypeManager()
     self.intraopSeriesSelector.blockSignals(True)
     self.intraopSeriesSelector.setCurrentIndex(-1)
     self.intraopSeriesSelector.blockSignals(False)
@@ -337,7 +338,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
     for item in list(reversed(range(len(self.session.seriesList)))):
       series = self._seriesModel.item(item).text()
-      if substring in series:
+      if substring in seriesTypeManager.getSeriesType(series):
         if index != -1:
           if self.session.data.registrationResultWasApprovedOrRejected(series) or \
             self.session.data.registrationResultWasSkipped(series):

@@ -116,17 +116,20 @@ class SeriesTypeManager(LogicBase):
     try:
       return self.assignedSeries[series]
     except KeyError:
-      if self.isCoverProstate(series):
-        seriesType = self.getSetting("COVER_PROSTATE")
-      elif self.isCoverTemplate(series):
-        seriesType = self.getSetting("COVER_TEMPLATE")
-      elif self.isGuidance(series):
-        seriesType = self.getSetting("NEEDLE_IMAGE")
-      elif self.isVibe(series):
-        seriesType = self.getSetting("VIBE_IMAGE")
-      else:
-        seriesType = self.getSetting("OTHER_IMAGE")
-      return seriesType
+      return self.computeSeriesType(series)
+
+  def computeSeriesType(self, series):
+    if self.getSetting("COVER_PROSTATE") in series:
+      seriesType = self.getSetting("COVER_PROSTATE")
+    elif self.getSetting("COVER_TEMPLATE") in series:
+      seriesType = self.getSetting("COVER_TEMPLATE")
+    elif self.getSetting("NEEDLE_IMAGE") in series:
+      seriesType = self.getSetting("NEEDLE_IMAGE")
+    elif self.getSetting("VIBE_IMAGE") in series:
+      seriesType = self.getSetting("VIBE_IMAGE")
+    else:
+      seriesType = self.getSetting("OTHER_IMAGE")
+    return seriesType
 
   def autoAssign(self, series):
     self.assignedSeries[series] = self.getSeriesType(series)
@@ -183,16 +186,6 @@ class SeriesTypeToolButton(qt.QToolButton, ModuleBase, ModuleWidgetMixin):
 
   MODULE_NAME = constants.MODULE_NAME
 
-  def __init__(self, parent):
-    qt.QToolButton.__init__(self, parent)
-    ModuleBase.__init__(self)
-    self.setPopupMode(self.InstantPopup)
-    self.setMenu(qt.QMenu(self))
-    self.action = qt.QWidgetAction(self)
-    self.listWidget = None
-    self.setIcon(self.createIcon("icon-edit.png"))
-    self.enabled = False
-
   class SeriesTypeListWidget(qt.QListWidget, ModuleWidgetMixin):
 
     @property
@@ -246,6 +239,20 @@ class SeriesTypeToolButton(qt.QToolButton, ModuleBase, ModuleWidgetMixin):
         else:
           self._preselectSeriesType()
 
+  def __init__(self):
+    qt.QToolButton.__init__(self)
+    ModuleBase.__init__(self)
+    self.setPopupMode(self.InstantPopup)
+    self.setMenu(qt.QMenu(self))
+    self.action = qt.QWidgetAction(self)
+    self.listWidget = None
+    self.setupIcons()
+    self.setIcon(self.editIcon)
+    self.enabled = False
+
+  def setupIcons(self):
+    self.editIcon = self.createIcon("icon-edit.png")
+    self.infoIcon = self.createIcon('icon-infoBox.png')
 
   @logmethod(logging.DEBUG)
   def setSeries(self, series):
@@ -258,4 +265,19 @@ class SeriesTypeToolButton(qt.QToolButton, ModuleBase, ModuleWidgetMixin):
                                          lambda caller, event: self.menu().close())
     else:
       self.listWidget.series = series
-    self.setToolTip(self.listWidget.currentItem().text() if self.listWidget.currentItem() else "")
+    self.updateTooltipAndIcon(series)
+
+  def updateTooltipAndIcon(self, series):
+    seriesTypeManager = SeriesTypeManager()
+    currentType = seriesTypeManager.getSeriesType(series)
+    autoType = seriesTypeManager.computeSeriesType(series)
+    if currentType != autoType:
+      icon = self.infoIcon
+      tooltip = "Series type assignment changed!\n\n" \
+                "Original series type: {}\n\n" \
+                "Assigned series type: {}".format(autoType, currentType)
+    else:
+      icon = self.editIcon
+      tooltip = self.listWidget.currentItem().text() if self.listWidget.currentItem() else ""
+    self.setIcon(icon)
+    self.setToolTip(tooltip)
