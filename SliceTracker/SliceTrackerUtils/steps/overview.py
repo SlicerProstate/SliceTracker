@@ -105,6 +105,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.intraopSeriesSelector.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
     self._seriesModel = qt.QStandardItemModel()
     self.intraopSeriesSelector.setModel(self._seriesModel)
+    self.intraopSeriesSelector.setToolTip(constants.IntraopSeriesSelectorToolTip)
 
   def setupConnections(self):
     super(SliceTrackerOverviewStep, self).setupConnections()
@@ -144,7 +145,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.setIntraopSeriesButtons(trackingPossible, selectedSeries)
       self.configureViewersForSelectedIntraopSeries(selectedSeries)
       self.changeSeriesTypeButton.setSeries(selectedSeries)
-    self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries())
+    colorStyle = self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText)
+    self.intraopSeriesSelector.setStyleSheet("QComboBox{%s} QToolTip{background-color: white;}" % colorStyle)
 
   def configureViewersForSelectedIntraopSeries(self, selectedSeries):
     if self.session.data.registrationResultWasApproved(selectedSeries) or \
@@ -271,7 +273,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if not self.session.isLoading():
       customStatusProgressBar = CustomStatusProgressbar()
       customStatusProgressBar.text = "New image data has been received."
-    
+
     self.updateIntraopSeriesSelectorTable()
 
     if not self.active or self.session.isLoading():
@@ -322,7 +324,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self._seriesModel.setData(sItem.index(), color, qt.Qt.BackgroundRole)
     self.intraopSeriesSelector.setCurrentIndex(currentIndex)
     self.intraopSeriesSelector.blockSignals(False)
-    self.intraopSeriesSelector.setStyleSheet(self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText))
+    colorStyle = self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText)
+    self.intraopSeriesSelector.setStyleSheet("QComboBox{%s} QToolTip{background-color: white;}" % colorStyle)
     if self.active and not self.session.isLoading():
       self.selectMostRecentEligibleSeries()
 
