@@ -15,9 +15,6 @@ class SliceTrackerRegistrationResultsLogic(SliceTrackerLogicBase):
   def __init__(self):
     super(SliceTrackerRegistrationResultsLogic, self).__init__()
 
-  def cleanup(self):
-    pass
-
 
 class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
@@ -81,6 +78,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.revealCursorIcon = self.createIcon('icon-revealCursor.png')
 
   def setup(self):
+    super(SliceTrackerRegistrationResultsPlugin, self).setup()
     self.registrationResultsGroupBox = qt.QGroupBox("Registration Results")
     self.registrationResultsGroupBoxLayout = qt.QGridLayout()
     self.registrationResultsGroupBox.setLayout(self.registrationResultsGroupBoxLayout)
@@ -178,13 +176,16 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   @logmethod(logging.INFO)
   def onActivation(self):
+    super(SliceTrackerRegistrationResultsPlugin, self).onActivation()
     if not self.currentResult:
       return
     self.updateRegistrationResultSelector()
+    self.onCurrentResultChanged()
     defaultLayout = self.getSetting("DEFAULT_EVALUATION_LAYOUT")
     self.onLayoutChanged(getattr(constants, defaultLayout, constants.LAYOUT_SIDE_BY_SIDE))
 
   def onDeactivation(self):
+    super(SliceTrackerRegistrationResultsPlugin, self).onDeactivation()
     self.cleanup()
 
   @vtk.calldata_type(vtk.VTK_STRING)
@@ -192,7 +193,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.cleanup()
 
   @logmethod(logging.INFO)
-  def onCurrentResultChanged(self, caller, event):
+  def onCurrentResultChanged(self, caller=None, event=None):
     if not self.active:
       return
     if not self.currentResult or self.currentResult.skipped:
@@ -202,7 +203,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.setAvailableLayouts([constants.LAYOUT_FOUR_UP, constants.LAYOUT_SIDE_BY_SIDE])
 
   def onResultApprovedOrRejected(self):
-    if self.getSetting("COVER_PROSTATE") in self.currentResult.name and not self.session.data.usePreopData:
+    if self.session.seriesTypeManager.isCoverProstate(self.currentResult.name) and not self.session.data.usePreopData:
       self.onNoResultAvailable()
     else:
       self.setAvailableLayouts([constants.LAYOUT_FOUR_UP, constants.LAYOUT_SIDE_BY_SIDE if
@@ -422,7 +423,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   def addFourUpSliceAnnotations(self):
     self.removeSliceAnnotations()
-    if not (self.currentResult.skipped or (self.getSetting("COVER_PROSTATE") in self.currentResult.name and
+    if not (self.currentResult.skipped or (self.session.seriesTypeManager.isCoverProstate(self.currentResult.name) and
                                              not self.session.data.usePreopData)):
       self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT,
                                                    yPos=50, fontSize=20))

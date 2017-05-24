@@ -10,7 +10,7 @@ set(EXTENSION_DESCRIPTION "This extension provides modules to support in-bore MR
 set(EXTENSION_ICONURL "http://wiki.slicer.org/slicerWiki/images/b/bb/SliceTracker_Logo_1.0_128x128.png")
 set(EXTENSION_SCREENSHOTURLS "http://wiki.slicer.org/slicerWiki/images/7/78/Slicetracker.gif")
 set(EXTENSION_STATUS "beta")
-set(EXTENSION_DEPENDS "SlicerDevelopmentToolbox mpReview VolumeClip")
+set(EXTENSION_DEPENDS "SlicerProstate SlicerDevelopmentToolbox mpReview VolumeClip")
 
 #-----------------------------------------------------------------------------
 find_package(Slicer REQUIRED)

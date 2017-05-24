@@ -1,7 +1,9 @@
 import slicer
-
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin as helper
 
 class SliceTrackerConstants(object):
+
+  MODULE_NAME = "SliceTracker"
 
   PREOP_SAMPLE_DATA_URL = 'https://github.com/SlicerProstate/SliceTracker/releases/download/test-data/Preop-deid.zip'
   INTRAOP_SAMPLE_DATA_URL = 'https://github.com/SlicerProstate/SliceTracker/releases/download/test-data/Intraop-deid.zip'
@@ -30,3 +32,50 @@ class SliceTrackerConstants(object):
 
   ZFrame_INSTRUCTION_STEPS = {1: "Scroll and click into ZFrame center to set ROI center",
                               2: "Click outside of upper right ZFrame corner to set ROI border"}
+
+  IntraopSeriesSelectorToolTip = """
+  <html>
+    <head>
+      <style type="text/css"> </style>
+    </head>
+    <body style="font-family:'Lucida Grande',sans-serif; font-size: 12pt; font-weight: 400; font-style: normal;border: 1px solid black;margin-top:0px;">
+      <table cellspacing=5>
+        <tbody>
+          <tr>
+            <td>
+              <img src="%s">
+            </td>
+            <td style="vertical-align: middle">
+              <strong>tracked</strong>(registration result available)
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <img src="%s">
+            </td>
+            <td style="vertical-align: middle">
+              <strong>untracked</strong>(no registration result available)
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <img src="%s">
+            </td>
+            <td style="vertical-align: middle">
+              <strong>skipped</strong>(no registration result available)
+            </td>
+          </tr>
+          <tr>
+            <td style="vertical-align: middle">
+              <img src="%s">
+            </td>
+            <td>
+              <strong>rejected</strong>(non satisfactory/approved registration result available)
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </body>
+  </html>
+  """ % (helper.createAndGetRawColoredPixelMap("green"), helper.createAndGetRawColoredPixelMap("yellow"),
+         helper.createAndGetRawColoredPixelMap("red"), helper.createAndGetRawColoredPixelMap("grey"))

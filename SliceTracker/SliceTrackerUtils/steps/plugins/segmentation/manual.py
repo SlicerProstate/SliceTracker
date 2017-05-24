@@ -5,7 +5,7 @@ from ...base import SliceTrackerPlugin
 from VolumeClipToLabel import VolumeClipToLabelWidget
 from Editor import EditorWidget
 import EditorLib
-from ....constants import SliceTrackerConstants
+from ....constants import SliceTrackerConstants as constants
 from base import SliceTrackerSegmentationPluginBase
 
 from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
@@ -31,6 +31,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.settingsIcon = self.createIcon('icon-settings.png')
 
   def setup(self):
+    super(SliceTrackerManualSegmentationPlugin, self).setup()
     try:
       import VolumeClipWithModel
     except ImportError:
@@ -88,7 +89,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.refreshClippingModelViewNodes()
 
   def refreshClippingModelViewNodes(self):
-    sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE else \
+    sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE else \
       [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
     nodes = [self.volumeClipToLabelWidget.logic.clippingModelNode, self.volumeClipToLabelWidget.logic.inputMarkupNode]
     for node in [n for n in nodes if n]:
@@ -109,17 +110,28 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
       self.volumeClipToLabelWidget.quickSegmentationButton.click()
 
   def onDeactivation(self):
-    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
-                                                     self.onSegmentationFinished)
-    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
-                                                     lambda caller, event: self.invokeEvent(self.SegmentationCancelledEvent))
+    super(SliceTrackerManualSegmentationPlugin, self).onDeactivation()
     self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationStartedEvent,
                                                      self.onSegmentationStarted)
+    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
+                                                     self.onSegmentationCancelled)
+    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
+                                                     self.onSegmentationFinished)
 
   def onSegmentationStarted(self, caller, event):
+    self.disableEditorWidgetButton()
     self.setupFourUpView(self.session.fixedVolume)
     self.setDefaultOrientation()
     self.invokeEvent(self.SegmentationStartedEvent)
+
+  def onSegmentationCancelled(self, caller, event):
+    self.disableEditorWidgetButton()
+    self.invokeEvent(self.SegmentationCancelledEvent)
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onSegmentationFinished(self, caller, event, labelNode):
+    self.enableEditorWidgetButton()
+    self.invokeEvent(self.SegmentationFinishedEvent, labelNode)
 
   def disableEditorWidgetAndResetEditorTool(self, enabledButton=False):
     self.editorWidgetParent.hide()

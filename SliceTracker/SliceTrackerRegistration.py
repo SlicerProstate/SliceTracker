@@ -175,7 +175,7 @@ class SliceTrackerRegistrationLogic(ScriptedLoadableModuleLogic, ModuleLogicMixi
     if targetsNodeID:
       result.targets.original = slicer.mrmlScene.GetNodeByID(targetsNodeID)
       self.transformTargets(registrationTypes, result.targets.original, str(result.seriesNumber), suffix=result.suffix)
-    result.movingVolume = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingImageNodeID'))
+    result.volumes.moving = slicer.mrmlScene.GetNodeByID(parameterNode.GetAttribute('MovingImageNodeID'))
 
   def runReRegistration(self, parameterNode, progressCallback=None):
     logging.debug("Starting Re-Registration")

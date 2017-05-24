@@ -1,10 +1,18 @@
+import logging
 import os
 import datetime
 import qt
+import vtk
 import re
 import slicer
+from SlicerDevelopmentToolboxUtils.decorators import logmethod
+from SlicerDevelopmentToolboxUtils.widgets import ExtendedQMessageBox
 
+from constants import SliceTrackerConstants as constants
+from SlicerDevelopmentToolboxUtils.module.logic import LogicBase
+from SlicerDevelopmentToolboxUtils.module.base import ModuleBase
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
+from SlicerDevelopmentToolboxUtils.metaclasses import Singleton
 
 
 class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
@@ -86,3 +94,190 @@ class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
     self.okButton.enabled = not os.path.exists(self.newCaseDirectory)
     self.notice.text = "" if not os.path.exists(self.newCaseDirectory) else "Note: Directory already exists."
 
+
+class SeriesTypeManager(LogicBase):
+
+  SeriesTypeManuallyAssignedEvent = vtk.vtkCommand.UserEvent + 2334
+
+  MODULE_NAME = constants.MODULE_NAME
+
+  __metaclass__ = Singleton
+
+  assignedSeries = {}
+
+  def __init__(self):
+    LogicBase.__init__(self)
+    self.seriesTypes = self.getSetting("SERIES_TYPES")
+
+  def clear(self):
+    self.assignedSeries = {}
+
+  def getSeriesType(self, series):
+    try:
+      return self.assignedSeries[series]
+    except KeyError:
+      return self.computeSeriesType(series)
+
+  def computeSeriesType(self, series):
+    if self.getSetting("COVER_PROSTATE") in series:
+      seriesType = self.getSetting("COVER_PROSTATE")
+    elif self.getSetting("COVER_TEMPLATE") in series:
+      seriesType = self.getSetting("COVER_TEMPLATE")
+    elif self.getSetting("NEEDLE_IMAGE") in series:
+      seriesType = self.getSetting("NEEDLE_IMAGE")
+    elif self.getSetting("VIBE_IMAGE") in series:
+      seriesType = self.getSetting("VIBE_IMAGE")
+    else:
+      seriesType = self.getSetting("OTHER_IMAGE")
+    return seriesType
+
+  def autoAssign(self, series):
+    self.assignedSeries[series] = self.getSeriesType(series)
+
+  def assign(self, series, seriesType=None):
+    if series in self.assignedSeries.keys() and self.assignedSeries[series] == seriesType:
+      return
+    if seriesType:
+      assert seriesType in self.seriesTypes
+      self.assignedSeries[series] = seriesType
+      self.invokeEvent(self.SeriesTypeManuallyAssignedEvent)
+    else:
+      self.autoAssign(series)
+
+  def isCoverProstate(self, series):
+    return self._hasSeriesType(series, self.getSetting("COVER_PROSTATE"))
+
+  def isCoverTemplate(self, series):
+    return self._hasSeriesType(series, self.getSetting("COVER_TEMPLATE"))
+
+  def isGuidance(self, series):
+    return self._hasSeriesType(series, self.getSetting("NEEDLE_IMAGE"))
+
+  def isVibe(self, series):
+    return self._hasSeriesType(series, self.getSetting("VIBE_IMAGE"))
+
+  def isOther(self, series):
+    return self._hasSeriesType(series, self.getSetting("OTHER_IMAGE")) or not (self.isCoverProstate(series) or
+                                                                               self.isCoverTemplate(series) or
+                                                                               self.isGuidance(series) or
+                                                                               self.isVibe(series))
+
+  def _hasSeriesType(self, series, seriesType):
+    if self.assignedSeries.has_key(series):
+      return self.assignedSeries[series] == seriesType
+    else:
+      return seriesType in series
+
+
+class IncomingDataMessageBox(ExtendedQMessageBox):
+
+  def __init__(self, parent=None):
+    super(IncomingDataMessageBox, self).__init__(parent)
+    self.setWindowTitle("Incoming image data")
+    self.textLabel = qt.QLabel("New data has been received. What do you want do?")
+    self.layout().addWidget(self.textLabel, 0, 1)
+    self.setIcon(qt.QMessageBox.Question)
+    trackButton = self.addButton(qt.QPushButton('Track targets'), qt.QMessageBox.AcceptRole)
+    self.addButton(qt.QPushButton('Postpone'), qt.QMessageBox.NoRole)
+    self.setDefaultButton(trackButton)
+
+
+class SeriesTypeToolButton(qt.QToolButton, ModuleBase, ModuleWidgetMixin):
+
+  MODULE_NAME = constants.MODULE_NAME
+
+  class SeriesTypeListWidget(qt.QListWidget, ModuleWidgetMixin):
+
+    @property
+    def series(self):
+      return self._series
+
+    @series.setter
+    def series(self, value):
+      self._series = value
+      self._preselectSeriesType()
+
+    def __init__(self, series=None):
+      qt.QListWidget.__init__(self)
+      self.seriesTypeManager = SeriesTypeManager()
+      self._series = series
+      self.setup()
+      self.setupConnections()
+
+    def setup(self):
+      self.clear()
+      for index, seriesType in enumerate(self.seriesTypeManager.seriesTypes):
+        self.addItem(seriesType)
+      self.setFixedSize(self.sizeHintForColumn(0) + 2 * self.frameWidth,
+                        self.sizeHintForRow(0) * self.count + 2 * self.frameWidth)
+      self._preselectSeriesType()
+
+    def _preselectSeriesType(self):
+      if not self._series:
+        self.setCurrentItem(None)
+      seriesType = self.seriesTypeManager.getSeriesType(self._series)
+      for index in range(self.count):
+        if seriesType == self.item(index).text():
+          self.setCurrentItem(self.item(index))
+          return
+
+    def setupConnections(self):
+      self.itemSelectionChanged.connect(self.onSelectionChanged)
+
+    def onSelectionChanged(self):
+      currentSeriesType = self.seriesTypeManager.getSeriesType(self._series)
+      selectedSeriesType = self.selectedItems()[0].text()
+      if selectedSeriesType != currentSeriesType:
+        if slicer.util.confirmYesNoDisplay("You are about to change the series type for series:\n\n"
+                                           "Name: {0} \n\n"
+                                           "Current series type: {1} \n"
+                                           "New series type: {2} \n\n"
+                                           "This could have significant impact on the workflow.\n\n"
+                                           "Do you want to proceed?".format(self._series, currentSeriesType,
+                                                                            selectedSeriesType)):
+          self.seriesTypeManager.assign(self._series, self.selectedItems()[0].text())
+        else:
+          self._preselectSeriesType()
+
+  def __init__(self):
+    qt.QToolButton.__init__(self)
+    ModuleBase.__init__(self)
+    self.setPopupMode(self.InstantPopup)
+    self.setMenu(qt.QMenu(self))
+    self.action = qt.QWidgetAction(self)
+    self.listWidget = None
+    self.setupIcons()
+    self.setIcon(self.editIcon)
+    self.enabled = False
+
+  def setupIcons(self):
+    self.editIcon = self.createIcon("icon-edit.png")
+    self.infoIcon = self.createIcon('icon-infoBox.png')
+
+  @logmethod(logging.DEBUG)
+  def setSeries(self, series):
+    if not self.listWidget:
+      self.listWidget = self.SeriesTypeListWidget(series)
+      self.action.setDefaultWidget(self.listWidget)
+      self.menu().addAction(self.action)
+      seriesTypeManager = SeriesTypeManager()
+      seriesTypeManager.addEventObserver(seriesTypeManager.SeriesTypeManuallyAssignedEvent,
+                                         lambda caller, event: self.menu().close())
+    else:
+      self.listWidget.series = series
+    self.updateTooltipAndIcon(series)
+
+  def updateTooltipAndIcon(self, series):
+    seriesTypeManager = SeriesTypeManager()
+    currentType = seriesTypeManager.getSeriesType(series)
+    autoType = seriesTypeManager.computeSeriesType(series)
+    if currentType != autoType:
+      icon = self.infoIcon
+      tooltip = "Series type assignment changed!\n\n" \
+                "Original series type: {}\n\n" \
+                "Assigned series type: {}".format(autoType, currentType)
+    else:
+      icon = self.editIcon
+      tooltip = self.listWidget.currentItem().text() if self.listWidget.currentItem() else ""
+    self.setIcon(icon)
+    self.setToolTip(tooltip)

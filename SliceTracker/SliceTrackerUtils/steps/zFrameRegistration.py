@@ -41,6 +41,8 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
     self.resetAndInitializeData()
 
   def resetAndInitializeData(self):
+    self.templateVolume = None
+
     self.zFrameModelNode = None
     self.zFrameTransform = None
 
@@ -219,7 +221,9 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
       registration.runRegistration(start=kwargs.pop("startSlice"), end=kwargs.pop("endSlice"))
     elif isinstance(registration, LineMarkerRegistration):
       registration.runRegistration()
-    self.session.data.zFrameTransform = registration.getOutputTransformation()
+    zFrameRegistrationResult = self.session.data.createZFrameRegistrationResult(self.templateVolume.GetName())
+    zFrameRegistrationResult.volume = inputVolume
+    zFrameRegistrationResult.transform = registration.getOutputTransformation()
     return True
 
   def getROIMinCenterMaxSliceNumbers(self, coverTemplateROI):
@@ -280,9 +284,8 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.zFrameClickObserver = None
     self.zFrameInstructionAnnotation = None
 
-    self.templateVolume = None
-
     super(SliceTrackerZFrameRegistrationStep, self).__init__()
+    self.logic.templateVolume = None
 
   def setupIcons(self):
     self.zFrameIcon = self.createIcon('icon-zframe.png')
@@ -293,6 +296,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.retryIcon = self.createIcon("icon-retry.png")
 
   def setup(self):
+    super(SliceTrackerZFrameRegistrationStep, self).setup()
     self.setupManualIndexesGroupBox()
     self.setupActionButtons()
 
@@ -373,7 +377,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     pass
 
   def onInitiateZFrameCalibration(self, caller, event):
-    self.templateVolume = self.session.currentSeriesVolume
+    self.logic.templateVolume = self.session.currentSeriesVolume
     self.active = True
 
   @vtk.calldata_type(vtk.VTK_STRING)
@@ -383,15 +387,14 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       return
     newImageSeries = ast.literal_eval(callData)
     for series in reversed(newImageSeries):
-      if self.getSetting("COVER_TEMPLATE") in series:
-        if self.templateVolume and series != self.templateVolume.GetName():
+      if self.session.seriesTypeManager.isCoverTemplate(series):
+        if self.logic.templateVolume and series != self.logic.templateVolume.GetName():
           if not slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one for "
                                                  "calibration?" % self.getSetting("COVER_TEMPLATE")):
             return
         self.session.currentSeries = series
-        templateVolume = self.session.currentSeriesVolume
         self.removeZFrameInstructionAnnotation()
-        self.templateVolume = templateVolume
+        self.logic.templateVolume = self.session.currentSeriesVolume
         self.initiateZFrameRegistrationStep()
         return
 
@@ -412,7 +415,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.showTemplateButton.checked = True
     self.showTemplatePathButton.checked = True
     self.zFrameRegistrationManualIndexesGroupBox.checked = False
-    if self.templateVolume:
+    if self.logic.templateVolume:
       self.initiateZFrameRegistrationStep()
 
   def onDeactivation(self):
@@ -420,11 +423,11 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.showZFrameModelButton.checked = False
     self.showTemplateButton.checked = False
     self.showTemplatePathButton.checked = False
-    self.templateVolume = None
+    self.logic.templateVolume = None
 
   def initiateZFrameRegistrationStep(self):
     self.resetZFrameRegistration()
-    self.setupFourUpView(self.templateVolume)
+    self.setupFourUpView(self.logic.templateVolume)
     self.redSliceNode.SetSliceVisible(True)
     if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
       self.addROIObserver()
@@ -440,7 +443,9 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.removeNodeFromMRMLScene(self.zFrameCroppedVolume)
     self.removeNodeFromMRMLScene(self.zFrameLabelVolume)
     self.removeNodeFromMRMLScene(self.zFrameMaskedVolume)
-    self.removeNodeFromMRMLScene(self.session.data.zFrameTransform)
+    if self.session.data.zFrameRegistrationResult:
+      self.removeNodeFromMRMLScene(self.session.data.zFrameRegistrationResult.transform)
+      self.session.data.zFrameRegistrationResult = None
 
   def addROIObserver(self):
     @vtk.calldata_type(vtk.VTK_OBJECT)
@@ -495,7 +500,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       self.zFrameClickObserver = None
 
   def onApplyZFrameRegistrationButtonClicked(self):
-    zFrameTemplateVolume = self.templateVolume
+    zFrameTemplateVolume = self.logic.templateVolume
     try:
       if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
         self.annotationLogic.SetAnnotationLockedUnlocked(self.coverTemplateROI.GetID())
@@ -533,13 +538,13 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     for node in [node for node in
                  [self.logic.pathModelNode, self.logic.tempModelNode,
                   self.logic.zFrameModelNode, self.logic.needleModelNode] if node]:
-      node.SetAndObserveTransformNodeID(self.session.data.zFrameTransform.GetID())
+      node.SetAndObserveTransformNodeID(self.session.data.zFrameRegistrationResult.transform.GetID())
 
   def onApproveZFrameRegistrationButtonClicked(self):
     self.redSliceNode.SetSliceVisible(False)
     if self.zFrameRegistrationClass is OpenSourceZFrameRegistration:
       self.annotationLogic.SetAnnotationVisibility(self.coverTemplateROI.GetID())
-    self.session.approvedCoverTemplate = self.templateVolume
+    self.session.approvedCoverTemplate = self.logic.templateVolume
 
   def onRetryZFrameRegistrationButtonClicked(self):
     self.removeZFrameInstructionAnnotation()

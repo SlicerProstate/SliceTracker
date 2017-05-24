@@ -22,6 +22,7 @@ class SliceTrackerTrainingPlugin(SliceTrackerPlugin):
     self.sampleDownloader = SampleDataDownloader(True)
 
   def setup(self):
+    super(SliceTrackerTrainingPlugin, self).setup()
     self.collapsibleTrainingArea = ctk.ctkCollapsibleButton()
     self.collapsibleTrainingArea.collapsed = True
     self.collapsibleTrainingArea.text = "Training Incoming Data Simulation"

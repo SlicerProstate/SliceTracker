@@ -9,16 +9,13 @@ from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 from plugins.targeting import SliceTrackerTargetingPlugin
 from plugins.segmentation.manual import SliceTrackerManualSegmentationPlugin
 from plugins.segmentation.automatic import SliceTrackerAutomaticSegmentationPlugin
-from ..constants import SliceTrackerConstants
+from ..constants import SliceTrackerConstants as constants
 
 
 class SliceTrackerSegmentationStepLogic(SliceTrackerLogicBase):
 
   def __init__(self):
     super(SliceTrackerSegmentationStepLogic, self).__init__()
-
-  def cleanup(self):
-    pass
 
 
 class SliceTrackerSegmentationStep(SliceTrackerStep):
@@ -40,6 +37,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.backIcon = self.createIcon('icon-back.png')
 
   def setup(self):
+    super(SliceTrackerSegmentationStep, self).setup()
     self.setupManualSegmentationPlugin()
     self.setupTargetingPlugin()
     self.setupAutomaticSegmentationPlugin()
@@ -94,7 +92,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.resetAndInitialize()
     self.session.retryMode = retryMode
     self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
-    if self.getSetting("COVER_PROSTATE") in self.session.currentSeries:
+    if self.session.seriesTypeManager.isCoverProstate(self.session.currentSeries):
       if self.session.data.usePreopData:
         if self.session.retryMode:
           if not self.loadLatestCoverProstateResultData():
@@ -117,25 +115,35 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.session.fixedVolume = self.session.currentSeriesVolume
     if not self.session.fixedVolume:
       return
+    self.updateAvailableLayouts()
     super(SliceTrackerSegmentationStep, self).onActivation()
+
+  def updateAvailableLayouts(self):
+    layouts = [constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_FOUR_UP]
+    if self.session.data.usePreopData or self.session.retryMode:
+      layouts.append(constants.LAYOUT_SIDE_BY_SIDE)
+    self.setAvailableLayouts(layouts)
 
   def onDeactivation(self):
     super(SliceTrackerSegmentationStep, self).onDeactivation()
 
   @onModuleSelected(SliceTrackerStep.MODULE_NAME)
   def onLayoutChanged(self, layout=None):
-    if self.layoutManager.layout == SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE:
+    if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
       self.setupSideBySideSegmentationView()
-    elif self.layoutManager.layout in [SliceTrackerConstants.LAYOUT_FOUR_UP,
-                                       SliceTrackerConstants.LAYOUT_RED_SLICE_ONLY]:
+    elif self.layoutManager.layout in [constants.LAYOUT_FOUR_UP, constants.LAYOUT_RED_SLICE_ONLY]:
+      self.redCompositeNode.SetLabelVolumeID(None)
       self.removeMissingPreopDataAnnotation()
       self.setBackgroundToVolumeID(self.session.currentSeriesVolume.GetID(), clearLabels=False)
 
   def setupSideBySideSegmentationView(self):
     # TODO: red slice view should not be possible to set target
+    redVolume = None
+    redLabel = None
     coverProstate = self.session.data.getMostRecentApprovedCoverProstateRegistration()
-    redVolume = coverProstate.volumes.fixed if self.session.retryMode and coverProstate else self.session.data.initialVolume
-    redLabel = coverProstate.labels.fixed if self.session.retryMode and coverProstate else self.session.data.initialLabel
+    if coverProstate:
+      redVolume = coverProstate.volumes.fixed if self.session.retryMode else self.session.data.initialVolume
+      redLabel = coverProstate.labels.fixed if self.session.retryMode else self.session.data.initialLabel
 
     if redVolume and redLabel:
       self.redCompositeNode.SetBackgroundVolumeID(redVolume.GetID())
@@ -160,7 +168,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   def addMissingPreopDataAnnotation(self, widget):
     self.removeMissingPreopDataAnnotation()
-    self.segmentationNoPreopAnnotation = SliceAnnotation(widget, SliceTrackerConstants.MISSING_PREOP_ANNOTATION_TEXT,
+    self.segmentationNoPreopAnnotation = SliceAnnotation(widget, constants.MISSING_PREOP_ANNOTATION_TEXT,
                                                          opacity=0.7, color=(1, 0, 0))
 
   def loadLatestCoverProstateResultData(self):
@@ -213,14 +221,19 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.onSegmentationStarted(caller, event)
 
   def onSegmentationStarted(self, caller, event):
+    self.setAvailableLayouts([constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_SIDE_BY_SIDE, constants.LAYOUT_FOUR_UP])
     self.targetingPlugin.enabled = False
     self.backButton.enabled = False
     self.finishStepButton.enabled = False
 
   def onSegmentationCancelled(self, caller, event):
+    self.setAvailableLayouts([constants.LAYOUT_FOUR_UP])
+    self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
     self.backButton.enabled = True
     self.targetingPlugin.enabled = True
-    self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
+    if self.inputsAreSet():
+      self.openSegmentationComparisonStep()
+    self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0) # TODO: need to revise that
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageSeriesReceived(self, caller, event, callData):
@@ -229,7 +242,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       return
     newImageSeries = ast.literal_eval(callData)
     for series in reversed(newImageSeries):
-      if self.getSetting("COVER_PROSTATE") in series:
+      if self.session.seriesTypeManager.isCoverProstate(series):
         if series != self.session.currentSeries:
           if not slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one?"
                                                   % self.getSetting("COVER_PROSTATE")):
@@ -249,28 +262,31 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     _, suffix = self.session.getRegistrationResultNameAndGeneratedSuffix(self.session.currentSeries)
     labelNode.SetName(labelNode.GetName() + suffix)
     self.session.fixedLabel = labelNode
-    if self.session.data.usePreopData or self.session.retryMode:
-      self.setAxialOrientation()
-    self.openSegmentationComparisonStep()
-    self.backButton.enabled = True
     self.finishStepButton.setEnabled(1 if self.inputsAreSet() else 0)
+    self.backButton.enabled = True
+    self.openSegmentationComparisonStep()
 
   def openSegmentationComparisonStep(self):
+    self.setAvailableLayouts([constants.LAYOUT_SIDE_BY_SIDE])
+    self.manualSegmentationPlugin.enableEditorWidgetButton()
+    if self.session.data.usePreopData or self.session.retryMode:
+      self.setAxialOrientation()
     self.removeMissingPreopDataAnnotation()
     self.targetingPlugin.enabled = True
     if self.session.data.usePreopData or self.session.retryMode:
-      self.layoutManager.setLayout(SliceTrackerConstants.LAYOUT_SIDE_BY_SIDE)
-      self.setupScreenForSegmentationComparison("red", self.session.movingVolume, self.session.movingLabel)
-      self.setupScreenForSegmentationComparison("yellow", self.session.fixedVolume, self.session.fixedLabel)
-      self.manualSegmentationPlugin.enableEditorWidgetButton()
+      self.layoutManager.setLayout(constants.LAYOUT_SIDE_BY_SIDE)
+      self.setBackgroundAndLabelForCompositeNode("red", self.session.movingVolume, self.session.movingLabel)
+      self.setBackgroundAndLabelForCompositeNode("yellow", self.session.fixedVolume, self.session.fixedLabel)
       self.centerLabelsOnVisibleSliceWidgets()
     elif not self.session.movingTargets:
       self.targetingPlugin.startTargeting()
     else:
-      for sliceNode in self._sliceNodes:
+      for compositeNode, sliceNode in zip(self._compositeNodes, self._sliceNodes):
+        compositeNode.SetLabelVolumeID(self.session.fixedLabel.GetID())
+        compositeNode.SetLabelOpacity(1)
         sliceNode.SetUseLabelOutline(True)
 
-  def setupScreenForSegmentationComparison(self, viewName, volume, label):
+  def setBackgroundAndLabelForCompositeNode(self, viewName, volume, label):
     compositeNode = getattr(self, viewName+"CompositeNode")
     compositeNode.SetReferenceBackgroundVolumeID(volume.GetID())
     compositeNode.SetLabelVolumeID(label.GetID())

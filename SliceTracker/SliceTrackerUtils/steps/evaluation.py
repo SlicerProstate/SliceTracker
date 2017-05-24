@@ -12,9 +12,6 @@ class SliceTrackerEvaluationStepLogic(SliceTrackerLogicBase):
   def __init__(self):
     super(SliceTrackerEvaluationStepLogic, self).__init__()
 
-  def cleanup(self):
-    pass
-
 
 class SliceTrackerEvaluationStep(SliceTrackerStep):
 
@@ -31,6 +28,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.rejectIcon = self.createIcon("icon-thumbsDown.png")
 
   def setup(self):
+    super(SliceTrackerEvaluationStep, self).setup()
     self.registrationEvaluationGroupBox = qt.QGroupBox()
     self.registrationEvaluationGroupBoxLayout = qt.QGridLayout()
     self.registrationEvaluationGroupBox.setLayout(self.registrationEvaluationGroupBoxLayout)
@@ -102,7 +100,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
       return
     # self.redOnlyLayoutButton.enabled = False
     # self.sideBySideLayoutButton.enabled = True
-    self.rejectRegistrationResultButton.enabled = not self.getSetting("COVER_PROSTATE") in self.currentResult.name
+    self.rejectRegistrationResultButton.enabled = not self.session.seriesTypeManager.isCoverProstate(self.currentResult.name)
     self.currentResult.save(self.session.outputDirectory)
     self.currentResult.printSummary()
     if not self.logic.isVolumeExtentValid(self.currentResult.volumes.bSpline):

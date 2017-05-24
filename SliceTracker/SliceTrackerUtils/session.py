@@ -1,68 +1,28 @@
 import os, logging
 import vtk, ctk, ast
-import shutil
-from abc import ABCMeta, abstractmethod
 
 import slicer
 from sessionData import SessionData, RegistrationResult, RegistrationTypeData
 from constants import SliceTrackerConstants
+from helpers import SeriesTypeManager
 
 from .exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 
 from SlicerDevelopmentToolboxUtils.constants import DICOMTAGS, FileExtension, STYLE
 from SlicerDevelopmentToolboxUtils.events import SlicerDevelopmentToolboxEvents
 from SlicerDevelopmentToolboxUtils.helpers import SmartDICOMReceiver
-from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
 from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow
+from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton
+from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse, onReturnProcessEvents, onExceptionReturnNone
+from SlicerDevelopmentToolboxUtils.module.session import StepBasedSession
 
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton, onReturnProcessEvents, onExceptionReturnNone, onModuleSelected
-from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 
 
-class SessionBase(ModuleLogicMixin):
-
-  __metaclass__ = ABCMeta
-
-  DirectoryChangedEvent = vtk.vtkCommand.UserEvent + 203
-
-  _directory = None
-
-  @property
-  def directory(self):
-    return self._directory
-
-  @directory.setter
-  def directory(self, value):
-    if value:
-      if not os.path.exists(value):
-        self.createDirectory(value)
-    elif not value and self._directory:
-      if self.getDirectorySize(self._directory) == 0:
-        shutil.rmtree(self.directory)
-    self._directory = value
-    if self._directory:
-      self.processDirectory()
-    self.invokeEvent(self.DirectoryChangedEvent, self.directory)
-
-  def __init__(self):
-    pass
-
-  @abstractmethod
-  def load(self):
-    pass
-
-  @abstractmethod
-  def processDirectory(self):
-    pass
-
-  def save(self):
-    pass
-
-
 @singleton
-class SliceTrackerSession(SessionBase):
+class SliceTrackerSession(StepBasedSession):
 
   IncomingDataSkippedEvent = SlicerDevelopmentToolboxEvents.IncomingDataSkippedEvent
   IncomingPreopDataReceiveFinishedEvent = SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent + 110
@@ -72,10 +32,6 @@ class SliceTrackerSession(SessionBase):
 
   DICOMReceiverStatusChanged = SlicerDevelopmentToolboxEvents.StatusChangedEvent
   DICOMReceiverStoppedEvent = SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent
-
-  NewCaseStartedEvent = vtk.vtkCommand.UserEvent + 501
-  CloseCaseEvent = vtk.vtkCommand.UserEvent + 502
-  CaseOpenedEvent = vtk.vtkCommand.UserEvent + 503
 
   ZFrameRegistrationSuccessfulEvent = vtk.vtkCommand.UserEvent + 140
   PreprocessingSuccessfulEvent = vtk.vtkCommand.UserEvent + 141
@@ -92,23 +48,16 @@ class SliceTrackerSession(SessionBase):
   InitiateEvaluationEvent = vtk.vtkCommand.UserEvent + 163
 
   CurrentResultChangedEvent = vtk.vtkCommand.UserEvent + 234
+
   ApprovedEvent = RegistrationResult.ApprovedEvent
   SkippedEvent = RegistrationResult.SkippedEvent
   RejectedEvent = RegistrationResult.RejectedEvent
 
+  SeriesTypeManuallyAssignedEvent = SeriesTypeManager.SeriesTypeManuallyAssignedEvent
+
   ResultEvents = [ApprovedEvent, SkippedEvent, RejectedEvent]
 
-  MODULE_NAME = "SliceTracker"
-
-  @property
-  def steps(self):
-    return self._steps
-
-  @steps.setter
-  def steps(self, value):
-    for step in self.steps:
-      step.removeSessionEventObservers()
-    self._steps = value
+  MODULE_NAME = SliceTrackerConstants.MODULE_NAME
 
   @property
   def preprocessedDirectory(self):
@@ -129,17 +78,20 @@ class SliceTrackerSession(SessionBase):
 
   @property
   def approvedCoverTemplate(self):
-    return self.data.zFrameVolume
+    try:
+      return self.data.zFrameRegistrationResult.volume
+    except AttributeError:
+      return None
 
   @approvedCoverTemplate.setter
   def approvedCoverTemplate(self, volume):
-    self.data.zFrameVolume = volume
+    self.data.zFrameRegistrationResult.volume = volume
     self.zFrameRegistrationSuccessful = volume is not None
 
   @property
   def zFrameRegistrationSuccessful(self):
     self._zFrameRegistrationSuccessful = getattr(self, "_zFrameRegistrationSuccessful", None)
-    return self.data.zFrameTransform is not None and self._zFrameRegistrationSuccessful
+    return self.data.zFrameRegistrationResult is not None and self._zFrameRegistrationSuccessful
 
   @zFrameRegistrationSuccessful.setter
   def zFrameRegistrationSuccessful(self, value):
@@ -248,13 +200,16 @@ class SliceTrackerSession(SessionBase):
     self._fixedLabel = value
 
   def __init__(self):
-    SessionBase.__init__(self)
+    StepBasedSession.__init__(self)
     self.registrationLogic = SliceTrackerRegistrationLogic()
-    self._steps = []
+    self.seriesTypeManager = SeriesTypeManager()
+    self.seriesTypeManager.addEventObserver(self.seriesTypeManager.SeriesTypeManuallyAssignedEvent,
+                                            lambda caller, event: self.invokeEvent(self.SeriesTypeManuallyAssignedEvent))
+
     self.resetAndInitializeMembers()
-    self.addMrmlSceneClearObserver()
 
   def resetAndInitializeMembers(self):
+    self.seriesTypeManager.clear()
     self.initializeColorNodes()
     self.directory = None
     self.data = SessionData()
@@ -278,22 +233,18 @@ class SliceTrackerSession(SessionBase):
     self.segmentedLabelValue = self.mpReviewColorNode.GetColorIndexByName(self.segmentedColorName)
 
   def __del__(self):
+    super(SliceTrackerSession, self).__del__()
     self.clearData()
-    if self.mrmlSceneObserver:
-      self.mrmlSceneObserver = slicer.mrmlScene.RemoveObserver(self.mrmlSceneObserver)
 
-  def addMrmlSceneClearObserver(self):
+  def clearData(self):
+    self.resetAndInitializeMembers()
 
-    @onModuleSelected(self.MODULE_NAME)
-    def onMrmlSceneCleared(caller, event):
-      logging.debug("called onMrmlSceneCleared in %s" % self.__class__.__name__)
-      self.initializeColorNodes()
-
-    self.mrmlSceneObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndCloseEvent, onMrmlSceneCleared)
+  def onMrmlSceneCleared(self, caller, event):
+    self.initializeColorNodes()
 
   @onExceptionReturnFalse
   def isCurrentSeriesCoverProstateInNonPreopMode(self):
-    return self.getSetting("COVER_PROSTATE") in self.currentSeries and not self.data.usePreopData
+    return self.seriesTypeManager.isCoverProstate(self.currentSeries) and not self.data.usePreopData
 
   def isPreProcessing(self):
     return slicer.util.selectedModule() != self.MODULE_NAME
@@ -301,25 +252,8 @@ class SliceTrackerSession(SessionBase):
   def isCaseDirectoryValid(self):
     return os.path.exists(self.preopDICOMDirectory) and os.path.exists(self.intraopDICOMDirectory)
 
-  def getSetting(self, setting, moduleName=None, default=None):
-    return SessionBase.getSetting(self, setting, moduleName=self.MODULE_NAME, default=default)
-
-  def setSetting(self, setting, value, moduleName=None):
-    return SessionBase.setSetting(self, setting, value, moduleName=self.MODULE_NAME)
-
-  def registerStep(self, step):
-    logging.debug("Registering step %s" % step.NAME)
-    if step not in self.steps:
-      self.steps.append(step)
-
-  def getStep(self, stepName):
-    return next((x for x in self.steps if x.NAME == stepName), None)
-
   def isRunning(self):
     return not self.directory in [None, '']
-
-  def clearData(self):
-    self.resetAndInitializeMembers()
 
   def processDirectory(self):
     self.newCaseCreated = getattr(self, "newCaseCreated", False)
@@ -333,7 +267,6 @@ class SliceTrackerSession(SessionBase):
       self.invokeEvent(self.CaseOpenedEvent)
 
   def createNewCase(self, destination):
-    # TODO: self.continueOldCase = False
     self.newCaseCreated = True
     self.resetAndInitializeMembers()
     self.directory = destination
@@ -388,7 +321,7 @@ class SliceTrackerSession(SessionBase):
       self.data.initialTargets = coverProstate.targets.original
       if self.data.usePreopData:  # TODO: makes sense?
         self.data.preopLabel = coverProstate.labels.moving
-    if self.data.zFrameTransform:
+    if self.data.zFrameRegistrationResult:
       self._zFrameRegistrationSuccessful = True
     self.data.resumed = not self.data.completed
     if self.data.usePreopData:
@@ -483,31 +416,39 @@ class SliceTrackerSession(SessionBase):
     self.seriesList = sorted(self.seriesList, key=lambda s: RegistrationResult.getSeriesNumberFromString(s))
 
     if len(newFileList):
-      if self.data.usePreopData:
-        self.verifyPatientIDEquality(newFileList)
+      self.verifyPatientIDEquality(newFileList)
       self.invokeEvent(self.NewImageSeriesReceivedEvent, newSeries.__str__())
-      # self.invokeEventForMostRecentEligibleSeries()
 
   def verifyPatientIDEquality(self, receivedFiles):
     seriesNumberPatientID = self.getAdditionalInformationForReceivedSeries(receivedFiles)
-    dicomFileName = self.getFileList(self.preopDICOMDirectory)[0]
-    currentInfo = self.getPatientInformation(os.path.join(self.preopDICOMDirectory, dicomFileName))
+    dicomFileName = self.getPatientIDValidationSource()
+    if not dicomFileName:
+      return
+    currentInfo = self.getPatientInformation(dicomFileName)
     currentID = currentInfo["PatientID"]
     patientName = currentInfo["PatientName"]
     for seriesNumber, receivedInfo in seriesNumberPatientID.iteritems():
       patientID = receivedInfo["PatientID"]
       if patientID is not None and patientID != currentID:
-        message = 'WARNING:\n' \
-                  'Current case:\n' \
-                  '  Patient ID: {0}\n' \
-                  '  Patient Name: {1}\n' \
-                  'Received image\n' \
-                  '  Patient ID: {2}\n' \
-                  '  Patient Name : {3}\n\n' \
-                  'Do you want to keep this series? '.format(currentID, patientName,
-                                                             patientID, receivedInfo["PatientName"])
-        if not slicer.util.confirmYesNoDisplay(message, title="Patient IDs Not Matching", windowTitle="SliceTracker"):
+        m = 'WARNING:\n' \
+            'Current case:\n' \
+            '  Patient ID: {0}\n' \
+            '  Patient Name: {1}\n' \
+            'Received image\n' \
+            '  Patient ID: {2}\n' \
+            '  Patient Name : {3}\n\n' \
+            'Do you want to keep this series? '.format(currentID, patientName, patientID, receivedInfo["PatientName"])
+        if not slicer.util.confirmYesNoDisplay(m, title="Patient IDs Not Matching", windowTitle="SliceTracker"):
           self.deleteSeriesFromSeriesList(seriesNumber)
+
+  def getPatientIDValidationSource(self):
+    # TODO: For loading case purposes it would be nice to keep track which series were accepted
+    if len(self.loadableList.keys()) > 1:
+      keylist = self.loadableList.keys()
+      keylist.sort(key=lambda x: RegistrationResult.getSeriesNumberFromString(x))
+      return self.loadableList[keylist[0]][0]
+    else:
+      return None
 
   def getOrCreateVolumeForSeries(self, series):
     try:
@@ -740,7 +681,7 @@ class SliceTrackerSession(SessionBase):
     style = STYLE.YELLOW_BACKGROUND
     if not self.isTrackingPossible(series):
       if self.data.registrationResultWasApproved(series) or \
-              (self.zFrameRegistrationSuccessful and self.getSetting("COVER_TEMPLATE") in series):
+              (self.zFrameRegistrationSuccessful and self.seriesTypeManager.isCoverTemplate(series)):
         style = STYLE.GREEN_BACKGROUND
       elif self.data.registrationResultWasSkipped(series):
         style = STYLE.RED_BACKGROUND
@@ -753,16 +694,16 @@ class SliceTrackerSession(SessionBase):
       logging.debug("No tracking possible. Case has been marked as completed!")
       return False
     if self.isInGeneralTrackable(series) and self.resultHasNotBeenProcessed(series):
-      if self.getSetting("NEEDLE_IMAGE") in series:
+      if self.seriesTypeManager.isGuidance(series):
         return self.data.getMostRecentApprovedCoverProstateRegistration()
-      elif self.getSetting("COVER_PROSTATE") in series:
+      elif self.seriesTypeManager.isCoverProstate(series):
         return self.zFrameRegistrationSuccessful
       elif self.isCoverTemplateTrackable(series):
         return True
     return False
 
   def isCoverTemplateTrackable(self, series):
-    if not self.getSetting("COVER_TEMPLATE") in series:
+    if not self.seriesTypeManager.isCoverTemplate(series):
       return False
     if not self.approvedCoverTemplate:
       return True
@@ -772,8 +713,9 @@ class SliceTrackerSession(SessionBase):
     return currentSeriesNumber > approvedSeriesNumber
 
   def isInGeneralTrackable(self, series):
-    return self.isAnyListItemInString(series, [self.getSetting("COVER_TEMPLATE"), self.getSetting("COVER_PROSTATE"),
-                                               self.getSetting("NEEDLE_IMAGE")])
+    seriesType = self.seriesTypeManager.getSeriesType(series)
+    return self.isAnyListItemInString(seriesType, [self.getSetting("COVER_TEMPLATE"), self.getSetting("COVER_PROSTATE"),
+                                                   self.getSetting("NEEDLE_IMAGE")])
 
   def resultHasNotBeenProcessed(self, series):
     return not (self.data.registrationResultWasApproved(series) or
@@ -781,17 +723,22 @@ class SliceTrackerSession(SessionBase):
                 self.data.registrationResultWasRejected(series))
 
   def isEligibleForSkipping(self, series):
-    return not self.isAnyListItemInString(series,[self.getSetting("COVER_PROSTATE"), self.getSetting("COVER_TEMPLATE")])
+    seriesType = self.seriesTypeManager.getSeriesType(series)
+    return not self.isAnyListItemInString(seriesType,[self.getSetting("COVER_PROSTATE"), self.getSetting("COVER_TEMPLATE")])
+
+  def isLoading(self):
+    self._loading = getattr(self, "_loading", False)
+    return self._loading
 
   def takeActionForCurrentSeries(self):
     event = None
     callData = None
-    if self.getSetting("COVER_PROSTATE") in self.currentSeries:
+    if self.seriesTypeManager.isCoverProstate(self.currentSeries):
       event = self.InitiateSegmentationEvent
       callData = str(False)
-    elif self.getSetting("COVER_TEMPLATE") in self.currentSeries:
+    elif self.seriesTypeManager.isCoverTemplate(self.currentSeries):
       event = self.InitiateZFrameCalibrationEvent
-    elif self.getSetting("NEEDLE_IMAGE") in self.currentSeries:
+    elif self.seriesTypeManager.isGuidance(self.currentSeries):
       self.onInvokeRegistration(initial=False)
       return
     if event:
@@ -905,7 +852,7 @@ class SliceTrackerSession(SessionBase):
 
   def skipAllUnregisteredPreviousSeries(self, series):
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
-    for series in [series for series in self.seriesList if not self.getSetting("COVER_TEMPLATE") in series]:
+    for series in [series for series in self.seriesList if not self.seriesTypeManager.isCoverTemplate(series)]:
       currentSeriesNumber = RegistrationResult.getSeriesNumberFromString(series)
       if currentSeriesNumber < selectedSeriesNumber and self.isTrackingPossible(series):
         results = self.data.getResultsBySeriesNumber(currentSeriesNumber)

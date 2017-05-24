@@ -38,6 +38,7 @@ class SliceTrackerAutomaticSegmentationLogic(SliceTrackerLogicBase):
       self.createDirectory(self.tempDir)
 
   def cleanup(self):
+    super(SliceTrackerAutomaticSegmentationLogic, self).cleanup()
     try:
       shutil.rmtree(self.tempDir)
     except os.error:
@@ -92,7 +93,6 @@ class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase
 
   def __init__(self):
     super(SliceTrackerAutomaticSegmentationPlugin, self).__init__()
-
     self.logic.addEventObserver(self.logic.DeepLearningStartedEvent, self.onSegmentationStarted)
     self.logic.addEventObserver(self.logic.DeepLearningFinishedEvent, self.onSegmentationFinished)
     self.logic.addEventObserver(self.logic.DeepLearningStatusChangedEvent, self.onStatusChanged)
@@ -102,6 +102,7 @@ class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase
     self.logic.cleanup()
 
   def setup(self):
+    super(SliceTrackerAutomaticSegmentationPlugin, self).setup()
     self.startAutomaticSegmentationButton = self.createButton("Run")
     # self.layout().addWidget(self.startAutomaticSegmentationButton)
 

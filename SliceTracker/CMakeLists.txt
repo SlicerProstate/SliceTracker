@@ -36,6 +36,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Colors/mpReviewColors.csv
   Resources/Icons/icon-cancelSegmentation.png
   Resources/Icons/icon-new.png
+  Resources/Icons/icon-edit.png
   Resources/Icons/icon-open.png
   Resources/Icons/icon-close.png
   Resources/Icons/icon-back.png
@@ -53,6 +54,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/icon-needle.png
   Resources/Icons/icon-revealCursor.png
   Resources/Icons/icon-skip.png
+  Resources/Icons/icon-track.png
   Resources/Icons/icon-template.png
   Resources/Icons/icon-text-info.png
   Resources/Icons/icon-zframe.png

@@ -29,8 +29,8 @@ class SliceTracker(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SliceTracker"
     self.parent.categories = ["Radiology"]
-    self.parent.dependencies = ["SlicerDevelopmentToolbox", "mpReview", "mpReviewPreprocessor"]
-    self.parent.contributors = ["Christian Herz (SPL), Peter Behringer (SPL), Andriy Fedorov (SPL)"]
+    self.parent.dependencies = ["SlicerProstate", "SlicerDevelopmentToolbox", "mpReview", "mpReviewPreprocessor"]
+    self.parent.contributors = ["Christian Herz (SPL)", "Peter Behringer (SPL)", "Andriy Fedorov (SPL)"]
     self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy.
       See <a href=\"https://www.gitbook.com/book/slicerprostate/slicetracker/details\">the documentation</a> for
       details."""
@@ -172,7 +172,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onCurrentSeriesChanged(self, caller, event, callData):
-    self.intraopWatchBox.sourceFile = self.session.loadableList[callData][0] if callData else None
+    receivedFile = self.session.loadableList[callData][0] if callData else None
+    if not self.session.data.usePreopData and self.patientWatchBox.sourceFile is None:
+      self.patientWatchBox.sourceFile = receivedFile
+    self.intraopWatchBox.sourceFile = receivedFile
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onAvailableLayoutsChanged(self, caller, event, callData):

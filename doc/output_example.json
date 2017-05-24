@@ -4,6 +4,8 @@
   "initialVolume": "VOLUME-PREOP-N4.nrrd",
   "initialTargets": "PreopTargets.fcsv",
   "zFrameRegistration": {
+    "name": "2: AX TSE T2 COVER TEMPLATE",
+    "seriesType": "COVER TEMPLATE",
     "volume": "2-CoverTemplate.nrrd",
     "transform": "2-ZFrameTransform.h5"
   },
@@ -19,6 +21,7 @@
   "results": [
     {
       "name": "3: AXIAL T2 COVER PROSTATE 3mm 0gap at iso",
+      "seriesType": "COVER PROSTATE",
       "receivedTime": "2017-03-07T15:38:20.38Z",
       "status": {
         "state": "approved",
@@ -57,6 +60,7 @@
     },
     {
       "name": "5: AX TSE T2 GUIDANCE FOR NEEDLE at FIX _H0",
+      "seriesType": "COVER TEMPLATE",
       "receivedTime": "2017-03-07T15:43:20.38Z",
       "status": {
         "state": "approved",

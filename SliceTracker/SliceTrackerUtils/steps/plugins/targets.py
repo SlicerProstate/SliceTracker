@@ -3,15 +3,16 @@ import vtk
 import numpy
 import logging
 from ...constants import SliceTrackerConstants as constants
-from ..base import SliceTrackerPlugin, SliceTrackerLogicBase, StepBase
+from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from ..zFrameRegistration import SliceTrackerZFrameRegistrationStepLogic
+from ...session import SliceTrackerSession
 
 from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.decorators import logmethod, onModuleSelected
 from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
 
 
-class CustomTargetTableModel(qt.QAbstractTableModel, StepBase):
+class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
 
   PLANNING_IMAGE_NAME = "Initial registration"
 
@@ -57,7 +58,7 @@ class CustomTargetTableModel(qt.QAbstractTableModel, StepBase):
 
   def __init__(self, logic, targets=None, parent=None, *args):
     qt.QAbstractTableModel.__init__(self, parent, *args)
-    StepBase.__init__(self)
+    self.session = SliceTrackerSession()
     self.logic = logic
     self._cursorPosition = None
     self._targetList = None
@@ -169,12 +170,12 @@ class CustomTargetTableModel(qt.QAbstractTableModel, StepBase):
     return None
 
 
-class ZFrameGuidanceComputation(StepBase, ModuleLogicMixin):
+class ZFrameGuidanceComputation(ModuleLogicMixin):
 
   SUPPORTED_EVENTS = [vtk.vtkCommand.ModifiedEvent]
 
   def __init__(self, targetList):
-    StepBase.__init__(self)
+    self.session = SliceTrackerSession()
     self.zFrameRegistration = SliceTrackerZFrameRegistrationStepLogic()
     self.targetList = targetList
     self.observer = self.targetList.AddObserver(self.targetList.PointModifiedEvent, self.calculate)
@@ -274,9 +275,6 @@ class SliceTrackerTargetTableLogic(SliceTrackerLogicBase):
   def __init__(self):
     super(SliceTrackerTargetTableLogic, self).__init__()
 
-  def cleanup(self):
-    pass
-
   def setTargetSelected(self, targetNode, selected=False):
     self.markupsLogic.SetAllMarkupsSelected(targetNode, selected)
 
@@ -338,6 +336,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.mouseReleaseEventObservers = {}
 
   def setup(self):
+    super(SliceTrackerTargetTablePlugin, self).setup()
     self.targetTable = qt.QTableView()
     self.targetTableModel = CustomTargetTableModel(self.logic)
     # self.targetTableModel.addEventObserver(vtk.vtkCommand.ModifiedEvent, self.updateNeedleModel)
@@ -367,16 +366,16 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
   def onCaseClosed(self, caller, event, callData):
     self.currentTargets = None
 
-  @logmethod(logging.INFO)
   def onActivation(self):
+    super(SliceTrackerTargetTablePlugin, self).onActivation()
     self.moveTargetMode = False
     self.currentlyMovedTargetModelIndex = None
     self.connectKeyEventObservers()
     if self.currentTargets:
       self.onTargetSelectionChanged()
 
-  @logmethod(logging.INFO)
   def onDeactivation(self):
+    super(SliceTrackerTargetTablePlugin, self).onDeactivation()
     self.disableTargetMovingMode()
     self.disconnectKeyEventObservers()
 
@@ -450,7 +449,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     currentTargetsSliceNodes = []
     if self.layoutManager.layout in [constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_SIDE_BY_SIDE]:
       targets = self.session.data.initialTargets
-      if self.session.currentSeries and self.getSetting("VIBE_IMAGE") in self.session.currentSeries:
+      if self.session.currentSeries and self.session.seriesTypeManager.isVibe(self.session.currentSeries):
         targets = self.targetTableModel.targetList
       self.jumpSliceNodeToTarget(self.redSliceNode, targets, targetIndex)
       self.logic.setTargetSelected(targets, selected=False)
