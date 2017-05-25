@@ -7,7 +7,7 @@ import qt
 import slicer
 import vtk
 from SlicerDevelopmentToolboxUtils.constants import COLOR
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, onReturnProcessEvents
+from SlicerDevelopmentToolboxUtils.decorators import logmethod, onReturnProcessEvents, processEventsEvery
 from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.case import SliceTrackerCaseManagerPlugin
@@ -369,8 +369,19 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if not self.session.data.resumed and not self.session.data.completed:
       if slicer.util.confirmYesNoDisplay("Was an endorectal coil used for preop image acquisition?",
                                          windowTitle="SliceTracker"):
-        progress = self.createProgressDialog(maximum=2, value=1)
-        progress.labelText = '\nBias Correction'
-        self.logic.applyBiasCorrection()
-        progress.setValue(2)
-        progress.close()
+        customProgressbar = CustomStatusProgressbar()
+        customProgressbar.busy = True
+        currentModule = slicer.util.getModuleGui(self.MODULE_NAME)
+        if currentModule:
+          currentModule.parent().enabled = False
+        try:
+          customProgressbar.updateStatus("Bias correction running!")
+          slicer.app.processEvents()
+          self.logic.applyBiasCorrection()
+        except AttributeError:
+          pass
+        finally:
+          customProgressbar.busy = False
+          if currentModule:
+            currentModule.parent().enabled = True
+        customProgressbar.updateStatus("Bias correction done!")
