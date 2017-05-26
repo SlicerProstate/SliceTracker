@@ -3,6 +3,7 @@ import ctk
 import vtk
 import qt
 import logging
+import slicer
 from ...constants import SliceTrackerConstants as constants
 from SlicerDevelopmentToolboxUtils.decorators import logmethod, onModuleSelected
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
@@ -22,6 +23,8 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
   NAME = "RegistrationResults"
 
   RegistrationTypeSelectedEvent = vtk.vtkCommand.UserEvent + 657
+  RegistrationResultsAvailable = vtk.vtkCommand.UserEvent + 658
+  NoRegistrationResultsAvailable = vtk.vtkCommand.UserEvent + 659
 
   @property
   def resultSelectorVisible(self):
@@ -68,6 +71,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   def __init__(self):
     self._showResultSelector = True
+    self.emptyVolumeWarnHandler = EmptyVolumeWarnHandler()
     super(SliceTrackerRegistrationResultsPlugin, self).__init__()
 
   def cleanup(self):
@@ -181,8 +185,28 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       return
     self.updateRegistrationResultSelector()
     self.onCurrentResultChanged()
-    defaultLayout = self.getSetting("DEFAULT_EVALUATION_LAYOUT")
-    self.onLayoutChanged(getattr(constants, defaultLayout, constants.LAYOUT_SIDE_BY_SIDE))
+    defaultLayout = getattr(constants, self.getSetting("DEFAULT_EVALUATION_LAYOUT"), constants.LAYOUT_SIDE_BY_SIDE)
+    if defaultLayout != self.layoutManager.layout:
+      self.layoutManager.setLayout(defaultLayout)
+    else:
+      self.onLayoutChanged(defaultLayout)
+
+  def updateAvailableRegistrationButtons(self):
+    for button in self.registrationButtonGroup.buttons():
+      volume = self.currentResult.volumes.asDict()[button.name]
+      button.enabled = volume and self.logic.isVolumeExtentValid(volume)
+      button.checked = False
+
+    if any(b.enabled == False for b  in self.registrationButtonGroup.buttons()):
+      if not self.currentResult.skipped:
+        self.emptyVolumeWarnHandler.handle(self.currentResult.name)
+
+    if all(b.enabled == False for b in self.registrationButtonGroup.buttons()):
+      self.visualEffectsGroupBox.enabled = False
+      self.invokeEvent(self.NoRegistrationResultsAvailable)
+    else:
+      self.invokeEvent(self.RegistrationResultsAvailable)
+      self.visualEffectsGroupBox.enabled = True
 
   def onDeactivation(self):
     super(SliceTrackerRegistrationResultsPlugin, self).onDeactivation()
@@ -216,10 +240,8 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
   def onLayoutChanged(self, layout=None):
-    self.removeSliceAnnotations()
     if not self.currentResult:
       return
-    self.setupRegistrationResultView(layout)
     self.onRegistrationResultSelected(self.currentResult.name)
     self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
 
@@ -264,17 +286,24 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       import CompareVolumes
       self.revealCursor = CompareVolumes.LayerReveal()
 
-  def onRegistrationResultSelected(self, seriesText, registrationType=None):
+  def onRegistrationResultSelected(self, seriesText):
+    self.hideAllLabels()
+    self.addSliceAnnotations()
     self.currentResult = seriesText
+    self.updateAvailableRegistrationButtons()
     if self.currentResult.skipped:
       return self.setupSkippedRegistrationResultSliceViews()
-    elif registrationType:
-      return self.checkButtonByRegistrationType(registrationType)
     elif self.currentResult.approved:
       return self.displayApprovedRegistrationResults()
-    elif self.registrationButtonGroup.checkedId() != -1:
+    elif self.registrationButtonGroup.checkedId() != -1 and self.registrationButtonGroup.checkedButton().enabled:
       return self.onRegistrationButtonChecked(self.registrationButtonGroup.checkedButton())
-    self.bSplineResultButton.click()
+    self.clickButtonProgrammatically()
+
+  def clickButtonProgrammatically(self):
+    for b in reversed(self.registrationButtonGroup.buttons()):
+      if b.enabled:
+        b.click()
+        return
 
   def displayApprovedRegistrationResults(self):
     self.displayRegistrationResults(self.currentResult.targets.approved, self.currentResult.registrationType)
@@ -387,12 +416,6 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       self.redCompositeNode.SetForegroundVolumeID(None)
       self.redCompositeNode.SetBackgroundVolumeID(self.session.data.initialVolume.GetID())
 
-  def setupRegistrationResultView(self, layout=None):
-    if layout:
-      self.layoutManager.setLayout(layout)
-    self.hideAllLabels()
-    self.addSliceAnnotations()
-
   def addSliceAnnotations(self):
     if self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
       self.addFourUpSliceAnnotations()
@@ -462,3 +485,19 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
     self.refreshViewNodeIDs(targetNode, sliceNodes)
     targetNode.SetLocked(True)
+
+
+class EmptyVolumeWarnHandler(object):
+
+  def __init__(self):
+    self.memorizedSeriesNames = []
+
+  def handle(self, seriesName):
+    if not seriesName in self.memorizedSeriesNames:
+      self.memorizedSeriesNames.append(seriesName)
+      return slicer.util.infoDisplay(
+        "One or more empty volume were created during registration process. You have three options:\n"
+        "1. Reject the registration result \n"
+        "2. Retry with creating a new segmentation \n"
+        "3. Set targets to your preferred position (in Four-Up layout)",
+        title="Action needed: Registration created empty volume(s)", windowTitle="SliceTracker")

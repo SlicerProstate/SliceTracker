@@ -38,6 +38,10 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.addPlugin(self.regResultsPlugin)
     self.regResultsPlugin.addEventObserver(self.regResultsPlugin.RegistrationTypeSelectedEvent,
                                             self.onRegistrationTypeSelected)
+    self.regResultsPlugin.addEventObserver(self.regResultsPlugin.NoRegistrationResultsAvailable,
+                                            self.onNoRegistrationResultsAvailable)
+    self.regResultsPlugin.addEventObserver(self.regResultsPlugin.RegistrationResultsAvailable,
+                                            self.onRegistrationResultsAvailable)
 
     self.targetTablePlugin = SliceTrackerTargetTablePlugin(movingEnabled=True)
     self.addPlugin(self.targetTablePlugin)
@@ -95,7 +99,6 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
 
   def onActivation(self):
     super(SliceTrackerEvaluationStep, self).onActivation()
-    self.enabled = self.currentResult is not None
     if not self.currentResult:
       return
     # self.redOnlyLayoutButton.enabled = False
@@ -103,13 +106,6 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.rejectRegistrationResultButton.enabled = not self.session.seriesTypeManager.isCoverProstate(self.currentResult.name)
     self.currentResult.save(self.session.outputDirectory)
     self.currentResult.printSummary()
-    if not self.logic.isVolumeExtentValid(self.currentResult.volumes.bSpline):
-      slicer.util.infoDisplay(
-        "One or more empty volume were created during registration process. You have three options:\n"
-        "1. Reject the registration result \n"
-        "2. Retry with creating a new segmentation \n"
-        "3. Set targets to your preferred position (in Four-Up layout)",
-        title="Action needed: Registration created empty volume(s)", windowTitle="SliceTracker")
 
   def onDeactivation(self):
     super(SliceTrackerEvaluationStep, self).onDeactivation()
@@ -119,3 +115,12 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
   @vtk.calldata_type(vtk.VTK_STRING)
   def onRegistrationTypeSelected(self, caller, event, callData):
     self.targetTablePlugin.currentTargets = getattr(self.currentResult.targets, callData)
+
+  def onNoRegistrationResultsAvailable(self, caller, event):
+    self.targetTablePlugin.enabled = False
+    self.approveRegistrationResultButton.enabled = False
+
+  def onRegistrationResultsAvailable(self, caller, event):
+    self.approveRegistrationResultButton.enabled = True
+    self.targetTablePlugin.enabled = True
+
