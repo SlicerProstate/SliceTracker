@@ -28,7 +28,7 @@ if(BUILD_TESTING)
   # slicer_add_python_unittest(SCRIPT ${MODULE_NAME}.py)
 
   # Additional build-time testing
-  add_subdirectory(Testing)
+  # add_subdirectory(Testing)
 endif()
 
 #-----------------------------------------------------------------------------
