@@ -100,14 +100,15 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.volumeClipToLabelWidget.logic.colorNode = self.session.mpReviewColorNode
     self.volumeClipToLabelWidget.onColorSelected(self.session.segmentedLabelValue)
     self.volumeClipToLabelWidget.imageVolumeSelector.setCurrentNode(self.session.fixedVolume)
-    self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
-                                                  self.onSegmentationFinished)
-    self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
-                                                  lambda caller, event: self.invokeEvent(self.SegmentationCancelledEvent))
     self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationStartedEvent,
                                                   self.onSegmentationStarted)
-    if (self.session.data.usePreopData or self.session.retryMode) and self.getSetting("Use_Deep_Learning") == "false":
-      self.volumeClipToLabelWidget.quickSegmentationButton.click()
+    self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
+                                                  self.onSegmentationCancelled)
+    self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
+                                                  self.onSegmentationFinished)
+    # if (self.session.data.usePreopData or self.session.retryMode) and self.getSetting("Use_Deep_Learning") == "false":
+    #   slicer.app.processEvents()
+    #   self.volumeClipToLabelWidget.quickSegmentationButton.click()
 
   def onDeactivation(self):
     super(SliceTrackerManualSegmentationPlugin, self).onDeactivation()
@@ -119,10 +120,20 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
                                                      self.onSegmentationFinished)
 
   def onSegmentationStarted(self, caller, event):
+    if self.getSetting("Use_Deep_Learning") == "true":
+      if not self.preCheckExistingSegmentation():
+        return
     self.disableEditorWidgetButton()
     self.setupFourUpView(self.session.fixedVolume)
     self.setDefaultOrientation()
     self.invokeEvent(self.SegmentationStartedEvent)
+
+  def preCheckExistingSegmentation(self):
+    if not slicer.util.confirmYesNoDisplay("The automatic segmentation will be overwritten. Do you want to proceed?",
+                                           windowTitle="SliceTracker"):
+      self.volumeClipToLabelWidget.stopQuickSegmentationMode(cancelled=True)
+      return False
+    return True
 
   def onSegmentationCancelled(self, caller, event):
     self.disableEditorWidgetButton()

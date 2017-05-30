@@ -138,12 +138,9 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   def setupSideBySideSegmentationView(self):
     # TODO: red slice view should not be possible to set target
-    redVolume = None
-    redLabel = None
     coverProstate = self.session.data.getMostRecentApprovedCoverProstateRegistration()
-    if coverProstate:
-      redVolume = coverProstate.volumes.fixed if self.session.retryMode else self.session.data.initialVolume
-      redLabel = coverProstate.labels.fixed if self.session.retryMode else self.session.data.initialLabel
+    redVolume = coverProstate.volumes.fixed if coverProstate and self.session.retryMode else self.session.data.initialVolume
+    redLabel = coverProstate.labels.fixed if coverProstate and self.session.retryMode else self.session.data.initialLabel
 
     if redVolume and redLabel:
       self.redCompositeNode.SetBackgroundVolumeID(redVolume.GetID())
@@ -302,7 +299,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       sliceNode = widget.sliceLogic().GetSliceNode()
       labelID = compositeNode.GetLabelVolumeID()
       if labelID:
-        label =  slicer.mrmlScene.GetNodeByID(labelID)
+        label = slicer.mrmlScene.GetNodeByID(labelID)
         centroid = self.logic.getCentroidForLabel(label, self.session.segmentedLabelValue)
         if centroid:
           sliceNode.JumpSliceByCentering(centroid[0], centroid[1], centroid[2])
