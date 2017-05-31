@@ -115,17 +115,13 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setupSessionObservers(self):
     super(SliceTrackerOverviewStep, self).setupSessionObservers()
-    self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
     self.session.addEventObserver(self.session.SeriesTypeManuallyAssignedEvent, self.onSeriesTypeManuallyAssigned)
-    self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
   def removeSessionEventObservers(self):
     SliceTrackerStep.removeSessionEventObservers(self)
-    self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
     self.session.removeEventObserver(self.session.SeriesTypeManuallyAssignedEvent, self.onSeriesTypeManuallyAssigned)
-    self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.removeEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
@@ -179,8 +175,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onCurrentSeriesChanged(self, caller, event, callData=None):
-    logging.info("Current series selection changed invoked from session")
-    logging.info("Series with name %s selected" % callData if callData else "")
     if callData:
       model = self.intraopSeriesSelector.model()
       index = next((i for i in range(model.rowCount()) if model.item(i).text() == callData), None)
@@ -189,13 +183,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   @logmethod(logging.INFO)
   def onZFrameRegistrationSuccessful(self, caller, event):
     self.active = True
-
-  @vtk.calldata_type(vtk.VTK_STRING)
-  def onFailedPreProcessing(self, caller, event, callData):
-    if slicer.util.confirmYesNoDisplay(callData, windowTitle="SliceTracker"):
-      self.startPreProcessingModule()
-    else:
-      self.session.close()
 
   @logmethod(logging.INFO)
   def onRegistrationStatusChanged(self, caller, event):
@@ -211,6 +198,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.cleanup()
 
   def onPreprocessingSuccessful(self, caller, event):
+    self.updateIntraopSeriesSelectorTable()
     self.configureRedSliceNodeForPreopData()
     self.promptUserAndApplyBiasCorrectionIfNeeded()
 
@@ -221,63 +209,19 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onSeriesTypeManuallyAssigned(self, caller, event):
     self.updateIntraopSeriesSelectorTable()
 
-  @logmethod(logging.INFO)
-  def onPreopReceptionFinished(self, caller=None, event=None):
-    if self.invokePreProcessing():
-      self.startPreProcessingModule()
-    else:
-      slicer.util.infoDisplay("No DICOM data could be processed. Please select another directory.",
-                              windowTitle="SliceTracker")
-
-  def startPreProcessingModule(self):
-    self.setSetting('InputLocation', None, moduleName="mpReview")
-    self.layoutManager.selectModule("mpReview")
-    mpReview = slicer.modules.mpReviewWidget
-    self.setSetting('InputLocation', self.session.preprocessedDirectory, moduleName="mpReview")
-    mpReview.onReload()
-    slicer.modules.mpReviewWidget.saveButton.clicked.connect(self.returnFromPreProcessingModule)
-    self.layoutManager.selectModule(mpReview.moduleName)
-
-  def returnFromPreProcessingModule(self):
-    slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(self.returnFromPreProcessingModule)
-    self.layoutManager.selectModule(self.MODULE_NAME)
-    slicer.mrmlScene.Clear(0)
-    self.session.loadPreProcessedData()
-
-  def invokePreProcessing(self):
-    if not os.path.exists(self.session.preprocessedDirectory):
-      self.logic.createDirectory(self.session.preprocessedDirectory)
-    from mpReviewPreprocessor import mpReviewPreprocessorLogic
-    self.mpReviewPreprocessorLogic = mpReviewPreprocessorLogic()
-    progress = self.createProgressDialog()
-    progress.canceled.connect(self.mpReviewPreprocessorLogic.cancelProcess)
-
-    @onReturnProcessEvents
-    def updateProgressBar(**kwargs):
-      for key, value in kwargs.iteritems():
-        if hasattr(progress, key):
-          setattr(progress, key, value)
-
-    self.mpReviewPreprocessorLogic.importStudy(self.session.preopDICOMDirectory, progressCallback=updateProgressBar)
-    success = False
-    if self.mpReviewPreprocessorLogic.patientFound():
-      success = True
-      self.mpReviewPreprocessorLogic.processData(outputDir=self.session.preprocessedDirectory, copyDICOM=False,
-                                                 progressCallback=updateProgressBar)
-    progress.canceled.disconnect(self.mpReviewPreprocessorLogic.cancelProcess)
-    progress.close()
-    return success
-
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageSeriesReceived(self, caller, event, callData):
     if not self.session.isLoading():
       customStatusProgressBar = CustomStatusProgressbar()
       customStatusProgressBar.text = "New image data has been received."
+      if self.session.intraopDICOMReceiver:
+        self.session.intraopDICOMReceiver.forceStatusChangeEventUpdate()
+
+    if not self.active or self.session.isLoading() or self.session.isPreProcessing():
+      return
 
     self.updateIntraopSeriesSelectorTable()
 
-    if not self.active or self.session.isLoading():
-      return
     selectedSeries = self.intraopSeriesSelector.currentText
     if selectedSeries != "" and self.session.isTrackingPossible(selectedSeries):
       selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
@@ -288,9 +232,10 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         self.takeActionOnSelectedSeries()
 
   def onCaseOpened(self, caller, event):
-    if self.active and not self.session.isLoading():
-      self.selectMostRecentEligibleSeries()
-      self.takeActionOnSelectedSeries()
+    if not self.active or self.session.isLoading() or self.session.isPreProcessing():
+      return
+    self.selectMostRecentEligibleSeries()
+    self.takeActionOnSelectedSeries()
 
   def takeActionOnSelectedSeries(self):
     selectedSeries = self.intraopSeriesSelector.currentText
