@@ -245,8 +245,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
                                                   % self.getSetting("COVER_PROSTATE")):
             return
           self.session.currentSeries = series
+          self.active = False
           self._initiateSegmentation()
-          self.onActivation()
           return
 
   @vtk.calldata_type(vtk.VTK_OBJECT)

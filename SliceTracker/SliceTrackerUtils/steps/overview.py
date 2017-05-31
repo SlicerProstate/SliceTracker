@@ -217,10 +217,10 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       if self.session.intraopDICOMReceiver:
         self.session.intraopDICOMReceiver.forceStatusChangeEventUpdate()
 
-    if not self.active or self.session.isLoading() or self.session.isPreProcessing():
-      return
-
     self.updateIntraopSeriesSelectorTable()
+
+    if not self.active or self.session.isLoading():
+      return
 
     selectedSeries = self.intraopSeriesSelector.currentText
     if selectedSeries != "" and self.session.isTrackingPossible(selectedSeries):
@@ -271,7 +271,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.intraopSeriesSelector.blockSignals(False)
     colorStyle = self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText)
     self.intraopSeriesSelector.setStyleSheet("QComboBox{%s} QToolTip{background-color: white;}" % colorStyle)
-    if self.active and not self.session.isLoading():
+    if self.active and not (self.session.isLoading() or self.session.isPreProcessing()):
       self.selectMostRecentEligibleSeries()
 
   def selectMostRecentEligibleSeries(self):
