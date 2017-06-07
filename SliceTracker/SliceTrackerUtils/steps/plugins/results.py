@@ -2,14 +2,13 @@ import numpy
 import ctk
 import vtk
 import qt
-import logging
 import slicer
 
 from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from ...session import SliceTrackerSession
 
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, onModuleSelected
+from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotationHandlerBase, SliceAnnotation
 
 
@@ -182,7 +181,6 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     qt.QWidget.hide(self)
     self.onDeactivation()
 
-  @logmethod(logging.INFO)
   def onActivation(self):
     super(SliceTrackerRegistrationResultsPlugin, self).onActivation()
     if not self.currentResult:
@@ -221,7 +219,6 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
   def onCaseClosed(self, caller, event, callData):
     self.cleanup()
 
-  @logmethod(logging.INFO)
   def onCurrentResultChanged(self, caller=None, event=None):
     if not self.active:
       return
@@ -290,7 +287,6 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       import CompareVolumes
       self.revealCursor = CompareVolumes.LayerReveal()
 
-  @logmethod(logging.INFO)
   def onRegistrationResultSelected(self, seriesText):
     self.hideAllLabels()
     self.sliceAnnotationHandler.addSliceAnnotations()

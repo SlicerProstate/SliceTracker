@@ -341,6 +341,7 @@ class SliceTrackerSession(StepBasedSession):
   def startPreopDICOMReceiver(self):
     self.resetPreopDICOMReceiver()
     self.preopDICOMReceiver = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDirectory,
+                                                 incomingPort=self.getSetting("Incoming_DICOM_Port"),
                                                  skipText="No preoperative images available")
     self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataSkippedEvent,
                                              self.onSkippingPreopDataReception)
@@ -375,7 +376,8 @@ class SliceTrackerSession(StepBasedSession):
     logging.info("Starting DICOM Receiver for intra-procedural data")
     if not self.data.completed:
       self.resetIntraopDICOMReceiver()
-      self.intraopDICOMReceiver = SmartDICOMReceiver(self.intraopDICOMDirectory)
+      self.intraopDICOMReceiver = SmartDICOMReceiver(self.intraopDICOMDirectory,
+                                                     self.getSetting("Incoming_DICOM_Port"))
       self._observeIntraopDICOMReceiverEvents()
       self.intraopDICOMReceiver.start(not (self.trainingMode or self.data.completed))
     else:
