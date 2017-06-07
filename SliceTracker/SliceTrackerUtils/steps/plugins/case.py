@@ -3,15 +3,12 @@ import os
 import ctk
 import vtk
 import qt
-import logging
 
 from ...helpers import NewCaseSelectionNameWidget
+from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 
-from SlicerDevelopmentToolboxUtils.decorators import logmethod
 from SlicerDevelopmentToolboxUtils.helpers import WatchBoxAttribute
 from SlicerDevelopmentToolboxUtils.widgets import BasicInformationWatchBox
-
-from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 
 
 class SliceTrackerCaseManagerLogic(SliceTrackerLogicBase):
@@ -124,11 +121,9 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
         self.session.close(save=slicer.util.confirmYesNoDisplay("Save the case data?", title="Close Case",
                                                                 windowTitle="SliceTracker"))
 
-  @logmethod(logging.INFO)
   def onNewCaseStarted(self, caller, event):
     self.update()
 
-  @logmethod(logging.INFO)
   def onCaseOpened(self, caller, event):
     self.update()
 

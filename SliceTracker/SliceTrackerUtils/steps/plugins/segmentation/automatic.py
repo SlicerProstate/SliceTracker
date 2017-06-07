@@ -50,7 +50,7 @@ class SliceTrackerAutomaticSegmentationLogic(SliceTrackerLogicBase):
       raise ValueError("No input volume found for initializing prostate segmentation deep learning.")
 
     self.inputVolume = inputVolume
-    self.saveNodeData(inputVolume, self.tempDir, FileExtension.NRRD, overwrite=True)
+    self.saveNodeData(inputVolume, self.tempDir, FileExtension.NRRD)
     self.invokeEvent(self.DeepLearningStartedEvent)
     self._runDocker()
     success, outputLabel = slicer.util.loadLabelVolume(os.path.join(self.tempDir, self.outputLabelFileName),
@@ -93,8 +93,8 @@ class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase
 
   def __init__(self):
     super(SliceTrackerAutomaticSegmentationPlugin, self).__init__()
-    self.logic.addEventObserver(self.logic.DeepLearningStartedEvent, self.onSegmentationStarted)
-    self.logic.addEventObserver(self.logic.DeepLearningFinishedEvent, self.onSegmentationFinished)
+    self.logic.addEventObserver(self.logic.DeepLearningStartedEvent, self._onSegmentationStarted)
+    self.logic.addEventObserver(self.logic.DeepLearningFinishedEvent, self._onSegmentationFinished)
     self.logic.addEventObserver(self.logic.DeepLearningStatusChangedEvent, self.onStatusChanged)
 
   def cleanup(self):
@@ -117,9 +117,9 @@ class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase
     self.logic.run(self.session.fixedVolume)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
-  def onSegmentationFinished(self, caller, event, labelNode):
+  def _onSegmentationFinished(self, caller, event, labelNode):
     self.onStatusChanged(None, None, str({'text': "Labelmap prediction created", 'value': 100}))
-    super(SliceTrackerAutomaticSegmentationPlugin, self).onSegmentationFinished(caller, event, labelNode)
+    super(SliceTrackerAutomaticSegmentationPlugin, self)._onSegmentationFinished(caller, event, labelNode)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onStatusChanged(self, caller, event, callData):

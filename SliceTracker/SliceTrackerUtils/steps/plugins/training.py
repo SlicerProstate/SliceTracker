@@ -39,8 +39,8 @@ class SliceTrackerTrainingPlugin(SliceTrackerPlugin):
     self.simulatePreopPhaseButton.clicked.connect(self.startPreopPhaseSimulation)
     self.simulateIntraopPhaseButton.clicked.connect(self.startIntraopPhaseSimulation)
 
-  def setupSessionObservers(self):
-    super(SliceTrackerTrainingPlugin, self).setupSessionObservers()
+  def addSessionObservers(self):
+    super(SliceTrackerTrainingPlugin, self).addSessionObservers()
     self.session.addEventObserver(self.session.IncomingDataSkippedEvent, self.onIncomingDataSkipped)
 
   def removeSessionEventObservers(self):

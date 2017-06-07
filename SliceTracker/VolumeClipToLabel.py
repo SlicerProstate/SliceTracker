@@ -5,7 +5,9 @@ from slicer.ScriptedLoadableModule import *
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 
+import EditorLib
 from EditorLib import ColorBox
+from Editor import EditorWidget
 
 
 class VolumeClipToLabel(ScriptedLoadableModule):
@@ -31,14 +33,36 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   @property
   def imageVolume(self):
-      return self.imageVolumeSelector.currentNode()
+    return self.imageVolumeSelector.currentNode()
 
-  def __init__(self, parent=None):
+  @property
+  def labelVolume(self):
+    return self.labelMapSelector.currentNode()
+
+  @property
+  def selectorsGroupBoxVisible(self):
+    return self.selectorsGroupBox.visible
+
+  @selectorsGroupBoxVisible.setter
+  def selectorsGroupBoxVisible(self, visible):
+    self.selectorsGroupBox.visible = visible
+
+  @property
+  def colorGroupBoxVisible(self):
+    return self.colorGroupBox.visible
+
+  @colorGroupBoxVisible.setter
+  def colorGroupBoxVisible(self, visible):
+    self.colorGroupBox.visible = visible
+
+
+  def __init__(self, parent=None, **kwargs):
     ScriptedLoadableModuleWidget.__init__(self, parent)
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
     self.logic = VolumeClipToLabelLogic()
     self.markupNodeObserver = None
     self.colorBox = False
+    self._processKwargs(**kwargs)
 
   def isActive(self):
     return self.markupNodeObserver is not None
@@ -50,7 +74,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     ScriptedLoadableModuleWidget.onReload(self)
 
   def cleanup(self):
-    self.layoutManager.layoutChanged.disconnect(self.onLayoutChanged)
+    self.layoutManager.layoutChanged.disconnect(self._onLayoutChanged)
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -59,21 +83,23 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     except ImportError:
       return slicer.util.warningDisplay("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and "
                                         "install VolumeClip.", "Missing Extension")
-    self.setupIcons()
-    self.setupSelectorArea()
-    self.setupColorFrame()
-    self.setupButtons()
-    self.setupConnections()
+    self._setupIcons()
+    self._setupSelectorArea()
+    self._setupColorFrame()
+    self._setupButtons()
+    self._setupConnections()
+    self.colorSpin.setValue(1)
     self.layout.addStretch(1)
 
-  def setupIcons(self):
+  def _setupIcons(self):
     self.applySegmentationIcon = self.createIcon('icon-apply.png')
     self.quickSegmentationIcon = self.createIcon('icon-quickSegmentation.png')
     self.cancelSegmentationIcon = self.createIcon('icon-cancelSegmentation.png')
     self.undoIcon = self.createIcon('icon-undo.png')
     self.redoIcon = self.createIcon('icon-redo.png')
+    self.settingsIcon = self.createIcon('icon-settings.png')
 
-  def setupSelectorArea(self):
+  def _setupSelectorArea(self):
     self.imageVolumeLabel = self.createLabel("Image volume: ", objectName="imageVolumeLabel")
     self.imageVolumeSelector = self.createComboBox(nodeTypes=["vtkMRMLScalarVolumeNode", ""], showChildNodeTypes=False,
                                                    selectNodeUponCreation=True, toolTip="Pick algorithm input.",
@@ -93,7 +119,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.selectorsGroupBoxLayout.addWidget(self.labelMapSelector, 1, 1)
     self.layout.addWidget(self.selectorsGroupBox)
 
-  def setupColorFrame(self):
+  def _setupColorFrame(self):
     self.colorGroupBox = qt.QGroupBox("Color")
     self.colorGroupBoxLayout = qt.QHBoxLayout()
     self.colorGroupBox.setLayout(self.colorGroupBoxLayout)
@@ -101,7 +127,6 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.colorSpin = qt.QSpinBox()
     self.colorSpin.objectName = 'ColorSpinBox'
     self.colorSpin.setMaximum(64000) # TODO: should be detected from colorNode maximum value
-    self.colorSpin.setValue(1)
     self.colorSpin.setToolTip( "Click colored patch at right to bring up color selection pop up window." )
     self.colorGroupBoxLayout.addWidget(self.colorSpin)
 
@@ -109,7 +134,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.colorGroupBoxLayout.addWidget(self.colorPatch)
     self.layout.addWidget(self.colorGroupBox)
 
-  def setupButtons(self):
+  def _setupButtons(self):
     iconSize = qt.QSize(36, 36)
     self.quickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=iconSize,
                                                      checkable=True, objectName="quickSegmentationButton", enabled=False,
@@ -123,76 +148,98 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.redoButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False, toolTip="Redo",
                                         objectName="redoButton")
 
-    self.segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
-                                                   self.cancelSegmentationButton, self.undoButton, self.redoButton])
-    self.layout.addWidget(self.segmentationButtons)
+    self.editorWidgetButton = self.createButton("", icon=self.settingsIcon, toolTip="Show Label Editor",
+                                                checkable=True, enabled=False, iconSize=qt.QSize(36, 36))
 
-  def setupConnections(self):
-    self.imageVolumeSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onImageVolumeSelected)
+    self._setupEditorWidget()
+    self.segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
+                                                   self.cancelSegmentationButton, self.undoButton, self.redoButton,
+                                                   self.editorWidgetButton])
+    self.layout.addWidget(self.segmentationButtons)
+    self.layout.addWidget(self.editorWidgetParent, 1, 0)
+
+  def _setupEditorWidget(self):
+    self.editorWidgetParent = slicer.qMRMLWidget()
+    self.editorWidgetParent.setLayout(qt.QVBoxLayout())
+    self.editorWidgetParent.setMRMLScene(slicer.mrmlScene)
+    self.editorWidgetParent.hide()
+    self.editUtil = EditorLib.EditUtil.EditUtil()
+    self.editorWidget = EditorWidget(parent=self.editorWidgetParent, showVolumesFrame=False)
+    self.editorWidget.setup()
+    self.editorParameterNode = self.editUtil.getParameterNode()
+
+  def _setupConnections(self):
+    self.imageVolumeSelector.connect('currentNodeChanged(vtkMRMLNode*)', self._onImageVolumeSelected)
+    self.labelMapSelector.connect('currentNodeChanged(vtkMRMLNode*)', self._onLabelMapSelected)
     self.quickSegmentationButton.connect('toggled(bool)', self.onQuickSegmentationButtonToggled)
 
-    self.colorSpin.valueChanged.connect(self.onColorSpinChanged)
-    self.colorPatch.clicked.connect(self.showColorBox)
+    self.colorSpin.valueChanged.connect(self._onColorSpinChanged)
+    self.colorPatch.clicked.connect(self._showColorBox)
 
     self.applySegmentationButton.clicked.connect(self.onQuickSegmentationFinished)
     self.cancelSegmentationButton.clicked.connect(self.onCancelSegmentationButtonClicked)
     self.redoButton.clicked.connect(self.logic.redo)
     self.undoButton.clicked.connect(self.logic.undo)
+    self.editorWidgetButton.connect('toggled(bool)', self._onEditorGearIconChecked)
 
-    self.layoutManager.layoutChanged.connect(self.onLayoutChanged)
+    self.layoutManager.layoutChanged.connect(self._onLayoutChanged)
+
+  def _onEditorGearIconChecked(self, enabled):
+    self.editorWidgetParent.visible = enabled
+    if enabled:
+      self.editorParameterNode.SetParameter('effect', 'DrawEffect')
+      self.editUtil.setLabelOutline(1)
+    else:
+      self.editorParameterNode.SetParameter('effect', 'DefaultTool')
 
   @onModuleSelected("VolumeClipToLabel")
-  def onLayoutChanged(self, layout):
-    self.setBackgroundVolumeForAllVisibleSliceViews(self.imageVolume)
+  def _onLayoutChanged(self, layout):
+    self.setBackgroundToVolumeID(self.imageVolume)
 
-  def onColorSpinChanged(self, value):
+  def _onColorSpinChanged(self, value):
     self.logic.outputLabelValue = value
-    self.onColorSelected(value)
+    self.editUtil.setLabel(value)
+    self._onColorSelected(value)
 
-  def showColorBox(self):
+  def _showColorBox(self):
     if self.colorBox:
       self.colorBox.parent.close()
     self.colorBox = ColorBox(parameterNode=self.parameterNode, parameter='label', colorNode=self.logic.colorNode,
-                             selectCommand=self.onColorSelected)
+                             selectCommand=self._onColorSelected)
 
-  def onColorSelected(self, labelValue):
+  def _onColorSelected(self, labelValue):
     self.colorBox = None
-    colorNode = self.logic.colorNode
-    if colorNode:
-      self.logic.outputLabelValue = labelValue
-      lut = colorNode.GetLookupTable()
-      rgb = lut.GetTableValue(labelValue)
-      self.colorPatch.setStyleSheet("background-color: rgb(%s,%s,%s)" % (rgb[0] * 255, rgb[1] * 255, rgb[2] * 255))
-      self.colorSpin.setMaximum(colorNode.GetNumberOfColors() - 1)
-      self.colorSpin.setValue(labelValue)
+    self.logic.outputLabelValue = labelValue
+    lut = self.logic.colorNode.GetLookupTable()
+    rgb = lut.GetTableValue(labelValue)
+    self.colorPatch.setStyleSheet("background-color: rgb(%s,%s,%s)" % (rgb[0] * 255, rgb[1] * 255, rgb[2] * 255))
+    self.colorSpin.setMaximum(self.logic.colorNode.GetNumberOfColors() - 1)
+    self.colorSpin.setValue(labelValue)
 
-  def onImageVolumeSelected(self, node):
+  def _onImageVolumeSelected(self, node):
     try:
       self.logic.seriesNumber = node.GetName().split(": ")[0]
     except (AttributeError, KeyError):
       self.logic.seriesNumber = None
 
-    self.setBackgroundVolumeForAllVisibleSliceViews(node)
+    self.setBackgroundToVolumeID(node)
     self.quickSegmentationButton.setEnabled(node!=None)
     self.colorPatch.setEnabled(node!=None)
+    self._updateGearButtonAvailability()
 
-  def setBackgroundToVolumeID(self, widget, volumeNode):
-    compositeNode = widget.mrmlSliceCompositeNode()
-    compositeNode.SetLabelVolumeID(None)
-    compositeNode.SetForegroundVolumeID(None)
-    compositeNode.SetBackgroundVolumeID(volumeNode.GetID() if volumeNode else None)
-    sliceNode = widget.sliceLogic().GetSliceNode()
-    sliceNode.RotateToVolumePlane(volumeNode)
+  def _onLabelMapSelected(self, node):
+    self._updateGearButtonAvailability()
 
-  def setBackgroundVolumeForAllVisibleSliceViews(self, volume):
-    for widget in [w for w in self.getAllVisibleWidgets() if w.sliceView().visible]:
-      self.setBackgroundToVolumeID(widget, volume)
+  def _updateGearButtonAvailability(self):
+    inputs = [self.labelMapSelector.currentNode(), self.imageVolumeSelector.currentNode()]
+    self.editorWidgetButton.checked = False
+    self.editorWidgetButton.setEnabled(not any(i is None for i in inputs) and not self.quickSegmentationButton.checked)
 
   def onQuickSegmentationButtonToggled(self, enabled):
     self.updateSegmentationButtons()
     self.imageVolumeSelector.enabled = not enabled
     if enabled:
-      self.setBackgroundVolumeForAllVisibleSliceViews(self.imageVolume)
+      self.setBackgroundToVolumeID(self.imageVolume)
       self.activateQuickSegmentationMode()
     self.deactivateUndoRedoButtons()
 
@@ -202,11 +249,11 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   def onQuickSegmentationFinished(self):
     if not self.logic.isSegmentationValid():
-      if self.promptOnInvalidSegmentationDetected():
+      if not self.promptOnInvalidSegmentationDetected():
         self.invokeEvent(self.SegmentationCanceledEvent)
+        self.deactivateQuickSegmentationMode(cancelled=True)
+        self.quickSegmentationButton.checked = False
         return
-      self.deactivateQuickSegmentationMode(cancelled=True)
-      self.quickSegmentationButton.checked = False
     else:
       self.processValidQuickSegmentationResult()
 
@@ -224,8 +271,11 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def activateQuickSegmentationMode(self):
     self.logic.runQuickSegmentationMode()
     self.logic.addEventObserver(self.logic.UndoRedoEvent, self.updateUndoRedoButtons)
-    self.markupNodeObserver = self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateUndoRedoButtons)
+    self.markupNodeObserver = self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,
+                                                                     self.updateUndoRedoButtons)
+    self.logic.clippingModelNode.SetDisplayVisibility(True)
     self.invokeEvent(self.SegmentationStartedEvent)
+    self._updateGearButtonAvailability()
 
   def deactivateQuickSegmentationMode(self, cancelled=False):
     self.quickSegmentationButton.checked = False
@@ -234,6 +284,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     if self.markupNodeObserver:
       self.markupNodeObserver = self.logic.inputMarkupNode.RemoveObserver(self.markupNodeObserver)
     self.logic.stopQuickSegmentationMode(cancelled)
+    self._updateGearButtonAvailability()
 
   def updateUndoRedoButtons(self, observer=None, caller=None):
     self.redoButton.setEnabled(self.logic.redoPossible)
@@ -262,7 +313,7 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   @property
   def undoPossible(self):
-      return self.inputMarkupNode.GetNumberOfFiducials() > 0
+    return self.inputMarkupNode.GetNumberOfFiducials() > 0
 
   @property
   def redoPossible(self):
@@ -270,8 +321,7 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   @property
   def colorNode(self):
-    if not self._colorNode:
-      self._colorNode = slicer.util.getNode('GenericAnatomyColors')
+    self._colorNode = getattr(self, "_colorNode",slicer.util.getNode('GenericAnatomyColors'))
     return self._colorNode
 
   @colorNode.setter
@@ -295,7 +345,6 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     self.clippingModelDisplayNode = None
     self.inputMarkupNode = None
     self.deletedMarkups = None
-    self.colorNode = None
     self.outputLabelValue = outputLabelValue
     self.deletedMarkupPositions = []
     self.interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
@@ -403,9 +452,8 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     logging.debug(params)
     slicer.cli.run(slicer.modules.modeltolabelmap, None, params, wait_for_completion=True)
 
-    if self.colorNode:
-      displayNode = outputLabelMap.GetDisplayNode()
-      displayNode.SetAndObserveColorNodeID(self.colorNode.GetID())
+    displayNode = outputLabelMap.GetDisplayNode()
+    displayNode.SetAndObserveColorNodeID(self.colorNode.GetID())
     return outputLabelMap
 
   def undo(self):

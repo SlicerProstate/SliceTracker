@@ -541,6 +541,7 @@ class SliceTrackerSession(StepBasedSession):
     self.data.usePreopData = True
     self.setupPreopLoadedTargets()
     self.invokeEvent(self.PreprocessingSuccessfulEvent)
+    self.startIntraopDICOMReceiver()
 
   def openSavedSession(self):
     self.load()

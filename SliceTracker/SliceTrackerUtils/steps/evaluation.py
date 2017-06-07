@@ -69,8 +69,8 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.rejectRegistrationResultButton.clicked.connect(self.onRejectRegistrationResultButtonClicked)
     # self.registrationDetailsButton.clicked.connect(self.onShowRegistrationDetails)
 
-  def setupSessionObservers(self):
-    super(SliceTrackerEvaluationStep, self).setupSessionObservers()
+  def addSessionObservers(self):
+    super(SliceTrackerEvaluationStep, self).addSessionObservers()
     self.session.addEventObserver(self.session.InitiateEvaluationEvent, self.onInitiateEvaluation)
 
   def removeSessionEventObservers(self):
@@ -117,7 +117,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.targetTablePlugin.currentTargets = getattr(self.currentResult.targets, callData)
 
   def onNoRegistrationResultsAvailable(self, caller, event):
-    self.targetTablePlugin.enabled = False
+    self.targetTablePlugin.currentTargets = None
     self.approveRegistrationResultButton.enabled = False
 
   def onRegistrationResultsAvailable(self, caller, event):

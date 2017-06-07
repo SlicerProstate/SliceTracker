@@ -1,14 +1,10 @@
 import ast
 import logging
-import os
-
 import ctk
 import qt
 import slicer
 import vtk
-from SlicerDevelopmentToolboxUtils.constants import COLOR
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, onReturnProcessEvents, processEventsEvery
-from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
+
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.case import SliceTrackerCaseManagerPlugin
 from plugins.results import SliceTrackerRegistrationResultsPlugin
@@ -17,6 +13,9 @@ from plugins.training import SliceTrackerTrainingPlugin
 from ..constants import SliceTrackerConstants as constants
 from ..sessionData import RegistrationResult
 from ..helpers import IncomingDataMessageBox, SeriesTypeToolButton, SeriesTypeManager
+
+from SlicerDevelopmentToolboxUtils.constants import COLOR
+from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 
 
 class SliceTrackerOverViewStepLogic(SliceTrackerLogicBase):
@@ -93,6 +92,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.regResultsCollapsibleButton.hide()
     self.regResultsCollapsibleLayout= qt.QGridLayout(self.regResultsCollapsibleButton)
     self.regResultsPlugin = SliceTrackerRegistrationResultsPlugin()
+    self.regResultsPlugin.addEventObserver(self.regResultsPlugin.NoRegistrationResultsAvailable,
+                                            self.onNoRegistrationResultsAvailable)
     self.regResultsPlugin.resultSelectorVisible = False
     self.regResultsPlugin.titleVisible = False
     self.regResultsPlugin.visualEffectsTitle = ""
@@ -113,8 +114,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
     self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.onIntraopSeriesSelectionChanged)
 
-  def setupSessionObservers(self):
-    super(SliceTrackerOverviewStep, self).setupSessionObservers()
+  def addSessionObservers(self):
+    super(SliceTrackerOverviewStep, self).addSessionObservers()
     self.session.addEventObserver(self.session.SeriesTypeManuallyAssignedEvent, self.onSeriesTypeManuallyAssigned)
     self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
@@ -133,7 +134,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onTrackTargetsButtonClicked(self):
     self.session.takeActionForCurrentSeries()
 
-  @logmethod(logging.INFO)
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
     self.session.currentSeries = selectedSeries
     if selectedSeries:
@@ -180,11 +180,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       index = next((i for i in range(model.rowCount()) if model.item(i).text() == callData), None)
       self.intraopSeriesSelector.currentIndex = index
 
-  @logmethod(logging.INFO)
   def onZFrameRegistrationSuccessful(self, caller, event):
     self.active = True
 
-  @logmethod(logging.INFO)
   def onRegistrationStatusChanged(self, caller, event):
     self.active = True
 
@@ -196,6 +194,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if callData != "None":
       slicer.util.infoDisplay(callData, windowTitle="SliceTracker")
     self.cleanup()
+
+  def onNoRegistrationResultsAvailable(self, caller, event):
+    self.targetTablePlugin.currentTargets = None
 
   def onPreprocessingSuccessful(self, caller, event):
     self.updateIntraopSeriesSelectorTable()
@@ -243,7 +244,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.onTrackTargetsButtonClicked()
       return
 
-    if self.session.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
+    if self.session.isTrackingPossible(self.intraopSeriesSelector.currentText):
       if self.notifyUserAboutNewData and not self.session.data.completed:
         dialog = IncomingDataMessageBox()
         self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
