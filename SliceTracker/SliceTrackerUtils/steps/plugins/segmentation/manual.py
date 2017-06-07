@@ -1,10 +1,11 @@
 import qt
 import vtk
 import slicer
+
 from ...base import SliceTrackerPlugin
-from VolumeClipToLabel import VolumeClipToLabelWidget
 from ....constants import SliceTrackerConstants as constants
 from base import SliceTrackerSegmentationPluginBase
+from VolumeClipToLabel import VolumeClipToLabelWidget
 
 from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 

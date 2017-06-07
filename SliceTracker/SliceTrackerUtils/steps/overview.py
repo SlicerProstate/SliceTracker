@@ -1,5 +1,4 @@
 import ast
-import logging
 import ctk
 import qt
 import slicer
@@ -165,7 +164,16 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.regResultsCollapsibleButton.hide()
       if not self.session.data.registrationResultWasSkipped(selectedSeries):
         self.regResultsPlugin.cleanup()
+
       self.targetTablePlugin.currentTargets = None
+
+      if self.session.seriesTypeManager.isVibe(selectedSeries):
+        volume = self.session.getOrCreateVolumeForSeries(selectedSeries)
+        self.setupFourUpView(volume)
+        result = self.session.data.getMostRecentApprovedResult(priorToSeriesNumber=RegistrationResult.getSeriesNumberFromString(selectedSeries))
+        if result:
+          self.targetTablePlugin.currentTargets = result.targets.approved
+          self.regResultsPlugin.showIntraopTargets(result.targets.approved)
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
     trackingPossible = trackingPossible and not self.session.data.completed
