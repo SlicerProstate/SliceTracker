@@ -10,8 +10,8 @@ from SlicerDevelopmentToolboxUtils.widgets import TargetCreationWidget
 class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
 
   NAME = "Targeting"
-  TargetingStartedEvent = TargetCreationWidget.TargetingStartedEvent
-  TargetingFinishedEvent = TargetCreationWidget.TargetingFinishedEvent
+  TargetingStartedEvent = TargetCreationWidget.StartedEvent
+  TargetingFinishedEvent = TargetCreationWidget.FinishedEvent
 
   def __init__(self):
     super(SliceTrackerTargetingPlugin, self).__init__()

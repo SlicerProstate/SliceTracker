@@ -24,13 +24,10 @@ from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 @singleton
 class SliceTrackerSession(StepBasedSession):
 
-  IncomingDataSkippedEvent = SlicerDevelopmentToolboxEvents.IncomingDataSkippedEvent
+  IncomingDataSkippedEvent = SlicerDevelopmentToolboxEvents.SkippedEvent
 
-  IncomingIntraopDataReceiveFinishedEvent = SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent + 111
+  IncomingIntraopDataReceiveFinishedEvent = SlicerDevelopmentToolboxEvents.FinishedEvent + 111
   NewImageSeriesReceivedEvent = SlicerDevelopmentToolboxEvents.NewImageDataReceivedEvent
-
-  DICOMReceiverStatusChanged = SlicerDevelopmentToolboxEvents.StatusChangedEvent
-  DICOMReceiverStoppedEvent = SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent
 
   ZFrameRegistrationSuccessfulEvent = vtk.vtkCommand.UserEvent + 140
   PreprocessingSuccessfulEvent = vtk.vtkCommand.UserEvent + 141
@@ -38,22 +35,15 @@ class SliceTrackerSession(StepBasedSession):
   SegmentationCancelledEvent = vtk.vtkCommand.UserEvent + 144
 
   CurrentSeriesChangedEvent = vtk.vtkCommand.UserEvent + 151
-  RegistrationStatusChangedEvent = vtk.vtkCommand.UserEvent + 152
+  CurrentResultChangedEvent = vtk.vtkCommand.UserEvent + 152
+  RegistrationStatusChangedEvent = vtk.vtkCommand.UserEvent + 153
 
   InitiateZFrameCalibrationEvent = vtk.vtkCommand.UserEvent + 160
   InitiateSegmentationEvent = vtk.vtkCommand.UserEvent + 161
   InitiateRegistrationEvent = vtk.vtkCommand.UserEvent + 162
   InitiateEvaluationEvent = vtk.vtkCommand.UserEvent + 163
 
-  CurrentResultChangedEvent = vtk.vtkCommand.UserEvent + 234
-
-  ApprovedEvent = RegistrationResult.ApprovedEvent
-  SkippedEvent = RegistrationResult.SkippedEvent
-  RejectedEvent = RegistrationResult.RejectedEvent
-
   SeriesTypeManuallyAssignedEvent = SeriesTypeManager.SeriesTypeManuallyAssignedEvent
-
-  ResultEvents = [ApprovedEvent, SkippedEvent, RejectedEvent]
 
   MODULE_NAME = SliceTrackerConstants.MODULE_NAME
 
@@ -343,11 +333,11 @@ class SliceTrackerSession(StepBasedSession):
     self.preopDICOMReceiver = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDirectory,
                                                  incomingPort=self.getSetting("Incoming_DICOM_Port"),
                                                  skipText="No preoperative images available")
-    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataSkippedEvent,
+    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.SkippedEvent,
                                              self.onSkippingPreopDataReception)
-    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataCanceledEvent,
+    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.CanceledEvent,
                                              lambda caller, event: self.close())
-    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent,
+    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.FinishedEvent,
                                              self.onPreopDataReceptionFinished)
     self.preopDICOMReceiver.show()
 
@@ -381,7 +371,7 @@ class SliceTrackerSession(StepBasedSession):
       self._observeIntraopDICOMReceiverEvents()
       self.intraopDICOMReceiver.start(not (self.trainingMode or self.data.completed))
     else:
-      self.invokeEvent(SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent)
+      self.invokeEvent(SlicerDevelopmentToolboxEvents.StoppedEvent)
     self.importDICOMSeries(self.getFileList(self.intraopDICOMDirectory))
     if self.intraopDICOMReceiver:
       self.intraopDICOMReceiver.forceStatusChangeEventUpdate()

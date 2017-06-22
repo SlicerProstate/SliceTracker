@@ -461,14 +461,14 @@ class ResultsAnnotationHandler(SliceAnnotationHandlerBase):
     if not (self.currentResult.skipped or (self.session.seriesTypeManager.isCoverProstate(self.currentResult.name) and
                                              not self.session.data.usePreopData)):
       self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT,
-                                                   yPos=50, fontSize=20))
-      self.addNewImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, fontSize=15)
-      self.addOldImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, fontSize=15)
+                                                   yPos=50, size=20))
+      self.addNewImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, size=15)
+      self.addOldImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, size=15)
     self.addRegistrationResultStatusAnnotation(self.redWidget)
 
   def addSideBySideSliceAnnotations(self):
     self.removeSliceAnnotations()
-    kwargs = {"yPos":55, "fontSize":30}
+    kwargs = {"yPos":55, "size":30}
     self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, **kwargs))
     self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, **kwargs))
     self.addNewImageAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT)
@@ -479,12 +479,12 @@ class ResultsAnnotationHandler(SliceAnnotationHandlerBase):
     self.removeSliceAnnotations()
     self.addRegistrationResultStatusAnnotation(self.redWidget)
 
-  def addNewImageAnnotation(self, widget, text, fontSize=20):
-    self.newImageAnnotation = SliceAnnotation(widget, text, yPos=35, opacity=0.0, color=(0, 0.5, 0), fontSize=fontSize)
+  def addNewImageAnnotation(self, widget, text, size=20):
+    self.newImageAnnotation = SliceAnnotation(widget, text, yPos=35, opacity=0.0, color=(0, 0.5, 0), size=size)
     self.sliceAnnotations.append(self.newImageAnnotation)
 
-  def addOldImageAnnotation(self, widget, text, fontSize=20):
-    self.oldImageAnnotation = SliceAnnotation(widget, text, yPos=35, fontSize=fontSize)
+  def addOldImageAnnotation(self, widget, text, size=20):
+    self.oldImageAnnotation = SliceAnnotation(widget, text, yPos=35, size=size)
     self.sliceAnnotations.append(self.oldImageAnnotation)
 
   def addRegistrationResultStatusAnnotation(self, widget):
@@ -496,7 +496,7 @@ class ResultsAnnotationHandler(SliceAnnotationHandlerBase):
     elif self.currentResult.skipped:
       annotationText = constants.SKIPPED_RESULT_TEXT_ANNOTATION
     if annotationText:
-      self.sliceAnnotations.append(SliceAnnotation(widget, annotationText, fontSize=15, yPos=20))
+      self.sliceAnnotations.append(SliceAnnotation(widget, annotationText, yPos=20, size=15))
 
 
 class EmptyVolumeWarnHandler(object):

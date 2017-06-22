@@ -53,23 +53,23 @@ class SliceTrackerTrainingPlugin(SliceTrackerPlugin):
       self.session.preopDICOMReceiver.dicomReceiver.stopStoreSCP()
     self.simulatePreopPhaseButton.enabled = False
     preopZipFile = self.initiateSampleDataDownload(SliceTrackerConstants.PREOP_SAMPLE_DATA_URL)
-    if not self.sampleDownloader.wasCanceled and preopZipFile:
+    if not self.sampleDownloader.wasCanceled() and preopZipFile:
       self.unzipFileAndCopyToDirectory(preopZipFile, self.session.preopDICOMDirectory)
 
   def startIntraopPhaseSimulation(self):
     self.simulateIntraopPhaseButton.enabled = False
     intraopZipFile = self.initiateSampleDataDownload(SliceTrackerConstants.INTRAOP_SAMPLE_DATA_URL)
-    if not self.sampleDownloader.wasCanceled and intraopZipFile:
+    if not self.sampleDownloader.wasCanceled() and intraopZipFile:
       self.unzipFileAndCopyToDirectory(intraopZipFile, self.session.intraopDICOMDirectory)
 
   def initiateSampleDataDownload(self, url):
     filename = os.path.basename(url)
     self.sampleDownloader.resetAndInitialize()
-    self.sampleDownloader.addEventObserver(self.sampleDownloader.EVENTS['status_changed'], self.onDownloadProgressUpdated)
+    self.sampleDownloader.addEventObserver(self.sampleDownloader.StatusChangedEvent, self.onDownloadProgressUpdated)
     # self.customStatusProgressBar.show()
     downloadedFile = self.sampleDownloader.downloadFileIntoCache(url, filename)
     # self.customStatusProgressBar.hide()
-    return None if self.sampleDownloader.wasCanceled else downloadedFile
+    return None if self.sampleDownloader.wasCanceled() else downloadedFile
 
   @onReturnProcessEvents
   @vtk.calldata_type(vtk.VTK_STRING)

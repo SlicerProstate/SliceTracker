@@ -95,8 +95,8 @@ class SliceTrackerWidgetBase(WidgetBase):
     self.setBackgroundToVolumeID(volume, clearLabels)
     self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
 
-  def setBackgroundToVolumeID(self, volume, clearLabels=True):
-    super(SliceTrackerWidgetBase, self).setBackgroundToVolumeID(volume, clearLabels)
+  def setBackgroundToVolumeID(self, volume, clearLabels=True, showLabelOutline=True):
+    super(SliceTrackerWidgetBase, self).setBackgroundToVolumeID(volume, clearLabels, showLabelOutline)
     self.setDefaultOrientation()
 
   def setDefaultOrientation(self):
