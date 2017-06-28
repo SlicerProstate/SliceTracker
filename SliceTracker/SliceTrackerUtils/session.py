@@ -6,13 +6,13 @@ from sessionData import SessionData, RegistrationResult, RegistrationTypeData
 from constants import SliceTrackerConstants
 from helpers import SeriesTypeManager
 
-from .exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 
 from SlicerDevelopmentToolboxUtils.constants import DICOMTAGS, FileExtension, STYLE
 from SlicerDevelopmentToolboxUtils.events import SlicerDevelopmentToolboxEvents
 from SlicerDevelopmentToolboxUtils.helpers import SmartDICOMReceiver
-from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
-from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
+from SlicerDevelopmentToolboxUtils.exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
+from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow, CustomStatusProgressbar
 from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton
 from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse, onReturnProcessEvents, onExceptionReturnNone
 from SlicerDevelopmentToolboxUtils.module.session import StepBasedSession
@@ -24,38 +24,26 @@ from SliceTrackerRegistration import SliceTrackerRegistrationLogic
 @singleton
 class SliceTrackerSession(StepBasedSession):
 
-  IncomingDataSkippedEvent = SlicerDevelopmentToolboxEvents.IncomingDataSkippedEvent
-  IncomingPreopDataReceiveFinishedEvent = SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent + 110
+  IncomingDataSkippedEvent = SlicerDevelopmentToolboxEvents.SkippedEvent
 
-  IncomingIntraopDataReceiveFinishedEvent = SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent + 111
+  IncomingIntraopDataReceiveFinishedEvent = SlicerDevelopmentToolboxEvents.FinishedEvent + 111
   NewImageSeriesReceivedEvent = SlicerDevelopmentToolboxEvents.NewImageDataReceivedEvent
-
-  DICOMReceiverStatusChanged = SlicerDevelopmentToolboxEvents.StatusChangedEvent
-  DICOMReceiverStoppedEvent = SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent
 
   ZFrameRegistrationSuccessfulEvent = vtk.vtkCommand.UserEvent + 140
   PreprocessingSuccessfulEvent = vtk.vtkCommand.UserEvent + 141
-  FailedPreprocessedEvent = vtk.vtkCommand.UserEvent + 142
   LoadingMetadataSuccessfulEvent = vtk.vtkCommand.UserEvent + 143
   SegmentationCancelledEvent = vtk.vtkCommand.UserEvent + 144
 
   CurrentSeriesChangedEvent = vtk.vtkCommand.UserEvent + 151
-  RegistrationStatusChangedEvent = vtk.vtkCommand.UserEvent + 152
+  CurrentResultChangedEvent = vtk.vtkCommand.UserEvent + 152
+  RegistrationStatusChangedEvent = vtk.vtkCommand.UserEvent + 153
 
   InitiateZFrameCalibrationEvent = vtk.vtkCommand.UserEvent + 160
   InitiateSegmentationEvent = vtk.vtkCommand.UserEvent + 161
   InitiateRegistrationEvent = vtk.vtkCommand.UserEvent + 162
   InitiateEvaluationEvent = vtk.vtkCommand.UserEvent + 163
 
-  CurrentResultChangedEvent = vtk.vtkCommand.UserEvent + 234
-
-  ApprovedEvent = RegistrationResult.ApprovedEvent
-  SkippedEvent = RegistrationResult.SkippedEvent
-  RejectedEvent = RegistrationResult.RejectedEvent
-
   SeriesTypeManuallyAssignedEvent = SeriesTypeManager.SeriesTypeManuallyAssignedEvent
-
-  ResultEvents = [ApprovedEvent, SkippedEvent, RejectedEvent]
 
   MODULE_NAME = SliceTrackerConstants.MODULE_NAME
 
@@ -73,7 +61,6 @@ class SliceTrackerSession(StepBasedSession):
 
   @property
   def outputDirectory(self):
-    # was outputDir
     return os.path.join(self.directory, "SliceTrackerOutputs")
 
   @property
@@ -205,7 +192,6 @@ class SliceTrackerSession(StepBasedSession):
     self.seriesTypeManager = SeriesTypeManager()
     self.seriesTypeManager.addEventObserver(self.seriesTypeManager.SeriesTypeManuallyAssignedEvent,
                                             lambda caller, event: self.invokeEvent(self.SeriesTypeManuallyAssignedEvent))
-
     self.resetAndInitializeMembers()
 
   def resetAndInitializeMembers(self):
@@ -325,21 +311,33 @@ class SliceTrackerSession(StepBasedSession):
       self._zFrameRegistrationSuccessful = True
     self.data.resumed = not self.data.completed
     if self.data.usePreopData:
-      self.loadPreProcessedData()
+      preopDataManager = self.createPreopHandler()
+      preopDataManager.loadPreProcessedData()
     else:
       if self.data.initialTargets:
         self.setupPreopLoadedTargets()
       self.startIntraopDICOMReceiver()
 
+  def createPreopHandler(self):
+    preopDataManager = PreopDataHandler(self.preopDICOMDirectory, self.preprocessedDirectory, self.data)
+    preopDataManager.addEventObserver(preopDataManager.PreprocessedDataErrorEvent,
+                                      lambda caller, event: self.close(save=False))
+    preopDataManager.addEventObserver(preopDataManager.PreprocessingStartedEvent,
+                                      self.onPreprocessingStarted)
+    preopDataManager.addEventObserver(preopDataManager.PreprocessingFinishedEvent,
+                                      self.onPreprocessingSuccessful)
+    return preopDataManager
+
   def startPreopDICOMReceiver(self):
     self.resetPreopDICOMReceiver()
     self.preopDICOMReceiver = IncomingDataWindow(incomingDataDirectory=self.preopDICOMDirectory,
+                                                 incomingPort=self.getSetting("Incoming_DICOM_Port"),
                                                  skipText="No preoperative images available")
-    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataSkippedEvent,
+    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.SkippedEvent,
                                              self.onSkippingPreopDataReception)
-    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataCanceledEvent,
+    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.CanceledEvent,
                                              lambda caller, event: self.close())
-    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.IncomingDataReceiveFinishedEvent,
+    self.preopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.FinishedEvent,
                                              self.onPreopDataReceptionFinished)
     self.preopDICOMReceiver.show()
 
@@ -348,10 +346,13 @@ class SliceTrackerSession(StepBasedSession):
     self.startIntraopDICOMReceiver()
     self.invokeEvent(self.IncomingDataSkippedEvent)
 
-  def onPreopDataReceptionFinished(self, caller, event):
+  def onPreopDataReceptionFinished(self, caller=None, event=None):
     self.data.usePreopData = True
+    preopDataManager = self.createPreopHandler()
+    preopDataManager.handle()
+
+  def onPreprocessingStarted(self, caller, event):
     self.startIntraopDICOMReceiver()
-    self.invokeEvent(self.IncomingPreopDataReceiveFinishedEvent)
 
   def resetPreopDICOMReceiver(self):
     self.preopDICOMReceiver = getattr(self, "preopDICOMReceiver", None)
@@ -365,11 +366,12 @@ class SliceTrackerSession(StepBasedSession):
     logging.info("Starting DICOM Receiver for intra-procedural data")
     if not self.data.completed:
       self.resetIntraopDICOMReceiver()
-      self.intraopDICOMReceiver = SmartDICOMReceiver(self.intraopDICOMDirectory)
+      self.intraopDICOMReceiver = SmartDICOMReceiver(self.intraopDICOMDirectory,
+                                                     self.getSetting("Incoming_DICOM_Port"))
       self._observeIntraopDICOMReceiverEvents()
       self.intraopDICOMReceiver.start(not (self.trainingMode or self.data.completed))
     else:
-      self.invokeEvent(SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent)
+      self.invokeEvent(SlicerDevelopmentToolboxEvents.StoppedEvent)
     self.importDICOMSeries(self.getFileList(self.intraopDICOMDirectory))
     if self.intraopDICOMReceiver:
       self.intraopDICOMReceiver.forceStatusChangeEventUpdate()
@@ -383,20 +385,21 @@ class SliceTrackerSession(StepBasedSession):
   def _observeIntraopDICOMReceiverEvents(self):
     self.intraopDICOMReceiver.addEventObserver(self.intraopDICOMReceiver.IncomingDataReceiveFinishedEvent,
                                                self.onDICOMSeriesReceived)
-    # self.intraopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.StatusChangedEvent,
-    #                                            self.onDICOMReceiverStatusChanged)
-    # self.intraopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent,
-    #                                            self.onSmartDICOMReceiverStopped)
-
-    # self.logic.addEventObserver(SlicerDevelopmentToolboxEvents.StatusChangedEvent, self.onDICOMReceiverStatusChanged)
-    # self.logic.addEventObserver(SlicerDevelopmentToolboxEvents.DICOMReceiverStoppedEvent, self.onIntraopDICOMReceiverStopped)
-
+    self.intraopDICOMReceiver.addEventObserver(SlicerDevelopmentToolboxEvents.StatusChangedEvent,
+                                               self.onDICOMReceiverStatusChanged)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onDICOMSeriesReceived(self, caller, event, callData):
     self.importDICOMSeries(ast.literal_eval(callData))
     if self.trainingMode is True:
       self.resetIntraopDICOMReceiver()
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onDICOMReceiverStatusChanged(self, caller, event, callData):
+    customStatusProgressBar = CustomStatusProgressbar()
+    customStatusProgressBar.text = callData
+    if "Waiting" in callData:
+      customStatusProgressBar.busy = True
 
   def importDICOMSeries(self, newFileList):
     indexer = ctk.ctkDICOMIndexer()
@@ -442,7 +445,6 @@ class SliceTrackerSession(StepBasedSession):
           self.deleteSeriesFromSeriesList(seriesNumber)
 
   def getPatientIDValidationSource(self):
-    # TODO: For loading case purposes it would be nice to keep track which series were accepted
     if len(self.loadableList.keys()) > 1:
       keylist = self.loadableList.keys()
       keylist.sort(key=lambda x: RegistrationResult.getSeriesNumberFromString(x))
@@ -511,21 +513,14 @@ class SliceTrackerSession(StepBasedSession):
         return series
     return None
 
-  def loadPreProcessedData(self):
-    try:
-      self.loadPreopData(self.getFirstMpReviewPreprocessedStudy(self.preprocessedDirectory))
-      self.startIntraopDICOMReceiver()
-    except PreProcessedDataError:
-      self.close(save=False)
-
   def loadCaseData(self):
     if not os.path.exists(os.path.join(self.outputDirectory, SliceTrackerConstants.JSON_FILENAME)):
-      from mpReview import mpReviewLogic
-      if mpReviewLogic.wasmpReviewPreprocessed(self.preprocessedDirectory):
-        self.loadPreProcessedData()
+      if PreopDataHandler.wasDirectoryPreprocessed(self.preprocessedDirectory):
+        preopDataManager = self.createPreopHandler()
+        preopDataManager.loadPreProcessedData()
       else:
         if len(os.listdir(self.preopDICOMDirectory)):
-          self.startPreopDICOMReceiver()
+          self.onPreopDataReceptionFinished()
         elif len(os.listdir(self.intraopDICOMDirectory)):
           self.data.usePreopData = False
           self.startIntraopDICOMReceiver()
@@ -533,6 +528,12 @@ class SliceTrackerSession(StepBasedSession):
           self.startPreopDICOMReceiver()
     else:
       self.openSavedSession()
+
+  def onPreprocessingSuccessful(self, caller, event):
+    self.data.usePreopData = True
+    self.setupPreopLoadedTargets()
+    self.invokeEvent(self.PreprocessingSuccessfulEvent)
+    self.startIntraopDICOMReceiver()
 
   def openSavedSession(self):
     self.load()
@@ -559,120 +560,6 @@ class SliceTrackerSession(StepBasedSession):
     if starBurst:
       displayNode.SetGlyphType(slicer.vtkMRMLAnnotationPointDisplayNode.StarBurst2D)
     return displayNode
-
-  def getFirstMpReviewPreprocessedStudy(self, directory):
-    # TODO add check here and selected the one which has targets in it
-    # TODO: if several studies are available provide a drop down or anything similar for choosing
-    directoryNames = [x[0] for x in os.walk(directory)]
-    assert len(directoryNames) > 1
-    return directoryNames[1]
-
-  def loadPreopData(self, directory):
-    message = self.loadMpReviewProcessedData(directory)
-    logging.info(message)
-    if message or not self.loadT2Label() or not self.loadPreopVolume() or not self.loadPreopTargets():
-      self.invokeEvent(self.FailedPreprocessedEvent,
-                       "Loading preop data failed.\nMake sure that the correct mpReview directory structure is used."
-                       "\n\nSliceTracker expects a T2 volume, WholeGland segmentation and target(s). Do you want to "
-                       "open/revisit pre-processing for the current case?")
-    else:
-      self.data.usePreopData = True
-      self.setupPreopLoadedTargets()
-      self.invokeEvent(self.PreprocessingSuccessfulEvent)
-      # self.logic.preopLabel.GetDisplayNode().SetAndObserveColorNodeID(self.mpReviewColorNode.GetID())
-
-  def loadMpReviewProcessedData(self, directory):
-    from mpReview import mpReviewLogic
-    resourcesDir = os.path.join(directory, 'RESOURCES')
-    logging.debug(resourcesDir)
-    if not os.path.exists(resourcesDir):
-      message = "The selected directory does not fit the mpReview directory structure. Make sure that you select the " \
-                "study root directory which includes directories RESOURCES"
-      return message
-
-    # self.progress = self.createProgressDialog(maximum=len(os.listdir(resourcesDir)))
-    # seriesMap, metaFile = mpReviewLogic.loadMpReviewProcessedData(resourcesDir,
-    #                                                               updateProgressCallback=self.updateProgressBar)
-    seriesMap, metaFile = mpReviewLogic.loadMpReviewProcessedData(resourcesDir)
-    # self.progress.delete()
-
-    self.data.initialTargetsPath = os.path.join(directory, 'Targets')
-
-    self.loadPreopImageAndLabel(seriesMap)
-
-    if self.preopSegmentationPath is None:
-      message = "No segmentations found.\nMake sure that you used mpReview for segmenting the prostate first and using " \
-                "its output as the preop data input here."
-      return message
-    return None
-
-  def loadPreopImageAndLabel(self, seriesMap):
-    self.preopImagePath = None
-    self.preopSegmentationPath = None
-    segmentedColorName = self.getSetting("Segmentation_Color_Name")
-
-    for series in seriesMap:
-      seriesName = str(seriesMap[series]['LongName'])
-      logging.debug('series Number ' + series + ' ' + seriesName)
-
-      imagePath = os.path.join(seriesMap[series]['NRRDLocation'])
-      segmentationPath = os.path.dirname(os.path.dirname(imagePath))
-      segmentationPath = os.path.join(segmentationPath, 'Segmentations')
-
-      if not os.path.exists(segmentationPath):
-        continue
-      else:
-        if any(segmentedColorName in name for name in os.listdir(segmentationPath)):
-          logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
-          logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
-          logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))
-
-          logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
-
-          self.preopImagePath = seriesMap[series]['NRRDLocation']
-          self.preopSegmentationPath = segmentationPath
-          break
-
-  def loadT2Label(self):
-    if self.data.initialLabel:
-      return True
-    mostRecentFilename = self.getMostRecentWholeGlandSegmentation(self.preopSegmentationPath)
-    success = False
-    if mostRecentFilename:
-      filename = os.path.join(self.preopSegmentationPath, mostRecentFilename)
-      success, self.data.initialLabel = slicer.util.loadLabelVolume(filename, returnNode=True)
-      if success:
-        self.data.initialLabel.SetName('t2-label')
-    return success
-
-  def loadPreopVolume(self):
-    if self.data.initialVolume:
-      return True
-    success, self.data.initialVolume = slicer.util.loadVolume(self.preopImagePath, returnNode=True)
-    if success:
-      self.data.initialVolume.SetName('VOLUME-PREOP')
-    return success
-
-  def loadPreopTargets(self):
-    if self.data.initialTargets:
-      return True
-    if not os.path.exists(self.data.initialTargetsPath):
-      return False
-    mostRecentTargets = self.getMostRecentTargetsFile(self.data.initialTargetsPath)
-    success = False
-    if mostRecentTargets:
-      filename = os.path.join(self.data.initialTargetsPath, mostRecentTargets)
-      success, self.data.initialTargets = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
-      if success:
-        self.data.initialTargets.SetName('targets-PREOP')
-        self.data.initialTargets.SetLocked(True)
-    return success
-
-  def getMostRecentWholeGlandSegmentation(self, path):
-    return self.getMostRecentFile(path, FileExtension.NRRD, filter="WholeGland")
-
-  def getMostRecentTargetsFile(self, path):
-    return self.getMostRecentFile(path, FileExtension.FCSV)
 
   def getColorForSelectedSeries(self, series=None):
     series = series if series else self.currentSeries
@@ -872,3 +759,216 @@ class SliceTrackerSession(StepBasedSession):
     self.skipAllUnregisteredPreviousSeries(series)
     self.skipSeries(series)
     self.save()
+
+
+class PreprocessedDataHandlerBase(ModuleWidgetMixin, ModuleLogicMixin):
+
+  PreprocessingStartedEvent = vtk.vtkCommand.UserEvent + 434
+  PreprocessingFinishedEvent = vtk.vtkCommand.UserEvent + 435
+  PreprocessedDataErrorEvent = vtk.vtkCommand.UserEvent + 436
+
+  @staticmethod
+  def wasDirectoryPreprocessed(directory):
+    raise NotImplementedError
+
+  @property
+  def outputDirectory(self):
+    self._outputDirectory = getattr(self, "_outputDirectory", None)
+    return self._outputDirectory
+
+  @outputDirectory.setter
+  def outputDirectory(self, directory):
+    if directory and not os.path.exists(directory):
+      self.createDirectory(directory)
+    self._outputDirectory = directory
+
+  def __init__(self, inputDirectory, outputDirectory):
+    self._inputDirectory = inputDirectory
+    self.outputDirectory = outputDirectory
+
+  def cleanup(self):
+    pass
+
+  def handle(self):
+    raise NotImplementedError
+
+
+class PreopDataHandler(PreprocessedDataHandlerBase):
+
+  MODULE_NAME = SliceTrackerConstants.MODULE_NAME
+
+  @staticmethod
+  def getFirstMpReviewPreprocessedStudy(directory):
+    # TODO add check here and selected the one which has targets in it
+    # TODO: if several studies are available provide a drop down or anything similar for choosing
+    directoryNames = [x[0] for x in os.walk(directory)]
+    return None if not len(directoryNames) else directoryNames[1]
+
+  @staticmethod
+  def wasDirectoryPreprocessed(directory):
+    # TODO: this check needs to be more specific with expected sub directories
+    firstDir = PreopDataHandler.getFirstMpReviewPreprocessedStudy(directory)
+    if not firstDir:
+      return False
+    from mpReview import mpReviewLogic
+    return mpReviewLogic.wasmpReviewPreprocessed(directory)
+
+  def __init__(self, inputDirectory, outputDirectory, data):
+    super(PreopDataHandler, self).__init__(inputDirectory, outputDirectory)
+    self.data = data
+
+  def __del__(self):
+    super(PreopDataHandler, self).__del__()
+
+  def handle(self):
+    self.invokeEvent(self.PreprocessingStartedEvent)
+    if self._runPreProcessing():
+      self.runModule(invokeEvent=False)
+    else:
+      slicer.util.infoDisplay("No DICOM data could be processed. Please select another directory.",
+                              windowTitle="SliceTracker")
+
+  def _runPreProcessing(self):
+    from mpReviewPreprocessor import mpReviewPreprocessorLogic
+    mpReviewPreprocessorLogic = mpReviewPreprocessorLogic()
+    progress = self.createProgressDialog()
+    progress.canceled.connect(lambda : mpReviewPreprocessorLogic.cancelProcess())
+
+    @onReturnProcessEvents
+    def updateProgressBar(**kwargs):
+      for key, value in kwargs.iteritems():
+        if hasattr(progress, key):
+          setattr(progress, key, value)
+
+    success = mpReviewPreprocessorLogic.importAndProcessData(self._inputDirectory, outputDir=self.outputDirectory,
+                                                             copyDICOM=False,
+                                                             progressCallback=updateProgressBar)
+    progress.canceled.disconnect(lambda : mpReviewPreprocessorLogic.cancelProcess())
+    progress.close()
+    return success
+
+  def runModule(self, invokeEvent=True):
+
+    def onModuleReturn():
+      slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(onModuleReturn)
+      self.layoutManager.selectModule(self.MODULE_NAME)
+      slicer.mrmlScene.Clear(0)
+      self.loadPreProcessedData()
+
+    self.setSetting('InputLocation', None, moduleName="mpReview")
+    self.layoutManager.selectModule("mpReview")
+    mpReview = slicer.modules.mpReviewWidget
+    self.setSetting('InputLocation', self.outputDirectory, moduleName="mpReview")
+    mpReview.onReload()
+    slicer.modules.mpReviewWidget.saveButton.clicked.connect(onModuleReturn)
+    self.layoutManager.selectModule(mpReview.moduleName)
+    if invokeEvent:
+      self.invokeEvent(self.PreprocessingStartedEvent)
+
+  def loadPreProcessedData(self):
+    try:
+      self.loadMpReviewProcessedData()
+    except PreProcessedDataError:
+      self.invokeEvent(self.PreprocessedDataErrorEvent)
+
+  def loadMpReviewProcessedData(self):
+    from mpReview import mpReviewLogic
+    studyDir = self.getFirstMpReviewPreprocessedStudy(self.outputDirectory)
+    resourcesDir = os.path.join(studyDir, 'RESOURCES')
+    logging.debug(resourcesDir)
+    if not os.path.exists(resourcesDir):
+      logging.info("The selected directory does not fit the mpReview directory structure. Make sure that you select "
+                   "the study root directory which includes directories RESOURCES")
+      self.invokeEvent(self.PreprocessedDataErrorEvent)
+      return
+
+    self.data.initialTargetsPath = os.path.join(studyDir, 'Targets')
+    seriesMap, metaFile = mpReviewLogic.loadMpReviewProcessedData(resourcesDir)
+    self.loadPreopImageAndLabel(seriesMap)
+
+    message = None
+    if self.preopSegmentationPath is None:
+      message = "No segmentations found.\nMake sure that you used mpReview for segmenting the prostate first and using " \
+                "its output as the preop data input here."
+      logging.info(message)
+
+    if message or not (self.loadT2Label() and self.loadPreopVolume() and self.loadPreopTargets()):
+      message = "Loading preop data failed.\nMake sure that the correct mpReview directory structure is used." \
+                "\n\nSliceTracker expects a T2 volume, WholeGland segmentation and target(s). Do you want to " \
+                "open/revisit pre-processing for the current case?"
+      if slicer.util.confirmYesNoDisplay(message, windowTitle="SliceTracker"):
+        # TODO: start intraop without listening to signals
+        self.runModule()
+      else:
+        self.invokeEvent(self.PreprocessedDataErrorEvent)
+    else:
+      self.invokeEvent(self.PreprocessingFinishedEvent)
+
+
+  def loadPreopImageAndLabel(self, seriesMap):
+    self.preopImagePath = None
+    self.preopSegmentationPath = None
+    segmentedColorName = self.getSetting("Segmentation_Color_Name", moduleName=self.MODULE_NAME) # TODO: correct?
+
+    for series in seriesMap:
+      seriesName = str(seriesMap[series]['LongName'])
+      logging.debug('series Number ' + series + ' ' + seriesName)
+
+      imagePath = os.path.join(seriesMap[series]['NRRDLocation'])
+      segmentationPath = os.path.dirname(os.path.dirname(imagePath))
+      segmentationPath = os.path.join(segmentationPath, 'Segmentations')
+
+      if not os.path.exists(segmentationPath):
+        continue
+      else:
+        if any(segmentedColorName in name for name in os.listdir(segmentationPath)):
+          logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
+          logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
+          logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))
+
+          logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
+
+          self.preopImagePath = seriesMap[series]['NRRDLocation']
+          self.preopSegmentationPath = segmentationPath
+          break
+
+  def loadT2Label(self):
+    if self.data.initialLabel:
+      return True
+    mostRecentFilename = self.getMostRecentWholeGlandSegmentation(self.preopSegmentationPath)
+    success = False
+    if mostRecentFilename:
+      filename = os.path.join(self.preopSegmentationPath, mostRecentFilename)
+      success, self.data.initialLabel = slicer.util.loadLabelVolume(filename, returnNode=True)
+      if success:
+        self.data.initialLabel.SetName('t2-label')
+    return success
+
+  def loadPreopVolume(self):
+    if self.data.initialVolume:
+      return True
+    success, self.data.initialVolume = slicer.util.loadVolume(self.preopImagePath, returnNode=True)
+    if success:
+      self.data.initialVolume.SetName('VOLUME-PREOP')
+    return success
+
+  def loadPreopTargets(self):
+    if self.data.initialTargets:
+      return True
+    if not os.path.exists(self.data.initialTargetsPath):
+      return False
+    mostRecentTargets = self.getMostRecentTargetsFile(self.data.initialTargetsPath)
+    success = False
+    if mostRecentTargets:
+      filename = os.path.join(self.data.initialTargetsPath, mostRecentTargets)
+      success, self.data.initialTargets = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
+      if success:
+        self.data.initialTargets.SetName('targets-PREOP')
+        self.data.initialTargets.SetLocked(True)
+    return success
+
+  def getMostRecentWholeGlandSegmentation(self, path):
+    return self.getMostRecentFile(path, FileExtension.NRRD, filter="WholeGland")
+
+  def getMostRecentTargetsFile(self, path):
+    return self.getMostRecentFile(path, FileExtension.FCSV)

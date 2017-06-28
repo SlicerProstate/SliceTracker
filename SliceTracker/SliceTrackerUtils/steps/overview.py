@@ -1,14 +1,9 @@
 import ast
-import logging
-import os
-
 import ctk
 import qt
 import slicer
 import vtk
-from SlicerDevelopmentToolboxUtils.constants import COLOR
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, onReturnProcessEvents, processEventsEvery
-from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
+
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.case import SliceTrackerCaseManagerPlugin
 from plugins.results import SliceTrackerRegistrationResultsPlugin
@@ -17,6 +12,9 @@ from plugins.training import SliceTrackerTrainingPlugin
 from ..constants import SliceTrackerConstants as constants
 from ..sessionData import RegistrationResult
 from ..helpers import IncomingDataMessageBox, SeriesTypeToolButton, SeriesTypeManager
+
+from SlicerDevelopmentToolboxUtils.constants import COLOR
+from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 
 
 class SliceTrackerOverViewStepLogic(SliceTrackerLogicBase):
@@ -93,6 +91,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.regResultsCollapsibleButton.hide()
     self.regResultsCollapsibleLayout= qt.QGridLayout(self.regResultsCollapsibleButton)
     self.regResultsPlugin = SliceTrackerRegistrationResultsPlugin()
+    self.regResultsPlugin.addEventObserver(self.regResultsPlugin.NoRegistrationResultsAvailable,
+                                            self.onNoRegistrationResultsAvailable)
     self.regResultsPlugin.resultSelectorVisible = False
     self.regResultsPlugin.titleVisible = False
     self.regResultsPlugin.visualEffectsTitle = ""
@@ -113,19 +113,15 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.trackTargetsButton.clicked.connect(self.onTrackTargetsButtonClicked)
     self.intraopSeriesSelector.connect('currentIndexChanged(QString)', self.onIntraopSeriesSelectionChanged)
 
-  def setupSessionObservers(self):
-    super(SliceTrackerOverviewStep, self).setupSessionObservers()
-    self.session.addEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
+  def addSessionObservers(self):
+    super(SliceTrackerOverviewStep, self).addSessionObservers()
     self.session.addEventObserver(self.session.SeriesTypeManuallyAssignedEvent, self.onSeriesTypeManuallyAssigned)
-    self.session.addEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.addEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
   def removeSessionEventObservers(self):
     SliceTrackerStep.removeSessionEventObservers(self)
-    self.session.removeEventObserver(self.session.IncomingPreopDataReceiveFinishedEvent, self.onPreopReceptionFinished)
     self.session.removeEventObserver(self.session.SeriesTypeManuallyAssignedEvent, self.onSeriesTypeManuallyAssigned)
-    self.session.removeEventObserver(self.session.FailedPreprocessedEvent, self.onFailedPreProcessing)
     self.session.removeEventObserver(self.session.RegistrationStatusChangedEvent, self.onRegistrationStatusChanged)
     self.session.removeEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
 
@@ -137,7 +133,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onTrackTargetsButtonClicked(self):
     self.session.takeActionForCurrentSeries()
 
-  @logmethod(logging.INFO)
   def onIntraopSeriesSelectionChanged(self, selectedSeries=None):
     self.session.currentSeries = selectedSeries
     if selectedSeries:
@@ -169,7 +164,16 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.regResultsCollapsibleButton.hide()
       if not self.session.data.registrationResultWasSkipped(selectedSeries):
         self.regResultsPlugin.cleanup()
+
       self.targetTablePlugin.currentTargets = None
+
+      if self.session.seriesTypeManager.isVibe(selectedSeries):
+        volume = self.session.getOrCreateVolumeForSeries(selectedSeries)
+        self.setupFourUpView(volume)
+        result = self.session.data.getMostRecentApprovedResult(priorToSeriesNumber=RegistrationResult.getSeriesNumberFromString(selectedSeries))
+        if result:
+          self.targetTablePlugin.currentTargets = result.targets.approved
+          self.regResultsPlugin.showIntraopTargets(result.targets.approved)
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
     trackingPossible = trackingPossible and not self.session.data.completed
@@ -179,25 +183,14 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onCurrentSeriesChanged(self, caller, event, callData=None):
-    logging.info("Current series selection changed invoked from session")
-    logging.info("Series with name %s selected" % callData if callData else "")
     if callData:
       model = self.intraopSeriesSelector.model()
       index = next((i for i in range(model.rowCount()) if model.item(i).text() == callData), None)
       self.intraopSeriesSelector.currentIndex = index
 
-  @logmethod(logging.INFO)
   def onZFrameRegistrationSuccessful(self, caller, event):
     self.active = True
 
-  @vtk.calldata_type(vtk.VTK_STRING)
-  def onFailedPreProcessing(self, caller, event, callData):
-    if slicer.util.confirmYesNoDisplay(callData, windowTitle="SliceTracker"):
-      self.startPreProcessingModule()
-    else:
-      self.session.close()
-
-  @logmethod(logging.INFO)
   def onRegistrationStatusChanged(self, caller, event):
     self.active = True
 
@@ -210,7 +203,11 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       slicer.util.infoDisplay(callData, windowTitle="SliceTracker")
     self.cleanup()
 
+  def onNoRegistrationResultsAvailable(self, caller, event):
+    self.targetTablePlugin.currentTargets = None
+
   def onPreprocessingSuccessful(self, caller, event):
+    self.updateIntraopSeriesSelectorTable()
     self.configureRedSliceNodeForPreopData()
     self.promptUserAndApplyBiasCorrectionIfNeeded()
 
@@ -221,63 +218,19 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
   def onSeriesTypeManuallyAssigned(self, caller, event):
     self.updateIntraopSeriesSelectorTable()
 
-  @logmethod(logging.INFO)
-  def onPreopReceptionFinished(self, caller=None, event=None):
-    if self.invokePreProcessing():
-      self.startPreProcessingModule()
-    else:
-      slicer.util.infoDisplay("No DICOM data could be processed. Please select another directory.",
-                              windowTitle="SliceTracker")
-
-  def startPreProcessingModule(self):
-    self.setSetting('InputLocation', None, moduleName="mpReview")
-    self.layoutManager.selectModule("mpReview")
-    mpReview = slicer.modules.mpReviewWidget
-    self.setSetting('InputLocation', self.session.preprocessedDirectory, moduleName="mpReview")
-    mpReview.onReload()
-    slicer.modules.mpReviewWidget.saveButton.clicked.connect(self.returnFromPreProcessingModule)
-    self.layoutManager.selectModule(mpReview.moduleName)
-
-  def returnFromPreProcessingModule(self):
-    slicer.modules.mpReviewWidget.saveButton.clicked.disconnect(self.returnFromPreProcessingModule)
-    self.layoutManager.selectModule(self.MODULE_NAME)
-    slicer.mrmlScene.Clear(0)
-    self.session.loadPreProcessedData()
-
-  def invokePreProcessing(self):
-    if not os.path.exists(self.session.preprocessedDirectory):
-      self.logic.createDirectory(self.session.preprocessedDirectory)
-    from mpReviewPreprocessor import mpReviewPreprocessorLogic
-    self.mpReviewPreprocessorLogic = mpReviewPreprocessorLogic()
-    progress = self.createProgressDialog()
-    progress.canceled.connect(self.mpReviewPreprocessorLogic.cancelProcess)
-
-    @onReturnProcessEvents
-    def updateProgressBar(**kwargs):
-      for key, value in kwargs.iteritems():
-        if hasattr(progress, key):
-          setattr(progress, key, value)
-
-    self.mpReviewPreprocessorLogic.importStudy(self.session.preopDICOMDirectory, progressCallback=updateProgressBar)
-    success = False
-    if self.mpReviewPreprocessorLogic.patientFound():
-      success = True
-      self.mpReviewPreprocessorLogic.processData(outputDir=self.session.preprocessedDirectory, copyDICOM=False,
-                                                 progressCallback=updateProgressBar)
-    progress.canceled.disconnect(self.mpReviewPreprocessorLogic.cancelProcess)
-    progress.close()
-    return success
-
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageSeriesReceived(self, caller, event, callData):
     if not self.session.isLoading():
       customStatusProgressBar = CustomStatusProgressbar()
       customStatusProgressBar.text = "New image data has been received."
+      if self.session.intraopDICOMReceiver:
+        self.session.intraopDICOMReceiver.forceStatusChangeEventUpdate()
 
     self.updateIntraopSeriesSelectorTable()
 
     if not self.active or self.session.isLoading():
       return
+
     selectedSeries = self.intraopSeriesSelector.currentText
     if selectedSeries != "" and self.session.isTrackingPossible(selectedSeries):
       selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
@@ -288,9 +241,10 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         self.takeActionOnSelectedSeries()
 
   def onCaseOpened(self, caller, event):
-    if self.active and not self.session.isLoading():
-      self.selectMostRecentEligibleSeries()
-      self.takeActionOnSelectedSeries()
+    if not self.active or self.session.isLoading() or self.session.isPreProcessing():
+      return
+    self.selectMostRecentEligibleSeries()
+    self.takeActionOnSelectedSeries()
 
   def takeActionOnSelectedSeries(self):
     selectedSeries = self.intraopSeriesSelector.currentText
@@ -298,7 +252,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.onTrackTargetsButtonClicked()
       return
 
-    if self.session.isInGeneralTrackable(self.intraopSeriesSelector.currentText):
+    if self.session.isTrackingPossible(self.intraopSeriesSelector.currentText):
       if self.notifyUserAboutNewData and not self.session.data.completed:
         dialog = IncomingDataMessageBox()
         self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
@@ -326,7 +280,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.intraopSeriesSelector.blockSignals(False)
     colorStyle = self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText)
     self.intraopSeriesSelector.setStyleSheet("QComboBox{%s} QToolTip{background-color: white;}" % colorStyle)
-    if self.active and not self.session.isLoading():
+    if self.active and not (self.session.isLoading() or self.session.isPreProcessing()):
       self.selectMostRecentEligibleSeries()
 
   def selectMostRecentEligibleSeries(self):

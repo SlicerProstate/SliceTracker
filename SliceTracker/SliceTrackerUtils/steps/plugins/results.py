@@ -2,12 +2,14 @@ import numpy
 import ctk
 import vtk
 import qt
-import logging
-from ...constants import SliceTrackerConstants as constants
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, onModuleSelected
-from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
+import slicer
 
-from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
+from ...constants import SliceTrackerConstants as constants
+from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
+from ...session import SliceTrackerSession
+
+from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
+from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotationHandlerBase, SliceAnnotation
 
 
 class SliceTrackerRegistrationResultsLogic(SliceTrackerLogicBase):
@@ -22,6 +24,8 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
   NAME = "RegistrationResults"
 
   RegistrationTypeSelectedEvent = vtk.vtkCommand.UserEvent + 657
+  RegistrationResultsAvailable = vtk.vtkCommand.UserEvent + 658
+  NoRegistrationResultsAvailable = vtk.vtkCommand.UserEvent + 659
 
   @property
   def resultSelectorVisible(self):
@@ -68,10 +72,12 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   def __init__(self):
     self._showResultSelector = True
+    self.emptyVolumeWarnHandler = EmptyVolumeWarnHandler()
+    self.sliceAnnotationHandler = ResultsAnnotationHandler()
     super(SliceTrackerRegistrationResultsPlugin, self).__init__()
 
   def cleanup(self):
-    self.removeSliceAnnotations()
+    self.sliceAnnotationHandler.cleanup()
     self.resetVisualEffects()
 
   def setupIcons(self):
@@ -163,6 +169,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.revealCursorButton.connect('toggled(bool)', self.onRevealToggled)
     self.rockCheckBox.connect('toggled(bool)', self.onRockToggled)
     self.flickerCheckBox.connect('toggled(bool)', self.onFlickerToggled)
+    self.opacitySpinBox.valueChanged.connect(self.sliceAnnotationHandler.setOldNewIndicatorAnnotationOpacity)
     self.opacitySpinBox.valueChanged.connect(self.onOpacitySpinBoxChanged)
     self.opacitySlider.valueChanged.connect(self.onOpacitySliderChanged)
 
@@ -174,15 +181,35 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     qt.QWidget.hide(self)
     self.onDeactivation()
 
-  @logmethod(logging.INFO)
   def onActivation(self):
     super(SliceTrackerRegistrationResultsPlugin, self).onActivation()
     if not self.currentResult:
       return
     self.updateRegistrationResultSelector()
     self.onCurrentResultChanged()
-    defaultLayout = self.getSetting("DEFAULT_EVALUATION_LAYOUT")
-    self.onLayoutChanged(getattr(constants, defaultLayout, constants.LAYOUT_SIDE_BY_SIDE))
+    defaultLayout = getattr(constants, self.getSetting("DEFAULT_EVALUATION_LAYOUT"), constants.LAYOUT_SIDE_BY_SIDE)
+    if defaultLayout != self.layoutManager.layout:
+      self.layoutManager.setLayout(defaultLayout)
+    else:
+      self.onLayoutChanged(defaultLayout)
+
+  def updateAvailableRegistrationButtons(self):
+    for button in self.registrationButtonGroup.buttons():
+      volume = self.currentResult.volumes.asDict()[button.name]
+      button.enabled = volume and self.logic.isVolumeExtentValid(volume)
+      button.checked = False
+
+    if any(b.enabled == False for b  in self.registrationButtonGroup.buttons()):
+      if not self.currentResult.skipped:
+        self.emptyVolumeWarnHandler.handle(self.currentResult.name)
+
+    if all(b.enabled == False for b in self.registrationButtonGroup.buttons()):
+      self.visualEffectsGroupBox.enabled = False
+      self.resetVisualEffects()
+      self.invokeEvent(self.NoRegistrationResultsAvailable)
+    else:
+      self.invokeEvent(self.RegistrationResultsAvailable)
+      self.visualEffectsGroupBox.enabled = True
 
   def onDeactivation(self):
     super(SliceTrackerRegistrationResultsPlugin, self).onDeactivation()
@@ -192,7 +219,6 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
   def onCaseClosed(self, caller, event, callData):
     self.cleanup()
 
-  @logmethod(logging.INFO)
   def onCurrentResultChanged(self, caller=None, event=None):
     if not self.active:
       return
@@ -216,10 +242,8 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
 
   @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
   def onLayoutChanged(self, layout=None):
-    self.removeSliceAnnotations()
     if not self.currentResult:
       return
-    self.setupRegistrationResultView(layout)
     self.onRegistrationResultSelected(self.currentResult.name)
     self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
 
@@ -240,7 +264,6 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       self.redCompositeNode.SetForegroundOpacity(value)
       self.greenCompositeNode.SetForegroundOpacity(value)
     self.yellowCompositeNode.SetForegroundOpacity(value)
-    self.setOldNewIndicatorAnnotationOpacity(value)
 
   def onRockToggled(self):
     self.updateRevealCursorAvailability()
@@ -264,17 +287,28 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       import CompareVolumes
       self.revealCursor = CompareVolumes.LayerReveal()
 
-  def onRegistrationResultSelected(self, seriesText, registrationType=None):
+  def onRegistrationResultSelected(self, seriesText):
+    self.hideAllLabels()
+    self.sliceAnnotationHandler.addSliceAnnotations()
+    if self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
+      self.setDefaultOrientation()
+    else:
+      self.setAxialOrientation()
     self.currentResult = seriesText
+    self.updateAvailableRegistrationButtons()
     if self.currentResult.skipped:
       return self.setupSkippedRegistrationResultSliceViews()
-    elif registrationType:
-      return self.checkButtonByRegistrationType(registrationType)
     elif self.currentResult.approved:
       return self.displayApprovedRegistrationResults()
-    elif self.registrationButtonGroup.checkedId() != -1:
+    elif self.registrationButtonGroup.checkedId() != -1 and self.registrationButtonGroup.checkedButton().enabled:
       return self.onRegistrationButtonChecked(self.registrationButtonGroup.checkedButton())
-    self.bSplineResultButton.click()
+    self.clickButtonProgrammatically()
+
+  def clickButtonProgrammatically(self):
+    for b in reversed(self.registrationButtonGroup.buttons()):
+      if b.enabled:
+        b.click()
+        return
 
   def displayApprovedRegistrationResults(self):
     self.displayRegistrationResults(self.currentResult.targets.approved, self.currentResult.registrationType)
@@ -320,15 +354,6 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.rockCheckBox.checked = False
     self.revealCursorButton.checked = False
 
-  def setOldNewIndicatorAnnotationOpacity(self, value):
-    self.newImageAnnotation = getattr(self, "newImageAnnotation", None)
-    if self.newImageAnnotation:
-      self.newImageAnnotation.opacity = value
-
-    self.oldImageAnnotation = getattr(self, "oldImageAnnotation", None)
-    if self.oldImageAnnotation:
-      self.oldImageAnnotation.opacity = 1.0 - value
-
   def updateRevealCursorAvailability(self):
     self.revealCursorButton.checked = False
     self.revealCursorButton.enabled = not (self.rockCheckBox.checked or self.flickerCheckBox.checked)
@@ -354,7 +379,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
                                     show=self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE)
 
   def setupSkippedRegistrationResultSliceViews(self):
-    self.setBackgroundToVolumeID(self.currentResult.volumes.fixed.GetID())
+    self.setBackgroundToVolumeID(self.currentResult.volumes.fixed)
 
   def setupRegistrationResultSliceViews(self, registrationType):
     self.configureRedCompositeNodeForCurrentLayout()
@@ -387,60 +412,79 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       self.redCompositeNode.SetForegroundVolumeID(None)
       self.redCompositeNode.SetBackgroundVolumeID(self.session.data.initialVolume.GetID())
 
-  def setupRegistrationResultView(self, layout=None):
-    if layout:
-      self.layoutManager.setLayout(layout)
-    self.hideAllLabels()
-    self.addSliceAnnotations()
+  def setupTargetViewNodes(self, targetNode):
+    sliceNodes = [self.yellowSliceNode]
+    if self.layoutManager.layout == constants.LAYOUT_RED_SLICE_ONLY:
+      sliceNodes = [self.redSliceNode]
+    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
+      sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
+    self.refreshViewNodeIDs(targetNode, sliceNodes)
+    targetNode.SetLocked(True)
+
+
+class ResultsAnnotationHandler(SliceAnnotationHandlerBase):
+
+  @property
+  def currentResult(self):
+    return self.session.currentResult
+
+  def __init__(self):
+    super(ResultsAnnotationHandler, self).__init__()
+    self.session = SliceTrackerSession()
 
   def addSliceAnnotations(self):
     if self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
       self.addFourUpSliceAnnotations()
-      self.setDefaultOrientation()
+    elif self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
+      self.addSideBySideSliceAnnotations()
+    elif self.layoutManager.layout == constants.LAYOUT_RED_SLICE_ONLY:
+      self.addRedOnlySliceAnnotations()
     else:
-      if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
-        self.addSideBySideSliceAnnotations()
-      elif self.layoutManager.layout == constants.LAYOUT_RED_SLICE_ONLY:
-        self.addRedOnlySliceAnnotations()
-      self.setAxialOrientation()
+      raise ValueError("Current layout is not supported!")
 
   def removeSliceAnnotations(self):
-    self.sliceAnnotations = getattr(self, "sliceAnnotations", [])
-    for annotation in self.sliceAnnotations:
-      annotation.remove()
-    self.sliceAnnotations = []
+    super(ResultsAnnotationHandler, self).removeSliceAnnotations()
     self.newImageAnnotation = None
     self.oldImageAnnotation = None
 
-  def addSideBySideSliceAnnotations(self):
-    self.removeSliceAnnotations()
-    kwargs = {"yPos":55, "fontSize":30}
-    self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, **kwargs))
-    self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, **kwargs))
-    self.addNewImageAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT)
-    self.addOldImageAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT)
-    self.addRegistrationResultStatusAnnotation(self.yellowWidget)
+  def setOldNewIndicatorAnnotationOpacity(self, value):
+    self.newImageAnnotation = getattr(self, "newImageAnnotation", None)
+    if self.newImageAnnotation:
+      self.newImageAnnotation.opacity = value
+
+    self.oldImageAnnotation = getattr(self, "oldImageAnnotation", None)
+    if self.oldImageAnnotation:
+      self.oldImageAnnotation.opacity = 1.0 - value
 
   def addFourUpSliceAnnotations(self):
     self.removeSliceAnnotations()
     if not (self.currentResult.skipped or (self.session.seriesTypeManager.isCoverProstate(self.currentResult.name) and
                                              not self.session.data.usePreopData)):
       self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT,
-                                                   yPos=50, fontSize=20))
-      self.addNewImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, fontSize=15)
-      self.addOldImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, fontSize=15)
+                                                   yPos=50, size=20))
+      self.addNewImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, size=15)
+      self.addOldImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, size=15)
     self.addRegistrationResultStatusAnnotation(self.redWidget)
+
+  def addSideBySideSliceAnnotations(self):
+    self.removeSliceAnnotations()
+    kwargs = {"yPos":55, "size":30}
+    self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, **kwargs))
+    self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, **kwargs))
+    self.addNewImageAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT)
+    self.addOldImageAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT)
+    self.addRegistrationResultStatusAnnotation(self.yellowWidget)
 
   def addRedOnlySliceAnnotations(self):
     self.removeSliceAnnotations()
     self.addRegistrationResultStatusAnnotation(self.redWidget)
 
-  def addNewImageAnnotation(self, widget, text, fontSize=20):
-    self.newImageAnnotation = SliceAnnotation(widget, text, yPos=35, opacity=0.0, color=(0, 0.5, 0), fontSize=fontSize)
+  def addNewImageAnnotation(self, widget, text, size=20):
+    self.newImageAnnotation = SliceAnnotation(widget, text, yPos=35, opacity=0.0, color=(0, 0.5, 0), size=size)
     self.sliceAnnotations.append(self.newImageAnnotation)
 
-  def addOldImageAnnotation(self, widget, text, fontSize=20):
-    self.oldImageAnnotation = SliceAnnotation(widget, text, yPos=35, fontSize=fontSize)
+  def addOldImageAnnotation(self, widget, text, size=20):
+    self.oldImageAnnotation = SliceAnnotation(widget, text, yPos=35, size=size)
     self.sliceAnnotations.append(self.oldImageAnnotation)
 
   def addRegistrationResultStatusAnnotation(self, widget):
@@ -452,13 +496,20 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     elif self.currentResult.skipped:
       annotationText = constants.SKIPPED_RESULT_TEXT_ANNOTATION
     if annotationText:
-      self.sliceAnnotations.append(SliceAnnotation(widget, annotationText, fontSize=15, yPos=20))
+      self.sliceAnnotations.append(SliceAnnotation(widget, annotationText, yPos=20, size=15))
 
-  def setupTargetViewNodes(self, targetNode):
-    sliceNodes = [self.yellowSliceNode]
-    if self.layoutManager.layout == constants.LAYOUT_RED_SLICE_ONLY:
-      sliceNodes = [self.redSliceNode]
-    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
-      sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
-    self.refreshViewNodeIDs(targetNode, sliceNodes)
-    targetNode.SetLocked(True)
+
+class EmptyVolumeWarnHandler(object):
+
+  def __init__(self):
+    self.memorizedSeriesNames = []
+
+  def handle(self, seriesName):
+    if not seriesName in self.memorizedSeriesNames:
+      self.memorizedSeriesNames.append(seriesName)
+      return slicer.util.infoDisplay(
+        "One or more empty volume were created during registration process. You have three options:\n"
+        "1. Reject the registration result \n"
+        "2. Retry with creating a new segmentation \n"
+        "3. Set targets to your preferred position (in Four-Up layout)",
+        title="Action needed: Registration created empty volume(s)", windowTitle="SliceTracker")

@@ -162,14 +162,14 @@ class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
   def checkAndCreateTemplateModelNode(self):
     if self.tempModelNode is None:
       self.tempModelNode = self.createModelNode(self.ZFRAME_TEMPLATE_NAME)
-      self.setAndObserveDisplayNode(self.tempModelNode)
+      self.createAndObserveDisplayNode(self.tempModelNode, displayNodeClass=slicer.vtkMRMLModelDisplayNode)
       self.modelNodeTag = self.tempModelNode.AddObserver(slicer.vtkMRMLTransformableNode.TransformModifiedEvent,
                                                          self.updateTemplateVectors)
 
   def checkAndCreatePathModelNode(self):
     if self.pathModelNode is None:
       self.pathModelNode = self.createModelNode(self.ZFRAME_TEMPLATE_PATH_NAME)
-      self.setAndObserveDisplayNode(self.pathModelNode)
+      self.createAndObserveDisplayNode(self.pathModelNode, displayNodeClass=slicer.vtkMRMLModelDisplayNode)
 
   def updateTemplateVectors(self, observee=None, event=None):
     if self.tempModelNode is None:
@@ -346,8 +346,8 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.showTemplatePathButton.connect('toggled(bool)', self.onShowTemplatePathToggled)
     # self.showNeedlePathButton.connect('toggled(bool)', self.onShowNeedlePathToggled)
 
-  def setupSessionObservers(self):
-    super(SliceTrackerZFrameRegistrationStep, self).setupSessionObservers()
+  def addSessionObservers(self):
+    super(SliceTrackerZFrameRegistrationStep, self).addSessionObservers()
     self.session.addEventObserver(self.session.InitiateZFrameCalibrationEvent, self.onInitiateZFrameCalibration)
 
   def removeSessionEventObservers(self):
@@ -530,7 +530,7 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       slicer.util.errorDisplay("An error occurred. For further information click 'Show Details...'",
                    windowTitle=self.__class__.__name__, detailedText=str(exc.message))
     else:
-      self.setBackgroundToVolumeID(zFrameTemplateVolume.GetID())
+      self.setBackgroundToVolumeID(zFrameTemplateVolume)
       self.approveZFrameRegistrationButton.enabled = True
       self.retryZFrameRegistrationButton.enabled = True
 

@@ -217,21 +217,21 @@ class SessionData(ModuleLogicMixin):
 
     def saveManualSegmentation():
       if self.clippingModelNode:
-        success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK, overwrite=True)
+        success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK)
         self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
       if self.inputMarkupNode:
-        success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV, overwrite=True)
+        success, name = self.saveNodeData(self.inputMarkupNode, outputDir, FileExtension.FCSV)
         self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
     def saveInitialTargets():
       success, name = self.saveNodeData(self.initialTargets, outputDir, FileExtension.FCSV,
-                                        name="Initial_Targets", overwrite=True)
+                                        name="Initial_Targets")
       self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
       return name + FileExtension.FCSV
 
     def saveInitialVolume():
-      success, name = self.saveNodeData(self.initialVolume, outputDir, FileExtension.NRRD, overwrite=True)
+      success, name = self.saveNodeData(self.initialVolume, outputDir, FileExtension.NRRD)
       self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
       return name + FileExtension.NRRD
 
@@ -290,7 +290,7 @@ class SessionData(ModuleLogicMixin):
       message += fileName + "\n"
     logging.debug(message)
 
-  @logmethod(level=logging.INFO)
+  @logmethod(level=logging.DEBUG)
   def saveRegistrationResults(self, outputDir):
     failedToSave = []
     self.customProgressBar.visible = True
@@ -416,7 +416,6 @@ class AbstractRegistrationData(ModuleLogicMixin):
   def getFileNameByAttributeName(self, name):
     return self.getFileName(getattr(self, name))
 
-  # @logmethod(level=logging.INFO)
   def getAllFileNames(self):
     fileNames = {}
     for regType, node in self.asDict().iteritems():
@@ -424,7 +423,6 @@ class AbstractRegistrationData(ModuleLogicMixin):
         fileNames[regType] = self.getFileName(node)
     return fileNames
 
-  # @logmethod(level=logging.INFO)
   def save(self, directory):
     assert self.FILE_EXTENSION is not None
     savedSuccessfully = []
@@ -719,7 +717,7 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
     logging.debug(self.__dict__)
     logging.debug('# __________________________________________________________________________________')
 
-  @logmethod(logging.INFO)
+  @logmethod(logging.DEBUG)
   def save(self, outputDir):
     def saveCMDParameters():
       if self.cmdArguments != "":
@@ -794,10 +792,10 @@ class ZFrameRegistrationResult(RegistrationResultBase):
     }
     savedSuccessfully = []
     failedToSave = []
-    success, name = self.saveNodeData(self.transform, outputDir, FileExtension.H5, overwrite=True)
+    success, name = self.saveNodeData(self.transform, outputDir, FileExtension.H5)
     dictionary["transform"] = name + FileExtension.H5
     self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
-    success, name = self.saveNodeData(self.volume, outputDir, FileExtension.NRRD, overwrite=True)
+    success, name = self.saveNodeData(self.volume, outputDir, FileExtension.NRRD)
     dictionary["volume"] = name + FileExtension.NRRD
     self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
     return dictionary

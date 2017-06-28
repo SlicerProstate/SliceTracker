@@ -13,9 +13,9 @@ class SliceTrackerSegmentationPluginBase(SliceTrackerPlugin):
   def startSegmentation(self):
     raise NotImplementedError
 
-  def onSegmentationStarted(self, caller, event):
+  def _onSegmentationStarted(self, caller, event):
     self.invokeEvent(self.SegmentationStartedEvent)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
-  def onSegmentationFinished(self, caller, event, labelNode):
+  def _onSegmentationFinished(self, caller, event, labelNode):
     self.invokeEvent(self.SegmentationFinishedEvent, labelNode)

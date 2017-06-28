@@ -69,7 +69,6 @@ package "SliceTracker Plugins" #DDDDDD {
 
   }
 
-
   package "Case Management" #DDF0DD {
 
     class SliceTrackerCaseManagerPlugin {
@@ -90,6 +89,13 @@ package "SliceTracker Plugins" #DDDDDD {
 
     SliceTrackerPlugin <|-- SliceTrackerNeedleSegmentationPlugin
     SliceTrackerNeedleSegmentationPlugin::LogicClass ..> SliceTrackerNeedleSegmentationLogic: uses
+
+    class SliceTrackerTargetDisplacementChartPlugin {
+      + LogicClass
+    }
+
+    SliceTrackerPlugin <|-- SliceTrackerTargetDisplacementChartPlugin
+    SliceTrackerTargetDisplacementChartPlugin::LogicClass ..> SliceTrackerTargetDisplacementChartLogic: uses
   }
 
   package "Segmentation Management" #5555FF {

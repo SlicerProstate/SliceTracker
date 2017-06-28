@@ -30,8 +30,8 @@ class SliceTrackerWidgetBase(WidgetBase):
   def setupAdditionalViewSettingButtons(self):
     pass
 
-  def setupSessionObservers(self):
-    super(SliceTrackerWidgetBase, self).setupSessionObservers()
+  def addSessionObservers(self):
+    super(SliceTrackerWidgetBase, self).addSessionObservers()
     self.session.addEventObserver(self.session.NewImageSeriesReceivedEvent, self.onNewImageSeriesReceived)
     self.session.addEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
     self.session.addEventObserver(self.session.LoadingMetadataSuccessfulEvent, self.onLoadingMetadataSuccessful)
@@ -92,16 +92,11 @@ class SliceTrackerWidgetBase(WidgetBase):
     pass
 
   def setupFourUpView(self, volume, clearLabels=True):
-    self.setBackgroundToVolumeID(volume.GetID(), clearLabels)
+    self.setBackgroundToVolumeID(volume, clearLabels)
     self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
 
-  def setBackgroundToVolumeID(self, volumeID, clearLabels=True):
-    for compositeNode, sliceNode in zip(self._compositeNodes, self._sliceNodes):
-      if clearLabels:
-        compositeNode.SetLabelVolumeID(None)
-      sliceNode.SetUseLabelOutline(True)
-      compositeNode.SetForegroundVolumeID(None)
-      compositeNode.SetBackgroundVolumeID(volumeID)
+  def setBackgroundToVolumeID(self, volume, clearLabels=True, showLabelOutline=True):
+    super(SliceTrackerWidgetBase, self).setBackgroundToVolumeID(volume, clearLabels, showLabelOutline)
     self.setDefaultOrientation()
 
   def setDefaultOrientation(self):
@@ -145,7 +140,7 @@ class SliceTrackerWidgetBase(WidgetBase):
       volume = result.volumes.fixed
     except IndexError:
       volume = self.session.getOrCreateVolumeForSeries(selectedSeries)
-    self.setBackgroundToVolumeID(volume.GetID())
+    self.setBackgroundToVolumeID(volume)
 
 
 class SliceTrackerStep(SliceTrackerWidgetBase):

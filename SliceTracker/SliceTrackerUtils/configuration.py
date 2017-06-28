@@ -57,3 +57,6 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
 
     if not self.getSetting("Use_Deep_Learning"):
       self.setSetting("Use_Deep_Learning", config.get('Segmentation', 'Use_Deep_Learning'))
+
+    if not self.getSetting("Incoming_DICOM_Port"):
+      self.setSetting("Incoming_DICOM_Port", config.get('DICOM', 'Incoming_Port'))
