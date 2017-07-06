@@ -88,8 +88,8 @@ class SliceTrackerTrainingPlugin(SliceTrackerPlugin):
       zip_ref.close()
       self.copyDirectory(filepath.replace(".zip", ""), copyToDirectory)
     except zipfile.BadZipfile as exc:
-      if self.preopTransferWindow:
-        self.preopTransferWindow.hide()
+      if self.session.preopDICOMReceiver:
+        self.session.preopDICOMReceiver.hide()
       slicer.util.errorDisplay("An error appeared while extracting %s. If the file is corrupt, please delete it and try "
                                "again." % filepath, detailedText=str(exc.message))
       self.clearData()
