@@ -164,3 +164,6 @@ class SliceTrackerPlugin(SliceTrackerWidgetBase):
 
   def __init__(self):
     super(SliceTrackerPlugin, self).__init__()
+
+  def clearData(self):
+    pass
