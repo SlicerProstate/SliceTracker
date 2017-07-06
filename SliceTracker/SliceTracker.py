@@ -15,6 +15,7 @@ from SliceTrackerUtils.steps.evaluation import SliceTrackerEvaluationStep
 from SliceTrackerUtils.steps.segmentation import SliceTrackerSegmentationStep
 
 from SlicerDevelopmentToolboxUtils.buttons import *
+from SlicerDevelopmentToolboxUtils.events import SlicerDevelopmentToolboxEvents
 from SlicerDevelopmentToolboxUtils.constants import DICOMTAGS
 from SlicerDevelopmentToolboxUtils.decorators import logmethod
 from SlicerDevelopmentToolboxUtils.helpers import WatchBoxAttribute

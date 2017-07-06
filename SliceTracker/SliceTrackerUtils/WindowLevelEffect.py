@@ -29,7 +29,7 @@ class WindowLevelEffect(object):
 
   def createWLCursor(self):
     iconPath = os.path.join(os.path.dirname(sys.modules[self.__module__].__file__),
-                            '../Resources/Icons/cursor-window-level.png')
+                            '../Resources/Icons/icon-cursor-WindowLevel.png')
     pixmap = qt.QPixmap(iconPath)
     return qt.QCursor(qt.QIcon(pixmap).pixmap(32, 32), 0, 0)
 
