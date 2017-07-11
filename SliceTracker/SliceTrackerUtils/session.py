@@ -459,7 +459,8 @@ class SliceTrackerSession(StepBasedSession):
       logging.info("Need to load volume")
       files = self.loadableList[series]
       loadables = self.scalarVolumePlugin.examine([files])
-      success, volume = slicer.util.loadVolume(files[0], returnNode=True)
+      assert len(loadables)
+      volume = self.scalarVolumePlugin.load(loadables[0])
       volume.SetName(loadables[0].name)
       self.alreadyLoadedSeries[series] = volume
     slicer.app.processEvents()
