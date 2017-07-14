@@ -4,6 +4,7 @@ from slicer.ScriptedLoadableModule import *
 
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
+from SlicerDevelopmentToolboxUtils.icons import Icons
 
 import EditorLib
 from EditorLib import ColorBox
@@ -92,12 +93,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.layout.addStretch(1)
 
   def _setupIcons(self):
-    self.applySegmentationIcon = self.createIcon('icon-apply.png')
     self.quickSegmentationIcon = self.createIcon('icon-quickSegmentation.png')
-    self.cancelSegmentationIcon = self.createIcon('icon-cancelSegmentation.png')
-    self.undoIcon = self.createIcon('icon-undo.png')
-    self.redoIcon = self.createIcon('icon-redo.png')
-    self.settingsIcon = self.createIcon('icon-settings.png')
 
   def _setupSelectorArea(self):
     self.imageVolumeLabel = self.createLabel("Image volume: ", objectName="imageVolumeLabel")
@@ -139,16 +135,16 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.quickSegmentationButton = self.createButton('Quick Mode', icon=self.quickSegmentationIcon, iconSize=iconSize,
                                                      checkable=True, objectName="quickSegmentationButton", enabled=False,
                                                      toolTip="Start quick mode segmentation")
-    self.applySegmentationButton = self.createButton("", icon=self.applySegmentationIcon, iconSize=iconSize,
+    self.applySegmentationButton = self.createButton("", icon=Icons.apply, iconSize=iconSize,
                                                      enabled=False, objectName="applyButton", toolTip="Apply")
-    self.cancelSegmentationButton = self.createButton("", icon=self.cancelSegmentationIcon, iconSize=iconSize,
+    self.cancelSegmentationButton = self.createButton("", icon=Icons.cancel, iconSize=iconSize,
                                                       enabled=False, objectName="cancelButton", toolTip="Cancel")
-    self.undoButton = self.createButton("", icon=self.undoIcon, iconSize=iconSize, enabled=False, toolTip="Undo",
+    self.undoButton = self.createButton("", icon=Icons.undo, iconSize=iconSize, enabled=False, toolTip="Undo",
                                         objectName="undoButton")
-    self.redoButton = self.createButton("", icon=self.redoIcon, iconSize=iconSize, enabled=False, toolTip="Redo",
+    self.redoButton = self.createButton("", icon=Icons.redo, iconSize=iconSize, enabled=False, toolTip="Redo",
                                         objectName="redoButton")
 
-    self.editorWidgetButton = self.createButton("", icon=self.settingsIcon, toolTip="Show Label Editor",
+    self.editorWidgetButton = self.createButton("", icon=Icons.settings, toolTip="Show Label Editor",
                                                 checkable=True, enabled=False, iconSize=qt.QSize(36, 36))
 
     self._setupEditorWidget()

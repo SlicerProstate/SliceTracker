@@ -5,14 +5,16 @@ import qt
 import vtk
 import re
 import slicer
-from SlicerDevelopmentToolboxUtils.decorators import logmethod
-from SlicerDevelopmentToolboxUtils.widgets import ExtendedQMessageBox
 
 from constants import SliceTrackerConstants as constants
+
+from SlicerDevelopmentToolboxUtils.decorators import logmethod
+from SlicerDevelopmentToolboxUtils.widgets import ExtendedQMessageBox
 from SlicerDevelopmentToolboxUtils.module.logic import LogicBase
 from SlicerDevelopmentToolboxUtils.module.base import ModuleBase
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
 from SlicerDevelopmentToolboxUtils.metaclasses import Singleton
+from SlicerDevelopmentToolboxUtils.icons import Icons
 
 
 class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
@@ -246,13 +248,8 @@ class SeriesTypeToolButton(qt.QToolButton, ModuleBase, ModuleWidgetMixin):
     self.setMenu(qt.QMenu(self))
     self.action = qt.QWidgetAction(self)
     self.listWidget = None
-    self.setupIcons()
-    self.setIcon(self.editIcon)
+    self.setIcon(Icons.edit)
     self.enabled = False
-
-  def setupIcons(self):
-    self.editIcon = self.createIcon("icon-edit.png")
-    self.infoIcon = self.createIcon('icon-infoBox.png')
 
   @logmethod(logging.DEBUG)
   def setSeries(self, series):
@@ -272,12 +269,12 @@ class SeriesTypeToolButton(qt.QToolButton, ModuleBase, ModuleWidgetMixin):
     currentType = seriesTypeManager.getSeriesType(series)
     autoType = seriesTypeManager.computeSeriesType(series)
     if currentType != autoType:
-      icon = self.infoIcon
+      icon = Icons.info
       tooltip = "Series type assignment changed!\n\n" \
                 "Original series type: {}\n\n" \
                 "Assigned series type: {}".format(autoType, currentType)
     else:
-      icon = self.editIcon
+      icon = Icons.edit
       tooltip = self.listWidget.currentItem().text() if self.listWidget.currentItem() else ""
     self.setIcon(icon)
     self.setToolTip(tooltip)

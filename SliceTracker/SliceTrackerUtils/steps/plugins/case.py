@@ -9,6 +9,7 @@ from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 
 from SlicerDevelopmentToolboxUtils.helpers import WatchBoxAttribute
 from SlicerDevelopmentToolboxUtils.widgets import BasicInformationWatchBox
+from SlicerDevelopmentToolboxUtils.icons import Icons
 
 
 class SliceTrackerCaseManagerLogic(SliceTrackerLogicBase):
@@ -50,17 +51,12 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
   def clearData(self):
     self.update()
 
-  def setupIcons(self):
-    self.newIcon = self.createIcon('icon-new.png')
-    self.openIcon = self.createIcon('icon-open.png')
-    self.closeIcon = self.createIcon('icon-close.png')
-
   def setup(self):
     super(SliceTrackerCaseManagerPlugin, self).setup()
     iconSize = qt.QSize(36, 36)
-    self.createNewCaseButton = self.createButton("", icon=self.newIcon, iconSize=iconSize, toolTip="Start a new case")
-    self.openCaseButton = self.createButton("", icon=self.openIcon, iconSize=iconSize, toolTip="Open case")
-    self.closeCaseButton = self.createButton("", icon=self.closeIcon, iconSize=iconSize,
+    self.createNewCaseButton = self.createButton("", icon=Icons.new, iconSize=iconSize, toolTip="Start a new case")
+    self.openCaseButton = self.createButton("", icon=Icons.open, iconSize=iconSize, toolTip="Open case")
+    self.closeCaseButton = self.createButton("", icon=Icons.exit, iconSize=iconSize,
                                              toolTip="Close case with resume support", enabled=False)
     self.setupCaseWatchBox()
     self.casesRootDirectoryButton = self.createDirectoryButton(text="Choose cases root location",
