@@ -3,13 +3,17 @@ import ast
 import qt
 import slicer
 import vtk
+
 from base import SliceTrackerLogicBase, SliceTrackerStep
-from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
-from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
+from ..constants import SliceTrackerConstants as constants
+
 from plugins.targeting import SliceTrackerTargetingPlugin
 from plugins.segmentation.manual import SliceTrackerManualSegmentationPlugin
 from plugins.segmentation.automatic import SliceTrackerAutomaticSegmentationPlugin
-from ..constants import SliceTrackerConstants as constants
+
+from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
+from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
+from SlicerDevelopmentToolboxUtils.icons import Icons
 
 
 class SliceTrackerSegmentationStepLogic(SliceTrackerLogicBase):
@@ -27,10 +31,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
     super(SliceTrackerSegmentationStep, self).__init__()
     self.session.retryMode = False
-
-  def setupIcons(self):
-    self.finishStepIcon = self.createIcon('icon-start.png')
-    self.backIcon = self.createIcon('icon-back.png')
 
   def setup(self):
     super(SliceTrackerSegmentationStep, self).setup()
@@ -67,9 +67,9 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   def _setupNavigationButtons(self):
     iconSize = qt.QSize(36, 36)
-    self.backButton = self.createButton("", icon=self.backIcon, iconSize=iconSize,
+    self.backButton = self.createButton("", icon=Icons.back, iconSize=iconSize,
                                         toolTip="Return to last step")
-    self.finishStepButton = self.createButton("", icon=self.finishStepIcon, iconSize=iconSize,
+    self.finishStepButton = self.createButton("", icon=Icons.start, iconSize=iconSize,
                                               toolTip="Run Registration")
     self.finishStepButton.setFixedHeight(45)
     self.layout().addWidget(self.createHLayout([self.backButton, self.finishStepButton]))

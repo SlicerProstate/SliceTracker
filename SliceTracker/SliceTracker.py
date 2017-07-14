@@ -1,8 +1,7 @@
 import ast
 import os
 import logging
-import qt
-import vtk
+from slicer.ScriptedLoadableModule import *
 
 from SliceTrackerUtils.configuration import SliceTrackerConfiguration
 from SliceTrackerUtils.constants import SliceTrackerConstants
@@ -21,7 +20,6 @@ from SlicerDevelopmentToolboxUtils.decorators import logmethod
 from SlicerDevelopmentToolboxUtils.helpers import WatchBoxAttribute
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar, DICOMBasedInformationWatchBox
-from slicer.ScriptedLoadableModule import *
 
 
 class SliceTracker(ScriptedLoadableModule):
@@ -82,17 +80,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
       self.session.registerStep(step())
 
     self.customStatusProgressBar = CustomStatusProgressbar()
-    self.setupIcons()
     self.setupPatientWatchBox()
     self.setupViewSettingGroupBox()
     self.setupTabBarNavigation()
     self.setupConnections()
     self.setupSessionObservers()
     self.layout.addStretch(1)
-
-  def setupIcons(self):
-    self.settingsIcon = self.createIcon('icon-settings.png')
-    self.textInfoIcon = self.createIcon('icon-text-info.png')
 
   def setupPatientWatchBox(self):
     WatchBoxAttribute.TRUNCATE_LENGTH = 20
@@ -108,7 +101,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                                                                           DICOMTAGS.SERIES_DESCRIPTION]),
                                   WatchBoxAttribute('StudyDate', 'Intraop Date: ', DICOMTAGS.STUDY_DATE)]
     self.intraopWatchBox = DICOMBasedInformationWatchBox(intraopWatchBoxInformation, columns=2)
-    self.registrationDetailsButton = self.createButton("", icon=self.settingsIcon, styleSheet="border:none;",
+    self.registrationDetailsButton = self.createButton("", icon=Icons.settings, styleSheet="border:none;",
                                                        maximumWidth=16)
     self.layout.addWidget(self.intraopWatchBox)
 
@@ -121,7 +114,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.crosshairButton = CrosshairButton()
     self.wlEffectsToolButton = WindowLevelEffectsButton()
     self.settingsButton = ModuleSettingsButton(self.moduleName)
-    self.showAnnotationsButton = self.createButton("", icon=self.textInfoIcon, iconSize=iconSize, checkable=True, toolTip="Display annotations", checked=True)
+    self.showAnnotationsButton = self.createButton("", icon=Icons.text_info, iconSize=iconSize, checkable=True, toolTip="Display annotations", checked=True)
 
     viewSettingButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton,
                           self.crosshairButton,   self.wlEffectsToolButton, self.settingsButton]

@@ -6,6 +6,8 @@ from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.results import SliceTrackerRegistrationResultsPlugin
 from plugins.targets import SliceTrackerTargetTablePlugin
 
+from SlicerDevelopmentToolboxUtils.icons import Icons
+
 
 class SliceTrackerEvaluationStepLogic(SliceTrackerLogicBase):
 
@@ -21,11 +23,6 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
   def __init__(self):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
     super(SliceTrackerEvaluationStep, self).__init__()
-
-  def setupIcons(self):
-    self.retryIcon = self.createIcon("icon-retry.png")
-    self.approveIcon = self.createIcon("icon-thumbsUp.png")
-    self.rejectIcon = self.createIcon("icon-thumbsDown.png")
 
   def setup(self):
     super(SliceTrackerEvaluationStep, self).setup()
@@ -54,10 +51,10 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
 
   def setupRegistrationValidationButtons(self):
     iconSize = qt.QSize(36, 36)
-    self.approveRegistrationResultButton = self.createButton("", icon=self.approveIcon, iconSize=iconSize,
+    self.approveRegistrationResultButton = self.createButton("", icon=Icons.thumbs_up, iconSize=iconSize,
                                                              toolTip="Approve")
-    self.retryRegistrationButton = self.createButton("", icon=self.retryIcon, iconSize=iconSize, toolTip="Retry")
-    self.rejectRegistrationResultButton = self.createButton("", icon=self.rejectIcon, iconSize=iconSize,
+    self.retryRegistrationButton = self.createButton("", icon=Icons.retry, iconSize=iconSize, toolTip="Retry")
+    self.rejectRegistrationResultButton = self.createButton("", icon=Icons.thumbs_down, iconSize=iconSize,
                                                             toolTip="Reject")
     self.registrationEvaluationButtonsGroupBox = self.createHLayout([self.retryRegistrationButton,
                                                                      self.approveRegistrationResultButton,

@@ -14,6 +14,7 @@ from base import SliceTrackerLogicBase, SliceTrackerStep
 from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
 from SlicerDevelopmentToolboxUtils.metaclasses import Singleton
+from SlicerDevelopmentToolboxUtils.icons import Icons
 
 
 class SliceTrackerZFrameRegistrationStepLogic(SliceTrackerLogicBase):
@@ -291,9 +292,6 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.zFrameIcon = self.createIcon('icon-zframe.png')
     self.needleIcon = self.createIcon('icon-needle.png')
     self.templateIcon = self.createIcon('icon-template.png')
-    self.startIcon = self.createIcon('icon-start.png')
-    self.approveIcon = self.createIcon("icon-apply.png")
-    self.retryIcon = self.createIcon("icon-retry.png")
 
   def setup(self):
     super(SliceTrackerZFrameRegistrationStep, self).setup()
@@ -319,12 +317,12 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
 
   def setupActionButtons(self):
     iconSize = qt.QSize(36, 36)
-    self.runZFrameRegistrationButton = self.createButton("", icon=self.startIcon, iconSize=iconSize, enabled=False,
+    self.runZFrameRegistrationButton = self.createButton("", icon=Icons.start, iconSize=iconSize, enabled=False,
                                                          toolTip="Run ZFrame Registration")
-    self.approveZFrameRegistrationButton = self.createButton("", icon=self.approveIcon, iconSize=iconSize,
+    self.approveZFrameRegistrationButton = self.createButton("", icon=Icons.apply, iconSize=iconSize,
                                                              enabled=self.zFrameRegistrationClass is LineMarkerRegistration,
                                                              toolTip="Confirm registration accuracy", )
-    self.retryZFrameRegistrationButton = self.createButton("", icon=self.retryIcon, iconSize=iconSize, enabled=False,
+    self.retryZFrameRegistrationButton = self.createButton("", icon=Icons.retry, iconSize=iconSize, enabled=False,
                                                            visible=self.zFrameRegistrationClass is OpenSourceZFrameRegistration,
                                                            toolTip="Reset")
 

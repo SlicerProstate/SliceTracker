@@ -15,6 +15,7 @@ from ..helpers import IncomingDataMessageBox, SeriesTypeToolButton, SeriesTypeMa
 
 from SlicerDevelopmentToolboxUtils.constants import COLOR
 from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
+from SlicerDevelopmentToolboxUtils.icons import Icons
 
 
 class SliceTrackerOverViewStepLogic(SliceTrackerLogicBase):
@@ -55,7 +56,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setupIcons(self):
     self.trackIcon = self.createIcon('icon-track.png')
-    self.skipIcon = self.createIcon('icon-skip.png')
 
   def setup(self):
     super(SliceTrackerOverviewStep, self).setup()
@@ -67,7 +67,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.changeSeriesTypeButton = SeriesTypeToolButton()
     self.trackTargetsButton = self.createButton("", icon=self.trackIcon, iconSize=iconSize, toolTip="Track targets",
                                                 enabled=False)
-    self.skipIntraopSeriesButton = self.createButton("", icon=self.skipIcon, iconSize=iconSize,
+    self.skipIntraopSeriesButton = self.createButton("", icon=Icons.skip, iconSize=iconSize,
                                                      toolTip="Skip selected series", enabled=False)
     self.setupIntraopSeriesSelector()
 
