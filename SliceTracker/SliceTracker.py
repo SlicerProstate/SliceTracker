@@ -114,10 +114,13 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.crosshairButton = CrosshairButton()
     self.wlEffectsToolButton = WindowLevelEffectsButton()
     self.settingsButton = ModuleSettingsButton(self.moduleName)
-    self.showAnnotationsButton = self.createButton("", icon=Icons.text_info, iconSize=iconSize, checkable=True, toolTip="Display annotations", checked=True)
+    self.dicomConnectionTestButton = DICOMConnectionTestButton(toolTip="Test DICOM connection")
+    self.showAnnotationsButton = self.createButton("", icon=Icons.text_info, iconSize=iconSize, checkable=True,
+                                                   toolTip="Display annotations", checked=True)
 
     viewSettingButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton,
-                          self.crosshairButton,   self.wlEffectsToolButton, self.settingsButton]
+                          self.crosshairButton, self.wlEffectsToolButton, self.settingsButton,
+                          self.dicomConnectionTestButton]
 
     for step in self.session.steps:
       viewSettingButtons += step.viewSettingButtons
