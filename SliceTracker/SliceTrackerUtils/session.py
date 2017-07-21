@@ -37,6 +37,7 @@ class SliceTrackerSession(StepBasedSession):
   CurrentSeriesChangedEvent = vtk.vtkCommand.UserEvent + 151
   CurrentResultChangedEvent = vtk.vtkCommand.UserEvent + 152
   RegistrationStatusChangedEvent = vtk.vtkCommand.UserEvent + 153
+  TargetSelectionEvent = vtk.vtkCommand.UserEvent + 154
 
   InitiateZFrameCalibrationEvent = vtk.vtkCommand.UserEvent + 160
   InitiateSegmentationEvent = vtk.vtkCommand.UserEvent + 161
@@ -186,6 +187,9 @@ class SliceTrackerSession(StepBasedSession):
       self.data.initialLabel = value
     self._fixedLabel = value
 
+  def setSelectedTarget(self, targetListId, index):
+    self.invokeEvent(self.TargetSelectionEvent, str([targetListId, index]))
+
   def __init__(self):
     StepBasedSession.__init__(self)
     self.registrationLogic = SliceTrackerRegistrationLogic()
@@ -209,7 +213,6 @@ class SliceTrackerSession(StepBasedSession):
     self._currentResult = None
     self._currentSeries = None
     self.retryMode = False
-    self.lastSelectedModelIndex = None
     self.previousStep = None
 
   def initializeColorNodes(self):
@@ -544,8 +547,6 @@ class SliceTrackerSession(StepBasedSession):
     ModuleWidgetMixin.setFiducialNodeVisibility(targets, show=True)
     self.applyDefaultTargetDisplayNode(targets)
     self.markupsLogic.JumpSlicesToNthPointInMarkup(targets.GetID(), 0)
-    # self.targetTable.selectRow(0)
-    # self.updateDisplacementChartTargetSelectorTable()
 
   def applyDefaultTargetDisplayNode(self, targetNode, new=False):
     displayNode = None if new else targetNode.GetDisplayNode()
@@ -802,8 +803,8 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
   def getFirstMpReviewPreprocessedStudy(directory):
     # TODO add check here and selected the one which has targets in it
     # TODO: if several studies are available provide a drop down or anything similar for choosing
-    directoryNames = [x[0] for x in os.walk(directory)]
-    return None if not len(directoryNames) else directoryNames[1]
+    directoryNames = filter(os.path.isdir, [os.path.join(directory, f) for f in os.listdir(directory)])
+    return None if not len(directoryNames) else directoryNames[0]
 
   @staticmethod
   def wasDirectoryPreprocessed(directory):

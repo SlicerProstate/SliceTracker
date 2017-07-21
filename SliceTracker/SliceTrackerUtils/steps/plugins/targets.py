@@ -281,17 +281,10 @@ class SliceTrackerTargetTableLogic(SliceTrackerLogicBase):
 
 class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
 
+  lastSelectedModelIndex = None
+
   NAME = "TargetTable"
   LogicClass = SliceTrackerTargetTableLogic
-
-  @property
-  def lastSelectedModelIndex(self):
-    return self.session.lastSelectedModelIndex
-
-  @lastSelectedModelIndex.setter
-  def lastSelectedModelIndex(self, modelIndex):
-    assert self.currentTargets is not None
-    self.session.lastSelectedModelIndex = modelIndex
 
   @property
   def movingEnabled(self):
@@ -423,19 +416,18 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.targetTableModel.cursorPosition = ras
 
   def onTargetSelectionChanged(self, modelIndex=None):
-    # onCurrentResultSelected event
     if not modelIndex:
       self.getAndSelectTargetFromTable()
       return
     if self.moveTargetMode is True and modelIndex != self.currentlyMovedTargetModelIndex:
       self.disableTargetMovingMode()
     self.lastSelectedModelIndex = modelIndex
+    self.session.setSelectedTarget(self.currentTargets.GetID(), modelIndex.row())
     if not self.currentTargets:
       self.currentTargets = self.session.data.initialTargets
     self.jumpSliceNodesToNthTarget(modelIndex.row())
-    # self.updateNeedleModel()
-    self.targetTableModel.currentTargetIndex = self.lastSelectedModelIndex.row()
-    self.updateSelection(self.lastSelectedModelIndex.row())
+    self.targetTableModel.currentTargetIndex = modelIndex
+    self.updateSelection(modelIndex.row())
 
   def updateSelection(self, row):
     self.targetTable.clearSelection()
