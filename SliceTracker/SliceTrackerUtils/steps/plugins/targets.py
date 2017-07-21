@@ -281,17 +281,10 @@ class SliceTrackerTargetTableLogic(SliceTrackerLogicBase):
 
 class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
 
+  lastSelectedModelIndex = None
+
   NAME = "TargetTable"
   LogicClass = SliceTrackerTargetTableLogic
-
-  @property
-  def lastSelectedModelIndex(self):
-    return self.session.lastSelectedModelIndex
-
-  @lastSelectedModelIndex.setter
-  def lastSelectedModelIndex(self, modelIndex):
-    assert self.currentTargets is not None
-    self.session.lastSelectedModelIndex = modelIndex
 
   @property
   def movingEnabled(self):
@@ -320,6 +313,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.targetTableModel.targetList = targets
     if not targets:
       self.targetTableModel.coverProstateTargetList = None
+      self.session.setSelectedTarget(self.getCurrentTargetInfo())
     else:
       coverProstate = self.session.data.getMostRecentApprovedCoverProstateRegistration()
       if coverProstate:
@@ -327,6 +321,15 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.targetTable.enabled = targets is not None
     if self.currentTargets:
       self.onTargetSelectionChanged()
+
+  def getCurrentTargetInfo(self):
+    if not self._currentTargets:
+      return {'nodeId': None, 'index': -1, 'hole': None, 'depth': None}
+    else:
+      guidance = self.targetTableModel.getOrCreateNewGuidanceComputation(self._currentTargets)
+      index = self.lastSelectedModelIndex.row()
+      return {'nodeId': self._currentTargets.GetID(), 'index': index, 'hole': guidance.getZFrameHole(index),
+              'depth': guidance.getZFrameDepth(index)}
 
   def __init__(self, **kwargs):
     super(SliceTrackerTargetTablePlugin, self).__init__()
@@ -423,19 +426,18 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.targetTableModel.cursorPosition = ras
 
   def onTargetSelectionChanged(self, modelIndex=None):
-    # onCurrentResultSelected event
     if not modelIndex:
       self.getAndSelectTargetFromTable()
       return
     if self.moveTargetMode is True and modelIndex != self.currentlyMovedTargetModelIndex:
       self.disableTargetMovingMode()
     self.lastSelectedModelIndex = modelIndex
+    self.session.setSelectedTarget(self.getCurrentTargetInfo())
     if not self.currentTargets:
       self.currentTargets = self.session.data.initialTargets
     self.jumpSliceNodesToNthTarget(modelIndex.row())
-    # self.updateNeedleModel()
-    self.targetTableModel.currentTargetIndex = self.lastSelectedModelIndex.row()
-    self.updateSelection(self.lastSelectedModelIndex.row())
+    self.targetTableModel.currentTargetIndex = modelIndex
+    self.updateSelection(modelIndex.row())
 
   def updateSelection(self, row):
     self.targetTable.clearSelection()
