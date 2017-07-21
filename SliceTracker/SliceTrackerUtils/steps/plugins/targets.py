@@ -313,6 +313,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.targetTableModel.targetList = targets
     if not targets:
       self.targetTableModel.coverProstateTargetList = None
+      self.session.setSelectedTarget(None, -1)
     else:
       coverProstate = self.session.data.getMostRecentApprovedCoverProstateRegistration()
       if coverProstate:
