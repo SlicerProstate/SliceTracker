@@ -187,8 +187,8 @@ class SliceTrackerSession(StepBasedSession):
       self.data.initialLabel = value
     self._fixedLabel = value
 
-  def setSelectedTarget(self, targetListId, info):
-    self.invokeEvent(self.TargetSelectionEvent, str([targetListId, info]))
+  def setSelectedTarget(self, info):
+    self.invokeEvent(self.TargetSelectionEvent, str(info))
 
   def __init__(self):
     StepBasedSession.__init__(self)

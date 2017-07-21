@@ -313,7 +313,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.targetTableModel.targetList = targets
     if not targets:
       self.targetTableModel.coverProstateTargetList = None
-      self.session.setSelectedTarget(None, self.getCurrentTargetInfo())
+      self.session.setSelectedTarget(self.getCurrentTargetInfo())
     else:
       coverProstate = self.session.data.getMostRecentApprovedCoverProstateRegistration()
       if coverProstate:
@@ -324,11 +324,12 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
 
   def getCurrentTargetInfo(self):
     if not self._currentTargets:
-      return {'index': -1, 'hole': None, 'depth': None}
+      return {'nodeId': None, 'index': -1, 'hole': None, 'depth': None}
     else:
       guidance = self.targetTableModel.getOrCreateNewGuidanceComputation(self._currentTargets)
       index = self.lastSelectedModelIndex.row()
-      return {'index': index, 'hole': guidance.getZFrameHole(index), 'depth': guidance.getZFrameDepth(index)}
+      return {'nodeId': self._currentTargets.GetID(), 'index': index, 'hole': guidance.getZFrameHole(index),
+              'depth': guidance.getZFrameDepth(index)}
 
   def __init__(self, **kwargs):
     super(SliceTrackerTargetTablePlugin, self).__init__()
@@ -431,7 +432,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     if self.moveTargetMode is True and modelIndex != self.currentlyMovedTargetModelIndex:
       self.disableTargetMovingMode()
     self.lastSelectedModelIndex = modelIndex
-    self.session.setSelectedTarget(self.currentTargets.GetID(), self.getCurrentTargetInfo())
+    self.session.setSelectedTarget(self.getCurrentTargetInfo())
     if not self.currentTargets:
       self.currentTargets = self.session.data.initialTargets
     self.jumpSliceNodesToNthTarget(modelIndex.row())
