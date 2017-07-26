@@ -6,6 +6,7 @@ import ast
 
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from ...session import SliceTrackerSession
+from ...sessionData import RegistrationResult
 
 class SliceTrackerDisplacementChartLogic(SliceTrackerLogicBase):
 
@@ -21,7 +22,11 @@ class SliceTrackerDisplacementChartLogic(SliceTrackerLogicBase):
     displacement = [currPos[0] - prevPos[0], currPos[1] - prevPos[1], currPos[2] - prevPos[2]]
     return displacement
 
+
 class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
+
+  ShowEvent = vtk.vtkCommand.UserEvent + 561
+  HideEvent = vtk.vtkCommand.UserEvent + 562
 
   NAME = "DisplacementChart"
   LogicClass = SliceTrackerDisplacementChartLogic
@@ -55,13 +60,13 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
   def __init__(self):
     super(SliceTrackerDisplacementChartPlugin, self).__init__()
     self.session = SliceTrackerSession()
+    self.session.addEventObserver(self.session.TargetSelectionEvent, self.onTargetSelectionChanged)
 
   def setup(self):
     super(SliceTrackerDisplacementChartPlugin, self).setup()
     self._chartView = ctk.ctkVTKChartView()
     self._chartView.minimumSize = qt.QSize(200, 200)
-    self._chartView.hide()
-    self.showChart = False
+    self.isTargets = False
     self._showLegend = False
     self.xAxis.SetTitle('Series Number')
     self.yAxis.SetTitle('Displacement')
@@ -94,12 +99,11 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
 
     self.showLegendCheckBox = qt.QCheckBox('Show legend')
     self.showLegendCheckBox.setChecked(0)
-    self.showLegendCheckBox.hide()
 
-    self.plotFrame = ctk.ctkCollapsibleButton()
-    self.plotFrame.text = "Plotting"
-    self.plotFrame.collapsed = 0
-    plotFrameLayout = qt.QGridLayout(self.plotFrame)
+    self.dispChartCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.dispChartCollapsibleButton.text = "Plotting"
+    self.dispChartCollapsibleButton.collapsed = 0
+    plotFrameLayout = qt.QGridLayout(self.dispChartCollapsibleButton)
     self.plottingFrameWidget = qt.QWidget()
     self.plottingFrameLayout = qt.QGridLayout()
     self.plottingFrameWidget.setLayout(self.plottingFrameLayout)
@@ -110,12 +114,11 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.popupChartButton.setCheckable(True)
     self.plottingFrameLayout.addWidget(self.popupChartButton, 2, 0)
     plotFrameLayout.addWidget(self.plottingFrameWidget)
-    self.layout().addWidget(self.plotFrame)
+    self.layout().addWidget(self.dispChartCollapsibleButton)
 
   def setupConnections(self):
     self.popupChartButton.connect('toggled(bool)', self.onDockChartViewToggled)
     self.showLegendCheckBox.connect('stateChanged(int)', self.onShowLegendChanged)
-    self.session.addEventObserver(self.session.TargetSelectionEvent, self.onTargetSelectionChanged)
 
   def addPlotPoints(self, triplets, seriesNumber):
     numCurrentRows = self.chartTable.GetNumberOfRows()
@@ -181,7 +184,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
       self.showLegendCheckBox.setChecked(False)
 
   def updateTargetDisplacementChart(self):
-    if self.isTargetDisplacementChartDisplayable(self.session.currentSeries):
+    if self.isTargetDisplacementChartDisplayable(self.session.currentSeries) and self.isTargets:
       self.resetChart()
       results = sorted(self.session.data.getResultsAsList(), key=lambda s: s.seriesNumber)
       prevIndex = 0
@@ -196,10 +199,22 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
           prevIndex = currIndex
         else:
           prevIndex += 1
+      self.invokeEvent(self.ShowEvent)
+    else:
+      self.invokeEvent(self.HideEvent)
+      if self.chartPopupWindow.isVisible():
+        self.chartPopupWindow.close()
+        self.dockChartView()
 
   def isTargetDisplacementChartDisplayable(self, selectedSeries):
-    return not (self.session.seriesTypeManager.isCoverProstate(selectedSeries) or not self.showChart
-                or not self.session.data.registrationResultWasApproved(selectedSeries))
+    if selectedSeries is None:
+      return
+    selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
+    approvedResults = sorted([r for r in self.session.data.registrationResults.values() if r.approved], key=lambda r: r.seriesNumber)
+    nonSelectedApprovedResults = filter(lambda x: x.seriesNumber != selectedSeriesNumber, approvedResults)
+    if len(nonSelectedApprovedResults) == 0:
+      return False
+    return True
 
   def onShowLegendChanged(self, checked):
     self.chart.SetShowLegend(True if checked == 2 else False)
@@ -209,13 +224,12 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
   def onTargetSelectionChanged(self, caller, event, callData):
     info = ast.literal_eval(callData)
     if not info['nodeId'] or info['index'] == -1:
-      self.showChart = False
-      self.resetChart()
+      self.isTargets = False
     else:
       self.targetIndex = info['index']
-      self.showChart = True
-      self.updateTargetDisplacementChart()
+      self.isTargets = True
       print "%s" % info
+    self.updateTargetDisplacementChart()
 
   def onDockChartViewToggled(self, checked):
     if checked:

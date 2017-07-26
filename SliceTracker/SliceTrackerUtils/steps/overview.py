@@ -80,6 +80,11 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
     self.addPlugin(self.displacementChartPlugin)
 
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent,
+                                                  lambda caller, event: self.displacementChartPlugin.show())
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent,
+                                                  lambda caller, event: self.displacementChartPlugin.hide())
+
     self.layout().addWidget(self.caseManagerPlugin, 0, 0)
     self.layout().addWidget(self.trainingPlugin, 1, 0)
     self.layout().addWidget(self.targetTablePlugin, 2, 0)
@@ -200,11 +205,6 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def onRegistrationStatusChanged(self, caller, event):
     self.active = True
-
-  def onCurrentResultChanged(self, caller, event):
-    if not self.active:
-      return
-    self.displacementChartPlugin.updateTargetDisplacementChart()
 
   def onLoadingMetadataSuccessful(self, caller, event):
     self.active = True
