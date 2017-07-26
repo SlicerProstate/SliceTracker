@@ -8,6 +8,7 @@ from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from ...session import SliceTrackerSession
 from ...sessionData import RegistrationResult
 
+
 class SliceTrackerDisplacementChartLogic(SliceTrackerLogicBase):
 
   def __init__(self):
@@ -30,6 +31,11 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
 
   NAME = "DisplacementChart"
   LogicClass = SliceTrackerDisplacementChartLogic
+
+  PlotColorLR = qt.QColor('red')
+  PlotColorPA = qt.QColor('yellowgreen')
+  PlotColorIS = qt.QColor('lightblue')
+  PlotColor3D = qt.QColor('black')
 
   @property
   def chartView(self):
@@ -120,24 +126,21 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.popupChartButton.connect('toggled(bool)', self.onDockChartViewToggled)
     self.showLegendCheckBox.connect('stateChanged(int)', self.onShowLegendChanged)
 
-  def addPlotPoints(self, triplets, seriesNumber):
+  def initializeChart(self, seriesNumber):
+    self.arrX.InsertNextValue(seriesNumber - 1)
+    for arr in [self.arrXD, self.arrYD, self.arrZD, self.arrD]:
+      arr.InsertNextValue(0)
+
+  def addPlotPoints(self, displacement, seriesNumber):
     numCurrentRows = self.chartTable.GetNumberOfRows()
     self.chartView.removeAllPlots()
-    for i in range(0, len(triplets)):
+    for i in range(len(displacement)):
       if numCurrentRows == 0:
-        self.arrX.InsertNextValue(seriesNumber - 1)
-        self.arrXD.InsertNextValue(0)
-        self.arrYD.InsertNextValue(0)
-        self.arrZD.InsertNextValue(0)
-        self.arrD.InsertNextValue(0)
-        self._chartView.show()
-        if not self.showLegendCheckBox.isVisible():
-          self.showLegendCheckBox.show()
+        self.initializeChart(seriesNumber)
       self.arrX.InsertNextValue(seriesNumber)
-      self.arrXD.InsertNextValue(triplets[i][0])
-      self.arrYD.InsertNextValue(triplets[i][1])
-      self.arrZD.InsertNextValue(triplets[i][2])
-      distance = (triplets[i][0] ** 2 + triplets[i][1] ** 2 + triplets[i][2] ** 2) ** 0.5
+      for component, arr in enumerate([self.arrXD, self.arrYD, self.arrZD]):
+        arr.InsertNextValue(displacement[i][component])
+      distance = (displacement[i][0] ** 2 + displacement[i][1] ** 2 + displacement[i][2] ** 2) ** 0.5
       self.arrD.InsertNextValue(distance)
 
     xvals = vtk.vtkDoubleArray()
@@ -150,29 +153,17 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.xAxis.SetBehavior(vtk.vtkAxis.FIXED)
     self.xAxis.SetRange(self.arrX.GetValue(0), self.arrX.GetValue(maxXIndex - 1) + 0.1)
 
+    self.createPlot(self.PlotColorLR, 1)
+    self.createPlot(self.PlotColorPA, 2)
+    self.createPlot(self.PlotColorIS, 3)
+    self.createPlot(self.PlotColor3D, 4)
+
+  def createPlot(self, color, plotNumber):
     plot = self.chart.AddPlot(vtk.vtkChart.LINE)
-    plot.SetInputData(self.chartTable, 0, 1)
-    plot.SetColor(255, 0, 0, 255)
+    plot.SetInputData(self.chartTable, 0, plotNumber)
+    plot.SetColor(color.red(), color.blue(), color.green(), color.alpha())
     vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerStyle(4)
     vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerSize(3 * plot.GetPen().GetWidth())
-
-    plot2 = self.chart.AddPlot(vtk.vtkChart.LINE)
-    plot2.SetInputData(self.chartTable, 0, 2)
-    plot2.SetColor(0, 255, 0, 255)
-    vtk.vtkPlotLine.SafeDownCast(plot2).SetMarkerStyle(4)
-    vtk.vtkPlotLine.SafeDownCast(plot2).SetMarkerSize(3 * plot2.GetPen().GetWidth())
-
-    plot3 = self.chart.AddPlot(vtk.vtkChart.LINE)
-    plot3.SetInputData(self.chartTable, 0, 3)
-    plot3.SetColor(0, 0, 255, 255)
-    vtk.vtkPlotLine.SafeDownCast(plot3).SetMarkerStyle(4)
-    vtk.vtkPlotLine.SafeDownCast(plot3).SetMarkerSize(3 * plot3.GetPen().GetWidth())
-
-    plot4 = self.chart.AddPlot(vtk.vtkChart.LINE)
-    plot4.SetInputData(self.chartTable, 0, 4)
-    plot4.SetColor(0, 0, 0, 255)
-    vtk.vtkPlotLine.SafeDownCast(plot4).SetMarkerStyle(4)
-    vtk.vtkPlotLine.SafeDownCast(plot4).SetMarkerSize(3 * plot4.GetPen().GetWidth())
 
   def resetChart(self):
     self.arrX.Initialize()
