@@ -2,6 +2,8 @@ import vtk
 import qt
 import ctk
 import ast
+import slicer
+import logging
 
 
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
@@ -32,10 +34,10 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
   NAME = "DisplacementChart"
   LogicClass = SliceTrackerDisplacementChartLogic
 
-  PlotColorLR = qt.QColor('red')
-  PlotColorPA = qt.QColor('yellowgreen')
-  PlotColorIS = qt.QColor('lightblue')
-  PlotColor3D = qt.QColor('black')
+  PlotColorLR = qt.QColor(213, 94, 0)
+  PlotColorPA = qt.QColor(0, 114, 178)
+  PlotColorIS = qt.QColor(204, 121, 167)
+  PlotColor3D = qt.QColor(0, 0, 0)
 
   @property
   def chartView(self):
@@ -76,28 +78,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self._showLegend = False
     self.xAxis.SetTitle('Series Number')
     self.yAxis.SetTitle('Displacement')
-    self.chartTable = vtk.vtkTable()
-
-    self.arrX = vtk.vtkFloatArray()
-    self.arrX.SetName('X Axis')
-
-    self.arrXD = vtk.vtkFloatArray()
-    self.arrXD.SetName('L/R Displacement')
-
-    self.arrYD = vtk.vtkFloatArray()
-    self.arrYD.SetName('P/A Displacement')
-
-    self.arrZD = vtk.vtkFloatArray()
-    self.arrZD.SetName('I/S Displacement')
-
-    self.arrD = vtk.vtkFloatArray()
-    self.arrD.SetName('3-D Distance')
-
-    self.chartTable.AddColumn(self.arrX)
-    self.chartTable.AddColumn(self.arrXD)
-    self.chartTable.AddColumn(self.arrYD)
-    self.chartTable.AddColumn(self.arrZD)
-    self.chartTable.AddColumn(self.arrD)
+    self.setupChartTable()
 
     self.chartPopupWindow = None
     self.chartPopupSize = qt.QSize(600, 300)
@@ -126,6 +107,30 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.popupChartButton.connect('toggled(bool)', self.onDockChartViewToggled)
     self.showLegendCheckBox.connect('stateChanged(int)', self.onShowLegendChanged)
 
+  def setupChartTable(self):
+    self.chartTable = vtk.vtkTable()
+
+    self.arrX = vtk.vtkFloatArray()
+    self.arrX.SetName('X Axis')
+
+    self.arrXD = vtk.vtkFloatArray()
+    self.arrXD.SetName('L/R Displacement')
+
+    self.arrYD = vtk.vtkFloatArray()
+    self.arrYD.SetName('P/A Displacement')
+
+    self.arrZD = vtk.vtkFloatArray()
+    self.arrZD.SetName('I/S Displacement')
+
+    self.arrD = vtk.vtkFloatArray()
+    self.arrD.SetName('3-D Distance')
+
+    self.chartTable.AddColumn(self.arrX)
+    self.chartTable.AddColumn(self.arrXD)
+    self.chartTable.AddColumn(self.arrYD)
+    self.chartTable.AddColumn(self.arrZD)
+    self.chartTable.AddColumn(self.arrD)
+
   def initializeChart(self, seriesNumber):
     self.arrX.InsertNextValue(seriesNumber - 1)
     for arr in [self.arrXD, self.arrYD, self.arrZD, self.arrD]:
@@ -143,16 +148,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
       distance = (displacement[i][0] ** 2 + displacement[i][1] ** 2 + displacement[i][2] ** 2) ** 0.5
       self.arrD.InsertNextValue(distance)
 
-    xvals = vtk.vtkDoubleArray()
-    xlabels = vtk.vtkStringArray()
-    maxXIndex = self.arrX.GetNumberOfValues()
-    for j in range(0, maxXIndex):
-      xvals.InsertNextValue(self.arrX.GetValue(j))
-      xlabels.InsertNextValue(str(int(self.arrX.GetValue(j))))
-    self.xAxis.SetCustomTickPositions(xvals, xlabels)
-    self.xAxis.SetBehavior(vtk.vtkAxis.FIXED)
-    self.xAxis.SetRange(self.arrX.GetValue(0), self.arrX.GetValue(maxXIndex - 1) + 0.1)
-
+    self.configureChartXAxis()
     self.createPlot(self.PlotColorLR, 1)
     self.createPlot(self.PlotColorPA, 2)
     self.createPlot(self.PlotColorIS, 3)
@@ -164,6 +160,17 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     plot.SetColor(color.red(), color.blue(), color.green(), color.alpha())
     vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerStyle(4)
     vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerSize(3 * plot.GetPen().GetWidth())
+
+  def configureChartXAxis(self):
+    xVals = vtk.vtkDoubleArray()
+    xLabels = vtk.vtkStringArray()
+    maxXIndex = self.arrX.GetNumberOfValues()
+    for j in range(0, maxXIndex):
+      xVals.InsertNextValue(self.arrX.GetValue(j))
+      xLabels.InsertNextValue(str(int(self.arrX.GetValue(j))))
+    self.xAxis.SetCustomTickPositions(xVals, xLabels)
+    self.xAxis.SetBehavior(vtk.vtkAxis.FIXED)
+    self.xAxis.SetRange(self.arrX.GetValue(0), self.arrX.GetValue(maxXIndex - 1) + 0.1)
 
   def resetChart(self):
     self.arrX.Initialize()
@@ -177,29 +184,27 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
   def updateTargetDisplacementChart(self):
     if self.isTargetDisplacementChartDisplayable(self.session.currentSeries) and self.isTargets:
       self.resetChart()
-      results = sorted(self.session.data.getResultsAsList(), key=lambda s: s.seriesNumber)
-      prevIndex = 0
+      results = sorted([r for r in self.session.data.registrationResults.values() if r.approved], key=lambda r: r.seriesNumber)
+      if not self.session.currentResult.wasEvaluated():
+        results.append(self.session.currentResult)
       for currIndex, currResult in enumerate(results[1:], 1):
-        if results[prevIndex].approved and currResult.approved:
-          prevTargets = results[prevIndex].targets.approved
-          currTargets = currResult.targets.approved
-          displacement = self.logic.calculateTargetDisplacement(prevTargets, currTargets, self.targetIndex)
-          self.addPlotPoints([displacement], currResult.seriesNumber)
-          prevIndex = currIndex
-        elif currResult.approved:
-          prevIndex = currIndex
+        prevTargets = results[currIndex-1].targets.approved
+        if not self.session.currentResult.wasEvaluated():
+          currTargets = self.currResultTargets
         else:
-          prevIndex += 1
+          currTargets = currResult.targets.approved
+        displacement = self.logic.calculateTargetDisplacement(prevTargets, currTargets, self.targetIndex)
+        self.addPlotPoints([displacement], currResult.seriesNumber)
       self.invokeEvent(self.ShowEvent)
     else:
       self.invokeEvent(self.HideEvent)
-      if self.chartPopupWindow.isVisible():
+      if self.chartPopupWindow and self.chartPopupWindow.isVisible():
         self.chartPopupWindow.close()
         self.dockChartView()
 
   def isTargetDisplacementChartDisplayable(self, selectedSeries):
     if selectedSeries is None:
-      return
+      return False
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
     approvedResults = sorted([r for r in self.session.data.registrationResults.values() if r.approved], key=lambda r: r.seriesNumber)
     nonSelectedApprovedResults = filter(lambda x: x.seriesNumber != selectedSeriesNumber, approvedResults)
@@ -218,8 +223,9 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
       self.isTargets = False
     else:
       self.targetIndex = info['index']
+      self.currResultTargets = slicer.mrmlScene.GetNodeByID(info['nodeId'])
       self.isTargets = True
-      print "%s" % info
+      logging.debug(info)
     self.updateTargetDisplacementChart()
 
   def onDockChartViewToggled(self, checked):
@@ -248,3 +254,9 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.popupChartButton.checked = False
     self.popupChartButton.show()
     self.popupChartButton.blockSignals(False)
+
+  def onDeactivation(self):
+    super(SliceTrackerDisplacementChartPlugin, self).onDeactivation()
+    if self.chartPopupWindow and self.chartPopupWindow.isVisible():
+      self.chartPopupWindow.close()
+      self.dockChartView()
