@@ -57,6 +57,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
 
   @property
   def showLegend(self):
+    self._showLegend = getattr(self, "_showLegend", False)
     return self._showLegend
 
   @showLegend.setter
@@ -70,66 +71,67 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.session = SliceTrackerSession()
     self.session.addEventObserver(self.session.TargetSelectionEvent, self.onTargetSelectionChanged)
 
+  def resetChart(self):
+    for arr in [self.arrX, self.arrXD, self.arrYD, self.arrZD, self.arrD]:
+      arr.Initialize()
+    if self.showLegendCheckBox.isChecked() and not self._chartView.isVisible():
+      self.showLegendCheckBox.setChecked(False)
+
   def setup(self):
     super(SliceTrackerDisplacementChartPlugin, self).setup()
     self._chartView = ctk.ctkVTKChartView()
     self._chartView.minimumSize = qt.QSize(200, 200)
-    self.isTargets = False
-    self._showLegend = False
     self.xAxis.SetTitle('Series Number')
     self.yAxis.SetTitle('Displacement')
-    self.setupChartTable()
 
-    self.chartPopupWindow = None
-    self.chartPopupSize = qt.QSize(600, 300)
-    self.chartPopupPosition = qt.QPoint(0, 0)
+    self.setupChartTable()
+    self.setupPopupWindow()
 
     self.showLegendCheckBox = qt.QCheckBox('Show legend')
     self.showLegendCheckBox.setChecked(0)
 
+    self.undockChartButton = self.createButton("Undock chart")
+
     self.dispChartCollapsibleButton = ctk.ctkCollapsibleButton()
     self.dispChartCollapsibleButton.text = "Plotting"
     self.dispChartCollapsibleButton.collapsed = 0
-    plotFrameLayout = qt.QGridLayout(self.dispChartCollapsibleButton)
-    self.plottingFrameWidget = qt.QWidget()
-    self.plottingFrameLayout = qt.QGridLayout()
-    self.plottingFrameWidget.setLayout(self.plottingFrameLayout)
-    self.plottingFrameLayout.addWidget(self.showLegendCheckBox, 0, 0)
-    self.plottingFrameLayout.addWidget(self._chartView, 1, 0)
+    self.dispChartCollapsibleButton.setLayout(qt.QGridLayout())
 
-    self.popupChartButton = qt.QPushButton("Undock chart")
-    self.popupChartButton.setCheckable(True)
-    self.plottingFrameLayout.addWidget(self.popupChartButton, 2, 0)
-    plotFrameLayout.addWidget(self.plottingFrameWidget)
+    self.plottingFrameWidget = qt.QWidget()
+    self.plottingFrameWidget.setLayout(qt.QGridLayout())
+    self.plottingFrameWidget.layout().addWidget(self.showLegendCheckBox, 0, 0)
+    self.plottingFrameWidget.layout().addWidget(self._chartView, 1, 0)
+    self.plottingFrameWidget.layout().addWidget(self.undockChartButton, 2, 0)
+
+    self.dispChartCollapsibleButton.layout().addWidget(self.plottingFrameWidget)
+
     self.layout().addWidget(self.dispChartCollapsibleButton)
 
-  def setupConnections(self):
-    self.popupChartButton.connect('toggled(bool)', self.onDockChartViewToggled)
-    self.showLegendCheckBox.connect('stateChanged(int)', self.onShowLegendChanged)
+  def setupPopupWindow(self):
+    self.chartPopupWindow = None
+    self.chartPopupSize = qt.QSize(600, 300)
+    self.chartPopupPosition = qt.QPoint(0, 0)
 
   def setupChartTable(self):
     self.chartTable = vtk.vtkTable()
 
-    self.arrX = vtk.vtkFloatArray()
-    self.arrX.SetName('X Axis')
+    self.arrX = self.createFloatArray('X Axis')
+    self.arrXD = self.createFloatArray('L/R Displacement')
+    self.arrYD = self.createFloatArray('P/A Displacement')
+    self.arrZD = self.createFloatArray('I/S Displacement')
+    self.arrD = self.createFloatArray('3-D Distance')
 
-    self.arrXD = vtk.vtkFloatArray()
-    self.arrXD.SetName('L/R Displacement')
+    for a in [self.arrX, self.arrXD,  self.arrYD, self.arrZD, self.arrD]:
+      self.chartTable.AddColumn(a)
 
-    self.arrYD = vtk.vtkFloatArray()
-    self.arrYD.SetName('P/A Displacement')
+  def createFloatArray(self, name):
+    floatArray = vtk.vtkFloatArray()
+    floatArray.SetName(name)
+    return floatArray
 
-    self.arrZD = vtk.vtkFloatArray()
-    self.arrZD.SetName('I/S Displacement')
-
-    self.arrD = vtk.vtkFloatArray()
-    self.arrD.SetName('3-D Distance')
-
-    self.chartTable.AddColumn(self.arrX)
-    self.chartTable.AddColumn(self.arrXD)
-    self.chartTable.AddColumn(self.arrYD)
-    self.chartTable.AddColumn(self.arrZD)
-    self.chartTable.AddColumn(self.arrD)
+  def setupConnections(self):
+    self.undockChartButton.clicked.connect(self.onDockChartViewClicked)
+    self.showLegendCheckBox.connect('stateChanged(int)', self.onShowLegendChanged)
 
   def initializeChart(self, seriesNumber):
     self.arrX.InsertNextValue(seriesNumber - 1)
@@ -149,17 +151,8 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
       self.arrD.InsertNextValue(distance)
 
     self.configureChartXAxis()
-    self.createPlot(self.PlotColorLR, 1)
-    self.createPlot(self.PlotColorPA, 2)
-    self.createPlot(self.PlotColorIS, 3)
-    self.createPlot(self.PlotColor3D, 4)
-
-  def createPlot(self, color, plotNumber):
-    plot = self.chart.AddPlot(vtk.vtkChart.LINE)
-    plot.SetInputData(self.chartTable, 0, plotNumber)
-    plot.SetColor(color.red(), color.blue(), color.green(), color.alpha())
-    vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerStyle(4)
-    vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerSize(3 * plot.GetPen().GetWidth())
+    for index, plot in enumerate([self.PlotColorLR, self.PlotColorPA, self.PlotColorIS, self.PlotColor3D], start=1):
+      self.createPlot(plot, index)
 
   def configureChartXAxis(self):
     xVals = vtk.vtkDoubleArray()
@@ -172,19 +165,18 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.xAxis.SetBehavior(vtk.vtkAxis.FIXED)
     self.xAxis.SetRange(self.arrX.GetValue(0), self.arrX.GetValue(maxXIndex - 1) + 0.1)
 
-  def resetChart(self):
-    self.arrX.Initialize()
-    self.arrXD.Initialize()
-    self.arrYD.Initialize()
-    self.arrZD.Initialize()
-    self.arrD.Initialize()
-    if self.showLegendCheckBox.isChecked() and not self._chartView.isVisible():
-      self.showLegendCheckBox.setChecked(False)
+  def createPlot(self, color, plotNumber):
+    plot = self.chart.AddPlot(vtk.vtkChart.LINE)
+    plot.SetInputData(self.chartTable, 0, plotNumber)
+    plot.SetColor(color.red(), color.blue(), color.green(), color.alpha())
+    vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerStyle(4)
+    vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerSize(3 * plot.GetPen().GetWidth())
 
-  def updateTargetDisplacementChart(self):
-    if self.isTargetDisplacementChartDisplayable(self.session.currentSeries) and self.isTargets:
+  def updateTargetDisplacementChart(self, targetsAvailable):
+    if self.isTargetDisplacementChartDisplayable(self.session.currentSeries) and targetsAvailable:
       self.resetChart()
-      results = sorted([r for r in self.session.data.registrationResults.values() if r.approved], key=lambda r: r.seriesNumber)
+      results = sorted([r for r in self.session.data.registrationResults.values() if r.approved],
+                       key=lambda r: r.seriesNumber)
       if not self.session.currentResult.wasEvaluated():
         results.append(self.session.currentResult)
       for currIndex, currResult in enumerate(results[1:], 1):
@@ -206,7 +198,8 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     if selectedSeries is None:
       return False
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
-    approvedResults = sorted([r for r in self.session.data.registrationResults.values() if r.approved], key=lambda r: r.seriesNumber)
+    approvedResults = sorted([r for r in self.session.data.registrationResults.values() if r.approved],
+                             key=lambda r: r.seriesNumber)
     nonSelectedApprovedResults = filter(lambda x: x.seriesNumber != selectedSeriesNumber, approvedResults)
     if len(nonSelectedApprovedResults) == 0:
       return False
@@ -219,41 +212,31 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
   @vtk.calldata_type(vtk.VTK_STRING)
   def onTargetSelectionChanged(self, caller, event, callData):
     info = ast.literal_eval(callData)
-    if not info['nodeId'] or info['index'] == -1:
-      self.isTargets = False
-    else:
+    targetsAvailable = info['nodeId'] and info['index'] != -1
+    if targetsAvailable:
       self.targetIndex = info['index']
       self.currResultTargets = slicer.mrmlScene.GetNodeByID(info['nodeId'])
-      self.isTargets = True
       logging.debug(info)
-    self.updateTargetDisplacementChart()
+    self.updateTargetDisplacementChart(targetsAvailable)
 
-  def onDockChartViewToggled(self, checked):
-    if checked:
-      self.chartPopupWindow = qt.QDialog()
-      self.chartPopupWindow.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
-      layout = qt.QGridLayout()
-      self.chartPopupWindow.setLayout(layout)
-      layout.addWidget(self.showLegendCheckBox, 0, 0)
-      layout.addWidget(self._chartView, 1, 0)
-      self.chartPopupWindow.finished.connect(self.dockChartView)
-      self.chartPopupWindow.resize(self.chartPopupSize)
-      self.chartPopupWindow.move(self.chartPopupPosition)
-      self.chartPopupWindow.show()
-      self.popupChartButton.hide()
-    else:
-      self.chartPopupWindow.close()
+  def onDockChartViewClicked(self):
+    self.chartPopupWindow = qt.QDialog()
+    self.chartPopupWindow.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
+    self.chartPopupWindow.setLayout(qt.QGridLayout())
+    self.chartPopupWindow.layout().addWidget(self.plottingFrameWidget)
+    self.chartPopupWindow.finished.connect(self.dockChartView)
+    self.chartPopupWindow.resize(self.chartPopupSize)
+    self.chartPopupWindow.move(self.chartPopupPosition)
+    self.chartPopupWindow.show()
+    self.undockChartButton.hide()
 
   def dockChartView(self):
     self.chartPopupSize = self.chartPopupWindow.size
     self.chartPopupPosition = self.chartPopupWindow.pos
-    self.plottingFrameLayout.addWidget(self.showLegendCheckBox, 0, 0)
-    self.plottingFrameLayout.addWidget(self._chartView, 1, 0)
-    self.plottingFrameLayout.addWidget(self.popupChartButton, 2, 0)
-    self.popupChartButton.blockSignals(True)
-    self.popupChartButton.checked = False
-    self.popupChartButton.show()
-    self.popupChartButton.blockSignals(False)
+
+    self.dispChartCollapsibleButton.layout().addWidget(self.plottingFrameWidget)
+    self.plottingFrameWidget.show()
+    self.undockChartButton.show()
 
   def onDeactivation(self):
     super(SliceTrackerDisplacementChartPlugin, self).onDeactivation()
