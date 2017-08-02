@@ -29,7 +29,7 @@ slicerMacroBuildScriptedModule(
   )
 
 slicerMacroBuildScriptedModule(
-  NAME VolumeClipToLabel
-  SCRIPTS VolumeClipToLabel.py
+  NAME SurfaceCutToLabel
+  SCRIPTS SurfaceCutToLabel.py
   RESOURCES ${MODULE_PYTHON_RESOURCES}
   )

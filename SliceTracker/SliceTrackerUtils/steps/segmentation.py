@@ -187,7 +187,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       self.session.previousStep.active = True
 
   def _onFinishStepButtonClicked(self):
-    self.session.data.clippingModelNode = self.manualSegmentationPlugin.clippingModelNode
+    self.session.data.segmentModelNode = self.manualSegmentationPlugin.segmentModelNode
     self.session.data.inputMarkupNode = self.manualSegmentationPlugin.inputMarkupNode
     if not self.session.data.usePreopData and not self.session.retryMode:
       self._createCoverProstateRegistrationResultManually()

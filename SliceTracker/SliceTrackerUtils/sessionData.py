@@ -62,7 +62,7 @@ class SessionData(ModuleLogicMixin):
     self.usePreopData = False
     self.biasCorrectionDone = False
 
-    self.clippingModelNode = None
+    self.segmentModelNode = None
     self.inputMarkupNode = None
 
     self.initialVolume = None
@@ -216,8 +216,8 @@ class SessionData(ModuleLogicMixin):
     successfullySavedFileNames.append(os.path.join(outputDir, os.path.basename(logFilePath)))
 
     def saveManualSegmentation():
-      if self.clippingModelNode:
-        success, name = self.saveNodeData(self.clippingModelNode, outputDir, FileExtension.VTK)
+      if self.segmentModelNode:
+        success, name = self.saveNodeData(self.segmentModelNode, outputDir, FileExtension.VTK)
         self.handleSaveNodeDataReturn(success, name, successfullySavedFileNames, failedSaveOfFileNames)
 
       if self.inputMarkupNode:

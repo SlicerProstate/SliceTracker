@@ -125,9 +125,9 @@ package "SliceTracker Plugins" #DDDDDD {
     }
 
     SliceTrackerSegmentationPluginBase <|--SliceTrackerManualSegmentationPlugin
-    VolumeClipToLabelWidget <.. SliceTrackerManualSegmentationPlugin::volumeClipToLabelWidget: uses
+    SurfaceCutToLabelWidget <.. SliceTrackerManualSegmentationPlugin::volumeClipToLabelWidget: uses
 
-    class VolumeClipToLabelWidget {
+    class SurfaceCutToLabelWidget {
       .. event ..
       + SegmentationFinishedEvent
       + SegmentationStartedEvent
@@ -136,10 +136,10 @@ package "SliceTracker Plugins" #DDDDDD {
       + logic
     }
 
-    class VolumeClipToLabelLogic {
+    class SurfaceCutToLabelLogic {
     }
 
-    VolumeClipToLabelWidget::logic ..> VolumeClipToLabelLogic: uses
+    SurfaceCutToLabelWidget::logic ..> SurfaceCutToLabelLogic: uses
 
 
   }
