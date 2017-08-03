@@ -133,8 +133,8 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.undockChartButton.clicked.connect(self.onDockChartViewClicked)
     self.showLegendCheckBox.connect('stateChanged(int)', self.onShowLegendChanged)
 
-  def initializeChart(self, seriesNumber):
-    self.arrX.InsertNextValue(seriesNumber - 1)
+  def initializeChart(self, coverProstateSeriesNumber):
+    self.arrX.InsertNextValue(coverProstateSeriesNumber)
     for arr in [self.arrXD, self.arrYD, self.arrZD, self.arrD]:
       arr.InsertNextValue(0)
 
@@ -143,7 +143,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.chartView.removeAllPlots()
     for i in range(len(displacement)):
       if numCurrentRows == 0:
-        self.initializeChart(seriesNumber)
+        self.initializeChart(self.session.data.getMostRecentApprovedCoverProstateRegistration().seriesNumber)
       self.arrX.InsertNextValue(seriesNumber)
       for component, arr in enumerate([self.arrXD, self.arrYD, self.arrZD]):
         arr.InsertNextValue(displacement[i][component])
@@ -195,7 +195,9 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
         self.dockChartView()
 
   def isTargetDisplacementChartDisplayable(self, selectedSeries):
-    if selectedSeries is None:
+    if not selectedSeries or not (self.session.seriesTypeManager.isCoverProstate(selectedSeries) or
+                                  self.session.seriesTypeManager.isGuidance(selectedSeries)) or \
+                                  self.session.data.registrationResultWasRejected(selectedSeries):
       return False
     selectedSeriesNumber = RegistrationResult.getSeriesNumberFromString(selectedSeries)
     approvedResults = sorted([r for r in self.session.data.registrationResults.values() if r.approved],
@@ -221,6 +223,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
 
   def onDockChartViewClicked(self):
     self.chartPopupWindow = qt.QDialog()
+    self.chartPopupWindow.setWindowTitle("Target Displacement Chart")
     self.chartPopupWindow.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
     self.chartPopupWindow.setLayout(qt.QGridLayout())
     self.chartPopupWindow.layout().addWidget(self.plottingFrameWidget)

@@ -84,6 +84,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
                                                   lambda caller, event: self.displacementChartPlugin.show())
     self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent,
                                                   lambda caller, event: self.displacementChartPlugin.hide())
+    self.displacementChartPlugin.hide()
 
     self.layout().addWidget(self.caseManagerPlugin, 0, 0)
     self.layout().addWidget(self.trainingPlugin, 1, 0)
