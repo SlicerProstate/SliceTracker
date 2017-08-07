@@ -9,6 +9,7 @@ from plugins.case import SliceTrackerCaseManagerPlugin
 from plugins.results import SliceTrackerRegistrationResultsPlugin
 from plugins.targets import SliceTrackerTargetTablePlugin
 from plugins.training import SliceTrackerTrainingPlugin
+from plugins.charts import SliceTrackerDisplacementChartPlugin
 from ..constants import SliceTrackerConstants as constants
 from ..sessionData import RegistrationResult
 from ..helpers import IncomingDataMessageBox, SeriesTypeToolButton, SeriesTypeManager
@@ -76,12 +77,22 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.targetTablePlugin = SliceTrackerTargetTablePlugin()
     self.addPlugin(self.targetTablePlugin)
 
+    self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
+    self.addPlugin(self.displacementChartPlugin)
+
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent,
+                                                  lambda caller, event: self.displacementChartPlugin.show())
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent,
+                                                  lambda caller, event: self.displacementChartPlugin.hide())
+    self.displacementChartPlugin.hide()
+
     self.layout().addWidget(self.caseManagerPlugin, 0, 0)
     self.layout().addWidget(self.trainingPlugin, 1, 0)
     self.layout().addWidget(self.targetTablePlugin, 2, 0)
     self.layout().addWidget(self.createHLayout([self.intraopSeriesSelector, self.changeSeriesTypeButton,
                                                 self.trackTargetsButton, self.skipIntraopSeriesButton]), 3, 0)
     self.layout().addWidget(self.regResultsCollapsibleButton, 4, 0)
+    self.layout().addWidget(self.displacementChartPlugin, 5, 0)
     # self.layout().setRowStretch(8, 1)
 
   def setupRegistrationResultsPlugin(self):

@@ -5,6 +5,7 @@ import slicer
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.results import SliceTrackerRegistrationResultsPlugin
 from plugins.targets import SliceTrackerTargetTablePlugin
+from plugins.charts import SliceTrackerDisplacementChartPlugin
 
 from SlicerDevelopmentToolboxUtils.icons import Icons
 
@@ -43,11 +44,21 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.targetTablePlugin = SliceTrackerTargetTablePlugin(movingEnabled=True)
     self.addPlugin(self.targetTablePlugin)
 
+    self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
+    self.addPlugin(self.displacementChartPlugin)
+
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent,
+                                                  lambda caller, event: self.displacementChartPlugin.show())
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent,
+                                                  lambda caller, event: self.displacementChartPlugin.hide())
+
+
     self.registrationEvaluationGroupBoxLayout.addWidget(self.regResultsPlugin, 3, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTablePlugin, 4, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.registrationEvaluationButtonsGroupBox, 5, 0)
     self.registrationEvaluationGroupBoxLayout.setRowStretch(6, 1)
     self.layout().addWidget(self.registrationEvaluationGroupBox)
+    self.layout().addWidget(self.displacementChartPlugin)
 
   def setupRegistrationValidationButtons(self):
     iconSize = qt.QSize(36, 36)
