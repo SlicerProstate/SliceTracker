@@ -107,15 +107,11 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
                                                                  self.caseRootDir)
 
   def onCloseCaseButtonClicked(self):
-    if self.session.data.completed:
-      self.session.close(save=False)
-    else:
-      if slicer.util.confirmYesNoDisplay("Do you want to mark this case as completed? ", title="Complete Case",
-                                         windowTitle="SliceTracker"):
+    if not self.session.data.completed:
+      if qt.QMessageBox(qt.QMessageBox.Question, "SliceTracker", "Do you want to mark this case as completed?", qt.QMessageBox.Yes | qt.QMessageBox.No, slicer.util.mainWindow(), qt.Qt.WindowStaysOnTopHint).exec_() == qt.QMessageBox.Yes:
         self.session.complete()
-      else:
-        self.session.close(save=slicer.util.confirmYesNoDisplay("Save the case data?", title="Close Case",
-                                                                windowTitle="SliceTracker"))
+    if self.session.isRunning():
+      self.session.close(save=False)
 
   def onNewCaseStarted(self, caller, event):
     self.update()
