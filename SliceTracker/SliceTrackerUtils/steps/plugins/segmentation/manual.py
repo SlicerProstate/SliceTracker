@@ -5,7 +5,7 @@ import slicer
 from ...base import SliceTrackerPlugin
 from ....constants import SliceTrackerConstants as constants
 from base import SliceTrackerSegmentationPluginBase
-from VolumeClipToLabel import VolumeClipToLabelWidget
+from SurfaceCutToLabel import SurfaceCutToLabelWidget
 
 from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 
@@ -14,84 +14,78 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
 
   NAME = "ManualSegmentation"
 
-  SegmentationCanceledEvent = VolumeClipToLabelWidget.SegmentationCanceledEvent
+  SegmentationCanceledEvent = SurfaceCutToLabelWidget.SegmentationCanceledEvent
 
   @property
-  def clippingModelNode(self):
-    return self.volumeClipToLabelWidget.logic.clippingModelNode
+  def segmentModelNode(self):
+    return self.surfaceCutToLabelWidget.logic.segmentModelNode
 
   @property
   def inputMarkupNode(self):
-    return self.volumeClipToLabelWidget.logic.inputMarkupNode
+    return self.surfaceCutToLabelWidget.logic.inputMarkupNode
 
   def __init__(self):
     super(SliceTrackerManualSegmentationPlugin, self).__init__()
 
   def setup(self):
     super(SliceTrackerManualSegmentationPlugin, self).setup()
-    try:
-      import VolumeClipWithModel
-    except ImportError:
-      return slicer.util.warningDisplay("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and "
-                                        "install VolumeClip.", "Missing Extension")
 
-    self.volumeClipGroupBox = qt.QWidget()
-    self.volumeClipGroupBoxLayout = qt.QVBoxLayout()
-    self.volumeClipGroupBox.setLayout(self.volumeClipGroupBoxLayout)
-    self.volumeClipToLabelWidget = VolumeClipToLabelWidget(self.volumeClipGroupBox)
-    self.volumeClipToLabelWidget.setup()
-    self.volumeClipToLabelWidget.selectorsGroupBoxVisible = False
-    self.volumeClipToLabelWidget.colorGroupBoxVisible = False
+    self.surfaceCutGroupBox = qt.QWidget()
+    self.surfaceCutGroupBox.setLayout(qt.QVBoxLayout())
+    self.surfaceCutToLabelWidget = SurfaceCutToLabelWidget(self.surfaceCutGroupBox)
+    self.surfaceCutToLabelWidget.setup()
+    self.surfaceCutToLabelWidget.selectorsGroupBoxVisible = False
+    self.surfaceCutToLabelWidget.colorGroupBoxVisible = False
 
     if self.getSetting('DeveloperMode', 'Developer').lower() == 'true':
-      self.volumeClipToLabelWidget.reloadCollapsibleButton.hide()
+      self.surfaceCutToLabelWidget.reloadCollapsibleButton.hide()
 
-    self.segmentationGroupBox = qt.QGroupBox("VolumeClip Segmentation")
+    self.segmentationGroupBox = qt.QGroupBox("SurfaceCut Segmentation")
     self.segmentationGroupBoxLayout = qt.QGridLayout()
     self.segmentationGroupBox.setLayout(self.segmentationGroupBoxLayout)
-    self.segmentationGroupBoxLayout.addWidget(self.volumeClipGroupBox, 0, 0)
+    self.segmentationGroupBoxLayout.addWidget(self.surfaceCutGroupBox, 0, 0)
     self.layout().addWidget(self.segmentationGroupBox)
 
   @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
   def onLayoutChanged(self, layout=None):
-    self._refreshClippingModelViewNodes()
+    self._refreshSegmentModelViewNodes()
 
-  def _refreshClippingModelViewNodes(self):
+  def _refreshSegmentModelViewNodes(self):
     sliceNodes = [self.yellowSliceNode] if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE else \
       [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
-    nodes = [self.volumeClipToLabelWidget.logic.clippingModelNode, self.volumeClipToLabelWidget.logic.inputMarkupNode]
+    nodes = [self.surfaceCutToLabelWidget.logic.segmentModelNode, self.surfaceCutToLabelWidget.logic.inputMarkupNode]
     for node in [n for n in nodes if n]:
       self.refreshViewNodeIDs(node, sliceNodes)
 
   def onActivation(self):
     super(SliceTrackerManualSegmentationPlugin, self).onActivation()
-    self.volumeClipToLabelWidget.logic.colorNode = self.session.mpReviewColorNode
-    self.volumeClipToLabelWidget.colorSpin.setValue(self.session.segmentedLabelValue)
-    self.volumeClipToLabelWidget.imageVolumeSelector.setCurrentNode(self.session.fixedVolume)
-    self._addVolumeClipEventObservers()
+    self.surfaceCutToLabelWidget.logic.colorNode = self.session.mpReviewColorNode
+    self.surfaceCutToLabelWidget.colorSpin.setValue(self.session.segmentedLabelValue)
+    self.surfaceCutToLabelWidget.imageVolumeSelector.setCurrentNode(self.session.fixedVolume)
+    self._addSurfaceCutEventObservers()
     # if (self.session.data.usePreopData or self.session.retryMode) and self.getSetting("Use_Deep_Learning") == "false":
     #   self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
     #   slicer.app.processEvents()
-    #   self.volumeClipToLabelWidget.quickSegmentationButton.click()
+    #   self.surfaceCutToLabelWidget.quickSegmentationButton.click()
 
   def onDeactivation(self):
     super(SliceTrackerManualSegmentationPlugin, self).onDeactivation()
-    self._removeVolumeClipEventObservers()
+    self._removeSurfacCutEventObservers()
 
-  def _addVolumeClipEventObservers(self):
-    self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationStartedEvent,
+  def _addSurfaceCutEventObservers(self):
+    self.surfaceCutToLabelWidget.addEventObserver(self.surfaceCutToLabelWidget.SegmentationStartedEvent,
                                                   self._onSegmentationStarted)
-    self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
+    self.surfaceCutToLabelWidget.addEventObserver(self.surfaceCutToLabelWidget.SegmentationCanceledEvent,
                                                   self._onSegmentationCanceled)
-    self.volumeClipToLabelWidget.addEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
+    self.surfaceCutToLabelWidget.addEventObserver(self.surfaceCutToLabelWidget.SegmentationFinishedEvent,
                                                   self._onSegmentationFinished)
 
-  def _removeVolumeClipEventObservers(self):
-    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationStartedEvent,
+  def _removeSurfacCutEventObservers(self):
+    self.surfaceCutToLabelWidget.removeEventObserver(self.surfaceCutToLabelWidget.SegmentationStartedEvent,
                                                      self._onSegmentationStarted)
-    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationCanceledEvent,
+    self.surfaceCutToLabelWidget.removeEventObserver(self.surfaceCutToLabelWidget.SegmentationCanceledEvent,
                                                      self._onSegmentationCanceled)
-    self.volumeClipToLabelWidget.removeEventObserver(self.volumeClipToLabelWidget.SegmentationFinishedEvent,
+    self.surfaceCutToLabelWidget.removeEventObserver(self.surfaceCutToLabelWidget.SegmentationFinishedEvent,
                                                      self._onSegmentationFinished)
 
   def _onSegmentationStarted(self, caller, event):
@@ -105,7 +99,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
   def _preCheckExistingSegmentation(self):
     if not slicer.util.confirmYesNoDisplay("The automatic segmentation will be overwritten. Do you want to proceed?",
                                            windowTitle="SliceTracker"):
-      self.volumeClipToLabelWidget.stopQuickSegmentationMode(cancelled=True)
+      self.surfaceCutToLabelWidget.stopQuickSegmentationMode(cancelled=True)
       return False
     return True
 
@@ -116,5 +110,5 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
   def _onSegmentationFinished(self, caller, event, labelNode):
     displayNode = labelNode.GetDisplayNode()
     displayNode.SetAndObserveColorNodeID(self.session.mpReviewColorNode.GetID())
-    self.volumeClipToLabelWidget.colorSpin.setValue(self.session.segmentedLabelValue)
+    self.surfaceCutToLabelWidget.colorSpin.setValue(self.session.segmentedLabelValue)
     self.invokeEvent(self.SegmentationFinishedEvent, labelNode)

@@ -1,32 +1,33 @@
 import slicer, qt, vtk
-import os, logging
+import os
 from slicer.ScriptedLoadableModule import *
 
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 from SlicerDevelopmentToolboxUtils.icons import Icons
 
-import EditorLib
 from EditorLib import ColorBox
-from Editor import EditorWidget
+
+from SegmentEditorSurfaceCutLib import SurfaceCutLogic
 
 
-class VolumeClipToLabel(ScriptedLoadableModule):
+class SurfaceCutToLabel(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "Volume clip to label"
+    self.parent.title = "SurfaceCut to label"
     self.parent.categories = ["Segmentation"]
     self.parent.dependencies = ["SlicerDevelopmentToolbox"]
-    self.parent.contributors = ["Christian Herz (SPL), Peter Behringer (SPL)"]
-    self.parent.helpText = """ VolumeClipLabel uses the VolumeClip for creating a label map"""
+    self.parent.contributors = ["Christian Herz (SPL)", "Kyle MacNeil (Med-i Lab, Queen's; SPL)",
+                                "Peter Behringer (SPL)"]
+    self.parent.helpText = """ SurfaceCutToLabel uses the SegmentEditor effect SurfaceCut for creating a label map"""
     self.parent.acknowledgementText = """Surgical Planning Laboratory, Brigham and Women's Hospital, Harvard
-                                          Medical School, Boston, USA This work was supported in part by the National
-                                          Institutes of Health through grants U24 CA180918,
-                                          R01 CA111288 and P41 EB015898."""
+                                         Medical School, Boston, USA This work was supported in part by the National
+                                         Institutes of Health through grants U24 CA180918,
+                                         R01 CA111288 and P41 EB015898."""
 
 
-class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
+class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   SegmentationStartedEvent = vtk.vtkCommand.UserEvent + 101
   SegmentationCanceledEvent = vtk.vtkCommand.UserEvent + 102
@@ -39,6 +40,27 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   @property
   def labelVolume(self):
     return self.labelMapSelector.currentNode()
+
+  @property
+  def segmentationNode(self):
+    self._segmentationNode = getattr(self, "_segmentationNode", None)
+    if not self._segmentationNode:
+      self._segmentationNode = slicer.vtkMRMLSegmentationNode()
+      slicer.mrmlScene.AddNode(self._segmentationNode)
+      import vtkSegmentationCorePython as vtkSegmentationCore
+      segment = vtkSegmentationCore.vtkSegment()
+      segment.SetName("Prostate Segmentation")
+      self.segmentationNode.GetSegmentation().AddSegment(segment)
+
+      displayNode = slicer.vtkMRMLSegmentationDisplayNode()
+      slicer.mrmlScene.AddNode(displayNode)
+      self.segmentationNode.SetAndObserveDisplayNodeID(displayNode.GetID())
+      displayNode.SetSegmentVisibility(segment.GetName(), False)
+    return self._segmentationNode
+
+  @segmentationNode.setter
+  def segmentationNode(self, node):
+    self._segmentationNode = node
 
   @property
   def selectorsGroupBoxVisible(self):
@@ -60,8 +82,10 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def __init__(self, parent=None, **kwargs):
     ScriptedLoadableModuleWidget.__init__(self, parent)
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.moduleName))
-    self.logic = VolumeClipToLabelLogic()
+    self.logic = SurfaceCutToLabelLogic()
     self.markupNodeObserver = None
+    self.observedSegmentation = None
+    self.segmentObserver = None
     self.colorBox = False
     self._processKwargs(**kwargs)
 
@@ -79,11 +103,6 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    try:
-      import VolumeClipWithModel
-    except ImportError:
-      return slicer.util.warningDisplay("Error: Could not find extension VolumeClip. Open Slicer Extension Manager and "
-                                        "install VolumeClip.", "Missing Extension")
     self._setupIcons()
     self._setupSelectorArea()
     self._setupColorFrame()
@@ -144,25 +163,31 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.redoButton = self.createButton("", icon=Icons.redo, iconSize=iconSize, enabled=False, toolTip="Redo",
                                         objectName="redoButton")
 
-    self.editorWidgetButton = self.createButton("", icon=Icons.settings, toolTip="Show Label Editor",
+    self.segmentEditorWidgetButton = self.createButton("", icon=Icons.settings, toolTip="Show Segment Editor",
                                                 checkable=True, enabled=False, iconSize=qt.QSize(36, 36))
 
-    self._setupEditorWidget()
+    self._setupSegmentEditorWidget()
     self.segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
                                                    self.cancelSegmentationButton, self.undoButton, self.redoButton,
-                                                   self.editorWidgetButton])
+                                                   self.segmentEditorWidgetButton])
     self.layout.addWidget(self.segmentationButtons)
-    self.layout.addWidget(self.editorWidgetParent, 1, 0)
+    self.layout.addWidget(self.segmentEditorWidget, 1, 0)
 
-  def _setupEditorWidget(self):
-    self.editorWidgetParent = slicer.qMRMLWidget()
-    self.editorWidgetParent.setLayout(qt.QVBoxLayout())
-    self.editorWidgetParent.setMRMLScene(slicer.mrmlScene)
-    self.editorWidgetParent.hide()
-    self.editUtil = EditorLib.EditUtil.EditUtil()
-    self.editorWidget = EditorWidget(parent=self.editorWidgetParent, showVolumesFrame=False)
-    self.editorWidget.setup()
-    self.editorParameterNode = self.editUtil.getParameterNode()
+  def _setupSegmentEditorWidget(self):
+    self.segmentEditorWidget = slicer.qMRMLSegmentEditorWidget()
+    self.segmentEditorWidget.hide()
+    self.segmentEditorWidget.setMRMLScene(slicer.mrmlScene)
+
+    segmentEditorSingletonTag = "SegmentEditor"
+    self.segmentEditorNode = slicer.mrmlScene.GetSingletonNode(segmentEditorSingletonTag, "vtkMRMLSegmentEditorNode")
+    if not self.segmentEditorNode:
+      self.segmentEditorNode = slicer.vtkMRMLSegmentEditorNode()
+      self.segmentEditorNode.SetSingletonTag(segmentEditorSingletonTag)
+      self.segmentEditorNode = slicer.mrmlScene.AddNode(self.segmentEditorNode)
+
+    self.segmentEditorWidget.setMRMLSegmentEditorNode(self.segmentEditorNode)
+    self.segmentEditorWidget.setSegmentationNode(self.segmentationNode)
+    self.logic.scriptedEffect = self.segmentEditorWidget.effectByName('Surface cut')
 
   def _setupConnections(self):
     self.imageVolumeSelector.connect('currentNodeChanged(vtkMRMLNode*)', self._onImageVolumeSelected)
@@ -176,25 +201,27 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.cancelSegmentationButton.clicked.connect(self.onCancelSegmentationButtonClicked)
     self.redoButton.clicked.connect(self.logic.redo)
     self.undoButton.clicked.connect(self.logic.undo)
-    self.editorWidgetButton.connect('toggled(bool)', self._onEditorGearIconChecked)
+    self.segmentEditorWidgetButton.connect('toggled(bool)', self._onSegmentEditorGearIconChecked)
 
     self.layoutManager.layoutChanged.connect(self._onLayoutChanged)
 
-  def _onEditorGearIconChecked(self, enabled):
-    self.editorWidgetParent.visible = enabled
+  def _onSegmentEditorGearIconChecked(self, enabled):
+    self.segmentEditorWidget.setVisible(enabled)
     if enabled:
-      self.editorParameterNode.SetParameter('effect', 'DrawEffect')
-      self.editUtil.setLabelOutline(1)
+      self.segmentEditorWidget.setActiveEffectByName("Surface cut")
+      self.observeSegmentation(True)
     else:
-      self.editorParameterNode.SetParameter('effect', 'DefaultTool')
+      self.segmentEditorWidget.setActiveEffect(None)
+      self.observeSegmentation(False)
 
-  @onModuleSelected("VolumeClipToLabel")
+  @onModuleSelected("SurfaceCutToLabel")
   def _onLayoutChanged(self, layout):
     self.setBackgroundToVolumeID(self.imageVolume)
 
   def _onColorSpinChanged(self, value):
     self.logic.outputLabelValue = value
-    self.editUtil.setLabel(value)
+    rgb = self.logic.labelValueToRGB(value)
+    self.segmentationNode.GetSegmentation().GetSegment('Prostate Segmentation').SetColor(rgb)
     self._onColorSelected(value)
 
   def _showColorBox(self):
@@ -220,16 +247,39 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
     self.setBackgroundToVolumeID(node)
     self.quickSegmentationButton.setEnabled(node!=None)
+    self.segmentEditorWidget.setMasterVolumeNode(node)
     self.colorPatch.setEnabled(node!=None)
     self._updateGearButtonAvailability()
 
   def _onLabelMapSelected(self, node):
+    self.logic.outputLabelMap = node
     self._updateGearButtonAvailability()
 
   def _updateGearButtonAvailability(self):
     inputs = [self.labelMapSelector.currentNode(), self.imageVolumeSelector.currentNode()]
-    self.editorWidgetButton.checked = False
-    self.editorWidgetButton.setEnabled(not any(i is None for i in inputs) and not self.quickSegmentationButton.checked)
+    self.segmentEditorWidgetButton.checked = False
+    self.segmentEditorWidgetButton.setEnabled(not any(i is None for i in inputs) and not
+                                              self.quickSegmentationButton.checked)
+
+  def observeSegmentation(self, observationEnabled):
+    import vtkSegmentationCorePython as vtkSegmentationCore
+    if self.segmentationNode:
+      segmentation = self.segmentationNode.GetSegmentation()
+    else:
+      segmentation = None
+    # Remove old observer
+    if self.observedSegmentation:
+      self.observedSegmentation.RemoveObserver(self.segmentObserver)
+      self.segmentObserver = None
+    # Add new observer
+    if observationEnabled and segmentation is not None:
+      self.observedSegmentation = segmentation
+      self.segmentObserver = self.observedSegmentation.AddObserver(vtkSegmentationCore.vtkSegmentation.SegmentModified,
+                                                                   self.onSegmentModified)
+
+  def onSegmentModified(self, caller, event):
+    self.logic.convertSegmentsToLabelMap(self.segmentationNode, self.logic.outputLabelMap)
+
 
   def onQuickSegmentationButtonToggled(self, enabled):
     self.updateSegmentationButtons()
@@ -269,7 +319,7 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.logic.addEventObserver(self.logic.UndoRedoEvent, self.updateUndoRedoButtons)
     self.markupNodeObserver = self.logic.inputMarkupNode.AddObserver(vtk.vtkCommand.ModifiedEvent,
                                                                      self.updateUndoRedoButtons)
-    self.logic.clippingModelNode.SetDisplayVisibility(True)
+    self.logic.segmentModelNode.SetDisplayVisibility(True)
     self.invokeEvent(self.SegmentationStartedEvent)
     self._updateGearButtonAvailability()
 
@@ -295,15 +345,14 @@ class VolumeClipToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def processValidQuickSegmentationResult(self):
     self.deactivateQuickSegmentationMode()
     node = self.imageVolumeSelector.currentNode()
-    outputLabel = self.logic.labelMapFromClippingModel(node)
-    outputLabel.SetName(node.GetName() + '-label')
+    outputLabel = self.logic.labelMapFromSegmentModel(node, self.segmentationNode)
     self.labelMapSelector.setCurrentNode(outputLabel)
     self.logic.markupsLogic.SetAllMarkupsVisibility(self.logic.inputMarkupNode, False)
-    self.logic.clippingModelNode.SetDisplayVisibility(False)
+    self.logic.segmentModelNode.SetDisplayVisibility(False)
     self.invokeEvent(self.SegmentationFinishedEvent, outputLabel)
 
 
-class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
+class SurfaceCutToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   UndoRedoEvent = vtk.vtkCommand.UserEvent + 102
 
@@ -330,24 +379,33 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
 
   @outputLabelValue.setter
   def outputLabelValue(self, value):
-    if self.clippingModelDisplayNode and self._colorNode:
-      self.clippingModelDisplayNode.SetColor(self.labelValueToRGB(value))
+    if self.segmentModelDisplayNode and self._colorNode:
+      self.segmentModelDisplayNode.SetColor(self.labelValueToRGB(value))
     self._labelValue = value
+
+  @property
+  def surfaceCutLogic(self):
+    self._surfaceCutLogic = getattr(self, "_surfaceCutLogic", None)
+    if not self._surfaceCutLogic:
+      self._initializeSurfaceCutLogic()
+    return self._surfaceCutLogic
 
   def __init__(self, outputLabelValue=None):
     ScriptedLoadableModuleLogic.__init__(self)
     self.seriesNumber = None
-    self.clippingModelNode = None
-    self.clippingModelDisplayNode = None
+    self.segmentModelNode = None
+    self.segmentModelDisplayNode = None
     self.inputMarkupNode = None
     self.deletedMarkups = None
+    self.scriptedEffect = None
+    self.outputLabelMap = None
     self.outputLabelValue = outputLabelValue
     self.deletedMarkupPositions = []
     self.interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
 
   def reset(self):
-    if self.clippingModelNode:
-      slicer.mrmlScene.RemoveNode(self.clippingModelNode)
+    if self.segmentModelNode:
+      slicer.mrmlScene.RemoveNode(self.segmentModelNode)
     if self.inputMarkupNode:
       slicer.mrmlScene.RemoveNode(self.inputMarkupNode)
     self.resetQuickModeHistory()
@@ -373,6 +431,7 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     return displayNode
 
   def runQuickSegmentationMode(self):
+    self._initializeSurfaceCutLogic()
     self.reset()
     self.placeFiducials()
     self.addInputMarkupNodeObserver()
@@ -383,10 +442,11 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     if cancelled:
       self.reset()
 
+  def _initializeSurfaceCutLogic(self):
+    self._surfaceCutLogic = SurfaceCutLogic(self.scriptedEffect)
+
   def updateModel(self, caller=None, event=None):
-    import VolumeClipWithModel
-    clipLogic = VolumeClipWithModel.VolumeClipWithModelLogic()
-    clipLogic.updateModelFromMarkup(self.inputMarkupNode, self.clippingModelNode)
+    self.surfaceCutLogic.updateModelFromMarkup(self.inputMarkupNode, self.segmentModelNode)
 
   def onMarkupModified(self, caller, event):
     self.updateModel()
@@ -405,52 +465,46 @@ class VolumeClipToLabelLogic(ModuleLogicMixin, ScriptedLoadableModuleLogic):
     return [self.getTargetPosition(self.inputMarkupNode, index)[2] for index in range(nOfControlPoints)]
 
   def placeFiducials(self):
-    self.createAndConfigureClippingModelDisplayNode()
+    self.createAndConfigureSegmentModelDisplayNode()
     self.createNewFiducialNode()
-    volumeClipPointsDisplayNode = self.setupDisplayNode()
-    self.inputMarkupNode.SetAndObserveDisplayNodeID(volumeClipPointsDisplayNode.GetID())
+    fiducialPointsDisplayNode = self.setupDisplayNode()
+    self.inputMarkupNode.SetAndObserveDisplayNodeID(fiducialPointsDisplayNode.GetID())
     self.interactionNode.SetPlaceModePersistence(1)
     self.interactionNode.SetCurrentInteractionMode(self.interactionNode.Place)
 
-  def createAndConfigureClippingModelDisplayNode(self):
-    self.clippingModelNode = slicer.vtkMRMLModelNode()
+  def createAndConfigureSegmentModelDisplayNode(self):
+    self.segmentModelNode = slicer.vtkMRMLModelNode()
     prefix = "{}-".format(self.seriesNumber) if self.seriesNumber else ""
-    self.clippingModelNode.SetName('%sVolumeClip-MODEL'%prefix)
-    slicer.mrmlScene.AddNode(self.clippingModelNode)
+    self.segmentModelNode.SetName('%sSurfaceCut-MODEL' % prefix)
+    slicer.mrmlScene.AddNode(self.segmentModelNode)
 
-    self.clippingModelDisplayNode = slicer.vtkMRMLModelDisplayNode()
-    self.clippingModelDisplayNode.SetSliceIntersectionThickness(3)
+    self.segmentModelDisplayNode = slicer.vtkMRMLModelDisplayNode()
+    self.segmentModelDisplayNode.SetSliceIntersectionThickness(3)
     # self.refreshViewNodeIDs
-    self.clippingModelDisplayNode.SetColor(self.labelValueToRGB(self.outputLabelValue) if self.outputLabelValue
+    self.segmentModelDisplayNode.SetColor(self.labelValueToRGB(self.outputLabelValue) if self.outputLabelValue
                                            else [0.200, 0.800, 0.000])
-    self.clippingModelDisplayNode.BackfaceCullingOff()
-    self.clippingModelDisplayNode.SliceIntersectionVisibilityOn()
-    self.clippingModelDisplayNode.SetOpacity(0.3)
-    slicer.mrmlScene.AddNode(self.clippingModelDisplayNode)
-    self.clippingModelNode.SetAndObserveDisplayNodeID(self.clippingModelDisplayNode.GetID())
+    self.segmentModelDisplayNode.BackfaceCullingOff()
+    self.segmentModelDisplayNode.SliceIntersectionVisibilityOn()
+    self.segmentModelDisplayNode.SetOpacity(0.3)
+    slicer.mrmlScene.AddNode(self.segmentModelDisplayNode)
+    self.segmentModelNode.SetAndObserveDisplayNodeID(self.segmentModelDisplayNode.GetID())
 
   def createNewFiducialNode(self):
     prefix = "{}-".format(self.seriesNumber) if self.seriesNumber else ""
     self.inputMarkupNode = slicer.mrmlScene.GetNodeByID(self.markupsLogic.AddNewFiducialNode())
-    self.inputMarkupNode.SetName('%sVolumeClip-POINTS'%prefix)
+    self.inputMarkupNode.SetName('%sSurfaceCut-POINTS'%prefix)
 
-  def labelMapFromClippingModel(self, inputVolume, outputLabelValue=1, outputLabelMap=None):
-    if not outputLabelMap:
-      outputLabelMap = slicer.vtkMRMLLabelMapVolumeNode()
-      slicer.mrmlScene.AddNode(outputLabelMap)
+  def labelMapFromSegmentModel(self, inputVolume, segmentationNode):
+    self.surfaceCutLogic.cutSurfaceWithModel(self.inputMarkupNode, self.segmentModelNode)
+    if not self.outputLabelMap:
+      self.outputLabelMap = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode')
+      self.outputLabelMap.SetName(inputVolume.GetName() + '-label')
 
-    if self.outputLabelValue:
-      outputLabelValue = self.outputLabelValue
+    self.convertSegmentsToLabelMap(segmentationNode, self.outputLabelMap)
+    return self.outputLabelMap
 
-    params = {'sampleDistance': 0.1, 'labelValue': outputLabelValue, 'InputVolume': inputVolume.GetID(),
-              'surface': self.clippingModelNode.GetID(), 'OutputVolume': outputLabelMap.GetID()}
-
-    logging.debug(params)
-    slicer.cli.run(slicer.modules.modeltolabelmap, None, params, wait_for_completion=True)
-
-    displayNode = outputLabelMap.GetDisplayNode()
-    displayNode.SetAndObserveColorNodeID(self.colorNode.GetID())
-    return outputLabelMap
+  def convertSegmentsToLabelMap(self, segmentationNode, outputLabelMap):
+    slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segmentationNode, outputLabelMap)
 
   def undo(self):
     numberOfTargets = self.inputMarkupNode.GetNumberOfFiducials()

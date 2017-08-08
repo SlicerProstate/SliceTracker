@@ -16,7 +16,7 @@ package "RegistrationResults" #DDDDDD {
     + usePreopData: boolean
     + biasCorrectionDone: boolean
 
-    + clippingModelNode
+    + segmentgModelNode
     + inputMarkupNode
 
     + initialVolume
