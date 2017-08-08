@@ -9,6 +9,7 @@ from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnNone, logmethod
 from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 
+from constants import SliceTrackerConstants
 from helpers import SeriesTypeManager
 
 
@@ -249,6 +250,8 @@ class SessionData(ModuleLogicMixin):
       "results": createResultsList()
     }
 
+    data.update(self.getGITRevisionInformation())
+
     def addProcedureEvents():
       procedureEvents = {
         "caseStarted": self.startTimeStamp,
@@ -282,6 +285,32 @@ class SessionData(ModuleLogicMixin):
     self.printOutput("The following data was successfully saved:\n", successfullySavedFileNames)
     self.printOutput("The following data failed to saved:\n", failedSaveOfFileNames)
     return (len(failedSaveOfFileNames) == 0, failedSaveOfFileNames)
+
+  def getGITRevisionInformation(self):
+    import inspect
+    dirname = os.path.dirname(inspect.getfile(self.__class__))
+
+    def getLocalGITRevisionInformation():
+      try:
+        from git import Repo, InvalidGitRepositoryError
+        repo = Repo(dirname, search_parent_directories=True)
+        branch = repo.active_branch
+        print branch.name
+        return {
+          "GIT_WC_URL": repo.remote().url,
+          "GIT_COMMIT_HASH": repo.head.object.hexsha
+        }
+      except (ImportError, InvalidGitRepositoryError):
+        return {}
+
+    filename = os.path.join(dirname,"..", "Resources/version.json" )
+    with open(filename) as data_file:
+      logging.debug("reading version json file %s" % filename)
+      data = json.load(data_file)
+
+    if not data["GIT_COMMIT_HASH"]:
+      data = getLocalGITRevisionInformation()
+    return data
 
   def printOutput(self, message, fileNames):
     if not len(fileNames):

@@ -1,0 +1,4 @@
+{
+  "GIT_WC_URL": "@GIT_WC_URL@",
+  "GIT_COMMIT_HASH": "@GIT_COMMIT_HASH@"
+}
