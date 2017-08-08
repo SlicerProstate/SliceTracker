@@ -370,10 +370,6 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
     self.showTemplatePathButton.enabled = self.logic.templateSuccessfulLoaded
     self.showZFrameModelButton.enabled = self.logic.zFrameSuccessfulLoaded
 
-  def save(self, directory):
-    # TODO
-    pass
-
   def onInitiateZFrameCalibration(self, caller, event):
     self.logic.templateVolume = self.session.currentSeriesVolume
     self.active = True

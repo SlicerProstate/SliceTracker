@@ -13,22 +13,47 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
   TargetingStartedEvent = TargetCreationWidget.StartedEvent
   TargetingFinishedEvent = TargetCreationWidget.FinishedEvent
 
-  def __init__(self):
+  @property
+  def title(self):
+    return self.targetingGroupBox.title
+
+  @title.setter
+  def title(self, value):
+    self.targetingGroupBox.setTitle(value)
+
+  def __init__(self, **kwargs):
     super(SliceTrackerTargetingPlugin, self).__init__()
+    self._processKwargs(**kwargs)
 
   def setup(self):
     super(SliceTrackerTargetingPlugin, self).setup()
-    self.targetTablePlugin = SliceTrackerTargetTablePlugin()
-    self.addPlugin(self.targetTablePlugin)
 
     self._setupTargetCreationWidget()
 
+    self.preopTargetTableGroupBox, self.preopTargetTablePlugin = \
+      self._createTargetTableGroupBox("Pre-operative Targets")
+    self.intraopTargetTableGroupBox, self.intraopTargetTablePlugin = \
+      self._createTargetTableGroupBox("Intra-operative Targets",
+                                      additionalComponents=[self.targetCreationWidget, self.targetCreationWidget.buttons])
+
     self.targetingGroupBox = qt.QGroupBox("Target Placement")
     self.targetingGroupBox.setLayout(qt.QFormLayout())
-    self.targetingGroupBox.layout().addRow(self.targetTablePlugin)
-    self.targetingGroupBox.layout().addRow(self.targetCreationWidget)
-    self.targetingGroupBox.layout().addRow(self.targetCreationWidget.buttons)
+    self.targetingGroupBox.layout().addRow(self.preopTargetTableGroupBox)
+    self.targetingGroupBox.layout().addRow(self.intraopTargetTableGroupBox)
     self.layout().addWidget(self.targetingGroupBox, 1, 0, 2, 2)
+
+  def _createTargetTableGroupBox(self, title, additionalComponents=None):
+    additionalComponents = additionalComponents if additionalComponents else []
+    groupbox = qt.QGroupBox(title)
+    groupbox.setAlignment(qt.Qt.AlignCenter)
+    groupbox.setLayout(qt.QFormLayout())
+    groupbox.setAlignment(qt.Qt.AlignCenter)
+    targetTablePlugin = SliceTrackerTargetTablePlugin()
+    self.addPlugin(targetTablePlugin)
+    groupbox.layout().addRow(targetTablePlugin)
+    for c in additionalComponents:
+      groupbox.layout().addRow(c)
+    return groupbox, targetTablePlugin
 
   def _setupTargetCreationWidget(self):
     self.targetCreationWidget = TargetCreationWidget(DEFAULT_FIDUCIAL_LIST_NAME="IntraopTargets",
@@ -45,9 +70,12 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
 
     if self.preopAvailableAndTargetsDefined():
       self._setFiducialWidgetVisible(False)
-      self._setCurrentTargets(self.session.movingTargets)
+      self.targetCreationWidget.currentNode = None
+      self.preopTargetTablePlugin.currentTargets = self.session.movingTargets
+    else:
+      self.preopTargetTableGroupBox.visible = False
 
-    self.targetingGroupBox.visible = not (self.session.data.usePreopData or self.session.retryMode)
+    self.targetingGroupBox.visible = not self.session.retryMode
 
   def onDeactivation(self):
     super(SliceTrackerTargetingPlugin, self).onDeactivation()
@@ -59,16 +87,13 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
 
   def _setFiducialWidgetVisible(self, visible):
     self.targetCreationWidget.visible = visible
-    self.targetTablePlugin.visible = not visible
-
-  def _setCurrentTargets(self, targetNode):
-    self.targetCreationWidget.currentNode = targetNode
-    self.targetTablePlugin.currentTargets = targetNode
+    self.preopTargetTableGroupBox.visible = not visible and self.preopAvailableAndTargetsDefined()
+    self.intraopTargetTablePlugin.visible = not visible
 
   def _onTargetingStarted(self, caller, event):
     self._addSliceAnnotations()
     self.targetCreationWidget.show()
-    self.targetTablePlugin.visible = False
+    self.intraopTargetTablePlugin.visible = False
     self.setupFourUpView(self.session.currentSeriesVolume, clearLabels=False)
     self.invokeEvent(self.TargetingStartedEvent)
 
@@ -77,8 +102,8 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
     widgets = [self.yellowWidget] if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE else \
       [self.redWidget, self.yellowWidget, self.greenWidget]
     for widget in widgets:
-      self.sliceAnnotations.append(SliceAnnotation(widget, "Targeting Mode", opacity=0.5, verticalAlign="top",
-                                                   horizontalAlign="center"))
+      self.sliceAnnotations.append(SliceAnnotation(widget, "Targeting Mode", opacity=0.5,
+                                                   verticalAlign="top", horizontalAlign="center"))
 
   def _removeSliceAnnotations(self):
     self.sliceAnnotations = getattr(self, "sliceAnnotations", [])
@@ -89,10 +114,13 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
   def _onTargetingFinished(self, caller, event):
     self._removeSliceAnnotations()
     if self.targetCreationWidget.hasTargetListAtLeastOneTarget():
-      self.session.movingTargets = self.targetCreationWidget.currentNode
-      self.session.setupPreopLoadedTargets()
+      if not self.preopAvailableAndTargetsDefined():
+        self.session.movingTargets = self.targetCreationWidget.currentNode
+        self.session.setupPreopLoadedTargets()
+      else:
+        self.session.temporaryIntraopTargets = self.targetCreationWidget.currentNode
       self._setFiducialWidgetVisible(False)
-      self.targetTablePlugin.currentTargets = self.targetCreationWidget.currentNode
+      self.intraopTargetTablePlugin.currentTargets = self.targetCreationWidget.currentNode
     else:
       self.session.movingTargets = None
 

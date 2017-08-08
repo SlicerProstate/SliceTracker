@@ -118,17 +118,29 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.session.retryMode = retryMode
     self.finishStepButton.setEnabled(True if self._inputsAreSet() else False)
     if self.session.seriesTypeManager.isCoverProstate(self.session.currentSeries):
-      if self.session.data.usePreopData:
-        if self.session.retryMode:
-          if not self._loadLatestCoverProstateResultData():
-            self._loadInitialData()
-        else:
-          self._loadInitialData()
-      else:
-        self.session.movingVolume = self.session.currentSeriesVolume
+      self.initializeCoverProstate()
     else:
       self._loadLatestCoverProstateResultData()
     self.active = True
+
+  def initializeCoverProstate(self):
+    if self.session.data.usePreopData:
+      if self.session.retryMode:
+        if not self._loadLatestCoverProstateResultData():
+          self._loadInitialData()
+      else:
+        self._loadInitialData()
+    else:
+      self.session.movingVolume = self.session.currentSeriesVolume
+
+  def _loadLatestCoverProstateResultData(self):
+    coverProstate = self.session.data.getMostRecentApprovedCoverProstateRegistration()
+    if coverProstate:
+      self.session.movingVolume = coverProstate.volumes.fixed
+      self.session.movingLabel = coverProstate.labels.fixed
+      self.session.movingTargets = coverProstate.targets.approved
+      return True
+    return False
 
   def _loadInitialData(self):
     self.session.movingLabel = self.session.data.initialLabel
@@ -173,15 +185,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       self.noPreopSegmentationAnnotation.remove()
       self.noPreopSegmentationAnnotation = None
 
-  def _loadLatestCoverProstateResultData(self):
-    coverProstate = self.session.data.getMostRecentApprovedCoverProstateRegistration()
-    if coverProstate:
-      self.session.movingVolume = coverProstate.volumes.fixed
-      self.session.movingLabel = coverProstate.labels.fixed
-      self.session.movingTargets = coverProstate.targets.approved
-      return True
-    return False
-
   def _onBackButtonClicked(self):
     if self.session.retryMode:
       self.session.retryMode = False
@@ -214,13 +217,13 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self._onSegmentationStarted(caller, event)
 
   def _onSegmentationStarted(self, caller, event):
-    self.setAvailableLayouts([constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_SIDE_BY_SIDE, constants.LAYOUT_FOUR_UP])
+    # self.setAvailableLayouts([constants.LAYOUT_RED_SLICE_ONLY, constants.LAYOUT_SIDE_BY_SIDE, constants.LAYOUT_FOUR_UP])
     self.targetingPlugin.enabled = False
     self.backButton.enabled = False
     self.finishStepButton.enabled = False
 
   def _onSegmentationCanceled(self, caller, event):
-    self.setAvailableLayouts([constants.LAYOUT_FOUR_UP])
+    # self.setAvailableLayouts([constants.LAYOUT_FOUR_UP])
     self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
     self.backButton.enabled = True
     self.targetingPlugin.enabled = True
@@ -244,13 +247,11 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     for series in reversed(newImageSeries):
       if self.session.seriesTypeManager.isCoverProstate(series):
         if series != self.session.currentSeries:
-          if not slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one?"
-                                                  % self.getSetting("COVER_PROSTATE")):
-            return
-          self.session.currentSeries = series
-          self.active = False
-          self._initiateSegmentation()
-          return
+          if slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one?"
+                                              % self.getSetting("COVER_PROSTATE")):
+            self.session.currentSeries = series
+            self.active = False
+            self._initiateSegmentation()
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def _onAutomaticSegmentationFinished(self, caller, event, labelNode):

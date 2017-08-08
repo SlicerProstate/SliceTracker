@@ -906,7 +906,6 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     else:
       self.invokeEvent(self.PreprocessingFinishedEvent)
 
-
   def loadPreopImageAndLabel(self, seriesMap):
     self.preopImagePath = None
     self.preopSegmentationPath = None
@@ -965,7 +964,7 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
       filename = os.path.join(self.data.initialTargetsPath, mostRecentTargets)
       success, self.data.initialTargets = slicer.util.loadMarkupsFiducialList(filename, returnNode=True)
       if success:
-        self.data.initialTargets.SetName('targets-PREOP')
+        self.data.initialTargets.SetName('initialTargets')
         self.data.initialTargets.SetLocked(True)
     return success
 

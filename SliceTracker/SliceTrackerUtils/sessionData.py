@@ -120,6 +120,7 @@ class SessionData(ModuleLogicMixin):
       if "initialTargets" in data.keys():
         self.initialTargets = self._loadOrGetFileData(directory,
                                                       data["initialTargets"], slicer.util.loadMarkupsFiducialList)
+        self.initialTargets.SetLocked(True)
         self.initialTargetsPath = os.path.join(directory, data["initialTargets"])
 
       if "zFrameRegistration" in data.keys():
