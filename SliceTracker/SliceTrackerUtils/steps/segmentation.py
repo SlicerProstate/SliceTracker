@@ -73,7 +73,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
                                         toolTip="Return to last step")
     self.finishStepButton = self.createButton("", icon=Icons.start, iconSize=iconSize,
                                               toolTip="Run Registration")
-    self.finishStepButton.setFixedHeight(45)
     self.layout().addWidget(self.createHLayout([self.backButton, self.finishStepButton]))
 
   def setupConnections(self):
