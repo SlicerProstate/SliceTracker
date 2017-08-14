@@ -61,6 +61,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.automaticSegmentationPlugin = SliceTrackerAutomaticSegmentationPlugin()
     self.automaticSegmentationPlugin.addEventObserver(self.automaticSegmentationPlugin.SegmentationStartedEvent,
                                                       self._onAutomaticSegmentationStarted)
+    self.automaticSegmentationPlugin.addEventObserver(self.automaticSegmentationPlugin.SegmentationFailedEvent,
+                                                   self._onSegmentationFailed)
     self.automaticSegmentationPlugin.addEventObserver(self.automaticSegmentationPlugin.SegmentationFinishedEvent,
                                                       self._onAutomaticSegmentationFinished)
     self.addPlugin(self.automaticSegmentationPlugin)
@@ -225,6 +227,14 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     if self._inputsAreSet():
       self._displaySegmentationComparison()
     self.finishStepButton.setEnabled(1 if self._inputsAreSet() else 0) # TODO: need to revise that
+
+  def _onSegmentationFailed(self, caller, event):
+    import logging
+    logging.debug("Segmentation failed")
+    self.setAvailableLayouts([constants.LAYOUT_FOUR_UP])
+    self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
+    self.backButton.enabled = True
+    self.finishStepButton.setEnabled(False)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageSeriesReceived(self, caller, event, callData):
