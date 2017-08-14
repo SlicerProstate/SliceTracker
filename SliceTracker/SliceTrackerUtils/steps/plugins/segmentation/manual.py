@@ -99,7 +99,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
   def _preCheckExistingSegmentation(self):
     if not slicer.util.confirmYesNoDisplay("The automatic segmentation will be overwritten. Do you want to proceed?",
                                            windowTitle="SliceTracker"):
-      self.surfaceCutToLabelWidget.stopQuickSegmentationMode(cancelled=True)
+      self.surfaceCutToLabelWidget.logic.stopQuickSegmentationMode(cancelled=True)
       return False
     return True
 

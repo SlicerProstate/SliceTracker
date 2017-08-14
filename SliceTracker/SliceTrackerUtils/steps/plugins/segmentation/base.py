@@ -6,6 +6,7 @@ class SliceTrackerSegmentationPluginBase(SliceTrackerPlugin):
 
   SegmentationStartedEvent = vtk.vtkCommand.UserEvent + 435
   SegmentationFinishedEvent = vtk.vtkCommand.UserEvent + 436
+  SegmentationFailedEvent = vtk.vtkCommand.UserEvent + 437
 
   def __init__(self):
     super(SliceTrackerSegmentationPluginBase, self).__init__()
@@ -19,3 +20,6 @@ class SliceTrackerSegmentationPluginBase(SliceTrackerPlugin):
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def _onSegmentationFinished(self, caller, event, labelNode):
     self.invokeEvent(self.SegmentationFinishedEvent, labelNode)
+
+  def _onSegmentationFailed(self, caller, event):
+    self.invokeEvent(self.SegmentationFailedEvent)
