@@ -122,6 +122,7 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
       self._setFiducialWidgetVisible(False)
       self.intraopTargetTablePlugin.currentTargets = self.targetCreationWidget.currentNode
     else:
-      self.session.movingTargets = None
+      if not self.preopAvailableAndTargetsDefined():
+        self.session.movingTargets = None
 
     self.invokeEvent(self.TargetingFinishedEvent)

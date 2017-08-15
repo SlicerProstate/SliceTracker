@@ -125,14 +125,14 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
     if self.coverProstateTargetList and not self.coverProstateTargetList is self.targetList:
       if col in [1, 2]:
         coverProstateGuidance = self.getOrCreateNewGuidanceComputation(self.coverProstateTargetList)
-        if col == 2:
+        if col == 1:
           coverProstateHole = coverProstateGuidance.getZFrameHole(row)
           if self.currentGuidanceComputation.getZFrameHole(row) == coverProstateHole:
             return qt.QColor(qt.Qt.green) if backgroundRequested else ""
           else:
             return qt.QColor(qt.Qt.red) if backgroundRequested else "{} hole: {}".format(self.PLANNING_IMAGE_NAME,
                                                                                          coverProstateHole)
-        elif col == 3:
+        elif col == 2:
           currentDepth = self.currentGuidanceComputation.getZFrameDepth(row, asString=False)
           coverProstateDepth = coverProstateGuidance.getZFrameDepth(row, asString=False)
           if abs(currentDepth - coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 0.5):

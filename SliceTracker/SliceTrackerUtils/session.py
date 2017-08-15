@@ -214,6 +214,7 @@ class SliceTrackerSession(StepBasedSession):
     self._currentSeries = None
     self.retryMode = False
     self.previousStep = None
+    self.temporaryIntraopTargets = None
 
   def initializeColorNodes(self):
     from mpReview import mpReviewLogic
@@ -705,14 +706,24 @@ class SliceTrackerSession(StepBasedSession):
     parameterNode.SetAttribute('MovingLabelNodeID', movingLabel.GetID())
     parameterNode.SetAttribute('TargetsNodeID', targets.GetID())
     self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
-    self.addTargetsToMrmlScene(result)
+    self.addTargetsToMRMLScene(result)
+    if self.seriesTypeManager.isCoverProstate(self.currentSeries) and self.temporaryIntraopTargets:
+      self.addTemporaryTargetsToResult(result)
     self.invokeEvent(self.InitiateEvaluationEvent)
 
-  def addTargetsToMrmlScene(self, result):
+  def addTargetsToMRMLScene(self, result):
     targetNodes = result.targets.asDict()
     for regType in RegistrationTypeData.RegistrationTypes:
       if targetNodes[regType]:
         slicer.mrmlScene.AddNode(targetNodes[regType])
+
+  def addTemporaryTargetsToResult(self, result):
+    length = self.temporaryIntraopTargets.GetNumberOfFiducials()
+    targetNodes = result.targets.asDict()
+    for targetList in [targetNodes[r] for r in RegistrationTypeData.RegistrationTypes if targetNodes[r]]:
+      for i in range(length):
+        targetList.AddFiducialFromArray(self.getTargetPosition(self.temporaryIntraopTargets, i),
+                                        self.temporaryIntraopTargets.GetNthFiducialLabel(i))
 
   def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform=None):
 
