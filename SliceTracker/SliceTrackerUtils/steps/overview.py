@@ -325,9 +325,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if not self.session.data.initialVolume or not self.session.data.initialTargets:
       return
     self.layoutManager.setLayout(constants.LAYOUT_RED_SLICE_ONLY)
-    self.redSliceNode.SetOrientationToAxial()
-    self.redSliceNode.RotateToVolumePlane(self.session.data.initialVolume)
-    self.redSliceNode.SetUseLabelOutline(True)
+    self.setBackgroundToVolumeID(self.session.data.initialVolume, clearLabels=False)
     self.redCompositeNode.SetLabelOpacity(1)
     self.targetTablePlugin.currentTargets = self.session.data.initialTargets
     # self.logic.centerViewsToProstate()

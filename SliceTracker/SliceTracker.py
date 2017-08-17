@@ -29,7 +29,7 @@ class SliceTracker(ScriptedLoadableModule):
     self.parent.title = "SliceTracker"
     self.parent.categories = ["Radiology"]
     self.parent.dependencies = ["SlicerDevelopmentToolbox", "mpReview", "mpReviewPreprocessor",
-                                "SegmentEditorExtraEffects", "DeepInfer"]
+                                "SegmentEditorSurfaceCut", "DeepInfer"]
     self.parent.contributors = ["Christian Herz (SPL)", "Peter Behringer (SPL)",
                                 "Kyle MacNeil (Med-i Lab, Queen's; SPL)", "Andriy Fedorov (SPL)"]
 
