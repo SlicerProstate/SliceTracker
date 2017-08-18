@@ -33,6 +33,8 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   SegmentationCanceledEvent = vtk.vtkCommand.UserEvent + 102
   SegmentationFinishedEvent = vtk.vtkCommand.UserEvent + 103
 
+  SEGMENTATION_NAME = "Prostate Segmentation"
+
   @property
   def imageVolume(self):
     return self.imageVolumeSelector.currentNode()
@@ -45,22 +47,36 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def segmentationNode(self):
     self._segmentationNode = getattr(self, "_segmentationNode", None)
     if not self._segmentationNode:
-      self._segmentationNode = slicer.vtkMRMLSegmentationNode()
-      slicer.mrmlScene.AddNode(self._segmentationNode)
-      import vtkSegmentationCorePython as vtkSegmentationCore
-      segment = vtkSegmentationCore.vtkSegment()
-      segment.SetName("Prostate Segmentation")
-      self.segmentationNode.GetSegmentation().AddSegment(segment)
+      self._segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+      self._addInitialSegment()
+      self._configureSegmentVisibility()
 
-      displayNode = slicer.vtkMRMLSegmentationDisplayNode()
-      slicer.mrmlScene.AddNode(displayNode)
-      self.segmentationNode.SetAndObserveDisplayNodeID(displayNode.GetID())
-      displayNode.SetSegmentVisibility(segment.GetName(), False)
     return self._segmentationNode
+
+  def _addInitialSegment(self):
+    import vtkSegmentationCorePython as vtkSegmentationCore
+    segment = vtkSegmentationCore.vtkSegment()
+    segment.SetName(self.SEGMENTATION_NAME)
+    self._segmentationNode.GetSegmentation().AddSegment(segment)
+
+  def _configureSegmentVisibility(self):
+    displayNode = self._segmentationNode.GetDisplayNode()
+    if not displayNode:
+      displayNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationDisplayNode")
+      self._segmentationNode.SetAndObserveDisplayNodeID(displayNode.GetID())
+    map(lambda x: displayNode.SetSegmentVisibility(x, False), self._getSegmentIDs())
+
+  def _getSegmentIDs(self):
+    segmentIDs = vtk.vtkStringArray()
+    self._segmentationNode.GetSegmentation().GetSegmentIDs(segmentIDs)
+    return [segmentIDs.GetValue(idx) for idx in range(segmentIDs.GetNumberOfValues())]
 
   @segmentationNode.setter
   def segmentationNode(self, node):
     self._segmentationNode = node
+    if not any(segmentID == self.SEGMENTATION_NAME for segmentID in self._getSegmentIDs()):
+      self._addInitialSegment()
+    self._configureSegmentVisibility()
 
   @property
   def selectorsGroupBoxVisible(self):
@@ -186,7 +202,6 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
       self.segmentEditorNode = slicer.mrmlScene.AddNode(self.segmentEditorNode)
 
     self.segmentEditorWidget.setMRMLSegmentEditorNode(self.segmentEditorNode)
-    self.segmentEditorWidget.setSegmentationNode(self.segmentationNode)
     self.logic.scriptedEffect = self.segmentEditorWidget.effectByName('Surface cut')
 
   def _setupConnections(self):
@@ -221,7 +236,7 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def _onColorSpinChanged(self, value):
     self.logic.outputLabelValue = value
     rgb = self.logic.labelValueToRGB(value)
-    self.segmentationNode.GetSegmentation().GetSegment('Prostate Segmentation').SetColor(rgb)
+    self.segmentationNode.GetSegmentation().GetSegment(self.SEGMENTATION_NAME).SetColor(rgb)
     self._onColorSelected(value)
 
   def _showColorBox(self):
@@ -247,6 +262,8 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
     self.setBackgroundToVolumeID(node)
     self.quickSegmentationButton.setEnabled(node!=None)
+    if not self.segmentEditorWidget.segmentationNode():
+      self.segmentEditorWidget.setSegmentationNode(self.segmentationNode)
     self.segmentEditorWidget.setMasterVolumeNode(node)
     self.colorPatch.setEnabled(node!=None)
     self._updateGearButtonAvailability()
