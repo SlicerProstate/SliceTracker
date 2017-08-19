@@ -199,8 +199,9 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       button.enabled = volume and self.logic.isVolumeExtentValid(volume)
       button.checked = False
 
-    if any(b.enabled == False for b  in self.registrationButtonGroup.buttons()):
-      if not self.currentResult.skipped:
+    if any(b.enabled == False for b in self.registrationButtonGroup.buttons()):
+      if not self.currentResult.skipped and \
+        not self.session.seriesTypeManager.isCoverProstate(self.session.currentSeries):
         self.emptyVolumeWarnHandler.handle(self.currentResult.name)
 
     if all(b.enabled == False for b in self.registrationButtonGroup.buttons()):
