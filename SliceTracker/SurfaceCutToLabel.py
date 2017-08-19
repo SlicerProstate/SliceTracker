@@ -94,6 +94,20 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def colorGroupBoxVisible(self, visible):
     self.colorGroupBox.visible = visible
 
+  @property
+  def scriptedEffect(self):
+    effectName = 'Surface cut'
+    scriptedEffect = self.segmentEditorWidget.effectByName(effectName)
+    if not scriptedEffect:
+      raise AttributeError("SegmentEditor has no effect %s" % effectName)
+    return scriptedEffect
+
+  @property
+  def segmentEditorWidget(self):
+    self._segmentEditorWidget = getattr(self, "_segmentEditorWidget", None)
+    if not self._segmentEditorWidget:
+      self._setupSegmentEditorWidget()
+    return self._segmentEditorWidget
 
   def __init__(self, parent=None, **kwargs):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -182,17 +196,15 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.segmentEditorWidgetButton = self.createButton("", icon=Icons.settings, toolTip="Show Segment Editor",
                                                 checkable=True, enabled=False, iconSize=qt.QSize(36, 36))
 
-    self._setupSegmentEditorWidget()
     self.segmentationButtons = self.createHLayout([self.quickSegmentationButton, self.applySegmentationButton,
                                                    self.cancelSegmentationButton, self.undoButton, self.redoButton,
                                                    self.segmentEditorWidgetButton])
     self.layout.addWidget(self.segmentationButtons)
-    self.layout.addWidget(self.segmentEditorWidget, 1, 0)
 
   def _setupSegmentEditorWidget(self):
-    self.segmentEditorWidget = slicer.qMRMLSegmentEditorWidget()
-    self.segmentEditorWidget.hide()
-    self.segmentEditorWidget.setMRMLScene(slicer.mrmlScene)
+    self._segmentEditorWidget = slicer.qMRMLSegmentEditorWidget()
+    self._segmentEditorWidget.hide()
+    self._segmentEditorWidget.setMRMLScene(slicer.mrmlScene)
 
     segmentEditorSingletonTag = "SegmentEditor"
     self.segmentEditorNode = slicer.mrmlScene.GetSingletonNode(segmentEditorSingletonTag, "vtkMRMLSegmentEditorNode")
@@ -201,8 +213,10 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
       self.segmentEditorNode.SetSingletonTag(segmentEditorSingletonTag)
       self.segmentEditorNode = slicer.mrmlScene.AddNode(self.segmentEditorNode)
 
-    self.segmentEditorWidget.setMRMLSegmentEditorNode(self.segmentEditorNode)
-    self.logic.scriptedEffect = self.segmentEditorWidget.effectByName('Surface cut')
+    self._segmentEditorWidget.setMRMLSegmentEditorNode(self.segmentEditorNode)
+    self.segmentEditorWidget.setSegmentationNode(self.segmentationNode)
+    self.logic.scriptedEffect = self._segmentEditorWidget.effectByName('Surface cut')
+    self.layout.addWidget(self._segmentEditorWidget, 1, 0)
 
   def _setupConnections(self):
     self.imageVolumeSelector.connect('currentNodeChanged(vtkMRMLNode*)', self._onImageVolumeSelected)
@@ -262,8 +276,6 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
     self.setBackgroundToVolumeID(node)
     self.quickSegmentationButton.setEnabled(node!=None)
-    if not self.segmentEditorWidget.segmentationNode():
-      self.segmentEditorWidget.setSegmentationNode(self.segmentationNode)
     self.segmentEditorWidget.setMasterVolumeNode(node)
     self.colorPatch.setEnabled(node!=None)
     self._updateGearButtonAvailability()
@@ -296,7 +308,6 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   def onSegmentModified(self, caller, event):
     self.logic.convertSegmentsToLabelMap(self.segmentationNode, self.logic.outputLabelMap)
-
 
   def onQuickSegmentationButtonToggled(self, enabled):
     self.updateSegmentationButtons()
