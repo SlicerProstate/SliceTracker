@@ -80,11 +80,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
     self.addPlugin(self.displacementChartPlugin)
 
-    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent,
-                                                  lambda caller, event: self.displacementChartPlugin.show())
-    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent,
-                                                  lambda caller, event: self.displacementChartPlugin.hide())
-    self.displacementChartPlugin.hide()
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.omShowDisplacementChart)
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent, self.onHideDisplacementChart)
+    self.displacementChartPlugin.collapsibleButton.hide()
 
     self.layout().addWidget(self.caseManagerPlugin, 0, 0)
     self.layout().addWidget(self.trainingPlugin, 1, 0)
@@ -92,8 +90,14 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.layout().addWidget(self.createHLayout([self.intraopSeriesSelector, self.changeSeriesTypeButton,
                                                 self.trackTargetsButton, self.skipIntraopSeriesButton]), 3, 0)
     self.layout().addWidget(self.regResultsCollapsibleButton, 4, 0)
-    self.layout().addWidget(self.displacementChartPlugin, 5, 0)
+    self.layout().addWidget(self.displacementChartPlugin.collapsibleButton, 5, 0)
     # self.layout().setRowStretch(8, 1)
+
+  def omShowDisplacementChart(self, caller, event):
+    self.displacementChartPlugin.collapsibleButton.show()
+
+  def onHideDisplacementChart(self, caller, event):
+    self.displacementChartPlugin.collapsibleButton.hide()
 
   def setupRegistrationResultsPlugin(self):
     self.regResultsCollapsibleButton = ctk.ctkCollapsibleButton()

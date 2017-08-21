@@ -183,6 +183,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     for layoutButton in self.layoutButtons:
       layoutButton.enabled = layoutButton.LAYOUT in layouts
 
+
 class SliceTrackerLogic(ModuleLogicMixin):
 
   def __init__(self):
