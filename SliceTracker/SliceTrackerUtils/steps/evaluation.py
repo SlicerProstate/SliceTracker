@@ -47,18 +47,15 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
     self.addPlugin(self.displacementChartPlugin)
 
-    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent,
-                                                  lambda caller, event: self.displacementChartPlugin.show())
-    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent,
-                                                  lambda caller, event: self.displacementChartPlugin.hide())
-
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.omShowDisplacementChart)
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent, self.onHideDisplacementChart)
 
     self.registrationEvaluationGroupBoxLayout.addWidget(self.regResultsPlugin, 3, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTablePlugin, 4, 0)
     self.registrationEvaluationGroupBoxLayout.addWidget(self.registrationEvaluationButtonsGroupBox, 5, 0)
+    self.registrationEvaluationGroupBoxLayout.addWidget(self.displacementChartPlugin.collapsibleButton, 6, 0)
     self.registrationEvaluationGroupBoxLayout.setRowStretch(6, 1)
     self.layout().addWidget(self.registrationEvaluationGroupBox)
-    self.layout().addWidget(self.displacementChartPlugin)
 
   def setupRegistrationValidationButtons(self):
     iconSize = qt.QSize(36, 36)
@@ -84,6 +81,12 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
   def removeSessionEventObservers(self):
     super(SliceTrackerEvaluationStep, self).removeSessionEventObservers()
     self.session.removeEventObserver(self.session.InitiateEvaluationEvent, self.onInitiateEvaluation)
+
+  def omShowDisplacementChart(self, caller, event):
+    self.displacementChartPlugin.collapsibleButton.show()
+
+  def onHideDisplacementChart(self, caller, event):
+    self.displacementChartPlugin.collapsibleButton.hide()
 
   def onRetryRegistrationButtonClicked(self):
     self.session.retryRegistration()

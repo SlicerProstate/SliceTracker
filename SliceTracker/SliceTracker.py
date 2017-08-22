@@ -29,8 +29,10 @@ class SliceTracker(ScriptedLoadableModule):
     self.parent.title = "SliceTracker"
     self.parent.categories = ["Radiology"]
     self.parent.dependencies = ["SlicerDevelopmentToolbox", "mpReview", "mpReviewPreprocessor",
-                                "SegmentEditorExtraEffects","DeepInfer"]
-    self.parent.contributors = ["Christian Herz (SPL)", "Peter Behringer (SPL)", "Andriy Fedorov (SPL)"]
+                                "SegmentEditorSurfaceCut", "DeepInfer"]
+    self.parent.contributors = ["Christian Herz (SPL)", "Peter Behringer (SPL)",
+                                "Kyle MacNeil (Med-i Lab, Queen's; SPL)", "Andriy Fedorov (SPL)"]
+
     self.parent.helpText = """ SliceTracker facilitates support of MRI-guided targeted prostate biopsy.
       See <a href=\"https://www.gitbook.com/book/slicerprostate/slicetracker/details\">the documentation</a> for
       details."""
@@ -180,6 +182,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     layouts = ast.literal_eval(callData)
     for layoutButton in self.layoutButtons:
       layoutButton.enabled = layoutButton.LAYOUT in layouts
+
 
 class SliceTrackerLogic(ModuleLogicMixin):
 

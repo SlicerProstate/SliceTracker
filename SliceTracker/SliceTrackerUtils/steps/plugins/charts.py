@@ -92,10 +92,10 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
 
     self.undockChartButton = self.createButton("Undock chart")
 
-    self.dispChartCollapsibleButton = ctk.ctkCollapsibleButton()
-    self.dispChartCollapsibleButton.text = "Plotting"
-    self.dispChartCollapsibleButton.collapsed = 0
-    self.dispChartCollapsibleButton.setLayout(qt.QGridLayout())
+    self.collapsibleButton = ctk.ctkCollapsibleButton()
+    self.collapsibleButton.text = "Plotting"
+    self.collapsibleButton.collapsed = 0
+    self.collapsibleButton.setLayout(qt.QGridLayout())
 
     self.plottingFrameWidget = qt.QWidget()
     self.plottingFrameWidget.setLayout(qt.QGridLayout())
@@ -103,9 +103,9 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.plottingFrameWidget.layout().addWidget(self._chartView, 1, 0)
     self.plottingFrameWidget.layout().addWidget(self.undockChartButton, 2, 0)
 
-    self.dispChartCollapsibleButton.layout().addWidget(self.plottingFrameWidget)
+    self.collapsibleButton.layout().addWidget(self.plottingFrameWidget)
 
-    self.layout().addWidget(self.dispChartCollapsibleButton)
+    self.layout().addWidget(self.collapsibleButton)
 
   def setupPopupWindow(self):
     self.chartPopupWindow = None
@@ -232,14 +232,16 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     self.chartPopupWindow.move(self.chartPopupPosition)
     self.chartPopupWindow.show()
     self.undockChartButton.hide()
+    self.invokeEvent(self.HideEvent)
 
   def dockChartView(self):
     self.chartPopupSize = self.chartPopupWindow.size
     self.chartPopupPosition = self.chartPopupWindow.pos
 
-    self.dispChartCollapsibleButton.layout().addWidget(self.plottingFrameWidget)
+    self.collapsibleButton.layout().addWidget(self.plottingFrameWidget)
     self.plottingFrameWidget.show()
     self.undockChartButton.show()
+    self.invokeEvent(self.ShowEvent)
 
   def onDeactivation(self):
     super(SliceTrackerDisplacementChartPlugin, self).onDeactivation()

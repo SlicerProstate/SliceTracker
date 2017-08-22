@@ -17,11 +17,10 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
   PLANNING_IMAGE_NAME = "Initial registration"
 
   COLUMN_NAME = 'Name'
-  COLUMN_DISTANCE = 'Distance[cm]'
   COLUMN_HOLE = 'Hole'
   COLUMN_DEPTH = 'Depth[cm]'
 
-  headers = [COLUMN_NAME, COLUMN_DISTANCE, COLUMN_HOLE, COLUMN_DEPTH]
+  headers = [COLUMN_NAME, COLUMN_HOLE, COLUMN_DEPTH]
 
   @property
   def targetList(self):
@@ -47,15 +46,6 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
   def coverProstateTargetList(self, targetList):
     self._coverProstateTargetList = targetList
 
-  @property
-  def cursorPosition(self):
-    return self._cursorPosition
-
-  @cursorPosition.setter
-  def cursorPosition(self, cursorPosition):
-    self._cursorPosition = cursorPosition
-    self.dataChanged(self.index(0, 1), self.index(self.rowCount()-1, 2))
-
   def __init__(self, logic, targets=None, parent=None, *args):
     qt.QAbstractTableModel.__init__(self, parent, *args)
     self.session = SliceTrackerSession()
@@ -65,7 +55,6 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
     self._guidanceComputations = []
     self.currentGuidanceComputation = None
     self.targetList = targets
-    self.computeCursorDistances = False
     self.currentTargetIndex = -1
     self.observer = None
     self.session.addEventObserver(self.session.ZFrameRegistrationSuccessfulEvent, self.onZFrameRegistrationSuccessful)
@@ -120,17 +109,9 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
 
     if col == 0:
       return self.targetList.GetNthFiducialLabel(row)
-    if col == 1 and self.cursorPosition and self.computeCursorDistances and self.currentTargetIndex == row:
-      targetPosition = self.logic.getTargetPosition(self.targetList, row)
-      distance2D = self.logic.get3DDistance(targetPosition, self.cursorPosition)
-      distance2D = [str(round(distance2D[0]/10, 1)), str(round(distance2D[1]/10, 1)), str(round(distance2D[2]/10, 1))]
-      distance3D = self.logic.get3DEuclideanDistance(targetPosition, self.cursorPosition)
-      text = 'x= ' + distance2D[0] + '  y= ' + distance2D[1] + \
-             '  z= ' + distance2D[2] + '  (3D= ' + str(round(distance3D/10, 1)) + ')'
-      return text
-    elif col == 2 and self.session.zFrameRegistrationSuccessful:
+    elif col == 1 and self.session.zFrameRegistrationSuccessful:
       return self.currentGuidanceComputation.getZFrameHole(row)
-    elif col == 3 and self.session.zFrameRegistrationSuccessful:
+    elif col == 2 and self.session.zFrameRegistrationSuccessful:
       return self.currentGuidanceComputation.getZFrameDepth(row)
     return ""
 
@@ -142,16 +123,16 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
     col = index.column()
     outOfRangeText = "" if self.currentGuidanceComputation.getZFrameDepthInRange(row) else "Current depth: out of range"
     if self.coverProstateTargetList and not self.coverProstateTargetList is self.targetList:
-      if col in [2, 3]:
+      if col in [1, 2]:
         coverProstateGuidance = self.getOrCreateNewGuidanceComputation(self.coverProstateTargetList)
-        if col == 2:
+        if col == 1:
           coverProstateHole = coverProstateGuidance.getZFrameHole(row)
           if self.currentGuidanceComputation.getZFrameHole(row) == coverProstateHole:
             return qt.QColor(qt.Qt.green) if backgroundRequested else ""
           else:
             return qt.QColor(qt.Qt.red) if backgroundRequested else "{} hole: {}".format(self.PLANNING_IMAGE_NAME,
                                                                                          coverProstateHole)
-        elif col == 3:
+        elif col == 2:
           currentDepth = self.currentGuidanceComputation.getZFrameDepth(row, asString=False)
           coverProstateDepth = coverProstateGuidance.getZFrameDepth(row, asString=False)
           if abs(currentDepth - coverProstateDepth) <= max(1e-9 * max(abs(currentDepth), abs(coverProstateDepth)), 0.5):
@@ -334,8 +315,6 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
   def __init__(self, **kwargs):
     super(SliceTrackerTargetTablePlugin, self).__init__()
     self.movingEnabled = kwargs.pop("movingEnabled", False)
-    self.keyPressEventObservers = {}
-    self.keyReleaseEventObservers = {}
     self.mouseReleaseEventObservers = {}
 
   def setup(self):
@@ -353,10 +332,9 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
 
   def setTargetTableSizeConstraints(self):
     self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
-    self.targetTable.horizontalHeader().setResizeMode(0, qt.QHeaderView.Fixed)
-    self.targetTable.horizontalHeader().setResizeMode(1, qt.QHeaderView.Stretch)
+    self.targetTable.horizontalHeader().setResizeMode(0, qt.QHeaderView.Stretch)
+    self.targetTable.horizontalHeader().setResizeMode(1, qt.QHeaderView.ResizeToContents)
     self.targetTable.horizontalHeader().setResizeMode(2, qt.QHeaderView.ResizeToContents)
-    self.targetTable.horizontalHeader().setResizeMode(3, qt.QHeaderView.ResizeToContents)
 
   def setupConnections(self):
     self.targetTable.connect('clicked(QModelIndex)', self.onTargetSelectionChanged)
@@ -373,57 +351,12 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     super(SliceTrackerTargetTablePlugin, self).onActivation()
     self.moveTargetMode = False
     self.currentlyMovedTargetModelIndex = None
-    self.connectKeyEventObservers()
     if self.currentTargets:
       self.onTargetSelectionChanged()
 
   def onDeactivation(self):
     super(SliceTrackerTargetTablePlugin, self).onDeactivation()
     self.disableTargetMovingMode()
-    self.disconnectKeyEventObservers()
-
-  def connectKeyEventObservers(self):
-    interactors = [self.yellowSliceViewInteractor]
-    if self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
-      interactors += [self.redSliceViewInteractor, self.greenSliceViewInteractor]
-    for interactor in interactors:
-      self.keyPressEventObservers[interactor] = interactor.AddObserver("KeyPressEvent", self.onKeyPressedEvent)
-      self.keyReleaseEventObservers[interactor] = interactor.AddObserver("KeyReleaseEvent", self.onKeyReleasedEvent)
-
-  def disconnectKeyEventObservers(self):
-    for interactor, tag in self.keyPressEventObservers.iteritems():
-      interactor.RemoveObserver(tag)
-    for interactor, tag in self.keyReleaseEventObservers.iteritems():
-      interactor.RemoveObserver(tag)
-
-  def onKeyPressedEvent(self, caller, event):
-    if not caller.GetKeySym() == 'd':
-      return
-    if not self.targetTableModel.computeCursorDistances:
-      self.targetTableModel.computeCursorDistances = True
-      self.calcCursorTargetsDistance()
-      self.crosshairButton.addEventObserver(self.crosshairButton.CursorPositionModifiedEvent,
-                                            self.calcCursorTargetsDistance)
-
-  def onKeyReleasedEvent(self, caller, event):
-    if not caller.GetKeySym() == 'd':
-      return
-    self.targetTableModel.computeCursorDistances = False
-    self.crosshairButton.removeEventObserver(self.crosshairButton.CursorPositionModifiedEvent,
-                                             self.calcCursorTargetsDistance)
-
-  @vtk.calldata_type(vtk.VTK_OBJECT)
-  def calcCursorTargetsDistance(self, caller, event, callData):
-    if not self.targetTableModel.computeCursorDistances:
-      return
-    ras = xyz = [0.0, 0.0, 0.0]
-    insideView = callData.GetCursorPositionRAS(ras)
-    sliceNode = callData.GetCursorPositionXYZ(xyz)
-
-    if not insideView or sliceNode not in [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]:
-      self.targetTableModel.cursorPosition = None
-      return
-    self.targetTableModel.cursorPosition = ras
 
   def onTargetSelectionChanged(self, modelIndex=None):
     if not modelIndex:
@@ -442,9 +375,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
   def updateSelection(self, row):
     self.targetTable.clearSelection()
     first = self.targetTable.model().index(row, 0)
-    second = self.targetTable.model().index(row, 1)
-
-    selection = qt.QItemSelection(first, second)
+    selection = qt.QItemSelection(first, first)
     self.targetTable.selectionModel().select(selection, qt.QItemSelectionModel.Select)
 
   def jumpSliceNodesToNthTarget(self, targetIndex):
@@ -534,13 +465,3 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
       if interactor is observee:
         return widget
     return None
-
-  # def updateNeedleModel(self, caller=None, event=None):
-  #   if self.showNeedlePathButton.checked and self.logic.zFrameRegistrationSuccessful:
-  #     modelIndex = self.lastSelectedModelIndex
-  #     try:
-  #       start, end = self.targetTableModel.currentGuidanceComputation.needleStartEndPositions[modelIndex.row()]
-  #       self.logic.createNeedleModelNode(start, end)
-  #     except KeyError:
-  #       self.logic.removeNeedleModelNode()
-
