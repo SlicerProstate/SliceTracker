@@ -203,7 +203,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     approvedResults = sorted([r for r in self.session.data.registrationResults.values() if r.approved],
                              key=lambda r: r.seriesNumber)
     nonSelectedApprovedResults = filter(lambda x: x.seriesNumber != selectedSeriesNumber, approvedResults)
-    if len(nonSelectedApprovedResults) == 0:
+    if len(nonSelectedApprovedResults) == 0 or self.session.currentResult is None:
       return False
     return True
 
