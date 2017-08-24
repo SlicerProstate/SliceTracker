@@ -111,10 +111,10 @@ package "SliceTracker Plugins" #DDDDDD {
     class SliceTrackerAutomaticSegmentationPlugin {
       + LogicClass
     }
-    class SliceTrackerAutomaticSegmentationLogic
+    class AutomaticSegmentationLogic
 
     SliceTrackerSegmentationPluginBase <|--SliceTrackerAutomaticSegmentationPlugin
-    SliceTrackerAutomaticSegmentationLogic <.. SliceTrackerAutomaticSegmentationPlugin::LogicClass: uses
+    AutomaticSegmentationLogic <.. SliceTrackerAutomaticSegmentationPlugin::LogicClass: uses
 
 
     class SliceTrackerManualSegmentationPlugin {

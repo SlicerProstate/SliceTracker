@@ -24,7 +24,7 @@ class AutomaticSegmentationLogic(ModuleLogicMixin):
   def cleanup(self):
     self.inputVolume = None
 
-  def run(self, inputVolume, colorNode=None):
+  def run(self, inputVolume, domain, colorNode=None):
 
     self.colorNode = colorNode
     if not inputVolume:
@@ -32,7 +32,7 @@ class AutomaticSegmentationLogic(ModuleLogicMixin):
 
     self.inputVolume = inputVolume
     self.invokeEvent(self.DeepLearningStartedEvent)
-    outputLabel = self._runDocker()
+    outputLabel = self._runDocker(domain)
 
     if outputLabel:
       self.dilateMask(outputLabel)
@@ -40,7 +40,7 @@ class AutomaticSegmentationLogic(ModuleLogicMixin):
     else:
       self.invokeEvent(self.DeepLearningFailedEvent)
 
-  def _runDocker(self):
+  def _runDocker(self, domain):
     logic = DeepInfer.DeepInferLogic()
     parameters = DeepInfer.ModelParameters()
     with open(os.path.join(DeepInfer.JSON_LOCAL_DIR, "ProstateSegmenter.json"), "r") as fp:
@@ -54,13 +54,14 @@ class AutomaticSegmentationLogic(ModuleLogicMixin):
       'InputVolume' : self.inputVolume
     }
 
-    outputLabel = slicer.vtkMRMLLabelMapVolumeNode()
+    outputLabel = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
     outputLabel.SetName(self.inputVolume.GetName()+"-label")
-    slicer.mrmlScene.AddNode(outputLabel)
-    outputs = {'OutputLabel': outputLabel}
+    outputs = {
+      'OutputLabel': outputLabel
+    }
 
     params = dict()
-    params['Domain'] = 'Automatic'
+    params['Domain'] = domain
     params['OutputSmoothing'] = 1
     params['ProcessingType'] = 'Fast'
     params['InferenceType'] = 'Single'

@@ -405,8 +405,7 @@ class SliceTrackerSession(StepBasedSession):
   def onDICOMReceiverStatusChanged(self, caller, event, callData):
     customStatusProgressBar = CustomStatusProgressbar()
     customStatusProgressBar.text = callData
-    if "Waiting" in callData:
-      customStatusProgressBar.busy = True
+    customStatusProgressBar.busy = "Waiting" in callData
 
   def importDICOMSeries(self, newFileList):
     indexer = ctk.ctkDICOMIndexer()
@@ -922,7 +921,10 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     from mpReview import mpReviewLogic
     mpReviewColorNode, _ = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name", moduleName=self.MODULE_NAME))
 
-    logic.run(self.data.initialVolume)
+    domain = 'BWH_WITHOUT_ERC'
+    if slicer.util.confirmYesNoDisplay("Was an endorectal coil used during preop acqusition?"):
+      domain = 'BWH_WITH_ERC'
+    logic.run(self.data.initialVolume, domain, mpReviewColorNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def onSegmentationFinished(self, caller, event, labelNode):

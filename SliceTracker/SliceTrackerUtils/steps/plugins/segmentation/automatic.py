@@ -27,7 +27,7 @@ class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase
       self.startSegmentation()
 
   def startSegmentation(self):
-    self.logic.run(self.session.fixedVolume, colorNode=self.session.mpReviewColorNode)
+    self.logic.run(self.session.fixedVolume, domain='BWH_WITHOUT_ERC', colorNode=self.session.mpReviewColorNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def _onSegmentationFinished(self, caller, event, labelNode):
