@@ -1,5 +1,6 @@
 import os, logging
 import vtk, ctk, ast
+import qt
 import xml
 import getpass
 import datetime
@@ -16,6 +17,7 @@ from SlicerDevelopmentToolboxUtils.helpers import SmartDICOMReceiver
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow, CustomStatusProgressbar
+from SlicerDevelopmentToolboxUtils.widgets import SliceWidgetConfirmYesNoMessageBox
 from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton
 from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse, onReturnProcessEvents, onExceptionReturnNone
 from SlicerDevelopmentToolboxUtils.module.session import StepBasedSession
@@ -922,8 +924,14 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     mpReviewColorNode, _ = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name", moduleName=self.MODULE_NAME))
 
     domain = 'BWH_WITHOUT_ERC'
-    if slicer.util.confirmYesNoDisplay("Was an endorectal coil used during preop acqusition?"):
+    prompt = SliceWidgetConfirmYesNoMessageBox("Red", "Was an endorectal coil used during preop acqusition?").exec_()
+
+    if prompt == qt.QMessageBox.Yes:
       domain = 'BWH_WITH_ERC'
+    elif prompt == qt.QMessageBox.Cancel:
+      self.invokeEvent(self.PreprocessedDataErrorEvent)
+      return
+
     logic.run(self.data.initialVolume, domain, mpReviewColorNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
