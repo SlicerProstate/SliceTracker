@@ -728,18 +728,6 @@ class SliceTrackerSession(StepBasedSession):
         targetList.AddFiducialFromArray(self.getTargetPosition(self.temporaryIntraopTargets, i),
                                         self.temporaryIntraopTargets.GetNthFiducialLabel(i))
 
-  def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform=None):
-
-    params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
-              'interpolationMode': 'NearestNeighbor', 'pixelType':'short'}
-    if warpTransform:
-      params['warpTransform'] = warpTransform
-
-    logging.debug('About to run BRAINSResample CLI with those params: %s' % params)
-    slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
-    logging.debug('resample labelmap through')
-    slicer.mrmlScene.AddNode(outputVolume)
-
   @logmethod(logging.INFO)
   def onRegistrationResultStatusChanged(self, caller, event):
     self.skipAllUnregisteredPreviousSeries(self.currentResult.name)
