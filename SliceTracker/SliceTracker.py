@@ -249,7 +249,17 @@ class SliceTrackerTabWidget(qt.QTabWidget, ModuleWidgetMixin):
           self.session.previousStep = step
         step.active = False
     self.session.steps[index].active = True
+    self.updateSizes(index)
 
+  def updateSizes(self, index):
+    for i in range(self.count):
+      if i != index:
+        self.widget(i).setSizePolicy(qt.QSizePolicy.Ignored, qt.QSizePolicy.Ignored)
+
+    self.widget(index).setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
+    self.widget(index).resize(self.widget(index).minimumSizeHint)
+    self.resize(self.minimumSizeHint)
+    self.adjustSize()
 
 class SliceTrackerSlicelet(qt.QWidget, ModuleWidgetMixin):
 

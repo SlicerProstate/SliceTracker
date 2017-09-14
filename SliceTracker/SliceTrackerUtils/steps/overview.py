@@ -42,6 +42,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   NAME = "Overview"
   LogicClass = SliceTrackerOverViewStepLogic
+  LayoutClass = qt.QVBoxLayout
 
   def __init__(self):
     super(SliceTrackerOverviewStep, self).__init__()
@@ -84,14 +85,14 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent, self.onHideDisplacementChart)
     self.displacementChartPlugin.collapsibleButton.hide()
 
-    self.layout().addWidget(self.caseManagerPlugin, 0, 0)
-    self.layout().addWidget(self.trainingPlugin, 1, 0)
-    self.layout().addWidget(self.targetTablePlugin, 2, 0)
+    self.layout().addWidget(self.caseManagerPlugin)
+    self.layout().addWidget(self.trainingPlugin)
+    self.layout().addWidget(self.targetTablePlugin)
     self.layout().addWidget(self.createHLayout([self.intraopSeriesSelector, self.changeSeriesTypeButton,
-                                                self.trackTargetsButton, self.skipIntraopSeriesButton]), 3, 0)
-    self.layout().addWidget(self.regResultsCollapsibleButton, 4, 0)
-    self.layout().addWidget(self.displacementChartPlugin.collapsibleButton, 5, 0)
-    # self.layout().setRowStretch(8, 1)
+                                                self.trackTargetsButton, self.skipIntraopSeriesButton]))
+    self.layout().addWidget(self.regResultsCollapsibleButton)
+    self.layout().addWidget(self.displacementChartPlugin.collapsibleButton)
+    self.layout().addStretch(1)
 
   def onShowDisplacementChart(self, caller, event):
     self.displacementChartPlugin.collapsibleButton.show()

@@ -20,6 +20,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
 
   NAME = "Evaluation"
   LogicClass = SliceTrackerEvaluationStepLogic
+  LayoutClass = qt.QVBoxLayout
 
   def __init__(self):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
@@ -27,9 +28,6 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
 
   def setup(self):
     super(SliceTrackerEvaluationStep, self).setup()
-    self.registrationEvaluationGroupBox = qt.QGroupBox()
-    self.registrationEvaluationGroupBoxLayout = qt.QGridLayout()
-    self.registrationEvaluationGroupBox.setLayout(self.registrationEvaluationGroupBoxLayout)
     self.setupRegistrationValidationButtons()
 
     self.regResultsPlugin = SliceTrackerRegistrationResultsPlugin()
@@ -50,12 +48,11 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.omShowDisplacementChart)
     self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent, self.onHideDisplacementChart)
 
-    self.registrationEvaluationGroupBoxLayout.addWidget(self.regResultsPlugin, 3, 0)
-    self.registrationEvaluationGroupBoxLayout.addWidget(self.targetTablePlugin, 4, 0)
-    self.registrationEvaluationGroupBoxLayout.addWidget(self.registrationEvaluationButtonsGroupBox, 5, 0)
-    self.registrationEvaluationGroupBoxLayout.addWidget(self.displacementChartPlugin.collapsibleButton, 6, 0)
-    self.registrationEvaluationGroupBoxLayout.setRowStretch(6, 1)
-    self.layout().addWidget(self.registrationEvaluationGroupBox)
+    self.layout().addWidget(self.regResultsPlugin)
+    self.layout().addWidget(self.targetTablePlugin)
+    self.layout().addWidget(self.registrationEvaluationButtonsGroupBox)
+    self.layout().addWidget(self.displacementChartPlugin.collapsibleButton)
+    self.layout().addStretch(1)
 
   def setupRegistrationValidationButtons(self):
     iconSize = qt.QSize(36, 36)

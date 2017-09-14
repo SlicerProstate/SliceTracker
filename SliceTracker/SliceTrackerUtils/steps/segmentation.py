@@ -37,6 +37,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   NAME = "Segmentation"
   LogicClass = SliceTrackerSegmentationStepLogic
+  LayoutClass = qt.QVBoxLayout
 
   def __init__(self):
     super(SliceTrackerSegmentationStep, self).__init__()
@@ -48,6 +49,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self._setupTargetingPlugin()
     self._setupAutomaticSegmentationPlugin()
     self._setupNavigationButtons()
+    self.layout().addStretch(1)
 
   def _setupTargetingPlugin(self):
     self.targetingPlugin = SliceTrackerTargetingPlugin()
