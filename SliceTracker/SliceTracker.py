@@ -55,7 +55,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.session.removeEventObservers()
     self.session.addEventObserver(self.session.CloseCaseEvent, lambda caller, event: self.cleanup())
     self.session.addEventObserver(SlicerDevelopmentToolboxEvents.NewFileIndexedEvent, self.onNewFileIndexed)
-    self.demoMode = False
+    self.demoMode = self.getSetting("Demo_Mode", moduleName=self.moduleName)
 
   def enter(self):
     if not slicer.dicomDatabase:
@@ -175,6 +175,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     receivedFile = self.session.loadableList[callData][0] if callData else None
     if not self.session.data.usePreopData and self.patientWatchBox.sourceFile is None:
       self.patientWatchBox.sourceFile = receivedFile
+      self.patientWatchBox.setInformation("StudyDate", "NA")
     self.intraopWatchBox.sourceFile = receivedFile
 
   @vtk.calldata_type(vtk.VTK_STRING)
