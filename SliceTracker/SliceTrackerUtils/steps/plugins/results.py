@@ -134,7 +134,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.opacitySpinBox = qt.QDoubleSpinBox()
     self.opacitySpinBox.minimum = 0
     self.opacitySpinBox.maximum = 1.0
-    self.opacitySpinBox.value = 0
+    self.opacitySpinBox.value = 1
     self.opacitySpinBox.singleStep = 0.05
     self.opacitySliderPopup = ctk.ctkPopupWidget(self.opacitySpinBox)
     popupLayout = qt.QHBoxLayout(self.opacitySliderPopup)
@@ -143,7 +143,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     self.opacitySlider.orientation = qt.Qt.Horizontal
     self.opacitySlider.minimum = 0
     self.opacitySlider.maximum = 1.0
-    self.opacitySlider.value = 0
+    self.opacitySlider.value = 1
     self.opacitySlider.singleStep = 0.05
     popupLayout.addWidget(self.opacitySlider)
     self.opacitySliderPopup.verticalDirection = ctk.ctkBasePopupWidget.TopToBottom
@@ -247,6 +247,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       return
     self.onRegistrationResultSelected(self.currentResult.name)
     self.onOpacitySpinBoxChanged(self.opacitySpinBox.value)
+    self.sliceAnnotationHandler.setOldNewIndicatorAnnotationOpacity(self.opacitySpinBox.value)
 
   def onRegistrationButtonChecked(self, button):
     self.displayRegistrationResultsByType(button.name)
@@ -333,12 +334,13 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     if self.flickerCheckBox.checked:
       self.flickerCheckBox.checked = False
     self.rockTimer.start()
-    self.opacitySpinBox.value = 0.5 + numpy.sin(self.rockCount / 10.) / 2.
+    self.opacitySpinBox.value = 0.5 - numpy.sin(self.rockCount / 10.) / 2.
     self.rockCount += 1
 
   def stopRocking(self):
     self.rockTimer.stop()
     self.opacitySpinBox.value = 1.0
+    self.rockCount = 0
 
   def startFlickering(self):
     if self.rockCheckBox.checked:

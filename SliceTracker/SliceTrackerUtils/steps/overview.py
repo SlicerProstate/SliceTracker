@@ -80,7 +80,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
     self.addPlugin(self.displacementChartPlugin)
 
-    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.omShowDisplacementChart)
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.onShowDisplacementChart)
     self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent, self.onHideDisplacementChart)
     self.displacementChartPlugin.collapsibleButton.hide()
 
@@ -93,7 +93,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.layout().addWidget(self.displacementChartPlugin.collapsibleButton, 5, 0)
     # self.layout().setRowStretch(8, 1)
 
-  def omShowDisplacementChart(self, caller, event):
+  def onShowDisplacementChart(self, caller, event):
     self.displacementChartPlugin.collapsibleButton.show()
 
   def onHideDisplacementChart(self, caller, event):
@@ -169,6 +169,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       else:
         self.currentResult = self.session.data.getApprovedOrLastResultForSeries(selectedSeries).name
         self.regResultsCollapsibleButton.show()
+        self.regResultsPlugin.setVisible(True)
         self.regResultsPlugin.onLayoutChanged()
       self.targetTablePlugin.currentTargets = self.currentResult.targets.approved if self.currentResult.approved \
         else self.currentResult.targets.bSpline

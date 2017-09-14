@@ -213,6 +213,11 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     result.setTargets(approvedRegistrationType, clone)
     result.volumes.fixed = fixedVolume
     result.labels.fixed = self.session.fixedLabel
+
+    if self.session.seriesTypeManager.isCoverProstate(self.session.currentResult.name) and \
+    self.session.data.getMostRecentApprovedCoverProstateRegistration() is not None:
+      self.session.data.getMostRecentApprovedCoverProstateRegistration().reject()
+
     result.approve(approvedRegistrationType)
 
   def _onAutomaticSegmentationStarted(self, caller, event):
