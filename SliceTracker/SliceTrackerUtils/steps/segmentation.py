@@ -115,7 +115,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
       self._setupSideBySideSegmentationView()
     elif self.layoutManager.layout in [constants.LAYOUT_FOUR_UP, constants.LAYOUT_RED_SLICE_ONLY]:
-      self.redCompositeNode.SetLabelVolumeID(None)
       self._removeMissingPreopDataAnnotation()
       self.setBackgroundToVolumeID(self.session.currentSeriesVolume, clearLabels=False)
 

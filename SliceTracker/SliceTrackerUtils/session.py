@@ -1,11 +1,15 @@
 import os, logging
 import vtk, ctk, ast
+import qt
+import xml
+import getpass
+import datetime
 
 import slicer
 from sessionData import SessionData, RegistrationResult, RegistrationTypeData
 from constants import SliceTrackerConstants
 from helpers import SeriesTypeManager
-
+from algorithms.automaticProstateSegmentation import AutomaticSegmentationLogic
 
 from SlicerDevelopmentToolboxUtils.constants import DICOMTAGS, FileExtension, STYLE
 from SlicerDevelopmentToolboxUtils.events import SlicerDevelopmentToolboxEvents
@@ -13,6 +17,7 @@ from SlicerDevelopmentToolboxUtils.helpers import SmartDICOMReceiver
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow, CustomStatusProgressbar
+from SlicerDevelopmentToolboxUtils.widgets import SliceWidgetConfirmYesNoMessageBox
 from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton
 from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse, onReturnProcessEvents, onExceptionReturnNone
 from SlicerDevelopmentToolboxUtils.module.session import StepBasedSession
@@ -402,8 +407,7 @@ class SliceTrackerSession(StepBasedSession):
   def onDICOMReceiverStatusChanged(self, caller, event, callData):
     customStatusProgressBar = CustomStatusProgressbar()
     customStatusProgressBar.text = callData
-    if "Waiting" in callData:
-      customStatusProgressBar.busy = True
+    customStatusProgressBar.busy = "Waiting" in callData
 
   def importDICOMSeries(self, newFileList):
     indexer = ctk.ctkDICOMIndexer()
@@ -725,18 +729,6 @@ class SliceTrackerSession(StepBasedSession):
         targetList.AddFiducialFromArray(self.getTargetPosition(self.temporaryIntraopTargets, i),
                                         self.temporaryIntraopTargets.GetNthFiducialLabel(i))
 
-  def runBRAINSResample(self, inputVolume, referenceVolume, outputVolume, warpTransform=None):
-
-    params = {'inputVolume': inputVolume, 'referenceVolume': referenceVolume, 'outputVolume': outputVolume,
-              'interpolationMode': 'NearestNeighbor', 'pixelType':'short'}
-    if warpTransform:
-      params['warpTransform'] = warpTransform
-
-    logging.debug('About to run BRAINSResample CLI with those params: %s' % params)
-    slicer.cli.run(slicer.modules.brainsresample, None, params, wait_for_completion=True)
-    logging.debug('resample labelmap through')
-    slicer.mrmlScene.AddNode(outputVolume)
-
   @logmethod(logging.INFO)
   def onRegistrationResultStatusChanged(self, caller, event):
     self.skipAllUnregisteredPreviousSeries(self.currentResult.name)
@@ -885,64 +877,123 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
       self.invokeEvent(self.PreprocessedDataErrorEvent)
 
   def loadMpReviewProcessedData(self):
-    from mpReview import mpReviewLogic
     studyDir = self.getFirstMpReviewPreprocessedStudy(self.outputDirectory)
     resourcesDir = os.path.join(studyDir, 'RESOURCES')
-    logging.debug(resourcesDir)
-    if not os.path.exists(resourcesDir):
-      logging.info("The selected directory does not fit the mpReview directory structure. Make sure that you select "
-                   "the study root directory which includes directories RESOURCES")
+    if not self.isMpReviewStudyDirectoryValid(resourcesDir):
+      self.invokeEvent(self.PreprocessedDataErrorEvent)
+      return
+
+    self.findPreopImageAndSegmentationPaths(resourcesDir)
+
+    message = None
+    if not self.preopSegmentationPath:
+      slicer.util.errorDisplay("No eligible series found for preop AX T2 segmentation. MpReview might not have "
+                               "processed the right series or series names are different from BWH internally used ones")
       self.invokeEvent(self.PreprocessedDataErrorEvent)
       return
 
     self.data.initialTargetsPath = os.path.join(studyDir, 'Targets')
-    seriesMap, metaFile = mpReviewLogic.loadMpReviewProcessedData(resourcesDir)
-    self.loadPreopImageAndLabel(seriesMap)
 
-    message = None
-    if self.preopSegmentationPath is None:
-      message = "No segmentations found.\nMake sure that you used mpReview for segmenting the prostate first and using " \
-                "its output as the preop data input here."
-      logging.info(message)
+    loadedPreopVolume = self.loadPreopVolume()
+    loadedPreopTargets = self.loadPreopTargets()
+    loadedPreopT2Label = self.loadT2Label() if os.path.exists(self.preopSegmentationPath) else False
 
-    if message or not (self.loadT2Label() and self.loadPreopVolume() and self.loadPreopTargets()):
-      message = "Loading preop data failed.\nMake sure that the correct mpReview directory structure is used." \
-                "\n\nSliceTracker expects a T2 volume, WholeGland segmentation and target(s). Do you want to " \
-                "open/revisit pre-processing for the current case?"
-      if slicer.util.confirmYesNoDisplay(message, windowTitle="SliceTracker"):
-        # TODO: start intraop without listening to signals
-        self.runModule()
+    if message or not (loadedPreopT2Label and loadedPreopVolume and loadedPreopTargets):
+      if loadedPreopTargets and loadedPreopVolume and \
+          self.getSetting("Use_Deep_Learning", moduleName=self.MODULE_NAME).lower() == "true":
+        if slicer.util.confirmYesNoDisplay("No WholeGland segmentation found in preop data. Automatic segmentation is "
+                                           "available. Would you like to proceed with the automatic segmentation?",
+                                           windowTitle="SliceTracker"):
+          self.runAutomaticSegmentation()
+        else:
+          self.onPreopLoadingFailed()
       else:
-        self.invokeEvent(self.PreprocessedDataErrorEvent)
+        self.onPreopLoadingFailed()
     else:
       self.invokeEvent(self.PreprocessingFinishedEvent)
 
-  def loadPreopImageAndLabel(self, seriesMap):
+  def runAutomaticSegmentation(self):
+    logic = AutomaticSegmentationLogic()
+    logic.addEventObserver(logic.DeepLearningFinishedEvent, self.onSegmentationFinished)
+    logic.addEventObserver(logic.DeepLearningFailedEvent, self.onPreopLoadingFailed)
+    customStatusProgressBar = CustomStatusProgressbar()
+    customStatusProgressBar.text = "Running DeepInfer for automatic prostate segmentation"
+
+    print self.data.initialVolume.GetName()
+    from mpReview import mpReviewLogic
+    mpReviewColorNode, _ = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name", moduleName=self.MODULE_NAME))
+
+    domain = 'BWH_WITHOUT_ERC'
+    prompt = SliceWidgetConfirmYesNoMessageBox("Red", "Was an endorectal coil used during preop acqusition?").exec_()
+
+    if prompt == qt.QMessageBox.Yes:
+      domain = 'BWH_WITH_ERC'
+    elif prompt == qt.QMessageBox.Cancel:
+      self.invokeEvent(self.PreprocessedDataErrorEvent)
+      return
+
+    logic.run(self.data.initialVolume, domain, mpReviewColorNode)
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onSegmentationFinished(self, caller, event, labelNode):
+    if not self.preopSegmentationPath:
+      self.createDirectory(self.preopSegmentationPath)
+    segmentedColorName = self.getSetting("Segmentation_Color_Name", moduleName=self.MODULE_NAME)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = getpass.getuser() + '-' + segmentedColorName + '-' + timestamp
+    self.saveNodeData(labelNode, self.preopSegmentationPath, extension=FileExtension.NRRD, name=filename)
+    self.loadPreProcessedData()
+    customStatusProgressBar = CustomStatusProgressbar()
+    customStatusProgressBar.text = "Done automatic prostate segmentation"
+
+  def isMpReviewStudyDirectoryValid(self, resourcesDir):
+    logging.debug(resourcesDir)
+    if not os.path.exists(resourcesDir):
+      logging.info("The selected directory does not fit the mpReview directory structure. Make sure that you select "
+                   "the study root directory which includes directories RESOURCES")
+      return False
+    return True
+
+  def onPreopLoadingFailed(self, caller=None, event=None):
+    message = "Loading preop data failed.\nMake sure that the correct mpReview directory structure is used." \
+              "\n\nSliceTracker expects a T2 volume, WholeGland segmentation and target(s). Do you want to " \
+              "open/revisit pre-processing for the current case?"
+    if slicer.util.confirmYesNoDisplay(message, windowTitle="SliceTracker"):
+      # TODO: start intraop without listening to signals
+      self.runModule()
+    else:
+      self.invokeEvent(self.PreprocessedDataErrorEvent)
+
+  def findPreopImageAndSegmentationPaths(self, resourcesDir):
+    from mpReview import mpReviewLogic
+    seriesMap, metaFile = mpReviewLogic.loadMpReviewProcessedData(resourcesDir)
+
     self.preopImagePath = None
     self.preopSegmentationPath = None
-    segmentedColorName = self.getSetting("Segmentation_Color_Name", moduleName=self.MODULE_NAME) # TODO: correct?
+    # segmentedColorName = self.getSetting("Segmentation_Color_Name", moduleName=self.MODULE_NAME) # TODO: correct?
 
     for series in seriesMap:
       seriesName = str(seriesMap[series]['LongName'])
       logging.debug('series Number ' + series + ' ' + seriesName)
 
       imagePath = os.path.join(seriesMap[series]['NRRDLocation'])
-      segmentationPath = os.path.dirname(os.path.dirname(imagePath))
-      segmentationPath = os.path.join(segmentationPath, 'Segmentations')
 
-      if not os.path.exists(segmentationPath):
-        continue
-      else:
-        if any(segmentedColorName in name for name in os.listdir(segmentationPath)):
-          logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
-          logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
-          logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))
+      xmlFile = imagePath.replace(".nrrd", ".xml")
+      dom = xml.dom.minidom.parse(xmlFile)
+      seriesDescription = self.findElement(dom, "SeriesDescription")
 
-          logging.debug(' LOCATION OF SEGMENTATION path : ' + segmentationPath)
+      segmentationsPath = os.path.join(os.path.dirname(os.path.dirname(imagePath)), 'Segmentations')
 
-          self.preopImagePath = seriesMap[series]['NRRDLocation']
-          self.preopSegmentationPath = segmentationPath
-          break
+      # TODO: is the following line not flexible enough for external? What if several images match?
+      if seriesDescription.find("AX") != -1 and seriesDescription.find("T2") != -1:
+        logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
+        logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
+        logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))
+        logging.debug(' EXPECTED LOCATION OF SEGMENTATION path : ' + segmentationsPath)
+
+        self.preopImagePath = seriesMap[series]['NRRDLocation']
+        self.preopSegmentationPath = segmentationsPath
+        break
 
   def loadT2Label(self):
     if self.data.initialLabel:
