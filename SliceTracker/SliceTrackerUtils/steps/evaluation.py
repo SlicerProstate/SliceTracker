@@ -98,7 +98,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
 
     if self.session.seriesTypeManager.isCoverProstate(self.session.currentResult.name) and \
     self.session.data.getMostRecentApprovedCoverProstateRegistration() is not None:
-      self.session.data.getMostRecentApprovedCoverProstateRegistration().reject()
+      self.session.data.getMostRecentApprovedCoverProstateRegistration().skip()
 
     self.currentResult.approve(registrationType=self.regResultsPlugin.registrationButtonGroup.checkedButton().name)
     # if self.ratingWindow.isRatingEnabled():
