@@ -45,10 +45,13 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   def setup(self):
     super(SliceTrackerSegmentationStep, self).setup()
-    self._setupManualSegmentationPlugin()
     self._setupTargetingPlugin()
+    self._setupManualSegmentationPlugin()
     self._setupAutomaticSegmentationPlugin()
     self._setupNavigationButtons()
+    self.layout().addWidget(self.manualSegmentationPlugin)
+    self.layout().addWidget(self.createHLayout([self.backButton, self.finishStepButton]))
+    self.layout().addWidget(self.targetingPlugin)
     self.layout().addStretch(1)
 
   def _setupTargetingPlugin(self):
@@ -56,7 +59,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.targetingPlugin.addEventObserver(self.targetingPlugin.TargetingStartedEvent, self._onTargetingStarted)
     self.targetingPlugin.addEventObserver(self.targetingPlugin.TargetingFinishedEvent, self._onTargetingFinished)
     self.addPlugin(self.targetingPlugin)
-    self.layout().addWidget(self.targetingPlugin)
 
   def _setupManualSegmentationPlugin(self):
     self.manualSegmentationPlugin = SliceTrackerManualSegmentationPlugin()
@@ -67,7 +69,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.manualSegmentationPlugin.addEventObserver(self.manualSegmentationPlugin.SegmentationFinishedEvent,
                                                    self._onSegmentationFinished)
     self.addPlugin(self.manualSegmentationPlugin)
-    self.layout().addWidget(self.manualSegmentationPlugin)
 
   def _setupAutomaticSegmentationPlugin(self):
     self.automaticSegmentationPlugin = SliceTrackerAutomaticSegmentationPlugin()
@@ -84,8 +85,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.backButton = self.createButton("", icon=Icons.back, iconSize=iconSize,
                                         toolTip="Return to last step")
     self.finishStepButton = self.createButton("", icon=Icons.start, iconSize=iconSize,
-                                              toolTip="Run Registration")
-    self.layout().addWidget(self.createHLayout([self.backButton, self.finishStepButton]))
+                                              toolTip="Run Registration/Finish Step")
 
   def setupConnections(self):
     super(SliceTrackerSegmentationStep, self).setupConnections()

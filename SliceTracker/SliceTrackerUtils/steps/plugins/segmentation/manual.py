@@ -63,14 +63,12 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.surfaceCutToLabelWidget.colorSpin.setValue(self.session.segmentedLabelValue)
     self.surfaceCutToLabelWidget.imageVolumeSelector.setCurrentNode(self.session.fixedVolume)
     self._addSurfaceCutEventObservers()
-    # if (self.session.data.usePreopData or self.session.retryMode) and self.getSetting("Use_Deep_Learning") == "false":
-    #   self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
-    #   slicer.app.processEvents()
-    #   self.surfaceCutToLabelWidget.quickSegmentationButton.click()
+    if self.getSetting("Use_Deep_Learning").lower() == "false":
+      self.surfaceCutToLabelWidget.quickSegmentationButton.checked = True
 
   def onDeactivation(self):
     super(SliceTrackerManualSegmentationPlugin, self).onDeactivation()
-    self._removeSurfacCutEventObservers()
+    self._removeSurfaceCutEventObservers()
 
   def _addSurfaceCutEventObservers(self):
     self.surfaceCutToLabelWidget.addEventObserver(self.surfaceCutToLabelWidget.SegmentationStartedEvent,
@@ -80,7 +78,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.surfaceCutToLabelWidget.addEventObserver(self.surfaceCutToLabelWidget.SegmentationFinishedEvent,
                                                   self._onSegmentationFinished)
 
-  def _removeSurfacCutEventObservers(self):
+  def _removeSurfaceCutEventObservers(self):
     self.surfaceCutToLabelWidget.removeEventObserver(self.surfaceCutToLabelWidget.SegmentationStartedEvent,
                                                      self._onSegmentationStarted)
     self.surfaceCutToLabelWidget.removeEventObserver(self.surfaceCutToLabelWidget.SegmentationCanceledEvent,
@@ -89,7 +87,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
                                                      self._onSegmentationFinished)
 
   def _onSegmentationStarted(self, caller, event):
-    if self.getSetting("Use_Deep_Learning") == "true":
+    if self.getSetting("Use_Deep_Learning").lower() == "true":
       if not self._preCheckExistingSegmentation():
         return
     self.setupFourUpView(self.session.fixedVolume)
