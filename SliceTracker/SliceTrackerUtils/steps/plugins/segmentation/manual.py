@@ -97,11 +97,11 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.invokeEvent(self.SegmentationStartedEvent)
 
   def _preCheckExistingSegmentation(self):
-    if not slicer.util.confirmYesNoDisplay("The automatic segmentation will be overwritten. Do you want to proceed?",
-                                           windowTitle="SliceTracker"):
-      self.surfaceCutToLabelWidget.logic.stopQuickSegmentationMode(cancelled=True)
-      return False
-    return True
+    if slicer.util.confirmYesNoDisplay("The automatic segmentation will be overwritten. Do you want to proceed?",
+                                       windowTitle="SliceTracker"):
+      return True
+    self.surfaceCutToLabelWidget.deactivateQuickSegmentationMode(cancelled=True)
+    return False
 
   def _onSegmentationCanceled(self, caller, event):
     self.invokeEvent(self.SegmentationCanceledEvent)
