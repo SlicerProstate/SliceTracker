@@ -39,9 +39,17 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def imageVolume(self):
     return self.imageVolumeSelector.currentNode()
 
+  @imageVolume.setter
+  def imageVolume(self, volume):
+    self.imageVolumeSelector.setCurrentNode(volume)
+
   @property
   def labelVolume(self):
     return self.labelMapSelector.currentNode()
+
+  @labelVolume.setter
+  def labelVolume(self, volume):
+    return self.labelMapSelector.setCurrentNode(volume)
 
   @property
   def segmentationNode(self):
@@ -64,9 +72,9 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     if not displayNode:
       displayNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationDisplayNode")
       self._segmentationNode.SetAndObserveDisplayNodeID(displayNode.GetID())
-    map(lambda x: displayNode.SetSegmentVisibility(x, False), self._getSegmentIDs())
+    map(lambda x: displayNode.SetSegmentVisibility(x, False), self.getSegmentIDs())
 
-  def _getSegmentIDs(self):
+  def getSegmentIDs(self):
     segmentIDs = vtk.vtkStringArray()
     self._segmentationNode.GetSegmentation().GetSegmentIDs(segmentIDs)
     return [segmentIDs.GetValue(idx) for idx in range(segmentIDs.GetNumberOfValues())]
@@ -74,7 +82,7 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   @segmentationNode.setter
   def segmentationNode(self, node):
     self._segmentationNode = node
-    if not any(segmentID == self.SEGMENTATION_NAME for segmentID in self._getSegmentIDs()):
+    if not any(segmentID == self.SEGMENTATION_NAME for segmentID in self.getSegmentIDs()):
       self._addInitialSegment()
     self._configureSegmentVisibility()
 
