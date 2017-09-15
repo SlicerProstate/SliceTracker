@@ -273,6 +273,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     segmentationNode = surfaceCutToLabelWidget.segmentationNode
     map(lambda x: segmentationNode.RemoveSegment(x), surfaceCutToLabelWidget.getSegmentIDs())
     segmentationsLogic.ImportLabelmapToSegmentationNode(labelNode, segmentationNode)
+    surfaceCutToLabelWidget.configureSegmentVisibility()
 
     segmentIDs = surfaceCutToLabelWidget.getSegmentIDs()
     segmentationNode.GetSegmentation().GetSegment(segmentIDs[0]).SetName(surfaceCutToLabelWidget.SEGMENTATION_NAME)

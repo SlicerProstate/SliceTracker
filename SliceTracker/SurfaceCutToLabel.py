@@ -57,7 +57,7 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     if not self._segmentationNode:
       self._segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
       self._addInitialSegment()
-      self._configureSegmentVisibility()
+      self.configureSegmentVisibility()
 
     return self._segmentationNode
 
@@ -67,7 +67,7 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     segment.SetName(self.SEGMENTATION_NAME)
     self._segmentationNode.GetSegmentation().AddSegment(segment)
 
-  def _configureSegmentVisibility(self):
+  def configureSegmentVisibility(self):
     displayNode = self._segmentationNode.GetDisplayNode()
     if not displayNode:
       displayNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationDisplayNode")
@@ -84,7 +84,7 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self._segmentationNode = node
     if not any(segmentID == self.SEGMENTATION_NAME for segmentID in self.getSegmentIDs()):
       self._addInitialSegment()
-    self._configureSegmentVisibility()
+    self.configureSegmentVisibility()
 
   @property
   def selectorsGroupBoxVisible(self):
@@ -299,20 +299,25 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
                                               self.quickSegmentationButton.checked)
 
   def observeSegmentation(self, observationEnabled):
-    import vtkSegmentationCorePython as vtkSegmentationCore
     if self.segmentationNode:
       segmentation = self.segmentationNode.GetSegmentation()
     else:
       segmentation = None
-    # Remove old observer
+    self.removeSegmentationObserver()
+    if observationEnabled and segmentation is not None:
+      self.addSegmentationObserver(segmentation)
+
+  def addSegmentationObserver(self, segmentation):
+    import vtkSegmentationCorePython as vtkSegmentationCore
+    self.observedSegmentation = segmentation
+    self.segmentObserver = self.observedSegmentation.AddObserver(
+      vtkSegmentationCore.vtkSegmentation.RepresentationModified,
+      self.onSegmentModified)
+
+  def removeSegmentationObserver(self):
     if self.observedSegmentation:
       self.observedSegmentation.RemoveObserver(self.segmentObserver)
       self.segmentObserver = None
-    # Add new observer
-    if observationEnabled and segmentation is not None:
-      self.observedSegmentation = segmentation
-      self.segmentObserver = self.observedSegmentation.AddObserver(vtkSegmentationCore.vtkSegmentation.SegmentModified,
-                                                                   self.onSegmentModified)
 
   def onSegmentModified(self, caller, event):
     self.logic.convertSegmentsToLabelMap(self.segmentationNode, self.logic.outputLabelMap)
