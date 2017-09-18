@@ -55,7 +55,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.session.removeEventObservers()
     self.session.addEventObserver(self.session.CloseCaseEvent, lambda caller, event: self.cleanup())
     self.session.addEventObserver(SlicerDevelopmentToolboxEvents.NewFileIndexedEvent, self.onNewFileIndexed)
-    self.demoMode = False
+    self.demoMode = self.getSetting("Demo_Mode", moduleName=self.moduleName).lower() == 'true'
 
   def enter(self):
     if not slicer.dicomDatabase:
@@ -73,6 +73,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def cleanup(self):
     ScriptedLoadableModuleWidget.cleanup(self)
     self.patientWatchBox.sourceFile = None
+    self.preopWatchBox.sourceFile = None
     self.intraopWatchBox.sourceFile = None
 
   def setup(self):
@@ -92,24 +93,33 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def setupPatientWatchBox(self):
     WatchBoxAttribute.TRUNCATE_LENGTH = 20
-    self.patientWatchBoxInformation = [WatchBoxAttribute('PatientName', 'Name: ', DICOMTAGS.PATIENT_NAME, masked=self.demoMode),
-                                       WatchBoxAttribute('PatientID', 'PID: ', DICOMTAGS.PATIENT_ID, masked=self.demoMode),
-                                       WatchBoxAttribute('DOB', 'DOB: ', DICOMTAGS.PATIENT_BIRTH_DATE, masked=self.demoMode),
-                                       WatchBoxAttribute('StudyDate', 'Preop Date: ', DICOMTAGS.STUDY_DATE)]
-    self.patientWatchBox = DICOMBasedInformationWatchBox(self.patientWatchBoxInformation, title="Patient Information",
+    patientWatchBoxInformation = [WatchBoxAttribute('PatientName', "Patient's Name: ", DICOMTAGS.PATIENT_NAME,
+                                                    masked=self.demoMode),
+                                  WatchBoxAttribute('PatientID', 'Patient ID: ', DICOMTAGS.PATIENT_ID,
+                                                    masked=self.demoMode),
+                                  WatchBoxAttribute('DOB', "Patient's Birth Date: ", DICOMTAGS.PATIENT_BIRTH_DATE,
+                                                    masked=self.demoMode)]
+    self.patientWatchBox = DICOMBasedInformationWatchBox(patientWatchBoxInformation, title="Patient Information",
                                                          columns=2)
     self.layout.addWidget(self.patientWatchBox)
 
+    preopWatchBoxInformation = [WatchBoxAttribute('StudyDate', 'Study Date: ', DICOMTAGS.STUDY_DATE)]
+    self.preopWatchBox = DICOMBasedInformationWatchBox(preopWatchBoxInformation, title="Preop Information", columns=2)
+    self.layout.addWidget(self.preopWatchBox)
+
     intraopWatchBoxInformation = [WatchBoxAttribute('CurrentSeries', 'Current Series: ', [DICOMTAGS.SERIES_NUMBER,
                                                                                           DICOMTAGS.SERIES_DESCRIPTION]),
-                                  WatchBoxAttribute('StudyDate', 'Intraop Date: ', DICOMTAGS.STUDY_DATE)]
-    self.intraopWatchBox = DICOMBasedInformationWatchBox(intraopWatchBoxInformation, columns=2)
+                                  WatchBoxAttribute('StudyDate', 'Study Date: ', DICOMTAGS.STUDY_DATE)]
+    self.intraopWatchBox = DICOMBasedInformationWatchBox(intraopWatchBoxInformation, title="Intraop Information",
+                                                         columns=2)
     self.registrationDetailsButton = self.createButton("", icon=Icons.settings, styleSheet="border:none;",
                                                        maximumWidth=16)
     self.layout.addWidget(self.intraopWatchBox)
 
   def setupViewSettingGroupBox(self):
     iconSize = qt.QSize(24, 24)
+    self.infoButton = self.createButton("", icon=Icons.info, iconSize=iconSize, checkable=True,
+                                        toolTip="Display Patient/Study Information", checked=True)
     self.redOnlyLayoutButton = RedSliceLayoutButton()
     self.sideBySideLayoutButton = SideBySideLayoutButton()
     self.fourUpLayoutButton = FourUpLayoutButton()
@@ -122,7 +132,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                                    toolTip="Display annotations", checked=True)
 
     viewSettingButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton,
-                          self.crosshairButton, self.wlEffectsToolButton, self.settingsButton,
+                          self.infoButton, self.crosshairButton, self.wlEffectsToolButton, self.settingsButton,
                           self.dicomConnectionTestButton]
 
     for step in self.session.steps:
@@ -145,6 +155,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.tabWidget.hideTabs()
 
   def setupConnections(self):
+    self.infoButton.connect('toggled(bool)', self.onShowInformationToggled)
     self.showAnnotationsButton.connect('toggled(bool)', self.onShowAnnotationsToggled)
 
   def setupSessionObservers(self):
@@ -157,10 +168,17 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
 
   def onSuccessfulPreProcessing(self, caller, event):
     dicomFileName = self.logic.getFileList(self.session.preopDICOMDirectory)[0]
-    self.patientWatchBox.sourceFile = os.path.join(self.session.preopDICOMDirectory, dicomFileName)
+    filename = os.path.join(self.session.preopDICOMDirectory, dicomFileName)
+    self.patientWatchBox.sourceFile = filename
+    self.preopWatchBox.sourceFile = filename
 
   def onShowAnnotationsToggled(self, checked):
     allSliceAnnotations = self.sliceAnnotations[:]
+
+  def onShowInformationToggled(self, checked):
+    self.patientWatchBox.visible = checked
+    self.preopWatchBox.visible = checked
+    self.intraopWatchBox.visible = checked
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewFileIndexed(self, caller, event, callData):
@@ -175,6 +193,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     receivedFile = self.session.loadableList[callData][0] if callData else None
     if not self.session.data.usePreopData and self.patientWatchBox.sourceFile is None:
       self.patientWatchBox.sourceFile = receivedFile
+      self.preopWatchBox.setInformation("StudyDate", "NA")
     self.intraopWatchBox.sourceFile = receivedFile
 
   @vtk.calldata_type(vtk.VTK_STRING)
@@ -230,7 +249,17 @@ class SliceTrackerTabWidget(qt.QTabWidget, ModuleWidgetMixin):
           self.session.previousStep = step
         step.active = False
     self.session.steps[index].active = True
+    self.updateSizes(index)
 
+  def updateSizes(self, index):
+    for i in range(self.count):
+      if i != index:
+        self.widget(i).setSizePolicy(qt.QSizePolicy.Ignored, qt.QSizePolicy.Ignored)
+
+    self.widget(index).setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
+    self.widget(index).resize(self.widget(index).minimumSizeHint)
+    self.resize(self.minimumSizeHint)
+    self.adjustSize()
 
 class SliceTrackerSlicelet(qt.QWidget, ModuleWidgetMixin):
 

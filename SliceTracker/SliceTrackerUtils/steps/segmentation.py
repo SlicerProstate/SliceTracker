@@ -37,6 +37,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   NAME = "Segmentation"
   LogicClass = SliceTrackerSegmentationStepLogic
+  LayoutClass = qt.QVBoxLayout
 
   def __init__(self):
     super(SliceTrackerSegmentationStep, self).__init__()
@@ -44,17 +45,20 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   def setup(self):
     super(SliceTrackerSegmentationStep, self).setup()
-    self._setupManualSegmentationPlugin()
     self._setupTargetingPlugin()
+    self._setupManualSegmentationPlugin()
     self._setupAutomaticSegmentationPlugin()
     self._setupNavigationButtons()
+    self.layout().addWidget(self.manualSegmentationPlugin)
+    self.layout().addWidget(self.createHLayout([self.backButton, self.finishStepButton]))
+    self.layout().addWidget(self.targetingPlugin)
+    self.layout().addStretch(1)
 
   def _setupTargetingPlugin(self):
     self.targetingPlugin = SliceTrackerTargetingPlugin()
     self.targetingPlugin.addEventObserver(self.targetingPlugin.TargetingStartedEvent, self._onTargetingStarted)
     self.targetingPlugin.addEventObserver(self.targetingPlugin.TargetingFinishedEvent, self._onTargetingFinished)
     self.addPlugin(self.targetingPlugin)
-    self.layout().addWidget(self.targetingPlugin)
 
   def _setupManualSegmentationPlugin(self):
     self.manualSegmentationPlugin = SliceTrackerManualSegmentationPlugin()
@@ -65,7 +69,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.manualSegmentationPlugin.addEventObserver(self.manualSegmentationPlugin.SegmentationFinishedEvent,
                                                    self._onSegmentationFinished)
     self.addPlugin(self.manualSegmentationPlugin)
-    self.layout().addWidget(self.manualSegmentationPlugin)
 
   def _setupAutomaticSegmentationPlugin(self):
     self.automaticSegmentationPlugin = SliceTrackerAutomaticSegmentationPlugin()
@@ -82,8 +85,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.backButton = self.createButton("", icon=Icons.back, iconSize=iconSize,
                                         toolTip="Return to last step")
     self.finishStepButton = self.createButton("", icon=Icons.start, iconSize=iconSize,
-                                              toolTip="Run Registration")
-    self.layout().addWidget(self.createHLayout([self.backButton, self.finishStepButton]))
+                                              toolTip="Run Registration/Finish Step")
 
   def setupConnections(self):
     super(SliceTrackerSegmentationStep, self).setupConnections()
@@ -216,7 +218,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
     if self.session.seriesTypeManager.isCoverProstate(self.session.currentResult.name) and \
     self.session.data.getMostRecentApprovedCoverProstateRegistration() is not None:
-      self.session.data.getMostRecentApprovedCoverProstateRegistration().reject()
+      self.session.data.getMostRecentApprovedCoverProstateRegistration().skip()
 
     result.approve(approvedRegistrationType)
 
@@ -264,6 +266,22 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def _onAutomaticSegmentationFinished(self, caller, event, labelNode):
     self.manualSegmentationPlugin.enabled = True
+    surfaceCutToLabelWidget = self.manualSegmentationPlugin.surfaceCutToLabelWidget
+
+    segmentationsLogic = slicer.modules.segmentations.logic()
+
+    segmentationNode = surfaceCutToLabelWidget.segmentationNode
+    map(lambda x: segmentationNode.RemoveSegment(x), surfaceCutToLabelWidget.getSegmentIDs())
+    segmentationsLogic.ImportLabelmapToSegmentationNode(labelNode, segmentationNode)
+    surfaceCutToLabelWidget.configureSegmentVisibility()
+
+    segmentIDs = surfaceCutToLabelWidget.getSegmentIDs()
+    segmentationNode.GetSegmentation().GetSegment(segmentIDs[0]).SetName(surfaceCutToLabelWidget.SEGMENTATION_NAME)
+
+    surfaceCutToLabelWidget.imageVolume = self.session.currentSeriesVolume
+    surfaceCutToLabelWidget.labelVolume = labelNode
+
+    surfaceCutToLabelWidget.segmentEditorWidgetButton.enabled = True
     self._onSegmentationFinished(caller, event, labelNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)

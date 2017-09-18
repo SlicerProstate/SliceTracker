@@ -1,13 +1,21 @@
 import qt
 from ...constants import SliceTrackerConstants as constants
-from ..base import SliceTrackerPlugin
+from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from targets import SliceTrackerTargetTablePlugin
 
 from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
 from SlicerDevelopmentToolboxUtils.widgets import TargetCreationWidget
 
 
+class SliceTrackerTargetingLogic(SliceTrackerLogicBase):
+
+  def __init__(self):
+    super(SliceTrackerTargetingLogic, self).__init__()
+
+
 class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
+
+  LogicClass = SliceTrackerTargetingLogic
 
   NAME = "Targeting"
   TargetingStartedEvent = TargetCreationWidget.StartedEvent
@@ -34,7 +42,8 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
       self._createTargetTableGroupBox("Pre-operative Targets")
     self.intraopTargetTableGroupBox, self.intraopTargetTablePlugin = \
       self._createTargetTableGroupBox("Intra-operative Targets",
-                                      additionalComponents=[self.targetCreationWidget, self.targetCreationWidget.buttons])
+                                      additionalComponents=[self.targetCreationWidget,
+                                                            self.targetCreationWidget.buttons])
 
     self.targetingGroupBox = qt.QGroupBox("Target Placement")
     self.targetingGroupBox.setLayout(qt.QFormLayout())
@@ -73,6 +82,15 @@ class SliceTrackerTargetingPlugin(SliceTrackerPlugin):
       self.targetCreationWidget.currentNode = None
       self.preopTargetTablePlugin.currentTargets = self.session.movingTargets
     else:
+      approvedCoverProstate = self.session.data.getMostRecentApprovedCoverProstateRegistration()
+      if (approvedCoverProstate is not None
+          and self.session.seriesTypeManager.isCoverProstate(self.session.currentSeries)):
+        clone = self.logic.cloneFiducials(approvedCoverProstate.targets.approved, "IntraopTargets")
+        self.targetCreationWidget.currentNode = clone
+        self.intraopTargetTablePlugin.currentTargets = self.session.movingTargets
+        self.session.movingTargets = clone
+        self.setFiducialNodeVisibility(clone, True)
+        self.session.applyDefaultTargetDisplayNode(clone)
       self.preopTargetTableGroupBox.visible = False
 
     self.targetingGroupBox.visible = not self.session.retryMode
