@@ -35,7 +35,6 @@ class AutomaticSegmentationLogic(ModuleLogicMixin):
     outputLabel = self._runDocker(domain)
 
     if outputLabel:
-      self.dilateMask(outputLabel)
       self.invokeEvent(self.DeepLearningFinishedEvent, outputLabel)
     else:
       self.invokeEvent(self.DeepLearningFailedEvent)
@@ -62,7 +61,7 @@ class AutomaticSegmentationLogic(ModuleLogicMixin):
 
     params = dict()
     params['Domain'] = domain
-    params['OutputSmoothing'] = 1
+    params['OutputSmoothing'] = 0
     params['ProcessingType'] = 'Fast'
     params['InferenceType'] = 'Single'
     params['verbose'] = 1
