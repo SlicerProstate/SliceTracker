@@ -181,7 +181,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
         results.append(self.session.currentResult)
       for currIndex, currResult in enumerate(results[1:], 1):
         prevTargets = results[currIndex-1].targets.approved
-        if not self.session.currentResult.wasEvaluated():
+        if not self.session.currentResult.wasEvaluated() and currIndex == len(results[1:]):
           currTargets = self.currResultTargets
         else:
           currTargets = currResult.targets.approved
