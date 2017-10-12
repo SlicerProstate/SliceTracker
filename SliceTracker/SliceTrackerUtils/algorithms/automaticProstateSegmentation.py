@@ -39,6 +39,8 @@ class AutomaticSegmentationLogic(ModuleLogicMixin):
     else:
       self.invokeEvent(self.DeepLearningFailedEvent)
 
+    return outputLabel
+
   def _runDocker(self, domain):
     logic = DeepInfer.DeepInferLogic()
     parameters = DeepInfer.ModelParameters()
