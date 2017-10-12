@@ -985,7 +985,7 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
       segmentationsPath = os.path.join(os.path.dirname(os.path.dirname(imagePath)), 'Segmentations')
 
       # TODO: is the following line not flexible enough for external? What if several images match?
-      if seriesDescription.find("AX") != -1 and seriesDescription.find("T2") != -1:
+      if seriesDescription.lower().find("ax") != -1 and seriesDescription.lower().find("t2") != -1:
         logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
         logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
         logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))
