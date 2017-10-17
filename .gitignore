@@ -7,3 +7,5 @@ RegistrationModule/Resources/Testing/testData_1/*
 RegistrationModule/Resources/Testing/testData_2/*
 RegistrationModule/Resources/Testing/testData_3/*
 .gitignore.save
+*.pyc
+.idea/*

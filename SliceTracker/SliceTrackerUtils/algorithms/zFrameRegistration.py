@@ -55,4 +55,4 @@ class OpenSourceZFrameRegistration(ZFrameRegistrationBase):
 
     params = {'inputVolume': self.inputVolume, 'startSlice': start, 'endSlice': end,
               'outputTransform': self.outputTransform}
-    slicer.cli.run(slicer.modules.zframecalibration, None, params, wait_for_completion=True)
+    slicer.cli.run(slicer.modules.zframeregistration, None, params, wait_for_completion=True)
