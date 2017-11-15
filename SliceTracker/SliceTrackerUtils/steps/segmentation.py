@@ -266,22 +266,19 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def _onAutomaticSegmentationFinished(self, caller, event, labelNode):
     self.manualSegmentationPlugin.enabled = True
-    # surfaceCutToLabelWidget = self.manualSegmentationPlugin.surfaceCutToLabelWidget
-    #
-    # segmentationsLogic = slicer.modules.segmentations.logic()
-    #
-    # segmentationNode = surfaceCutToLabelWidget.segmentationNode
-    # map(lambda x: segmentationNode.RemoveSegment(x), surfaceCutToLabelWidget.getSegmentIDs())
-    # segmentationsLogic.ImportLabelmapToSegmentationNode(labelNode, segmentationNode)
-    # surfaceCutToLabelWidget.configureSegmentVisibility()
-    #
-    # segmentIDs = surfaceCutToLabelWidget.getSegmentIDs()
-    # segmentationNode.GetSegmentation().GetSegment(segmentIDs[0]).SetName(surfaceCutToLabelWidget.SEGMENTATION_NAME)
-    #
-    # surfaceCutToLabelWidget.imageVolume = self.session.currentSeriesVolume
-    # surfaceCutToLabelWidget.labelVolume = labelNode
-    #
-    # surfaceCutToLabelWidget.segmentEditorWidgetButton.enabled = True
+    surfaceCutToLabelWidget = self.manualSegmentationPlugin.surfaceCutToLabelWidget
+
+    segmentationsLogic = slicer.modules.segmentations.logic()
+
+    segmentationNode = surfaceCutToLabelWidget.segmentationNode
+    map(lambda x: segmentationNode.RemoveSegment(x), surfaceCutToLabelWidget.getSegmentIDs())
+    segmentationsLogic.ImportLabelmapToSegmentationNode(labelNode, segmentationNode)
+    surfaceCutToLabelWidget.configureSegmentVisibility()
+
+    surfaceCutToLabelWidget.imageVolume = self.session.currentSeriesVolume
+    surfaceCutToLabelWidget.labelVolume = labelNode
+
+    surfaceCutToLabelWidget.segmentEditorWidgetButton.enabled = True
     self._onSegmentationFinished(caller, event, labelNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
