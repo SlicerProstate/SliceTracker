@@ -913,6 +913,7 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
       self.invokeEvent(self.PreprocessingFinishedEvent)
 
   def runAutomaticSegmentation(self):
+    self.data.useAutomaticSegmentation = True
     logic = AutomaticSegmentationLogic()
     logic.addEventObserver(logic.DeepLearningFinishedEvent, self.onSegmentationFinished)
     logic.addEventObserver(logic.DeepLearningFailedEvent, self.onPreopLoadingFailed)
@@ -927,6 +928,7 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     prompt = SliceWidgetConfirmYesNoMessageBox("Red", "Was an endorectal coil used during preop acqusition?").exec_()
 
     if prompt == qt.QMessageBox.Yes:
+      self.data.useERC = True
       domain = 'BWH_WITH_ERC'
     elif prompt == qt.QMessageBox.Cancel:
       self.invokeEvent(self.PreprocessedDataErrorEvent)

@@ -338,8 +338,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def promptUserAndApplyBiasCorrectionIfNeeded(self):
     if not self.session.data.resumed and not self.session.data.completed:
-      if slicer.util.confirmYesNoDisplay("Was an endorectal coil used for preop image acquisition?",
-                                         windowTitle="SliceTracker"):
+      if (not self.session.data.useAutomaticSegmentation and
+            slicer.util.confirmYesNoDisplay("Was an endorectal coil used for preop image acquisition?",
+            windowTitle="SliceTracker")) or (self.session.data.useAutomaticSegmentation and self.session.data.useERC):
         customProgressbar = CustomStatusProgressbar()
         customProgressbar.busy = True
         currentModule = slicer.util.getModuleGui(self.MODULE_NAME)

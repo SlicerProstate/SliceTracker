@@ -61,6 +61,8 @@ class SessionData(ModuleLogicMixin):
 
     self.completed = False
     self.usePreopData = False
+    self.useERC = False
+    self.useAutomaticSegmentation = False
     self.biasCorrectionDone = False
 
     self.segmentModelNode = None
@@ -115,6 +117,7 @@ class SessionData(ModuleLogicMixin):
       self.readProcedureEvents(data["procedureEvents"])
 
       self.usePreopData = data["usedPreopData"]
+      self.useAutomaticSegmentation = data["usedAutomaticSegmentation"]
       self.biasCorrectionDone = data["biasCorrected"]
 
       if "initialTargets" in data.keys():
@@ -247,6 +250,7 @@ class SessionData(ModuleLogicMixin):
 
     data = {
       "usedPreopData": self.usePreopData,
+      "usedAutomaticSegmentation": self.useAutomaticSegmentation,
       "biasCorrected": self.biasCorrectionDone,
       "results": createResultsList()
     }
