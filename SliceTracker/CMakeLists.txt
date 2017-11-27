@@ -23,12 +23,6 @@ slicerMacroBuildScriptedModule(
   )
 
 slicerMacroBuildScriptedModule(
-  NAME SliceTrackerZFrameRegistration
-  SCRIPTS SliceTrackerZFrameRegistration.py
-  RESOURCES ""
-  )
-
-slicerMacroBuildScriptedModule(
   NAME SurfaceCutToLabel
   SCRIPTS SurfaceCutToLabel.py
   RESOURCES ${MODULE_PYTHON_RESOURCES}
