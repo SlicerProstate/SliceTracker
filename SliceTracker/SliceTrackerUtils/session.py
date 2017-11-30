@@ -24,6 +24,7 @@ from SlicerDevelopmentToolboxUtils.module.session import StepBasedSession
 
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
+from steps.plugins.segmentationValidator import SliceTrackerSegmentationValidatorPlugin
 
 
 @singleton
@@ -937,7 +938,7 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     logic.run(self.data.initialVolume, domain, mpReviewColorNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
-  def onSegmentationFinished(self, caller, event, labelNode):
+  def onSegmentationValidated(self, caller, event, labelNode):
     if not self.preopSegmentationPath:
       self.createDirectory(self.preopSegmentationPath)
     segmentedColorName = self.getSetting("Segmentation_Color_Name", moduleName=self.MODULE_NAME)
@@ -947,6 +948,24 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     self.loadPreProcessedData()
     customStatusProgressBar = CustomStatusProgressbar()
     customStatusProgressBar.text = "Done automatic prostate segmentation"
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onSegmentationFinished(self, caller, event, labelNode):
+    #Create new instance
+    segmentationValidator = SliceTrackerSegmentationValidatorPlugin(self.data.initialVolume, labelNode)
+    segmentationValidator.addEventObserver(segmentationValidator.FinishedEvent, self.onSegmentationValidated)
+    segmentationValidator.addEventObserver(segmentationValidator.CanceledEvent, self.onSegmenttationValidationFailed)
+    segmentationValidator.run()
+
+  def onSegmenttationValidationFailed(self, caller=None, event=None):
+    message = "Segmentation validation failed.\nWholeGland segmentation is require to proceed." \
+              "\n\nDo you want to " \
+              "open/revisit pre-processing for the current case?"
+    if slicer.util.confirmYesNoDisplay(message, windowTitle="SliceTracker"):
+      # TODO: start intraop without listening to signals
+      self.runModule()
+    else:
+      self.invokeEvent(self.PreprocessedDataErrorEvent)
 
   def isMpReviewStudyDirectoryValid(self, resourcesDir):
     logging.debug(resourcesDir)
