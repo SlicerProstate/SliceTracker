@@ -45,7 +45,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
     self.addPlugin(self.displacementChartPlugin)
 
-    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.omShowDisplacementChart)
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.onShowDisplacementChart)
     self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent, self.onHideDisplacementChart)
 
     self.layout().addWidget(self.regResultsPlugin)
@@ -79,7 +79,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     super(SliceTrackerEvaluationStep, self).removeSessionEventObservers()
     self.session.removeEventObserver(self.session.InitiateEvaluationEvent, self.onInitiateEvaluation)
 
-  def omShowDisplacementChart(self, caller, event):
+  def onShowDisplacementChart(self, caller, event):
     self.displacementChartPlugin.collapsibleButton.show()
 
   def onHideDisplacementChart(self, caller, event):
