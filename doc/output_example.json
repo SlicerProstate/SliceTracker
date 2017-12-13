@@ -1,10 +1,25 @@
 {
   "usedPreopData": true,
   "biasCorrected": true,
+  "preop": {
+    "segmentation": {
+      "algorithm": "automatic",
+      "startTime": "2017-03-07T16:39:20.38Z",
+      "endTime": "2017-03-07T16:39:20.38Z",
+      "original": "t2-label.nrrd",
+      "userModified": {
+        "startTime": "2017-03-07T16:39:20.38Z",
+        "endTime": "2017-03-07T16:39:20.38Z",
+        "fileName": "t2-label_modified.nrrd"
+      }
+    }
+  },
   "initialVolume": "VOLUME-PREOP-N4.nrrd",
   "initialTargets": "PreopTargets.fcsv",
   "zFrameRegistration": {
     "name": "2: AX TSE T2 COVER TEMPLATE",
+    "startTime": "2017-03-07T16:39:20.38Z",
+    "endTime": "2017-03-07T16:39:20.38Z",
     "seriesType": "COVER TEMPLATE",
     "volume": "2-CoverTemplate.nrrd",
     "transform": "2-ZFrameTransform.h5"
@@ -56,6 +71,21 @@
           "fileName": "3-TARGETS-approved.fcsv"
 	  	  }
       },
+      "segmentation": {
+        "algorithm": "automatic",
+        "startTime": "2017-03-07T16:39:20.38Z",
+        "endTime": "2017-03-07T16:39:20.38Z",
+        "original": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label.nrrd",
+        "userModified": {
+          "startTime": "2017-03-07T16:39:20.38Z",
+          "endTime": "2017-03-07T16:39:20.38Z",
+          "fileName": "3-AXIAL-T2-COVER-PROSTATE-3mm-0gap-at-iso-label_modified.nrrd"
+        }
+      },
+      "registration": {
+        "startTime": "2017-03-07T16:39:20.38Z",
+        "endTime": "2017-03-07T16:39:20.38Z"
+      },
       "score": 5
     },
     {
@@ -65,6 +95,10 @@
       "status": {
         "state": "approved",
         "time": "2017-03-07T16:44:20.38Z"
+      },
+      "registration": {
+        "startTime": "2017-03-07T16:39:20.38Z",
+        "endTime": "2017-03-07T16:39:20.38Z"
       },
       "registrationType": "bSpline",
       "labels": {
@@ -102,6 +136,10 @@
       "status": {
         "state": "rejected",
         "time": "2017-03-07T16:49:20.38Z"
+      },
+      "registration": {
+        "startTime": "2017-03-07T16:39:20.38Z",
+        "endTime": "2017-03-07T16:39:20.38Z"
       },
       "labels": {
         "fixed": "6-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label.nrrd",
@@ -143,7 +181,12 @@
       "status": {
         "state": "approved",
         "time": "2017-03-07T16:54:43.38Z"
-      },      "suffix": "_Retry_1",
+      },
+      "suffix": "_Retry_1",
+      "registration": {
+        "startTime": "2017-03-07T16:39:20.38Z",
+        "endTime": "2017-03-07T16:39:20.38Z"
+      },
       "registrationType": "bSpline",
       "labels": {
         "fixed": "10-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label_Retry_1.nrrd",
@@ -165,6 +208,12 @@
           ],
           "fileName": "10-TARGETS-approved.fcsv"
         }
+      },
+      "segmentation": {
+        "algorithm": "manual",
+        "startTime": "2017-03-07T16:39:20.38Z",
+        "endTime": "2017-03-07T16:39:20.38Z",
+        "original": "10-AX-TSE-T2-GUIDANCE-FOR-NEEDLE-at-FIX-_H0-label_Retry_1.nrrd"
       },
       "score": 5,
       "volumes": {
