@@ -272,17 +272,17 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.manualSegmentationPlugin.enabled = True
     surfaceCutToLabelWidget = self.manualSegmentationPlugin.surfaceCutToLabelWidget
 
-    segmentationsLogic = slicer.modules.segmentations.logic()
-
-    segmentationNode = surfaceCutToLabelWidget.segmentationNode
-    map(lambda x: segmentationNode.RemoveSegment(x), surfaceCutToLabelWidget.getSegmentIDs())
-    segmentationsLogic.ImportLabelmapToSegmentationNode(labelNode, segmentationNode)
-    surfaceCutToLabelWidget.configureSegmentVisibility()
+    # segmentationsLogic = slicer.modules.segmentations.logic()
+    #
+    # segmentationNode = surfaceCutToLabelWidget.segmentationNode
+    # map(lambda x: segmentationNode.RemoveSegment(x), surfaceCutToLabelWidget.getSegmentIDs())
+    # segmentationsLogic.ImportLabelmapToSegmentationNode(labelNode, segmentationNode)
+    # surfaceCutToLabelWidget.configureSegmentVisibility()
+    # surfaceCutToLabelWidget.segmentEditorWidgetButton.enabled = True
 
     surfaceCutToLabelWidget.imageVolume = self.session.currentSeriesVolume
     surfaceCutToLabelWidget.labelVolume = labelNode
 
-    surfaceCutToLabelWidget.segmentEditorWidgetButton.enabled = True
     self.createSegmentationDataOrSetModified(self.automaticSegmentationPlugin, labelNode)
     self._onSegmentationFinished(caller, event, labelNode)
 
