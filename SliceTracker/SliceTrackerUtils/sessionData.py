@@ -17,8 +17,6 @@ class SessionData(ModuleLogicMixin):
 
   NewResultCreatedEvent = vtk.vtkCommand.UserEvent + 901
 
-  DEFAULT_JSON_FILE_NAME = "results.json"
-
   _completed = False
   _resumed = False
 
@@ -55,7 +53,7 @@ class SessionData(ModuleLogicMixin):
 
   def resetAndInitializeData(self):
     self.seriesTypeManager = SeriesTypeManager()
-    self.startTimeStamp = self.getTime()
+    self.startTime = self.getTime()
     self.resumeTimeStamps = []
     self.closedLogTimeStamps = []
 
@@ -95,7 +93,7 @@ class SessionData(ModuleLogicMixin):
     return self.registrationResults[series]
 
   def readProcedureEvents(self, procedureEvents):
-    self.startTimeStamp = procedureEvents["caseStarted"]
+    self.startTime = procedureEvents["caseStarted"]
     self.completed = "caseCompleted" in procedureEvents.keys()
     if self.completed:
       self.completedLogTimeStamp = procedureEvents["caseCompleted"]
@@ -141,7 +139,7 @@ class SessionData(ModuleLogicMixin):
         self.initialVolume = self._loadOrGetFileData(directory, data["initialVolume"], slicer.util.loadVolume)
 
       self.loadResults(data, directory)
-    self.registrationResults = OrderedDict(sorted(self.registrationResults.items()))  # TODO: sort here?
+    self.registrationResults = OrderedDict(sorted(self.registrationResults.items()))
     return True
 
   def loadResults(self, data, directory):
@@ -179,6 +177,22 @@ class SessionData(ModuleLogicMixin):
         elif attribute == 'seriesType':
           seriesType = jsonResult["seriesType"] if jsonResult.has_key("seriesType") else None
           self.seriesTypeManager.assign(name, seriesType)
+        elif attribute == 'receivedTime':
+          result.receivedTime = value
+        elif attribute == 'startTime':
+          result.startTime = value
+        elif attribute == 'endTime':
+          result.endTime = value
+        elif attribute == 'segmentation':
+          result.segmentationData = SegmentationData(algorithm=value["algorithm"], startTime=value["startTime"],
+                                                     endTime=value["endTime"])
+          result.segmentationData.fileName = value["fileName"]
+          if value.has_key("note"):
+            result.segmentationData.note = value["note"]
+          if value.has_key("userModified"):
+            userModified = value["userModified"]
+            result.segmentationData.setModified(startTime=userModified["startTime"], endTime=userModified["endTime"])
+            result.segmentationData.userModified["fileName"] = userModified["fileName"]
         else:
           setattr(result, attribute, value)
         self.customProgressBar.text = "Finished loading registration results"
@@ -259,7 +273,7 @@ class SessionData(ModuleLogicMixin):
 
     def addProcedureEvents():
       procedureEvents = {
-        "caseStarted": self.startTimeStamp,
+        "caseStarted": self.startTime,
       }
       if len(self.closedLogTimeStamps):
         procedureEvents["caseClosed"] = self.closedLogTimeStamps
@@ -280,7 +294,7 @@ class SessionData(ModuleLogicMixin):
     if self.initialVolume:
       data["initialVolume"] = saveInitialVolume()
 
-    destinationFile = os.path.join(outputDir, self.DEFAULT_JSON_FILE_NAME)
+    destinationFile = os.path.join(outputDir, SliceTrackerConstants.JSON_FILENAME)
     with open(destinationFile, 'w') as outfile:
       logging.debug("Writing registration results to %s" % destinationFile)
       json.dump(data, outfile, indent=2)
@@ -464,6 +478,53 @@ class AbstractRegistrationData(ModuleLogicMixin):
     for node in [node for node in self.asList() if node]:
       success, name = self.saveNodeData(node, directory, self.FILE_EXTENSION)
       self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+    return savedSuccessfully, failedToSave
+
+
+class Serializable(object):
+  def toJSON(self):
+    return dict((key,value) for key, value in self.__dict__.iteritems()
+                    if not (key.startswith("_") or key.startswith("__")) and value not in [None, ""])
+
+
+class SegmentationData(Serializable, ModuleLogicMixin):
+
+  FILE_EXTENSION = FileExtension.NRRD
+
+  def __init__(self, algorithm=None, label=None, startTime=None, endTime=None):
+    self.note = ""
+    self.algorithm = algorithm # Automatic or Manual
+    self.startTime = startTime
+    self.endTime = endTime
+    self.fileName = None
+    self.userModified = None
+    self._label = label
+    self._modifiedLabel = None
+
+  def setModified(self, startTime, endTime, label=None):
+    self.userModified = {
+      "startTime": startTime,
+      "endTime": endTime,
+      "fileName": None
+    }
+    self._modifiedLabel = label
+
+  @logmethod(logging.INFO)
+  def save(self, directory):
+    assert self.FILE_EXTENSION is not None
+    savedSuccessfully = []
+    failedToSave = []
+
+    if self._label:
+      success, name = self.saveNodeData(self._label, directory, self.FILE_EXTENSION)
+      self.fileName = name + self.FILE_EXTENSION
+      self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+
+    if self._modifiedLabel:
+      success, name = self.saveNodeData(self._modifiedLabel, directory, self.FILE_EXTENSION)
+      self.userModified["fileName"] = name + self.FILE_EXTENSION
+      self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+
     return savedSuccessfully, failedToSave
 
 
@@ -701,7 +762,9 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
     RegistrationStatus.__init__(self)
     RegistrationResultBase.__init__(self, series)
 
-    self.receivedTimestamp = self.getTime()
+    self.receivedTime = None
+    self.startTime = None
+    self.endTime = None
 
     self.volumes = Volumes()
     self.transforms = Transforms()
@@ -715,6 +778,8 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
     self.modifiedTargets = {}
 
     self.registrationType = None
+
+    self.segmentationData = None
 
   def setVolume(self, name, volume):
     setattr(self.volumes, name, volume)
@@ -763,7 +828,9 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
     def saveData():
       savedSuccessfully = []
       failedToSave = []
-      for data in [self.transforms, self.targets, self.volumes, self.labels]:
+      for data in [self.transforms, self.targets, self.volumes, self.labels, self.segmentationData]:
+        if not data:
+          continue
         successful, failed = data.save(outputDir)
         savedSuccessfully += successful
         failedToSave += failed
@@ -787,7 +854,9 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
     dictionary.update({
       "name": self.name,
       "seriesType": seriesTypeManager.getSeriesType(self.name),
-      "receivedTime": self.receivedTimestamp
+      "receivedTime": self.receivedTime,
+      "startTime": self.startTime,
+      "endTime": self.endTime
     })
     if self.approved or self.rejected:
       dictionary["targets"] = self.targets.getAllFileNames()
@@ -808,6 +877,8 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
         "userModified": self.getApprovedTargetsModifiedStatus(),
         "fileName": self.targets.getFileNameByAttributeName("approved")
       }
+    if self.segmentationData:
+      dictionary["segmentation"] = self.segmentationData.toJSON()
     return dictionary
 
 

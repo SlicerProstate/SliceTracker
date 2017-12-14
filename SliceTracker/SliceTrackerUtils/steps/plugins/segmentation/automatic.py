@@ -6,6 +6,7 @@ from ....algorithms.automaticProstateSegmentation import AutomaticSegmentationLo
 class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase):
 
   NAME = "AutomaticSegmentation"
+  ALGORITHM_TYPE ="Automatic"
   LogicClass = AutomaticSegmentationLogic
 
   def __init__(self):

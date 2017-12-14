@@ -215,6 +215,7 @@ class SliceTrackerSession(StepBasedSession):
     self.resetIntraopDICOMReceiver()
     self.loadableList = {}
     self.seriesList = []
+    self.seriesTimeStamps = dict()
     self.alreadyLoadedSeries = {}
     self._currentResult = None
     self._currentSeries = None
@@ -422,6 +423,7 @@ class SliceTrackerSession(StepBasedSession):
       indexer.addFile(slicer.dicomDatabase, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
       if series not in self.seriesList:
+        self.seriesTimeStamps[series] = self.getTime()
         self.seriesList.append(series)
         newSeries.append(series)
         self.loadableList[series] = self.createLoadableFileListForSeries(series)
@@ -651,10 +653,10 @@ class SliceTrackerSession(StepBasedSession):
       suffix = "_Retry_" + str(nOccurrences)
     return name, suffix
 
-  def onInvokeRegistration(self, initial=True, retryMode=False):
+  def onInvokeRegistration(self, initial=True, retryMode=False, segmentationData=None):
     self.progress = slicer.util.createProgressDialog(maximum=4, value=1)
     if initial:
-      self.applyInitialRegistration(retryMode, progressCallback=self.updateProgressBar)
+      self.applyInitialRegistration(retryMode, segmentationData, progressCallback=self.updateProgressBar)
     else:
       self.applyRegistration(progressCallback=self.updateProgressBar)
     self.progress.close()
@@ -675,14 +677,14 @@ class SliceTrackerSession(StepBasedSession):
     self.registrationLogic.registrationResult = result
     return result
 
-  def applyInitialRegistration(self, retryMode, progressCallback=None):
+  def applyInitialRegistration(self, retryMode, segmentationData, progressCallback=None):
     if not retryMode:
       self.data.initializeRegistrationResults()
 
     self.runBRAINSResample(inputVolume=self.fixedLabel, referenceVolume=self.fixedVolume,
                            outputVolume=self.fixedLabel)
     self._runRegistration(self.fixedVolume, self.fixedLabel, self.movingVolume,
-                          self.movingLabel, self.movingTargets, progressCallback)
+                          self.movingLabel, self.movingTargets, segmentationData, progressCallback)
 
   def applyRegistration(self, progressCallback=None):
 
@@ -700,17 +702,24 @@ class SliceTrackerSession(StepBasedSession):
 
     self.dilateMask(fixedLabel, dilateValue=self.segmentedLabelValue)
     self._runRegistration(self.currentSeriesVolume, fixedLabel, coverProstateRegResult.volumes.fixed,
-                         coverProstateRegResult.labels.fixed, coverProstateRegResult.targets.approved, progressCallback)
+                          coverProstateRegResult.labels.fixed, coverProstateRegResult.targets.approved, None,
+                          progressCallback)
 
-  def _runRegistration(self, fixedVolume, fixedLabel, movingVolume, movingLabel, targets, progressCallback):
+  def _runRegistration(self, fixedVolume, fixedLabel, movingVolume, movingLabel, targets, segmentationData,
+                       progressCallback):
     result = self.generateNameAndCreateRegistrationResult(fixedVolume)
+    result.receivedTime = self.seriesTimeStamps[result.name.replace(result.suffix, "")]
+    if segmentationData:
+      result.segmentationData = segmentationData
     parameterNode = slicer.vtkMRMLScriptedModuleNode()
     parameterNode.SetAttribute('FixedImageNodeID', fixedVolume.GetID())
     parameterNode.SetAttribute('FixedLabelNodeID', fixedLabel.GetID())
     parameterNode.SetAttribute('MovingImageNodeID', movingVolume.GetID())
     parameterNode.SetAttribute('MovingLabelNodeID', movingLabel.GetID())
     parameterNode.SetAttribute('TargetsNodeID', targets.GetID())
+    result.startTime = self.getTime()
     self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
+    result.endTime = self.getTime()
     self.addTargetsToMRMLScene(result)
     if self.seriesTypeManager.isCoverProstate(self.currentSeries) and self.temporaryIntraopTargets:
       self.addTemporaryTargetsToResult(result)

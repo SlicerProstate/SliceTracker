@@ -17,7 +17,7 @@ class SliceTrackerSegmentationValidatorPlugin(qt.QDialog, ModuleWidgetMixin):
   def __init__(self, inputVolume, labelNode):
     qt.QDialog.__init__(self)
     self.className = self.__class__.__name__
-    self.setWindowTitle("Modify Segmentation")
+    self.setWindowTitle("Validate Segmentation")
     self.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
     self.volumeNode = inputVolume
     self.labelNode = labelNode
@@ -115,7 +115,6 @@ class SliceTrackerSegmentationValidatorPlugin(qt.QDialog, ModuleWidgetMixin):
     self.addSegmentationObserver(self.segmentationNode)
     self.segmentEditorWidget.show()
     self.modifySegmentButton.hide()
-
 
   def onConfirmSegmentButtonClicked(self):
     if self.segmentationModified is True:
