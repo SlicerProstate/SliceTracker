@@ -11,6 +11,7 @@ from SlicerDevelopmentToolboxUtils.decorators import logmethod
 
 class SliceTrackerSegmentationValidatorPlugin(qt.QDialog, ModuleWidgetMixin):
 
+  ModifiedEvent = SlicerDevelopmentToolboxEvents.StatusChangedEvent
   FinishedEvent = SlicerDevelopmentToolboxEvents.FinishedEvent
   CanceledEvent = SlicerDevelopmentToolboxEvents.CanceledEvent
 
@@ -106,6 +107,7 @@ class SliceTrackerSegmentationValidatorPlugin(qt.QDialog, ModuleWidgetMixin):
     self.cleanup()
 
   def onModifySegmentButtonClicked(self):
+    self.invokeEvent(self.ModifiedEvent)
     slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(self.labelNode, self.segmentationNode)
     segmentID = self.segmentationNode.GetSegmentation().GetNthSegment(0).GetName()
     segmentationDisplayNode = self.segmentationNode.GetDisplayNode()
@@ -118,9 +120,13 @@ class SliceTrackerSegmentationValidatorPlugin(qt.QDialog, ModuleWidgetMixin):
 
   def onConfirmSegmentButtonClicked(self):
     if self.segmentationModified is True:
+      volumesLogic = slicer.modules.volumes.logic()
+      clonedLabelNode = volumesLogic.CloneVolume(slicer.mrmlScene, self.labelNode,
+                                                 self.labelNode.GetName() + "_modified")
+      self.labelNode = clonedLabelNode
       slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(self.segmentationNode, self.labelNode)
       ModuleLogicMixin.runBRAINSResample(inputVolume=self.labelNode, referenceVolume=self.volumeNode,
-                           outputVolume=self.labelNode)
+                                         outputVolume=self.labelNode)
     self.accept()
 
   @logmethod(logging.DEBUG)

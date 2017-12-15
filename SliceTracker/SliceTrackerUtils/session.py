@@ -6,7 +6,7 @@ import getpass
 import datetime
 
 import slicer
-from sessionData import SessionData, RegistrationResult, RegistrationTypeData
+from sessionData import SessionData, RegistrationResult, RegistrationTypeData, SegmentationData
 from constants import SliceTrackerConstants
 from helpers import SeriesTypeManager
 from algorithms.automaticProstateSegmentation import AutomaticSegmentationLogic
@@ -768,6 +768,9 @@ class SliceTrackerSession(StepBasedSession):
     name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(volume.GetName())
     result = self.data.createResult(name+suffix)
     result.volumes.fixed = volume
+    result.receivedTime = self.seriesTimeStamps[result.name.replace(result.suffix, "")]
+    result.startTime = "N/A"
+    result.endTime = "N/A"
     result.skip()
 
   def skip(self, series):
@@ -908,22 +911,31 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     loadedPreopTargets = self.loadPreopTargets()
     loadedPreopT2Label = self.loadT2Label() if os.path.exists(self.preopSegmentationPath) else False
 
+    if not self.data.preopData:
+      self.data.preopData = SegmentationData()
+
     if message or not (loadedPreopT2Label and loadedPreopVolume and loadedPreopTargets):
       if loadedPreopTargets and loadedPreopVolume and \
           self.getSetting("Use_Deep_Learning", moduleName=self.MODULE_NAME).lower() == "true":
         if slicer.util.confirmYesNoDisplay("No WholeGland segmentation found in preop data. Automatic segmentation is "
                                            "available. Would you like to proceed with the automatic segmentation?",
                                            windowTitle="SliceTracker"):
+          self.data.preopData.algorithm = "Automatic"
           self.runAutomaticSegmentation()
         else:
           self.onPreopLoadingFailed()
       else:
         self.onPreopLoadingFailed()
     else:
+      if self.data.preopData.algorithm is None:
+        self.data.preopData.note = "mpReview preprocessed"
+        self.data.preopData.algorithm = "Manual"
+        self.data.preopData.startTime = "N/A"
+        self.data.preopData.endTime = "N/A"
+        self.data.preopData._label = self.data.initialLabel
       self.invokeEvent(self.PreprocessingFinishedEvent)
 
   def runAutomaticSegmentation(self):
-    self.data.useAutomaticSegmentation = True
     logic = AutomaticSegmentationLogic()
     logic.addEventObserver(logic.DeepLearningFinishedEvent, self.onSegmentationFinished)
     logic.addEventObserver(logic.DeepLearningFailedEvent, self.onPreopLoadingFailed)
@@ -944,10 +956,16 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
       self.invokeEvent(self.PreprocessedDataErrorEvent)
       return
 
+    self.data.preopData.startTime = self.getTime()
     logic.run(self.data.initialVolume, domain, mpReviewColorNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def onSegmentationValidated(self, caller, event, labelNode):
+    if "_modified" in labelNode.GetName():
+      self.data.preopData.userModified["endTime"] = self.getTime()
+      self.data.preopData._modifiedLabel = labelNode
+    else:
+      self.data.preopData.userModified = None
     if not self.preopSegmentationPath:
       self.createDirectory(self.preopSegmentationPath)
     segmentedColorName = self.getSetting("Segmentation_Color_Name", moduleName=self.MODULE_NAME)
@@ -960,13 +978,18 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def onSegmentationFinished(self, caller, event, labelNode):
-    #Create new instance
+    self.data.preopData.endTime = self.getTime()
+    self.data.preopData._label = labelNode
     segmentationValidator = SliceTrackerSegmentationValidatorPlugin(self.data.initialVolume, labelNode)
+    segmentationValidator.addEventObserver(segmentationValidator.ModifiedEvent, self.onSegmentationModificationStarted)
     segmentationValidator.addEventObserver(segmentationValidator.FinishedEvent, self.onSegmentationValidated)
-    segmentationValidator.addEventObserver(segmentationValidator.CanceledEvent, self.onSegmenttationValidationFailed)
+    segmentationValidator.addEventObserver(segmentationValidator.CanceledEvent, self.onSegmentationValidationFailed)
     segmentationValidator.run()
 
-  def onSegmenttationValidationFailed(self, caller=None, event=None):
+  def onSegmentationModificationStarted(self, caller, event):
+    self.data.preopData.setModified(startTime=self.getTime())
+
+  def onSegmentationValidationFailed(self, caller=None, event=None):
     message = "Segmentation validation failed.\nWholeGland segmentation is require to proceed." \
               "\n\nDo you want to " \
               "open/revisit pre-processing for the current case?"

@@ -59,6 +59,7 @@ class SessionData(ModuleLogicMixin):
 
     self.completed = False
     self.usePreopData = False
+    self.preopData = None
     self.useERC = False
     self.useAutomaticSegmentation = False
     self.biasCorrectionDone = False
@@ -115,6 +116,8 @@ class SessionData(ModuleLogicMixin):
       self.readProcedureEvents(data["procedureEvents"])
 
       self.usePreopData = data["usedPreopData"]
+      if data.has_key("preop"):
+        self.readPreopData(data["preop"])
       self.useAutomaticSegmentation = data["usedAutomaticSegmentation"]
       self.biasCorrectionDone = data["biasCorrected"]
 
@@ -141,6 +144,15 @@ class SessionData(ModuleLogicMixin):
       self.loadResults(data, directory)
     self.registrationResults = OrderedDict(sorted(self.registrationResults.items()))
     return True
+
+  def readPreopData(self, preop):
+    data = preop["segmentation"]
+    self.preopData = SegmentationData(algorithm=data["algorithm"], startTime=data["startTime"], endTime=data["endTime"])
+    self.preopData.fileName = data["fileName"]
+    if data.has_key("userModified"):
+      userModified = data["userModified"]
+      self.preopData.setModified(startTime=userModified["startTime"], endTime=userModified["endTime"])
+      self.preopData.userModified.fileName = userModified["fileName"]
 
   def loadResults(self, data, directory):
     if len(data["results"]):
@@ -268,6 +280,12 @@ class SessionData(ModuleLogicMixin):
       "biasCorrected": self.biasCorrectionDone,
       "results": createResultsList()
     }
+
+    if self.preopData:
+      self.preopData.save(outputDir)
+      data["preop"] = {
+        "segmentation": self.preopData.toJSON()
+      }
 
     data.update(self.getGITRevisionInformation())
 
@@ -501,7 +519,7 @@ class SegmentationData(Serializable, ModuleLogicMixin):
     self._label = label
     self._modifiedLabel = None
 
-  def setModified(self, startTime, endTime, label=None):
+  def setModified(self, startTime, endTime=None, label=None):
     self.userModified = {
       "startTime": startTime,
       "endTime": endTime,

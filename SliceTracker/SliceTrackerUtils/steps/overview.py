@@ -226,6 +226,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.targetTablePlugin.currentTargets = None
 
   def onPreprocessingSuccessful(self, caller, event):
+    self.session.save()
     self.updateIntraopSeriesSelectorTable()
     self.configureRedSliceNodeForPreopData()
     self.promptUserAndApplyBiasCorrectionIfNeeded()
