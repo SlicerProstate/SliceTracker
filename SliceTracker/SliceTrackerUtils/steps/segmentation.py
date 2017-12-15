@@ -220,8 +220,6 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     result.volumes.fixed = fixedVolume
     result.labels.fixed = self.session.fixedLabel
     result.receivedTime = self.session.seriesTimeStamps[result.name.replace(result.suffix, "")]
-    result.startTime = "N/A"
-    result.endTime = "N/A"
 
     if self.session.seriesTypeManager.isCoverProstate(self.session.currentResult.name) and \
     self.session.data.getMostRecentApprovedCoverProstateRegistration() is not None:
@@ -291,10 +289,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
 
   def createSegmentationDataOrSetModified(self, plugin, labelNode):
     if not self.segmentationData or self.segmentationData.algorithm=="Manual":
-      self.segmentationData = SegmentationData(algorithm=plugin.ALGORITHM_TYPE,
-                                               startTime=plugin.startTime,
-                                               endTime=plugin.endTime,
-                                               label=labelNode)
+      self.segmentationData = SegmentationData(segmentationType="Prostate",algorithm=plugin.ALGORITHM_TYPE,
+                                               startTime=plugin.startTime, endTime=plugin.endTime, label=labelNode)
     else:
       self.segmentationData.setModified(startTime=plugin.startTime, endTime=plugin.endTime, label=labelNode)
 

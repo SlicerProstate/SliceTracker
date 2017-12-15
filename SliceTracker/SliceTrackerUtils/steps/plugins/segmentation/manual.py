@@ -22,7 +22,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
   ALGORITHM_TYPE ="Manual"
   LogicClass = SliceTrackerManualSegmentationLogic
 
-  SegmentationCanceledEvent = SurfaceCutToLabelWidget.SegmentationCanceledEvent
+  SegmentationCanceledEvent = SliceTrackerSegmentationPluginBase.SegmentationFailedEvent
 
   @property
   def segmentModelNode(self):

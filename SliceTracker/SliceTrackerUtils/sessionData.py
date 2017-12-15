@@ -48,6 +48,20 @@ class SessionData(ModuleLogicMixin):
       procedureEvents = data["procedureEvents"]
       return "caseCompleted" in procedureEvents.keys()
 
+  @property
+  def usedAutomaticPreopSegmentation(self):
+    return self.preopData is not None and self.preopData.segmentation.algorithm == "Automatic"
+
+  @property
+  def usePreopData(self):
+    self.preopData = getattr(self, "preopData", None)
+    return self.preopData is not None
+
+  @usePreopData.setter
+  def usePreopData(self, value):
+    self._usePreopData = value
+    self.preopData = PreopData() if self._usePreopData else None
+
   def __init__(self):
     self.resetAndInitializeData()
 
@@ -59,10 +73,6 @@ class SessionData(ModuleLogicMixin):
 
     self.completed = False
     self.usePreopData = False
-    self.preopData = None
-    self.useERC = False
-    self.useAutomaticSegmentation = False
-    self.biasCorrectionDone = False
 
     self.segmentModelNode = None
     self.inputMarkupNode = None
@@ -78,6 +88,7 @@ class SessionData(ModuleLogicMixin):
     self.initializeRegistrationResults()
 
     self.customProgressBar = CustomStatusProgressbar()
+    self.alreadyLoadedFileNames = {}
 
   def initializeRegistrationResults(self):
     self.registrationResults = OrderedDict()
@@ -93,7 +104,47 @@ class SessionData(ModuleLogicMixin):
       self.invokeEvent(self.NewResultCreatedEvent, series)
     return self.registrationResults[series]
 
-  def readProcedureEvents(self, procedureEvents):
+  def load(self, filename):
+    directory = os.path.dirname(filename)
+    self.resetAndInitializeData()
+    with open(filename) as dataFile:
+      self.customProgressBar.visible = True
+      self.customProgressBar.text = "Reading meta information"
+
+      logging.debug("reading json file %s" % filename)
+      data = json.load(dataFile)
+      self.readInitialTargetsAndVolume(data, directory)
+      self.loadZFrameRegistrationData(data, directory)
+      self.loadProcedureEvents(data)
+      self.loadPreopData(data)
+      self.loadResults(data, directory)
+    self.registrationResults = OrderedDict(sorted(self.registrationResults.items()))
+    return True
+
+  def readInitialTargetsAndVolume(self, data, directory):
+    if "initialTargets" in data.keys():
+      self.initialTargets = self._loadOrGetFileData(directory, data["initialTargets"],
+                                                    slicer.util.loadMarkupsFiducialList)
+      self.initialTargets.SetLocked(True)
+      self.initialTargetsPath = os.path.join(directory, data["initialTargets"])
+
+    if "initialVolume" in data.keys():
+      self.initialVolume = self._loadOrGetFileData(directory, data["initialVolume"], slicer.util.loadVolume)
+
+  def loadZFrameRegistrationData(self, data, directory):
+    if "zFrameRegistration" in data.keys():
+      zFrameRegistration = data["zFrameRegistration"]
+      volume = self._loadOrGetFileData(directory, zFrameRegistration["volume"], slicer.util.loadVolume)
+      transform = self._loadOrGetFileData(directory, zFrameRegistration["transform"], slicer.util.loadTransform)
+      name = zFrameRegistration["name"] if zFrameRegistration.has_key("name") else volume.GetName()
+      self.zFrameRegistrationResult = ZFrameRegistrationResult(name)
+      self.zFrameRegistrationResult.volume = volume
+      self.zFrameRegistrationResult.transform = transform
+      if zFrameRegistration["seriesType"]:
+        self.seriesTypeManager.assign(self.zFrameRegistrationResult.name, zFrameRegistration["seriesType"])
+
+  def loadProcedureEvents(self, data):
+    procedureEvents = data["procedureEvents"]
     self.startTime = procedureEvents["caseStarted"]
     self.completed = "caseCompleted" in procedureEvents.keys()
     if self.completed:
@@ -103,56 +154,9 @@ class SessionData(ModuleLogicMixin):
     if "caseResumed" in procedureEvents.keys():
       self.resumeTimeStamps = procedureEvents["caseResumed"]
 
-  def load(self, filename):
-    directory = os.path.dirname(filename)
-    self.resetAndInitializeData()
-    self.alreadyLoadedFileNames = {}
-    with open(filename) as data_file:
-      self.customProgressBar.visible = True
-      self.customProgressBar.text = "Reading meta information"
-      logging.debug("reading json file %s" % filename)
-      data = json.load(data_file)
-
-      self.readProcedureEvents(data["procedureEvents"])
-
-      self.usePreopData = data["usedPreopData"]
-      if data.has_key("preop"):
-        self.readPreopData(data["preop"])
-      self.useAutomaticSegmentation = data["usedAutomaticSegmentation"]
-      self.biasCorrectionDone = data["biasCorrected"]
-
-      if "initialTargets" in data.keys():
-        self.initialTargets = self._loadOrGetFileData(directory,
-                                                      data["initialTargets"], slicer.util.loadMarkupsFiducialList)
-        self.initialTargets.SetLocked(True)
-        self.initialTargetsPath = os.path.join(directory, data["initialTargets"])
-
-      if "zFrameRegistration" in data.keys():
-        zFrameRegistration = data["zFrameRegistration"]
-        volume = self._loadOrGetFileData(directory, zFrameRegistration["volume"], slicer.util.loadVolume)
-        transform = self._loadOrGetFileData(directory, zFrameRegistration["transform"], slicer.util.loadTransform)
-        name = zFrameRegistration["name"] if zFrameRegistration.has_key("name") else volume.GetName()
-        self.zFrameRegistrationResult = ZFrameRegistrationResult(name)
-        self.zFrameRegistrationResult.volume = volume
-        self.zFrameRegistrationResult.transform = transform
-        if zFrameRegistration["seriesType"]:
-          self.seriesTypeManager.assign(self.zFrameRegistrationResult.name, zFrameRegistration["seriesType"])
-
-      if "initialVolume" in data.keys():
-        self.initialVolume = self._loadOrGetFileData(directory, data["initialVolume"], slicer.util.loadVolume)
-
-      self.loadResults(data, directory)
-    self.registrationResults = OrderedDict(sorted(self.registrationResults.items()))
-    return True
-
-  def readPreopData(self, preop):
-    data = preop["segmentation"]
-    self.preopData = SegmentationData(algorithm=data["algorithm"], startTime=data["startTime"], endTime=data["endTime"])
-    self.preopData.fileName = data["fileName"]
-    if data.has_key("userModified"):
-      userModified = data["userModified"]
-      self.preopData.setModified(startTime=userModified["startTime"], endTime=userModified["endTime"])
-      self.preopData.userModified.fileName = userModified["fileName"]
+  def loadPreopData(self, data):
+    if data.has_key("preop"):
+      self.preopData = PreopData.createFromJSON(data["preop"])
 
   def loadResults(self, data, directory):
     if len(data["results"]):
@@ -196,15 +200,7 @@ class SessionData(ModuleLogicMixin):
         elif attribute == 'endTime':
           result.endTime = value
         elif attribute == 'segmentation':
-          result.segmentationData = SegmentationData(algorithm=value["algorithm"], startTime=value["startTime"],
-                                                     endTime=value["endTime"])
-          result.segmentationData.fileName = value["fileName"]
-          if value.has_key("note"):
-            result.segmentationData.note = value["note"]
-          if value.has_key("userModified"):
-            userModified = value["userModified"]
-            result.segmentationData.setModified(startTime=userModified["startTime"], endTime=userModified["endTime"])
-            result.segmentationData.userModified["fileName"] = userModified["fileName"]
+          result.segmentationData = SegmentationData.createFromJSON(value)
         else:
           setattr(result, attribute, value)
         self.customProgressBar.text = "Finished loading registration results"
@@ -275,17 +271,12 @@ class SessionData(ModuleLogicMixin):
     saveManualSegmentation()
 
     data = {
-      "usedPreopData": self.usePreopData,
-      "usedAutomaticSegmentation": self.useAutomaticSegmentation,
-      "biasCorrected": self.biasCorrectionDone,
       "results": createResultsList()
     }
 
     if self.preopData:
       self.preopData.save(outputDir)
-      data["preop"] = {
-        "segmentation": self.preopData.toJSON()
-      }
+      data["preop"] = self.preopData.toJSON()
 
     data.update(self.getGITRevisionInformation())
 
@@ -500,18 +491,49 @@ class AbstractRegistrationData(ModuleLogicMixin):
 
 
 class Serializable(object):
+
+  @staticmethod
+  def createFromJSON(data):
+    raise NotImplementedError
+
   def toJSON(self):
     return dict((key,value) for key, value in self.__dict__.iteritems()
                     if not (key.startswith("_") or key.startswith("__")) and value not in [None, ""])
 
+  def save(self, directory):
+    raise NotImplementedError
 
 class SegmentationData(Serializable, ModuleLogicMixin):
 
   FILE_EXTENSION = FileExtension.NRRD
 
-  def __init__(self, algorithm=None, label=None, startTime=None, endTime=None):
+  VALID_SEGMENTATION_TYPES = ["Prostate", "Needle"]
+  VALID_ALGORITHM_TYPES = ["Manual", "Automatic"]
+
+  @staticmethod
+  def createFromJSON(data):
+    segmentationData = SegmentationData(segmentationType=data["segmentationType"],
+                                        algorithm=data["algorithm"], startTime=data["startTime"],
+                                        endTime=data["endTime"])
+    segmentationData.fileName = data["fileName"]
+    if data.has_key("note"):
+      data.segmentationData.note = data["note"]
+    if data.has_key("userModified"):
+      userModified = data["userModified"]
+      segmentationData.setModified(startTime=userModified["startTime"], endTime=userModified["endTime"])
+      segmentationData.userModified["fileName"] = userModified["fileName"]
+    return segmentationData
+
+  def __init__(self, segmentationType, algorithm, label=None, startTime="N/A", endTime="N/A"):
+    if not segmentationType in self.VALID_SEGMENTATION_TYPES:
+      raise ValueError("%s is not a valid segmentation type. Valid types are: %s" % (segmentationType,
+                                                                                     str(self.VALID_SEGMENTATION_TYPES)))
+    if not algorithm in self.VALID_ALGORITHM_TYPES:
+      raise ValueError("%s is not a valid algorithm type. Valid types are: %s" % (algorithm,
+                                                                                  str(self.VALID_ALGORITHM_TYPES)))
+    self.algorithm = algorithm
+    self.segmentationType = segmentationType
     self.note = ""
-    self.algorithm = algorithm # Automatic or Manual
     self.startTime = startTime
     self.endTime = endTime
     self.fileName = None
@@ -527,24 +549,45 @@ class SegmentationData(Serializable, ModuleLogicMixin):
     }
     self._modifiedLabel = label
 
-  @logmethod(logging.INFO)
   def save(self, directory):
     assert self.FILE_EXTENSION is not None
     savedSuccessfully = []
     failedToSave = []
-
     if self._label:
       success, name = self.saveNodeData(self._label, directory, self.FILE_EXTENSION)
       self.fileName = name + self.FILE_EXTENSION
       self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
-
     if self._modifiedLabel:
       success, name = self.saveNodeData(self._modifiedLabel, directory, self.FILE_EXTENSION)
       self.userModified["fileName"] = name + self.FILE_EXTENSION
       self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
-
     return savedSuccessfully, failedToSave
 
+
+class PreopData(Serializable, ModuleLogicMixin):
+
+  @staticmethod
+  def createFromJSON(data):
+    preopData = PreopData()
+    preopData.usedERC = data["usedERC"]
+    if data.has_key("segmentation"):
+      preopData.segmentation = SegmentationData.createFromJSON(data["segmentation"])
+    return preopData
+
+  def __init__(self):
+    self.usedERC = None
+    self.segmentation = None
+
+  def save(self, directory):
+    if self.segmentation:
+      return self.segmentation.save(directory)
+    return [],[]
+
+  def toJSON(self):
+    output = super(PreopData, self).toJSON()
+    if self.segmentation:
+      output["segmentation"] = self.segmentation.toJSON()
+    return output
 
 class RegistrationTypeData(AbstractRegistrationData):
 
