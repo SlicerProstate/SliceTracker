@@ -181,7 +181,7 @@ class SessionData(ModuleLogicMixin):
           if approved:
             approvedTargets = self._loadOrGetFileData(directory, approved["fileName"], slicer.util.loadMarkupsFiducialList)
             setattr(result.targets, 'approved', approvedTargets)
-            result.targets.modifiedTargets[jsonResult["registrationType"]] = approved["userModified"]
+            result.targets.modifiedTargets[jsonResult["status"]["registrationType"]] = approved["userModified"]
           if original:
             originalTargets = self._loadOrGetFileData(directory, original, slicer.util.loadMarkupsFiducialList)
             setattr(result.targets, 'original', originalTargets)
@@ -190,15 +190,14 @@ class SessionData(ModuleLogicMixin):
         elif attribute == 'status':
           result.status = value["state"]
           result.timestamp = value["time"]
-        elif attribute == 'seriesType':
-          seriesType = jsonResult["seriesType"] if jsonResult.has_key("seriesType") else None
+          result.registrationType = value["registrationType"] if value.has_key("registrationType") else None
+        elif attribute == 'series':
+          result.receivedTime = value['receivedTime']
+          seriesType = value["seriesType"] if jsonResult.has_key("seriesType") else None
           self.seriesTypeManager.assign(name, seriesType)
-        elif attribute == 'receivedTime':
-          result.receivedTime = value
-        elif attribute == 'startTime':
-          result.startTime = value
-        elif attribute == 'endTime':
-          result.endTime = value
+        elif attribute == 'registration':
+          result.startTime = value['startTime']
+          result.endTime = value['endTime']
         elif attribute == 'segmentation':
           result.segmentationData = SegmentationData.createFromJSON(value)
         else:
@@ -914,10 +913,10 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
     dictionary = super(RegistrationResult, self).asDict()
     dictionary.update({
       "name": self.name,
-      "seriesType": seriesTypeManager.getSeriesType(self.name),
-      "receivedTime": self.receivedTime,
-      "startTime": self.startTime,
-      "endTime": self.endTime
+      "series":{
+        "type": seriesTypeManager.getSeriesType(self.name),
+        "receivedTime": self.receivedTime
+      }
     })
     if self.approved or self.rejected:
       dictionary["targets"] = self.targets.getAllFileNames()
@@ -925,8 +924,12 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
       dictionary["volumes"] = self.volumes.getAllFileNames()
       dictionary["labels"] = self.labels.getAllFileNames()
       dictionary["suffix"] = self.suffix
+      dictionary["registration"] = {
+        "startTime": self.startTime,
+        "endTime": self.endTime
+      }
       if self.approved:
-        dictionary["registrationType"] = self.registrationType
+        dictionary["status"]["registrationType"] = self.registrationType
     elif self.skipped:
       dictionary["volumes"] = {
         "fixed": self.volumes.getFileName(self.volumes.fixed)

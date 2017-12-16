@@ -123,7 +123,6 @@ class SliceTrackerSession(StepBasedSession):
   def currentSeries(self, series):
     if series == self.currentSeries:
       return
-    print "set current Series on session"
     if series and series not in self.seriesList :
       raise UnknownSeriesError("Series %s is unknown" % series)
     self._currentSeries = series
