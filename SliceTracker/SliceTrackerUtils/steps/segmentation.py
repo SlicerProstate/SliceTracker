@@ -70,6 +70,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
                                                    self._onSegmentationCanceled)
     self.manualSegmentationPlugin.addEventObserver(self.manualSegmentationPlugin.SegmentationFinishedEvent,
                                                    self._onManualSegmentationFinished)
+    self.manualSegmentationPlugin.surfaceCutToLabelWidget.segmentEditorButtonVisible = False
     self.addPlugin(self.manualSegmentationPlugin)
 
   def _setupAutomaticSegmentationPlugin(self):

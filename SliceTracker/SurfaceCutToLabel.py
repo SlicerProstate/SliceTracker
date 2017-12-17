@@ -50,6 +50,14 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     return self.labelMapSelector.setCurrentNode(volume)
 
   @property
+  def segmentEditorButtonVisible(self):
+    return self.segmentEditorWidgetButton.visible
+
+  @segmentEditorButtonVisible.setter
+  def segmentEditorButtonVisible(self, visible):
+    self.segmentEditorWidgetButton.visible = visible
+
+  @property
   def segmentationNode(self):
     self._segmentationNode = getattr(self, "_segmentationNode", None)
     if not self._segmentationNode:

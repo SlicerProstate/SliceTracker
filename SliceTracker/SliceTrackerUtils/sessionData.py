@@ -931,10 +931,11 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
       dictionary["volumes"] = self.volumes.getAllFileNames()
       dictionary["labels"] = self.labels.getAllFileNames()
       dictionary["suffix"] = self.suffix
-      dictionary["registration"] = {
-        "startTime": self.startTime,
-        "endTime": self.endTime
-      }
+      if self.startTime and self.endTime:
+        dictionary["registration"] = {
+          "startTime": self.startTime,
+          "endTime": self.endTime
+        }
       if self.approved:
         dictionary["status"]["registrationType"] = self.registrationType
     elif self.skipped:
