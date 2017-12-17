@@ -108,8 +108,11 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
 
   def onCloseCaseButtonClicked(self):
     if not self.session.data.completed:
-      if qt.QMessageBox(qt.QMessageBox.Question, "SliceTracker", "Do you want to mark this case as completed?", qt.QMessageBox.Yes | qt.QMessageBox.No, slicer.util.mainWindow(), qt.Qt.WindowStaysOnTopHint).exec_() == qt.QMessageBox.Yes:
+      dialog = qt.QMessageBox(qt.QMessageBox.Question, "SliceTracker", "Do you want to mark this case as completed?", qt.QMessageBox.Yes | qt.QMessageBox.No | qt.QMessageBox.Cancel, slicer.util.mainWindow(), qt.Qt.WindowStaysOnTopHint).exec_()
+      if dialog == qt.QMessageBox.Yes:
         self.session.complete()
+      elif dialog == qt.QMessageBox.Cancel:
+        return
     if self.session.isRunning():
       self.session.close(save=False)
 

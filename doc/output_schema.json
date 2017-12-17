@@ -15,6 +15,9 @@
     },
     "usedPreopData": { "type": "boolean" },
     "biasCorrected": { "type": "boolean" },
+    "preop": {
+      "segmentation": { "$ref": "#/definitions/SEGMENTATION" }
+    },
     "initialVolume": { "type": "string" },
     "initialTargets": { "type": "string" },
     "zFrameRegistration": {
@@ -22,14 +25,16 @@
       "additionalProperties": false,
       "properties": {
         "name": { "type": "string" },
+        "startTime": { "$ref": "#/definitions/TIMESTAMP" },
+        "endTime": { "$ref": "#/definitions/TIMESTAMP" },
         "seriesType": {"type": "string" },
         "volume": { "$ref": "#/definitions/NRRD_FILE" },
         "transform": { "$ref": "#/definitions/TRANSFORM_FILE" }
-      }, "require": ["name","volume", "transform"]
+      }, "require": ["name", "startTime", "endTime", "volume", "transform"]
     },
     "results": { "$ref": "#/definitions/RESULTS" }
   },
-  "required": ["procedureEvents", "usedPreopData", "initialVolume", "zFrameRegistration", "results"],
+  "required": ["procedureEvents", "usedPreopData", "initialVolume", "initialTargets", "zFrameRegistration", "results"],
   "definitions": {
     "RESULTS": {
       "type": "array",
@@ -52,6 +57,8 @@
             "time": { "$ref": "#/definitions/TIMESTAMP" }
           }, "required": ["state", "time"]
         },
+        "segmentation": { "$ref": "#/definitions/SEGMENTATION" },
+        "registration": { "$ref": "#/definitions/REGISTRATION" },
         "registrationType": { "$ref": "#/definitions/REGISTRATION_TYPE" },
         "score": { "type": "number" },
         "suffix": {
@@ -145,6 +152,36 @@
         "time": { "$ref": "#/definitions/TIMESTAMP" },
         "logfile": { "type": "string" }
       }, "required": ["time", "logfile"]
+    },
+    "SEGMENTATION": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": [ "manual", "automatic"]
+        },
+        "startTime": { "$ref": "#/definitions/TIMESTAMP" },
+        "endTime": { "$ref": "#/definitions/TIMESTAMP" },
+        "original": { "$ref": "#/definitions/NRRD_FILE" },
+        "userModified": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "startTime": { "$ref": "#/definitions/TIMESTAMP" },
+            "endTime": { "$ref": "#/definitions/TIMESTAMP" },
+            "fileName": { "$ref": "#/definitions/NRRD_FILE" }
+          }
+        }
+      }, "required": ["algorithm", "startTime", "endTime", "original"]
+    },
+    "REGISTRATION": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "startTime": { "$ref": "#/definitions/TIMESTAMP" },
+        "endTime": { "$ref": "#/definitions/TIMESTAMP" }
+      }, "required": ["startTime", "endTime"]
     }
   }
 }

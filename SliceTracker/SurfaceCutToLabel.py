@@ -33,8 +33,6 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   SegmentationCanceledEvent = vtk.vtkCommand.UserEvent + 102
   SegmentationFinishedEvent = vtk.vtkCommand.UserEvent + 103
 
-  SEGMENTATION_NAME = "Prostate Segmentation"
-
   @property
   def imageVolume(self):
     return self.imageVolumeSelector.currentNode()
@@ -52,6 +50,14 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     return self.labelMapSelector.setCurrentNode(volume)
 
   @property
+  def segmentEditorButtonVisible(self):
+    return self.segmentEditorWidgetButton.visible
+
+  @segmentEditorButtonVisible.setter
+  def segmentEditorButtonVisible(self, visible):
+    self.segmentEditorWidgetButton.visible = visible
+
+  @property
   def segmentationNode(self):
     self._segmentationNode = getattr(self, "_segmentationNode", None)
     if not self._segmentationNode:
@@ -64,7 +70,7 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def _addInitialSegment(self):
     import vtkSegmentationCorePython as vtkSegmentationCore
     segment = vtkSegmentationCore.vtkSegment()
-    segment.SetName(self.SEGMENTATION_NAME)
+    segment.SetName("Prostate Segmentation")
     self._segmentationNode.GetSegmentation().AddSegment(segment)
 
   def configureSegmentVisibility(self):
@@ -76,13 +82,13 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   def getSegmentIDs(self):
     segmentIDs = vtk.vtkStringArray()
-    self._segmentationNode.GetSegmentation().GetSegmentIDs(segmentIDs)
+    self.segmentationNode.GetSegmentation().GetSegmentIDs(segmentIDs)
     return [segmentIDs.GetValue(idx) for idx in range(segmentIDs.GetNumberOfValues())]
 
   @segmentationNode.setter
   def segmentationNode(self, node):
     self._segmentationNode = node
-    if not any(segmentID == self.SEGMENTATION_NAME for segmentID in self.getSegmentIDs()):
+    if len(self.getSegmentIDs()) == 0:
       self._addInitialSegment()
     self.configureSegmentVisibility()
 
@@ -258,7 +264,9 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def _onColorSpinChanged(self, value):
     self.logic.outputLabelValue = value
     rgb = self.logic.labelValueToRGB(value)
-    self.segmentationNode.GetSegmentation().GetSegment(self.SEGMENTATION_NAME).SetColor(rgb)
+    segmentID = self.getSegmentIDs()[0]
+    segment = self.segmentationNode.GetSegmentation().GetSegment(segmentID)
+    segment.SetColor(rgb)
     self._onColorSelected(value)
 
   def _showColorBox(self):
@@ -324,6 +332,9 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   def onQuickSegmentationButtonToggled(self, enabled):
     self.updateSegmentationButtons()
+    segmentIDs = self.getSegmentIDs()
+    segmentID = segmentIDs[0]
+    self.segmentEditorNode.SetSelectedSegmentID(segmentID)
     self.imageVolumeSelector.enabled = not enabled
     if enabled:
       self.setBackgroundToVolumeID(self.imageVolume)

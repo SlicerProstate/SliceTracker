@@ -5,6 +5,7 @@ import vtk
 
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from ..constants import SliceTrackerConstants as constants
+from ..sessionData import SegmentationData
 
 from plugins.targeting import SliceTrackerTargetingPlugin
 from plugins.segmentation.manual import SliceTrackerManualSegmentationPlugin
@@ -42,6 +43,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
   def __init__(self):
     super(SliceTrackerSegmentationStep, self).__init__()
     self.session.retryMode = False
+    self.segmentationData = None
 
   def setup(self):
     super(SliceTrackerSegmentationStep, self).setup()
@@ -67,7 +69,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.manualSegmentationPlugin.addEventObserver(self.manualSegmentationPlugin.SegmentationCanceledEvent,
                                                    self._onSegmentationCanceled)
     self.manualSegmentationPlugin.addEventObserver(self.manualSegmentationPlugin.SegmentationFinishedEvent,
-                                                   self._onSegmentationFinished)
+                                                   self._onManualSegmentationFinished)
+    self.manualSegmentationPlugin.surfaceCutToLabelWidget.segmentEditorButtonVisible = False
     self.addPlugin(self.manualSegmentationPlugin)
 
   def _setupAutomaticSegmentationPlugin(self):
@@ -101,6 +104,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.session.removeEventObserver(self.session.InitiateSegmentationEvent, self.onInitiateSegmentation)
 
   def onActivation(self):
+    self.segmentationData = None
     self.finishStepButton.enabled = False
     self.session.fixedVolume = self.session.currentSeriesVolume
     if not self.session.fixedVolume:
@@ -202,7 +206,8 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     if not self.session.data.usePreopData and not self.session.retryMode:
       self._createCoverProstateRegistrationResultManually()
     else:
-      self.session.onInvokeRegistration(initial=True, retryMode=self.session.retryMode)
+      self.session.onInvokeRegistration(initial=True, retryMode=self.session.retryMode,
+                                        segmentationData=self.segmentationData)
 
   def _createCoverProstateRegistrationResultManually(self):
     fixedVolume = self.session.currentSeriesVolume
@@ -215,12 +220,13 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     result.setTargets(approvedRegistrationType, clone)
     result.volumes.fixed = fixedVolume
     result.labels.fixed = self.session.fixedLabel
+    result.receivedTime = self.session.seriesTimeStamps[result.name.replace(result.suffix, "")]
 
     if self.session.seriesTypeManager.isCoverProstate(self.session.currentResult.name) and \
     self.session.data.getMostRecentApprovedCoverProstateRegistration() is not None:
       self.session.data.getMostRecentApprovedCoverProstateRegistration().skip()
 
-    result.approve(approvedRegistrationType)
+    result.approve(approvedRegistrationType, consentedBy="Clinician")
 
   def _onAutomaticSegmentationStarted(self, caller, event):
     self.manualSegmentationPlugin.enabled = False
@@ -266,28 +272,39 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def _onAutomaticSegmentationFinished(self, caller, event, labelNode):
     self.manualSegmentationPlugin.enabled = True
-    # surfaceCutToLabelWidget = self.manualSegmentationPlugin.surfaceCutToLabelWidget
-    #
+    surfaceCutToLabelWidget = self.manualSegmentationPlugin.surfaceCutToLabelWidget
+
     # segmentationsLogic = slicer.modules.segmentations.logic()
     #
     # segmentationNode = surfaceCutToLabelWidget.segmentationNode
     # map(lambda x: segmentationNode.RemoveSegment(x), surfaceCutToLabelWidget.getSegmentIDs())
     # segmentationsLogic.ImportLabelmapToSegmentationNode(labelNode, segmentationNode)
     # surfaceCutToLabelWidget.configureSegmentVisibility()
-    #
-    # segmentIDs = surfaceCutToLabelWidget.getSegmentIDs()
-    # segmentationNode.GetSegmentation().GetSegment(segmentIDs[0]).SetName(surfaceCutToLabelWidget.SEGMENTATION_NAME)
-    #
-    # surfaceCutToLabelWidget.imageVolume = self.session.currentSeriesVolume
-    # surfaceCutToLabelWidget.labelVolume = labelNode
-    #
     # surfaceCutToLabelWidget.segmentEditorWidgetButton.enabled = True
+
+    surfaceCutToLabelWidget.imageVolume = self.session.currentSeriesVolume
+    surfaceCutToLabelWidget.labelVolume = labelNode
+
+    self.createSegmentationDataOrSetModified(self.automaticSegmentationPlugin, labelNode)
+    self._onSegmentationFinished(caller, event, labelNode)
+
+  def createSegmentationDataOrSetModified(self, plugin, labelNode):
+    if not self.segmentationData or self.segmentationData.algorithm=="Manual":
+      self.segmentationData = SegmentationData(segmentationType="Prostate",algorithm=plugin.ALGORITHM_TYPE,
+                                               startTime=plugin.startTime, endTime=plugin.endTime, label=labelNode)
+    else:
+      self.segmentationData.setModified(startTime=plugin.startTime, endTime=plugin.endTime, label=labelNode)
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def _onManualSegmentationFinished(self, caller, event, labelNode):
+    self.createSegmentationDataOrSetModified(self.manualSegmentationPlugin, labelNode)
     self._onSegmentationFinished(caller, event, labelNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def _onSegmentationFinished(self, caller, event, labelNode):
     _, suffix = self.session.getRegistrationResultNameAndGeneratedSuffix(self.session.currentSeries)
-    labelNode.SetName(labelNode.GetName() + suffix)
+    if labelNode.GetName().find(suffix) == -1 and not labelNode.GetName().endswith("_modified"):
+      labelNode.SetName(labelNode.GetName() + suffix)
     self.session.fixedLabel = labelNode
     self.finishStepButton.setEnabled(1 if self.logic.inputsAreSet() else 0)
     self.backButton.enabled = True

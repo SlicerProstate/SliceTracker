@@ -25,6 +25,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
   def __init__(self):
     self.modulePath = os.path.dirname(slicer.util.modulePath(self.MODULE_NAME)).replace(".py", "")
     super(SliceTrackerEvaluationStep, self).__init__()
+    self.consentGivenBy = None
 
   def setup(self):
     super(SliceTrackerEvaluationStep, self).setup()
@@ -45,7 +46,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
     self.addPlugin(self.displacementChartPlugin)
 
-    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.omShowDisplacementChart)
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.onShowDisplacementChart)
     self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent, self.onHideDisplacementChart)
 
     self.layout().addWidget(self.regResultsPlugin)
@@ -79,7 +80,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     super(SliceTrackerEvaluationStep, self).removeSessionEventObservers()
     self.session.removeEventObserver(self.session.InitiateEvaluationEvent, self.onInitiateEvaluation)
 
-  def omShowDisplacementChart(self, caller, event):
+  def onShowDisplacementChart(self, caller, event):
     self.displacementChartPlugin.collapsibleButton.show()
 
   def onHideDisplacementChart(self, caller, event):
@@ -89,29 +90,35 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.session.retryRegistration()
 
   def onApproveRegistrationResultButtonClicked(self):
-    results = self.session.data.getResultsBySeriesNumber(self.currentResult.seriesNumber)
-    for result in [r for r in results if r is not self.currentResult]:
-      result.reject()
+    self.consentGivenBy = self.session._getConsent()
+    if self.consentGivenBy:
+      results = self.session.data.getResultsBySeriesNumber(self.currentResult.seriesNumber)
+      for result in [r for r in results if r is not self.currentResult]:
+        result.reject(self.consentGivenBy)
 
-    if self.session.seriesTypeManager.isCoverProstate(self.session.currentResult.name) and \
-    self.session.data.getMostRecentApprovedCoverProstateRegistration() is not None:
-      self.session.data.getMostRecentApprovedCoverProstateRegistration().skip()
+      if self.session.seriesTypeManager.isCoverProstate(self.session.currentResult.name) and \
+          self.session.data.getMostRecentApprovedCoverProstateRegistration() is not None:
+        self.session.data.getMostRecentApprovedCoverProstateRegistration().skip()
 
-    self.currentResult.approve(registrationType=self.regResultsPlugin.registrationButtonGroup.checkedButton().name)
+      self.currentResult.approve(registrationType=self.regResultsPlugin.registrationButtonGroup.checkedButton().name,
+                                 consentedBy=self.consentGivenBy)
     # if self.ratingWindow.isRatingEnabled():
     #   self.ratingWindow.show(disableWidget=self.parent)
 
   def onRejectRegistrationResultButtonClicked(self):
-    results = self.session.data.getResultsBySeriesNumber(self.currentResult.seriesNumber)
-    for result in [r for r in results if r is not self.currentResult]:
-      result.reject()
-    self.currentResult.reject()
+    self.consentGivenBy = self.session._getConsent()
+    if self.consentGivenBy:
+      results = self.session.data.getResultsBySeriesNumber(self.currentResult.seriesNumber)
+      for result in [r for r in results if r is not self.currentResult]:
+        result.reject(consentedBy=self.consentGivenBy)
+      self.currentResult.reject(consentedBy=self.consentGivenBy)
 
   def onInitiateEvaluation(self, caller, event):
     self.active = True
 
   def onActivation(self):
     super(SliceTrackerEvaluationStep, self).onActivation()
+    self.consentGivenBy = None
     if not self.currentResult:
       return
     # self.redOnlyLayoutButton.enabled = False
@@ -136,4 +143,3 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
   def onRegistrationResultsAvailable(self, caller, event):
     self.approveRegistrationResultButton.enabled = True
     self.targetTablePlugin.enabled = True
-

@@ -6,7 +6,7 @@ import getpass
 import datetime
 
 import slicer
-from sessionData import SessionData, RegistrationResult, RegistrationTypeData
+from sessionData import SessionData, RegistrationResult, RegistrationTypeData, SegmentationData, PreopData
 from constants import SliceTrackerConstants
 from helpers import SeriesTypeManager
 from algorithms.automaticProstateSegmentation import AutomaticSegmentationLogic
@@ -18,12 +18,14 @@ from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicM
 from SlicerDevelopmentToolboxUtils.exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow, CustomStatusProgressbar
 from SlicerDevelopmentToolboxUtils.widgets import SliceWidgetConfirmYesNoMessageBox
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton
+from SlicerDevelopmentToolboxUtils.widgets import RadioButtonChoiceMessageBox
+from SlicerDevelopmentToolboxUtils.decorators import singleton
 from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse, onReturnProcessEvents, onExceptionReturnNone
 from SlicerDevelopmentToolboxUtils.module.session import StepBasedSession
 
 
 from SliceTrackerRegistration import SliceTrackerRegistrationLogic
+from steps.plugins.segmentationValidator import SliceTrackerSegmentationValidatorPlugin
 
 
 @singleton
@@ -122,7 +124,6 @@ class SliceTrackerSession(StepBasedSession):
   def currentSeries(self, series):
     if series == self.currentSeries:
       return
-    print "set current Series on session"
     if series and series not in self.seriesList :
       raise UnknownSeriesError("Series %s is unknown" % series)
     self._currentSeries = series
@@ -214,6 +215,7 @@ class SliceTrackerSession(StepBasedSession):
     self.resetIntraopDICOMReceiver()
     self.loadableList = {}
     self.seriesList = []
+    self.seriesTimeStamps = dict()
     self.alreadyLoadedSeries = {}
     self._currentResult = None
     self._currentSeries = None
@@ -421,6 +423,7 @@ class SliceTrackerSession(StepBasedSession):
       indexer.addFile(slicer.dicomDatabase, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
       if series not in self.seriesList:
+        self.seriesTimeStamps[series] = self.getTime()
         self.seriesList.append(series)
         newSeries.append(series)
         self.loadableList[series] = self.createLoadableFileListForSeries(series)
@@ -539,7 +542,6 @@ class SliceTrackerSession(StepBasedSession):
       self.openSavedSession()
 
   def onPreprocessingSuccessful(self, caller, event):
-    self.data.usePreopData = True
     self.setupPreopLoadedTargets()
     self.invokeEvent(self.PreprocessingSuccessfulEvent)
     self.startIntraopDICOMReceiver()
@@ -650,10 +652,10 @@ class SliceTrackerSession(StepBasedSession):
       suffix = "_Retry_" + str(nOccurrences)
     return name, suffix
 
-  def onInvokeRegistration(self, initial=True, retryMode=False):
+  def onInvokeRegistration(self, initial=True, retryMode=False, segmentationData=None):
     self.progress = slicer.util.createProgressDialog(maximum=4, value=1)
     if initial:
-      self.applyInitialRegistration(retryMode, progressCallback=self.updateProgressBar)
+      self.applyInitialRegistration(retryMode, segmentationData, progressCallback=self.updateProgressBar)
     else:
       self.applyRegistration(progressCallback=self.updateProgressBar)
     self.progress.close()
@@ -674,14 +676,14 @@ class SliceTrackerSession(StepBasedSession):
     self.registrationLogic.registrationResult = result
     return result
 
-  def applyInitialRegistration(self, retryMode, progressCallback=None):
+  def applyInitialRegistration(self, retryMode, segmentationData, progressCallback=None):
     if not retryMode:
       self.data.initializeRegistrationResults()
 
     self.runBRAINSResample(inputVolume=self.fixedLabel, referenceVolume=self.fixedVolume,
                            outputVolume=self.fixedLabel)
     self._runRegistration(self.fixedVolume, self.fixedLabel, self.movingVolume,
-                          self.movingLabel, self.movingTargets, progressCallback)
+                          self.movingLabel, self.movingTargets, segmentationData, progressCallback)
 
   def applyRegistration(self, progressCallback=None):
 
@@ -699,17 +701,24 @@ class SliceTrackerSession(StepBasedSession):
 
     self.dilateMask(fixedLabel, dilateValue=self.segmentedLabelValue)
     self._runRegistration(self.currentSeriesVolume, fixedLabel, coverProstateRegResult.volumes.fixed,
-                         coverProstateRegResult.labels.fixed, coverProstateRegResult.targets.approved, progressCallback)
+                          coverProstateRegResult.labels.fixed, coverProstateRegResult.targets.approved, None,
+                          progressCallback)
 
-  def _runRegistration(self, fixedVolume, fixedLabel, movingVolume, movingLabel, targets, progressCallback):
+  def _runRegistration(self, fixedVolume, fixedLabel, movingVolume, movingLabel, targets, segmentationData,
+                       progressCallback):
     result = self.generateNameAndCreateRegistrationResult(fixedVolume)
+    result.receivedTime = self.seriesTimeStamps[result.name.replace(result.suffix, "")]
+    if segmentationData:
+      result.segmentationData = segmentationData
     parameterNode = slicer.vtkMRMLScriptedModuleNode()
     parameterNode.SetAttribute('FixedImageNodeID', fixedVolume.GetID())
     parameterNode.SetAttribute('FixedLabelNodeID', fixedLabel.GetID())
     parameterNode.SetAttribute('MovingImageNodeID', movingVolume.GetID())
     parameterNode.SetAttribute('MovingLabelNodeID', movingLabel.GetID())
     parameterNode.SetAttribute('TargetsNodeID', targets.GetID())
+    result.startTime = self.getTime()
     self.registrationLogic.run(parameterNode, progressCallback=progressCallback)
+    result.endTime = self.getTime()
     self.addTargetsToMRMLScene(result)
     if self.seriesTypeManager.isCoverProstate(self.currentSeries) and self.temporaryIntraopTargets:
       self.addTemporaryTargetsToResult(result)
@@ -729,7 +738,6 @@ class SliceTrackerSession(StepBasedSession):
         targetList.AddFiducialFromArray(self.getTargetPosition(self.temporaryIntraopTargets, i),
                                         self.temporaryIntraopTargets.GetNthFiducialLabel(i))
 
-  @logmethod(logging.INFO)
   def onRegistrationResultStatusChanged(self, caller, event):
     self.skipAllUnregisteredPreviousSeries(self.currentResult.name)
     self._loading = getattr(self, "_loading", None)
@@ -758,12 +766,16 @@ class SliceTrackerSession(StepBasedSession):
     name, suffix = self.getRegistrationResultNameAndGeneratedSuffix(volume.GetName())
     result = self.data.createResult(name+suffix)
     result.volumes.fixed = volume
+    result.receivedTime = self.seriesTimeStamps[result.name.replace(result.suffix, "")]
     result.skip()
 
   def skip(self, series):
     self.skipAllUnregisteredPreviousSeries(series)
     self.skipSeries(series)
     self.save()
+
+  def _getConsent(self):
+    return RadioButtonChoiceMessageBox("Who gave consent?", options=["Clinician", "Operator"]).exec_()
 
 
 class PreprocessedDataHandlerBase(ModuleWidgetMixin, ModuleLogicMixin):
@@ -801,6 +813,26 @@ class PreprocessedDataHandlerBase(ModuleWidgetMixin, ModuleLogicMixin):
 class PreopDataHandler(PreprocessedDataHandlerBase):
 
   MODULE_NAME = SliceTrackerConstants.MODULE_NAME
+
+  @property
+  def segmentationData(self):
+    try:
+      return self.data.preopData.segmentation
+    except AttributeError:
+      return None
+
+  @segmentationData.setter
+  def segmentationData(self, value):
+    assert self.preopData
+    self.preopData.segmentation = value
+
+  @property
+  def preopData(self):
+    return self.data.preopData
+
+  @preopData.setter
+  def preopData(self, value):
+    self.data.preopData = value
 
   @staticmethod
   def getFirstMpReviewPreprocessedStudy(directory):
@@ -904,13 +936,22 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
         if slicer.util.confirmYesNoDisplay("No WholeGland segmentation found in preop data. Automatic segmentation is "
                                            "available. Would you like to proceed with the automatic segmentation?",
                                            windowTitle="SliceTracker"):
+          self._createPreopData(algorithm="Automatic")
           self.runAutomaticSegmentation()
         else:
           self.onPreopLoadingFailed()
       else:
         self.onPreopLoadingFailed()
     else:
+      if not self.data.usePreopData:
+        self._createPreopData(algorithm="Manual")
+        self.segmentationData.note = "mpReview preprocessed"
+        self.segmentationData._label = self.data.initialLabel
       self.invokeEvent(self.PreprocessingFinishedEvent)
+
+  def _createPreopData(self, algorithm, segmentationType="Prostate"):
+    self.preopData = PreopData()
+    self.segmentationData = SegmentationData(segmentationType=segmentationType, algorithm=algorithm)
 
   def runAutomaticSegmentation(self):
     logic = AutomaticSegmentationLogic()
@@ -919,23 +960,30 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     customStatusProgressBar = CustomStatusProgressbar()
     customStatusProgressBar.text = "Running DeepInfer for automatic prostate segmentation"
 
-    print self.data.initialVolume.GetName()
     from mpReview import mpReviewLogic
     mpReviewColorNode, _ = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name", moduleName=self.MODULE_NAME))
 
     domain = 'BWH_WITHOUT_ERC'
     prompt = SliceWidgetConfirmYesNoMessageBox("Red", "Was an endorectal coil used during preop acqusition?").exec_()
 
+    self.preopData.usedERC = False
     if prompt == qt.QMessageBox.Yes:
+      self.preopData.usedERC = True
       domain = 'BWH_WITH_ERC'
     elif prompt == qt.QMessageBox.Cancel:
       self.invokeEvent(self.PreprocessedDataErrorEvent)
       return
 
+    self.segmentationData.startTime = self.getTime()
     logic.run(self.data.initialVolume, domain, mpReviewColorNode)
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
-  def onSegmentationFinished(self, caller, event, labelNode):
+  def onSegmentationValidated(self, caller, event, labelNode):
+    if "_modified" in labelNode.GetName():
+      self.segmentationData.userModified["endTime"] = self.getTime()
+      self.segmentationData._modifiedLabel = labelNode
+    else:
+      self.segmentationData.userModified = None
     if not self.preopSegmentationPath:
       self.createDirectory(self.preopSegmentationPath)
     segmentedColorName = self.getSetting("Segmentation_Color_Name", moduleName=self.MODULE_NAME)
@@ -945,6 +993,29 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     self.loadPreProcessedData()
     customStatusProgressBar = CustomStatusProgressbar()
     customStatusProgressBar.text = "Done automatic prostate segmentation"
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onSegmentationFinished(self, caller, event, labelNode):
+    self.segmentationData.endTime = self.getTime()
+    self.segmentationData._label = labelNode
+    segmentationValidator = SliceTrackerSegmentationValidatorPlugin(self.data.initialVolume, labelNode)
+    segmentationValidator.addEventObserver(segmentationValidator.ModifiedEvent, self.onSegmentationModificationStarted)
+    segmentationValidator.addEventObserver(segmentationValidator.FinishedEvent, self.onSegmentationValidated)
+    segmentationValidator.addEventObserver(segmentationValidator.CanceledEvent, self.onSegmentationValidationFailed)
+    segmentationValidator.run()
+
+  def onSegmentationModificationStarted(self, caller, event):
+    self.segmentationData.setModified(startTime=self.getTime())
+
+  def onSegmentationValidationFailed(self, caller=None, event=None):
+    message = "Segmentation validation failed.\nWholeGland segmentation is require to proceed." \
+              "\n\nDo you want to " \
+              "open/revisit pre-processing for the current case?"
+    if slicer.util.confirmYesNoDisplay(message, windowTitle="SliceTracker"):
+      # TODO: start intraop without listening to signals
+      self.runModule()
+    else:
+      self.invokeEvent(self.PreprocessedDataErrorEvent)
 
   def isMpReviewStudyDirectoryValid(self, resourcesDir):
     logging.debug(resourcesDir)

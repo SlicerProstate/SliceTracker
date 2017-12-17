@@ -35,7 +35,7 @@ class SliceTrackerOverViewStepLogic(SliceTrackerLogicBase):
 
     slicer.cli.run(slicer.modules.n4itkbiasfieldcorrection, None, params, wait_for_completion=True)
     self.session.data.initialVolume = outputVolume
-    self.session.data.biasCorrectionDone = True
+    self.session.data.preopData.usedERC = True
 
 
 class SliceTrackerOverviewStep(SliceTrackerStep):
@@ -226,6 +226,8 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.targetTablePlugin.currentTargets = None
 
   def onPreprocessingSuccessful(self, caller, event):
+    if not self.session.isLoading():
+      self.session.save()
     self.updateIntraopSeriesSelectorTable()
     self.configureRedSliceNodeForPreopData()
     self.promptUserAndApplyBiasCorrectionIfNeeded()
@@ -338,8 +340,10 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def promptUserAndApplyBiasCorrectionIfNeeded(self):
     if not self.session.data.resumed and not self.session.data.completed:
-      if slicer.util.confirmYesNoDisplay("Was an endorectal coil used for preop image acquisition?",
-                                         windowTitle="SliceTracker"):
+      message = "Was an endorectal coil used for preop image acquisition?"
+      if (not self.session.data.usedAutomaticPreopSegmentation and
+            slicer.util.confirmYesNoDisplay(message, windowTitle="SliceTracker")) or \
+         (self.session.data.usedAutomaticPreopSegmentation and self.session.data.preopData.usedERC):
         customProgressbar = CustomStatusProgressbar()
         customProgressbar.busy = True
         currentModule = slicer.util.getModuleGui(self.MODULE_NAME)
@@ -356,3 +360,5 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
           if currentModule:
             currentModule.parent().enabled = True
         customProgressbar.updateStatus("Bias correction done!")
+      else:
+        self.session.data.preopData.usedERC = False
