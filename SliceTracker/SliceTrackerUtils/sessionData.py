@@ -191,6 +191,7 @@ class SessionData(ModuleLogicMixin):
           result.status = value["state"]
           result.timestamp = value["time"]
           result.registrationType = value["registrationType"] if value.has_key("registrationType") else None
+          result.consentGivenBy = value["consentGivenBy"] if value.has_key("consentGivenBy") else None
         elif attribute == 'series':
           result.receivedTime = value['receivedTime']
           seriesType = value["seriesType"] if jsonResult.has_key("seriesType") else None
@@ -516,7 +517,7 @@ class SegmentationData(Serializable, ModuleLogicMixin):
                                         endTime=data["endTime"])
     segmentationData.fileName = data["fileName"]
     if data.has_key("note"):
-      data.segmentationData.note = data["note"]
+      segmentationData.note = data["note"]
     if data.has_key("userModified"):
       userModified = data["userModified"]
       segmentationData.setModified(startTime=userModified["startTime"], endTime=userModified["endTime"])
@@ -741,6 +742,7 @@ class RegistrationStatus(ModuleLogicMixin):
 
   def __init__(self):
     self._status = self.UNDEFINED_STATUS
+    self.consentGivenBy = None
 
   def hasStatus(self, status):
     return self.status == status
@@ -748,22 +750,27 @@ class RegistrationStatus(ModuleLogicMixin):
   def wasEvaluated(self):
     return self.status in [self.SKIPPED_STATUS, self.APPROVED_STATUS, self.REJECTED_STATUS]
 
-  def approve(self):
+  def approve(self, consentedBy=None):
+    self.consentGivenBy = consentedBy
     self.status = self.APPROVED_STATUS
 
   def skip(self):
     self.status = self.SKIPPED_STATUS
 
-  def reject(self):
+  def reject(self, consentedBy=None):
+    self.consentGivenBy = consentedBy
     self.status = self.REJECTED_STATUS
 
   def asDict(self):
-    return {
+    data = {
       "status": {
         "state": self.status,
         "time": self.timestamp
       }
     }
+    if self.consentGivenBy:
+      data["status"]["consentGivenBy"] = self.consentGivenBy
+    return data
 
 
 class RegistrationResultBase(ModuleLogicMixin):
@@ -865,11 +872,11 @@ class RegistrationResult(RegistrationResultBase, RegistrationStatus):
   def getTargets(self, name):
     return getattr(self.targets, name)
 
-  def approve(self, registrationType):
+  def approve(self, registrationType, consentedBy):
     assert registrationType in self.REGISTRATION_TYPE_NAMES
     self.registrationType = registrationType
     self.targets.approve(registrationType)
-    RegistrationStatus.approve(self)
+    RegistrationStatus.approve(self, consentedBy)
 
   def printSummary(self):
     logging.debug('# ___________________________  registration output  ________________________________')

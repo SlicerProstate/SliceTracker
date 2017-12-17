@@ -225,7 +225,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     self.session.data.getMostRecentApprovedCoverProstateRegistration() is not None:
       self.session.data.getMostRecentApprovedCoverProstateRegistration().skip()
 
-    result.approve(approvedRegistrationType)
+    result.approve(approvedRegistrationType, consentedBy="Clinician")
 
   def _onAutomaticSegmentationStarted(self, caller, event):
     self.manualSegmentationPlugin.enabled = False

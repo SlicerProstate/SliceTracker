@@ -18,7 +18,8 @@ from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicM
 from SlicerDevelopmentToolboxUtils.exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow, CustomStatusProgressbar
 from SlicerDevelopmentToolboxUtils.widgets import SliceWidgetConfirmYesNoMessageBox
-from SlicerDevelopmentToolboxUtils.decorators import logmethod, singleton
+from SlicerDevelopmentToolboxUtils.widgets import RadioButtonChoiceMessageBox
+from SlicerDevelopmentToolboxUtils.decorators import singleton
 from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse, onReturnProcessEvents, onExceptionReturnNone
 from SlicerDevelopmentToolboxUtils.module.session import StepBasedSession
 
@@ -737,7 +738,6 @@ class SliceTrackerSession(StepBasedSession):
         targetList.AddFiducialFromArray(self.getTargetPosition(self.temporaryIntraopTargets, i),
                                         self.temporaryIntraopTargets.GetNthFiducialLabel(i))
 
-  @logmethod(logging.INFO)
   def onRegistrationResultStatusChanged(self, caller, event):
     self.skipAllUnregisteredPreviousSeries(self.currentResult.name)
     self._loading = getattr(self, "_loading", None)
@@ -773,6 +773,9 @@ class SliceTrackerSession(StepBasedSession):
     self.skipAllUnregisteredPreviousSeries(series)
     self.skipSeries(series)
     self.save()
+
+  def _getConsent(self):
+    return RadioButtonChoiceMessageBox("Who gave consent?", options=["Clinician", "Operator"]).exec_()
 
 
 class PreprocessedDataHandlerBase(ModuleWidgetMixin, ModuleLogicMixin):

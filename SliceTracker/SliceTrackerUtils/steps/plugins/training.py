@@ -104,7 +104,7 @@ class SliceTrackerTrainingPlugin(SliceTrackerPlugin):
       else:
         shutil.copy(current, destination)
 
-  @logmethod(logging.INFO)
+  @logmethod(logging.DEBUG)
   def onNewCaseStarted(self, caller, event):
     self.simulatePreopPhaseButton.enabled = True
 
