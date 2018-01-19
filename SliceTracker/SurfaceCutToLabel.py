@@ -33,6 +33,8 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   SegmentationCanceledEvent = vtk.vtkCommand.UserEvent + 102
   SegmentationFinishedEvent = vtk.vtkCommand.UserEvent + 103
 
+  EFFECT_NAME = "Surface cut"
+
   @property
   def imageVolume(self):
     return self.imageVolumeSelector.currentNode()
@@ -60,7 +62,11 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   @property
   def segmentationNode(self):
     self._segmentationNode = getattr(self, "_segmentationNode", None)
-    if not self._segmentationNode:
+    if not self._segmentationNode or not self._segmentationNode.GetScene():
+      if self._segmentationNode and not self._segmentationNode.GetScene():
+        import logging
+        logging.debug("{}: Initializing NEW segmentation node. "
+                     "Class member was not assigned to a mrmlScene!".format(self.__class__.__name__))
       self._segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
       self._addInitialSegment()
       self.configureSegmentVisibility()
@@ -110,10 +116,9 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
 
   @property
   def scriptedEffect(self):
-    effectName = 'Surface cut'
-    scriptedEffect = self.segmentEditorWidget.effectByName(effectName)
+    scriptedEffect = self.segmentEditorWidget.effectByName(self.EFFECT_NAME)
     if not scriptedEffect:
-      raise AttributeError("SegmentEditor has no effect %s" % effectName)
+      raise AttributeError("SegmentEditor has no effect %s" % self.EFFECT_NAME)
     return scriptedEffect
 
   @property
@@ -251,7 +256,7 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
   def _onSegmentEditorGearIconChecked(self, enabled):
     self.segmentEditorWidget.setVisible(enabled)
     if enabled:
-      self.segmentEditorWidget.setActiveEffectByName("Surface cut")
+      self.segmentEditorWidget.setActiveEffectByName(self.EFFECT_NAME)
       self.observeSegmentation(True)
     else:
       self.segmentEditorWidget.setActiveEffect(None)
@@ -291,9 +296,10 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
       self.logic.seriesNumber = None
 
     self.setBackgroundToVolumeID(node)
-    self.quickSegmentationButton.setEnabled(node!=None)
+    self.quickSegmentationButton.setEnabled(node is not None)
+    self.segmentEditorWidget.setSegmentationNode(self.segmentationNode)
     self.segmentEditorWidget.setMasterVolumeNode(node)
-    self.colorPatch.setEnabled(node!=None)
+    self.colorPatch.setEnabled(node is not None)
     self._updateGearButtonAvailability()
 
   def _onLabelMapSelected(self, node):
