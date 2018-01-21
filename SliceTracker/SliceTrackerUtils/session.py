@@ -17,7 +17,7 @@ from SlicerDevelopmentToolboxUtils.helpers import SmartDICOMReceiver
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin, ModuleLogicMixin
 from SlicerDevelopmentToolboxUtils.exceptions import DICOMValueError, PreProcessedDataError, UnknownSeriesError
 from SlicerDevelopmentToolboxUtils.widgets import IncomingDataWindow, CustomStatusProgressbar
-from SlicerDevelopmentToolboxUtils.widgets import SliceWidgetConfirmYesNoMessageBox
+from SlicerDevelopmentToolboxUtils.widgets import SliceWidgetConfirmYesNoDialog
 from SlicerDevelopmentToolboxUtils.widgets import RadioButtonChoiceMessageBox
 from SlicerDevelopmentToolboxUtils.decorators import singleton
 from SlicerDevelopmentToolboxUtils.decorators import onExceptionReturnFalse, onReturnProcessEvents, onExceptionReturnNone
@@ -964,13 +964,14 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
     mpReviewColorNode, _ = mpReviewLogic.loadColorTable(self.getSetting("Color_File_Name", moduleName=self.MODULE_NAME))
 
     domain = 'BWH_WITHOUT_ERC'
-    prompt = SliceWidgetConfirmYesNoMessageBox("Red", "Was an endorectal coil used during preop acqusition?").exec_()
+    prompt = SliceWidgetConfirmYesNoDialog(self.data.initialVolume,
+                                           "Was an endorectal coil used during preop acquisition?").exec_()
 
     self.preopData.usedERC = False
-    if prompt == qt.QMessageBox.Yes:
+    if prompt == qt.QDialogButtonBox.Yes:
       self.preopData.usedERC = True
       domain = 'BWH_WITH_ERC'
-    elif prompt == qt.QMessageBox.Cancel:
+    elif prompt == qt.QDialogButtonBox.Cancel:
       self.invokeEvent(self.PreprocessedDataErrorEvent)
       return
 
