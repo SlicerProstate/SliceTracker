@@ -653,7 +653,9 @@ class SliceTrackerSession(StepBasedSession):
     return name, suffix
 
   def onInvokeRegistration(self, initial=True, retryMode=False, segmentationData=None):
-    self.progress = slicer.util.createProgressDialog(maximum=4, value=1)
+    self.progress = ModuleWidgetMixin.createProgressDialog(maximum=4, value=1, windowFlags=qt.Qt.CustomizeWindowHint |
+                                                                                           qt.Qt.WindowTitleHint)
+    self.progress.setCancelButton(None)
     if initial:
       self.applyInitialRegistration(retryMode, segmentationData, progressCallback=self.updateProgressBar)
     else:
