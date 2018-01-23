@@ -96,6 +96,7 @@ class SliceTrackerSegmentationValidatorPlugin(qt.QDialog, ModuleWidgetMixin):
     self.sliceLogic.GetSliceCompositeNode().SetLabelVolumeID(self.labelNode.GetID())
     self.sliceLogic.FitSliceToAll()
     self.sliceNode.RotateToVolumePlane(self.volumeNode)
+    self.sliceNode.SetUseLabelOutline(True)
     self.resize(int(slicer.util.mainWindow().width/3*2), int(slicer.util.mainWindow().height/3*2))
     result = self.exec_()
     if result == qt.QDialog.Rejected:
