@@ -228,13 +228,13 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       return self.onNoResultAvailable()
     if self.currentResult.approved or self.currentResult.rejected:
       return self.onResultApprovedOrRejected()
-    self.setAvailableLayouts([constants.LAYOUT_FOUR_UP, constants.LAYOUT_SIDE_BY_SIDE])
+    self.setAvailableLayouts([constants.LAYOUT_FOUR_UP_QUANTITATIVE, constants.LAYOUT_SIDE_BY_SIDE])
 
   def onResultApprovedOrRejected(self):
     if self.session.seriesTypeManager.isCoverProstate(self.currentResult.name) and not self.session.data.usePreopData:
       self.onNoResultAvailable()
     else:
-      self.setAvailableLayouts([constants.LAYOUT_FOUR_UP, constants.LAYOUT_SIDE_BY_SIDE if
+      self.setAvailableLayouts([constants.LAYOUT_FOUR_UP_QUANTITATIVE, constants.LAYOUT_SIDE_BY_SIDE if
                                 self.currentResult.volumes.moving else constants.LAYOUT_RED_SLICE_ONLY])
       self.layoutManager.setLayout(constants.LAYOUT_SIDE_BY_SIDE)
 
@@ -263,7 +263,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       self.opacitySpinBox.value = value
 
   def onOpacityChanged(self, value):
-    if self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
+    if self.layoutManager.layout == constants.LAYOUT_FOUR_UP_QUANTITATIVE:
       self.redCompositeNode.SetForegroundOpacity(value)
       self.greenCompositeNode.SetForegroundOpacity(value)
     self.yellowCompositeNode.SetForegroundOpacity(value)
@@ -293,7 +293,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
   def onRegistrationResultSelected(self, seriesText):
     self.hideAllLabels()
     self.sliceAnnotationHandler.addSliceAnnotations()
-    if self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
+    if self.layoutManager.layout == constants.LAYOUT_FOUR_UP_QUANTITATIVE:
       self.setDefaultOrientation()
     else:
       self.setAxialOrientation()
@@ -407,7 +407,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
   def getCompositeNodesForCurrentLayout(self):
     if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
       return [self.yellowCompositeNode]
-    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
+    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP_QUANTITATIVE:
       return [self.redCompositeNode, self.yellowCompositeNode, self.greenCompositeNode]
     return []
 
@@ -420,7 +420,7 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
     sliceNodes = [self.yellowSliceNode]
     if self.layoutManager.layout == constants.LAYOUT_RED_SLICE_ONLY:
       sliceNodes = [self.redSliceNode]
-    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
+    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP_QUANTITATIVE:
       sliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
     self.refreshViewNodeIDs(targetNode, sliceNodes)
     targetNode.SetLocked(True)
@@ -443,6 +443,8 @@ class ResultsAnnotationHandler(SliceAnnotationHandlerBase):
       self.addSideBySideSliceAnnotations()
     elif self.layoutManager.layout == constants.LAYOUT_RED_SLICE_ONLY:
       self.addRedOnlySliceAnnotations()
+    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP_QUANTITATIVE:
+      self.addFourUpSliceAnnotations()
     else:
       raise ValueError("Current layout is not supported!")
 

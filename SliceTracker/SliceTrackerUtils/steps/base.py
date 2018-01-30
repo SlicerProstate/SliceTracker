@@ -92,7 +92,7 @@ class SliceTrackerWidgetBase(WidgetBase):
     pass
 
   def setupFourUpView(self, volume, clearLabels=True):
-    self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
+    self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP_QUANTITATIVE)
     self.setBackgroundToVolumeID(volume, clearLabels)
 
   def setBackgroundToVolumeID(self, volume, clearLabels=True, showLabelOutline=True):
