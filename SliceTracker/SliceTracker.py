@@ -127,7 +127,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.crosshairButton = CrosshairButton()
     self.wlEffectsToolButton = WindowLevelEffectsButton()
     self.settingsButton = ModuleSettingsButton(self.moduleName)
-    self.dicomConnectionTestButton = DICOMConnectionTestButton(toolTip="Test DICOM connection")
+    self.dicomConnectionTestButton = DICOMConnectionTestButton()
+    self.dicomConnectionTestButton.setToolTip("Test DICOM connection")
     self.showAnnotationsButton = self.createButton("", icon=Icons.text_info, iconSize=iconSize, checkable=True,
                                                    toolTip="Display annotations", checked=True)
 

@@ -45,7 +45,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.surfaceCutToLabelWidget.selectorsGroupBoxVisible = False
     self.surfaceCutToLabelWidget.colorGroupBoxVisible = False
 
-    if self.getSetting('DeveloperMode', 'Developer').lower() == 'true':
+    if str(self.getSetting('DeveloperMode', 'Developer')).lower() == 'true':
       self.surfaceCutToLabelWidget.reloadCollapsibleButton.hide()
 
     self.segmentationGroupBox = qt.QGroupBox("SurfaceCut Segmentation")

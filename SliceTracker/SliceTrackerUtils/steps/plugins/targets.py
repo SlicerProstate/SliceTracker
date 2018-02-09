@@ -2,6 +2,8 @@ import qt
 import vtk
 import numpy
 import logging
+from packaging import version
+
 from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from ..zFrameRegistration import SliceTrackerZFrameRegistrationStepLogic
@@ -35,7 +37,11 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
     if self.currentGuidanceComputation:
       self.observer = self.currentGuidanceComputation.addEventObserver(vtk.vtkCommand.ModifiedEvent,
                                                                        self.updateHoleAndDepth)
-    self.reset()
+    if version.parse(qt.Qt.qVersion()) >= version.parse("5.0.0"):
+      self.beginResetModel()
+      self.endResetModel()
+    else:
+      self.reset()
 
   @property
   def coverProstateTargetList(self):
@@ -331,10 +337,13 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.layout().addWidget(self.targetTable)
 
   def setTargetTableSizeConstraints(self):
-    self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
-    self.targetTable.horizontalHeader().setResizeMode(0, qt.QHeaderView.Stretch)
-    self.targetTable.horizontalHeader().setResizeMode(1, qt.QHeaderView.ResizeToContents)
-    self.targetTable.horizontalHeader().setResizeMode(2, qt.QHeaderView.ResizeToContents)
+    method = getattr(self.targetTable.horizontalHeader(),
+                     "setResizeMode" if version.parse(qt.Qt.qVersion()) < version.parse("5.0.0") else
+                     "setSectionResizeMode")
+    method(qt.QHeaderView.Stretch)
+    method(0, qt.QHeaderView.Stretch)
+    method(1, qt.QHeaderView.ResizeToContents)
+    method(2, qt.QHeaderView.ResizeToContents)
 
   def setupConnections(self):
     self.targetTable.connect('clicked(QModelIndex)', self.onTargetSelectionChanged)
