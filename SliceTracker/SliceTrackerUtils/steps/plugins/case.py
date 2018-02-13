@@ -10,6 +10,7 @@ from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from SlicerDevelopmentToolboxUtils.helpers import WatchBoxAttribute
 from SlicerDevelopmentToolboxUtils.widgets import BasicInformationWatchBox
 from SlicerDevelopmentToolboxUtils.icons import Icons
+from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin
 
 
 class SliceTrackerCaseManagerLogic(SliceTrackerLogicBase):
@@ -34,7 +35,7 @@ class SliceTrackerCaseManagerPlugin(SliceTrackerPlugin):
     except TypeError:
       exists = False
     self.setSetting('CasesRootLocation', path if exists else None)
-    self.casesRootDirectoryButton.text = self.truncatePath(path) if exists else "Choose output directory"
+    self.casesRootDirectoryButton.text = ModuleLogicMixin.truncatePath(path) if exists else "Choose output directory"
     self.casesRootDirectoryButton.toolTip = path
     self.openCaseButton.enabled = exists
     self.createNewCaseButton.enabled = exists
