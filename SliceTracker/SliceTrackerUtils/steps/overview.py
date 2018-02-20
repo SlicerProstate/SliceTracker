@@ -79,12 +79,12 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.targetTablePlugin = SliceTrackerTargetTablePlugin()
     self.addPlugin(self.targetTablePlugin)
 
-    # self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
-    # self.addPlugin(self.displacementChartPlugin)
+    self.displacementChartPlugin = SliceTrackerDisplacementChartPlugin()
+    self.addPlugin(self.displacementChartPlugin)
 
-    # self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.onShowDisplacementChart)
-    # self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent, self.onHideDisplacementChart)
-    #self.displacementChartPlugin.collapsibleButton.hide()
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.ShowEvent, self.onShowDisplacementChart)
+    self.displacementChartPlugin.addEventObserver(self.displacementChartPlugin.HideEvent, self.onHideDisplacementChart)
+    self.displacementChartPlugin.collapsibleButton.hide()
 
     self.layout().addWidget(self.caseManagerPlugin)
     self.layout().addWidget(self.trainingPlugin)
@@ -92,11 +92,13 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.layout().addWidget(self.createHLayout([self.intraopSeriesSelector, self.changeSeriesTypeButton,
                                                 self.trackTargetsButton, self.skipIntraopSeriesButton]))
     self.layout().addWidget(self.regResultsCollapsibleButton)
-    #self.layout().addWidget(self.displacementChartPlugin.collapsibleButton)
+    self.layout().addWidget(self.displacementChartPlugin.collapsibleButton)
     self.layout().addStretch(1)
 
   def onShowDisplacementChart(self, caller, event):
-    self.displacementChartPlugin.collapsibleButton.show()
+    layout = slicer.app.layoutManager().layout
+    if layout == constants.LAYOUT_SIDE_BY_SIDE:
+      self.displacementChartPlugin.collapsibleButton.show()
 
   def onHideDisplacementChart(self, caller, event):
     self.displacementChartPlugin.collapsibleButton.hide()
