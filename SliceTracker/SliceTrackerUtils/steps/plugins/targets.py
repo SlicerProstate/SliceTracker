@@ -2,12 +2,13 @@ import qt
 import vtk
 import numpy
 import logging
+
 from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from ..zFrameRegistration import SliceTrackerZFrameRegistrationStepLogic
 from ...session import SliceTrackerSession
 
-from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin
+from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from SlicerDevelopmentToolboxUtils.decorators import logmethod, onModuleSelected
 from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
 
@@ -35,7 +36,11 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
     if self.currentGuidanceComputation:
       self.observer = self.currentGuidanceComputation.addEventObserver(vtk.vtkCommand.ModifiedEvent,
                                                                        self.updateHoleAndDepth)
-    self.reset()
+    if ModuleWidgetMixin.isQtVersionOlder():
+      self.reset()
+    else:
+      self.beginResetModel()
+      self.endResetModel()
 
   @property
   def coverProstateTargetList(self):
@@ -331,10 +336,13 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
     self.layout().addWidget(self.targetTable)
 
   def setTargetTableSizeConstraints(self):
-    self.targetTable.horizontalHeader().setResizeMode(qt.QHeaderView.Stretch)
-    self.targetTable.horizontalHeader().setResizeMode(0, qt.QHeaderView.Stretch)
-    self.targetTable.horizontalHeader().setResizeMode(1, qt.QHeaderView.ResizeToContents)
-    self.targetTable.horizontalHeader().setResizeMode(2, qt.QHeaderView.ResizeToContents)
+    method = getattr(self.targetTable.horizontalHeader(),
+                     "setResizeMode" if ModuleWidgetMixin.isQtVersionOlder() else
+                     "setSectionResizeMode")
+    method(qt.QHeaderView.Stretch)
+    method(0, qt.QHeaderView.Stretch)
+    method(1, qt.QHeaderView.ResizeToContents)
+    method(2, qt.QHeaderView.ResizeToContents)
 
   def setupConnections(self):
     self.targetTable.connect('clicked(QModelIndex)', self.onTargetSelectionChanged)
