@@ -121,7 +121,7 @@ class SliceTrackerWidgetBase(WidgetBase):
     elif self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
       self.setDefaultFOV(self.redSliceLogic)
       self.setDefaultFOV(self.yellowSliceLogic)
-    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP:
+    elif self.layoutManager.layout in [constants.LAYOUT_FOUR_UP_QUANTITATIVE, constants.LAYOUT_FOUR_UP]:
       self.setDefaultFOV(self.redSliceLogic)
       self.yellowSliceLogic.FitSliceToAll()
       self.greenSliceLogic.FitSliceToAll()
