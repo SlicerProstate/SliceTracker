@@ -3,7 +3,6 @@ import ctk
 import qt
 import slicer
 import vtk
-from packaging import version
 
 from base import SliceTrackerLogicBase, SliceTrackerStep
 from plugins.case import SliceTrackerCaseManagerPlugin
@@ -16,6 +15,7 @@ from ..sessionData import RegistrationResult
 from ..helpers import IncomingDataMessageBoxQt4, IncomingDataMessageBoxQt5, SeriesTypeToolButton, SeriesTypeManager
 
 from SlicerDevelopmentToolboxUtils.constants import COLOR
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
 from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 from SlicerDevelopmentToolboxUtils.icons import Icons
 
@@ -276,14 +276,14 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
     if self.session.isTrackingPossible(self.intraopSeriesSelector.currentText):
       if self.notifyUserAboutNewData and not self.session.data.completed:
-        if version.parse(qt.Qt.qVersion()) >= version.parse("5.0.0"):
-          dialog = IncomingDataMessageBoxQt5()
-          self.notifyUserAboutNewDataAnswer = dialog.exec_()
-          self.notifyUserAboutNewData = dialog.showMsgBoxAgain
-        else:
+        if ModuleWidgetMixin.isQtVersionOlder():
           dialog = IncomingDataMessageBoxQt4()
           self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
           self.notifyUserAboutNewData = not checked
+        else:
+          dialog = IncomingDataMessageBoxQt5()
+          self.notifyUserAboutNewDataAnswer = dialog.exec_()
+          self.notifyUserAboutNewData = dialog.showMsgBoxAgain
       if hasattr(self, "notifyUserAboutNewDataAnswer") and self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
         self.onTrackTargetsButtonClicked()
 

@@ -2,14 +2,13 @@ import qt
 import vtk
 import numpy
 import logging
-from packaging import version
 
 from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from ..zFrameRegistration import SliceTrackerZFrameRegistrationStepLogic
 from ...session import SliceTrackerSession
 
-from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin
+from SlicerDevelopmentToolboxUtils.mixins import ModuleLogicMixin, ModuleWidgetMixin
 from SlicerDevelopmentToolboxUtils.decorators import logmethod, onModuleSelected
 from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotation
 
@@ -37,11 +36,11 @@ class CustomTargetTableModel(qt.QAbstractTableModel, ModuleLogicMixin):
     if self.currentGuidanceComputation:
       self.observer = self.currentGuidanceComputation.addEventObserver(vtk.vtkCommand.ModifiedEvent,
                                                                        self.updateHoleAndDepth)
-    if version.parse(qt.Qt.qVersion()) >= version.parse("5.0.0"):
+    if ModuleWidgetMixin.isQtVersionOlder():
+      self.reset()
+    else:
       self.beginResetModel()
       self.endResetModel()
-    else:
-      self.reset()
 
   @property
   def coverProstateTargetList(self):
@@ -338,7 +337,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
 
   def setTargetTableSizeConstraints(self):
     method = getattr(self.targetTable.horizontalHeader(),
-                     "setResizeMode" if version.parse(qt.Qt.qVersion()) < version.parse("5.0.0") else
+                     "setResizeMode" if ModuleWidgetMixin.isQtVersionOlder() else
                      "setSectionResizeMode")
     method(qt.QHeaderView.Stretch)
     method(0, qt.QHeaderView.Stretch)

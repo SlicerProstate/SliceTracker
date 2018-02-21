@@ -3,7 +3,6 @@ import ctk
 import vtk
 import qt
 import slicer
-from packaging import version
 
 from ...constants import SliceTrackerConstants as constants
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
@@ -11,6 +10,7 @@ from ...session import SliceTrackerSession
 
 from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 from SlicerDevelopmentToolboxUtils.helpers import SliceAnnotationHandlerBase, SliceAnnotation
+from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
 
 
 class SliceTrackerRegistrationResultsLogic(SliceTrackerLogicBase):
@@ -465,15 +465,14 @@ class ResultsAnnotationHandler(SliceAnnotationHandlerBase):
     if not (self.currentResult.skipped or (self.session.seriesTypeManager.isCoverProstate(self.currentResult.name) and
                                              not self.session.data.usePreopData)):
       self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT,
-                                                   yPos=50 if version.parse(qt.Qt.qVersion()) < version.parse("5.0.0")
-                                                   else 75, size=20))
+                                                   yPos=50 if ModuleWidgetMixin.isQtVersionOlder() else 75, size=20))
       self.addNewImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT, size=15)
       self.addOldImageAnnotation(self.redWidget, constants.RIGHT_VIEWER_SLICE_TRANSFORMED_ANNOTATION_TEXT, size=15)
     self.addRegistrationResultStatusAnnotation(self.redWidget)
 
   def addSideBySideSliceAnnotations(self):
     self.removeSliceAnnotations()
-    kwargs = {"yPos":55 if version.parse(qt.Qt.qVersion()) < version.parse("5.0.0") else 80, "size":30}
+    kwargs = {"yPos":55 if ModuleWidgetMixin.isQtVersionOlder() else 80, "size":30}
     self.sliceAnnotations.append(SliceAnnotation(self.redWidget, constants.LEFT_VIEWER_SLICE_ANNOTATION_TEXT, **kwargs))
     self.sliceAnnotations.append(SliceAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_ANNOTATION_TEXT, **kwargs))
     self.addNewImageAnnotation(self.yellowWidget, constants.RIGHT_VIEWER_SLICE_NEEDLE_IMAGE_ANNOTATION_TEXT)
@@ -485,13 +484,13 @@ class ResultsAnnotationHandler(SliceAnnotationHandlerBase):
     self.addRegistrationResultStatusAnnotation(self.redWidget)
 
   def addNewImageAnnotation(self, widget, text, size=20):
-    self.newImageAnnotation = SliceAnnotation(widget, text, yPos=35 if version.parse(qt.Qt.qVersion()) <
-                                              version.parse("5.0.0") else 45, opacity=0.0, color=(0, 0.5, 0), size=size)
+    self.newImageAnnotation = SliceAnnotation(widget, text, yPos=35 if ModuleWidgetMixin.isQtVersionOlder() else 45,
+                                              opacity=0.0, color=(0, 0.5, 0), size=size)
     self.sliceAnnotations.append(self.newImageAnnotation)
 
   def addOldImageAnnotation(self, widget, text, size=20):
-    self.oldImageAnnotation = SliceAnnotation(widget, text, yPos=35 if version.parse(qt.Qt.qVersion()) <
-                                                                       version.parse("5.0.0") else 45, size=size)
+    self.oldImageAnnotation = SliceAnnotation(widget, text, yPos=35 if ModuleWidgetMixin.isQtVersionOlder() else 45,
+                                              size=size)
     self.sliceAnnotations.append(self.oldImageAnnotation)
 
   def addRegistrationResultStatusAnnotation(self, widget):
