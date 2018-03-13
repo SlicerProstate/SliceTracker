@@ -123,7 +123,8 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.redOnlyLayoutButton = RedSliceLayoutButton()
     self.sideBySideLayoutButton = SideBySideLayoutButton()
     self.fourUpLayoutButton = FourUpLayoutButton()
-    self.layoutButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton]
+    self.fourUpPlotLayoutButton = FourUpPlotViewLayoutButton()
+    self.layoutButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton, self.fourUpPlotLayoutButton]
     self.crosshairButton = CrosshairButton()
     self.wlEffectsToolButton = WindowLevelEffectsButton()
     self.settingsButton = ModuleSettingsButton(self.moduleName)
@@ -132,9 +133,9 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.showAnnotationsButton = self.createButton("", icon=Icons.text_info, iconSize=iconSize, checkable=True,
                                                    toolTip="Display annotations", checked=True)
 
-    viewSettingButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton,
-                          self.infoButton, self.crosshairButton, self.wlEffectsToolButton, self.settingsButton,
-                          self.dicomConnectionTestButton]
+    viewSettingButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpPlotLayoutButton,
+                          self.fourUpLayoutButton, self.infoButton, self.crosshairButton, self.wlEffectsToolButton,
+                          self.settingsButton, self.dicomConnectionTestButton]
 
     for step in self.session.steps:
       viewSettingButtons += step.viewSettingButtons

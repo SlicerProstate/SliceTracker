@@ -96,7 +96,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.layout().addStretch(1)
 
   def onShowDisplacementChart(self, caller, event):
-    self.displacementChartPlugin.collapsibleButton.show()
+    layout = slicer.app.layoutManager().layout
+    if layout == constants.LAYOUT_SIDE_BY_SIDE:
+      self.displacementChartPlugin.collapsibleButton.show()
 
   def onHideDisplacementChart(self, caller, event):
     self.displacementChartPlugin.collapsibleButton.hide()

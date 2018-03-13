@@ -3,6 +3,7 @@ import qt
 import vtk
 import slicer
 from base import SliceTrackerLogicBase, SliceTrackerStep
+from ..constants import SliceTrackerConstants as constants
 from plugins.results import SliceTrackerRegistrationResultsPlugin
 from plugins.targets import SliceTrackerTargetTablePlugin
 from plugins.charts import SliceTrackerDisplacementChartPlugin
@@ -81,7 +82,9 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.session.removeEventObserver(self.session.InitiateEvaluationEvent, self.onInitiateEvaluation)
 
   def onShowDisplacementChart(self, caller, event):
-    self.displacementChartPlugin.collapsibleButton.show()
+    layout = slicer.app.layoutManager().layout
+    if layout == constants.LAYOUT_SIDE_BY_SIDE:
+      self.displacementChartPlugin.collapsibleButton.show()
 
   def onHideDisplacementChart(self, caller, event):
     self.displacementChartPlugin.collapsibleButton.hide()

@@ -9,6 +9,9 @@ import logging
 from ..base import SliceTrackerPlugin, SliceTrackerLogicBase
 from ...session import SliceTrackerSession
 from ...sessionData import RegistrationResult
+from ...constants import SliceTrackerConstants as constants
+
+from SlicerDevelopmentToolboxUtils.decorators import onModuleSelected
 
 
 class SliceTrackerDisplacementChartLogic(SliceTrackerLogicBase):
@@ -34,37 +37,11 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
   NAME = "DisplacementChart"
   LogicClass = SliceTrackerDisplacementChartLogic
 
-  PlotColorLR = qt.QColor(213, 94, 0)
-  PlotColorPA = qt.QColor(0, 114, 178)
-  PlotColorIS = qt.QColor(204, 121, 167)
-  PlotColor3D = qt.QColor(0, 0, 0)
-
-  @property
-  def chartView(self):
-    return self._chartView
-
-  @property
-  def chart(self):
-    return self._chartView.chart()
-
-  @property
-  def xAxis(self):
-    return self.chart.GetAxis(1)
-
-  @property
-  def yAxis(self):
-    return self.chart.GetAxis(0)
-
-  @property
-  def showLegend(self):
-    self._showLegend = getattr(self, "_showLegend", False)
-    return self._showLegend
-
-  @showLegend.setter
-  def showLegend(self, value):
-    assert type(value) is bool, "Only boolean values are allowed for this class member"
-    self._showLegend = value
-    self.chart.SetShowLegend(value)
+  PlotColorLR = [213/255.0, 94/255.0, 0]
+  PlotColorPA = [0, 114/255.0, 178/255.0]
+  PlotColorIS = [204/255.0, 121/255.0, 167/255.0]
+  PlotColor3D = [0, 0, 0]
+  PlotNames = ["L/R Displaement","P/A Displacement", "I/S Displacement", "3-D Distance"]
 
   def __init__(self):
     super(SliceTrackerDisplacementChartPlugin, self).__init__()
@@ -74,52 +51,45 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
   def resetChart(self):
     for arr in [self.arrX, self.arrXD, self.arrYD, self.arrZD, self.arrD]:
       arr.Initialize()
-    if self.showLegendCheckBox.isChecked() and not self._chartView.isVisible():
-      self.showLegendCheckBox.setChecked(False)
 
   def setup(self):
     super(SliceTrackerDisplacementChartPlugin, self).setup()
-    self._chartView = ctk.ctkVTKChartView()
-    self._chartView.minimumSize = qt.QSize(200, 200)
-    self.xAxis.SetTitle('Series Number')
-    self.yAxis.SetTitle('Displacement')
+
+    self.plotView = None
+    self.plotWidget = None
+    self.plotViewNode = None
+    self.plotWidgetViewNode = None
+    self.plotSeriesNodes = []
+
+    self.plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode")
+    self.plotChartNode.SetXAxisTitle('Series Number')
+    self.plotChartNode.SetYAxisTitle('Displacement')
 
     self.setupChartTable()
-    self.setupPopupWindow()
+    self.initializePlotWidgets()
 
     self.showLegendCheckBox = qt.QCheckBox('Show legend')
-    self.showLegendCheckBox.setChecked(0)
-
-    self.undockChartButton = self.createButton("Undock chart")
+    self.showLegendCheckBox.setChecked(1)
+    self.showLegendCheckBox.connect('stateChanged(int)', self.onShowLegendChanged)
 
     self.collapsibleButton = ctk.ctkCollapsibleButton()
     self.collapsibleButton.text = "Plotting"
     self.collapsibleButton.collapsed = 0
     self.collapsibleButton.setLayout(qt.QGridLayout())
 
-    self.plottingFrameWidget = qt.QWidget()
-    self.plottingFrameWidget.setLayout(qt.QGridLayout())
-    self.plottingFrameWidget.layout().addWidget(self.showLegendCheckBox, 0, 0)
-    self.plottingFrameWidget.layout().addWidget(self._chartView, 1, 0)
-    self.plottingFrameWidget.layout().addWidget(self.undockChartButton, 2, 0)
-
-    self.collapsibleButton.layout().addWidget(self.plottingFrameWidget)
-
+    self.collapsibleButton.layout().addWidget(self.showLegendCheckBox, 0, 0)
+    self.collapsibleButton.layout().addWidget(self.plotView, 1, 0)
     self.layout().addWidget(self.collapsibleButton)
-
-  def setupPopupWindow(self):
-    self.chartPopupWindow = None
-    self.chartPopupSize = qt.QSize(600, 300)
-    self.chartPopupPosition = qt.QPoint(0, 0)
+    self.plotView.show()
 
   def setupChartTable(self):
-    self.chartTable = vtk.vtkTable()
+    self.chartTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", "Target Displacement")
 
     self.arrX = self.createFloatArray('X Axis')
-    self.arrXD = self.createFloatArray('L/R Displacement')
-    self.arrYD = self.createFloatArray('P/A Displacement')
-    self.arrZD = self.createFloatArray('I/S Displacement')
-    self.arrD = self.createFloatArray('3-D Distance')
+    self.arrXD = self.createFloatArray('L/R Displ')
+    self.arrYD = self.createFloatArray('P/A Displ')
+    self.arrZD = self.createFloatArray('I/S Displ')
+    self.arrD = self.createFloatArray('3-D Dis')
 
     for a in [self.arrX, self.arrXD,  self.arrYD, self.arrZD, self.arrD]:
       self.chartTable.AddColumn(a)
@@ -129,9 +99,17 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     floatArray.SetName(name)
     return floatArray
 
-  def setupConnections(self):
-    self.undockChartButton.clicked.connect(self.onDockChartViewClicked)
-    self.showLegendCheckBox.connect('stateChanged(int)', self.onShowLegendChanged)
+  def initializePlotWidgets(self):
+    if self.plotView is None:
+      self.plotView = slicer.qMRMLPlotView()
+      self.plotView.setMRMLScene(slicer.mrmlScene)
+      self.plotView.setMinimumSize(400,200)
+    layoutManager = slicer.app.layoutManager()
+    layout = layoutManager.layout
+    if layout == constants.LAYOUT_FOUR_UP_QUANTITATIVE:
+      self.plotWidget = layoutManager.plotWidget(0) if layoutManager.plotWidget(0).isVisible() else layoutManager.plotWidget(1)
+    if self.plotWidget or self.plotView:
+      self.updatePlotViewNodes()
 
   def initializeChart(self, coverProstateSeriesNumber):
     self.arrX.InsertNextValue(coverProstateSeriesNumber)
@@ -140,7 +118,10 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
 
   def addPlotPoints(self, displacement, seriesNumber):
     numCurrentRows = self.chartTable.GetNumberOfRows()
-    self.chartView.removeAllPlots()
+    if self.plotChartNode is None:
+      self.initializePlotChartNode()
+      self.plotViewNode.SetPlotChartNodeID(self.plotChartNode.GetID())
+
     for i in range(len(displacement)):
       if numCurrentRows == 0:
         self.initializeChart(self.session.data.getMostRecentApprovedCoverProstateRegistration().seriesNumber)
@@ -149,28 +130,35 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
         arr.InsertNextValue(displacement[i][component])
       distance = (displacement[i][0] ** 2 + displacement[i][1] ** 2 + displacement[i][2] ** 2) ** 0.5
       self.arrD.InsertNextValue(distance)
+    if self.plotChartNode.GetNumberOfPlotSeriesNodes() == 0:
+      for index, plot in enumerate([self.PlotColorLR, self.PlotColorPA, self.PlotColorIS, self.PlotColor3D], start=1):
+        self.createPlot(plot, index)
+    else:
+      self.plotChartNode.RemoveAllPlotSeriesNodeIDs()
+      for plotSeriesNode in self.plotSeriesNodes:
+        self.plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
 
-    self.configureChartXAxis()
-    for index, plot in enumerate([self.PlotColorLR, self.PlotColorPA, self.PlotColorIS, self.PlotColor3D], start=1):
-      self.createPlot(plot, index)
-
-  def configureChartXAxis(self):
-    xVals = vtk.vtkDoubleArray()
-    xLabels = vtk.vtkStringArray()
-    maxXIndex = self.arrX.GetNumberOfValues()
-    for j in range(0, maxXIndex):
-      xVals.InsertNextValue(self.arrX.GetValue(j))
-      xLabels.InsertNextValue(str(int(self.arrX.GetValue(j))))
-    self.xAxis.SetCustomTickPositions(xVals, xLabels)
-    self.xAxis.SetBehavior(vtk.vtkAxis.FIXED)
-    self.xAxis.SetRange(self.arrX.GetValue(0), self.arrX.GetValue(maxXIndex - 1) + 0.1)
+  def updatePlotViewNodes(self):
+    if self.plotViewNode is None:
+        self.plotViewNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotViewNode")
+        self.plotView.setMRMLPlotViewNode(self.plotViewNode)
+        self.plotViewNode.SetPlotChartNodeID(self.plotChartNode.GetID())
+    elif self.plotWidget is not None:
+      self.plotWidgetViewNode = self.plotWidget.mrmlPlotViewNode()
+      self.plotWidgetViewNode.SetPlotChartNodeID(self.plotChartNode.GetID())
 
   def createPlot(self, color, plotNumber):
-    plot = self.chart.AddPlot(vtk.vtkChart.LINE)
-    plot.SetInputData(self.chartTable, 0, plotNumber)
-    plot.SetColor(color.red(), color.blue(), color.green(), color.alpha())
-    vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerStyle(4)
-    vtk.vtkPlotLine.SafeDownCast(plot).SetMarkerSize(3 * plot.GetPen().GetWidth())
+    plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", self.PlotNames[plotNumber-1])
+    plotSeriesNode.SetAndObserveTableNodeID(self.chartTable.GetID())
+    plotSeriesNode.SetXColumnName(self.chartTable.GetColumnName(0))
+    plotSeriesNode.SetYColumnName(self.chartTable.GetColumnName(plotNumber))
+    plotSeriesNode.SetColor(color)
+    plotSeriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+    plotSeriesNode.SetMarkerStyle(4)
+    plotSeriesNode.SetMarkerSize(3 * plotSeriesNode.GetLineWidth())
+
+    self.plotSeriesNodes.append(plotSeriesNode)
+    self.plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
 
   def updateTargetDisplacementChart(self, targetsAvailable):
     if self.isTargetDisplacementChartDisplayable(self.session.currentSeries) and targetsAvailable:
@@ -186,13 +174,11 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
         else:
           currTargets = currResult.targets.approved
         displacement = self.logic.calculateTargetDisplacement(prevTargets, currTargets, self.targetIndex)
+        self.invokeEvent(self.ShowEvent)
         self.addPlotPoints([displacement], currResult.seriesNumber)
       self.invokeEvent(self.ShowEvent)
     else:
       self.invokeEvent(self.HideEvent)
-      if self.chartPopupWindow and self.chartPopupWindow.isVisible():
-        self.chartPopupWindow.close()
-        self.dockChartView()
 
   def isTargetDisplacementChartDisplayable(self, selectedSeries):
     if not selectedSeries or not (self.session.seriesTypeManager.isCoverProstate(selectedSeries) or
@@ -208,8 +194,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     return True
 
   def onShowLegendChanged(self, checked):
-    self.chart.SetShowLegend(True if checked == 2 else False)
-    self.chartView.scene().SetDirty(True)
+    self.plotChartNode.SetLegendVisibility(True if checked == 2 else False)
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onTargetSelectionChanged(self, caller, event, callData):
@@ -221,30 +206,14 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
       logging.debug(info)
     self.updateTargetDisplacementChart(targetsAvailable)
 
-  def onDockChartViewClicked(self):
-    self.chartPopupWindow = qt.QDialog()
-    self.chartPopupWindow.setWindowTitle("Target Displacement Chart")
-    self.chartPopupWindow.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
-    self.chartPopupWindow.setLayout(qt.QGridLayout())
-    self.chartPopupWindow.layout().addWidget(self.plottingFrameWidget)
-    self.chartPopupWindow.finished.connect(self.dockChartView)
-    self.chartPopupWindow.resize(self.chartPopupSize)
-    self.chartPopupWindow.move(self.chartPopupPosition)
-    self.chartPopupWindow.show()
-    self.undockChartButton.hide()
-    self.invokeEvent(self.HideEvent)
-
-  def dockChartView(self):
-    self.chartPopupSize = self.chartPopupWindow.size
-    self.chartPopupPosition = self.chartPopupWindow.pos
-
-    self.collapsibleButton.layout().addWidget(self.plottingFrameWidget)
-    self.plottingFrameWidget.show()
-    self.undockChartButton.show()
-    self.invokeEvent(self.ShowEvent)
+  @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
+  def onLayoutChanged(self, layout=None):
+    if layout == constants.LAYOUT_FOUR_UP_QUANTITATIVE:
+      self.collapsibleButton.hide()
+      self.initializePlotWidgets()
 
   def onDeactivation(self):
-    super(SliceTrackerDisplacementChartPlugin, self).onDeactivation()
-    if self.chartPopupWindow and self.chartPopupWindow.isVisible():
-      self.chartPopupWindow.close()
-      self.dockChartView()
+    slicer.mrmlScene.RemoveNode(self.plotWidgetViewNode)
+    slicer.mrmlScene.RemoveNode(self.plotViewNode)
+    self.plotWidget = None
+    self.plotView = None
