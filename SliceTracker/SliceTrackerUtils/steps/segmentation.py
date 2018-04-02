@@ -221,6 +221,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
     result.volumes.fixed = fixedVolume
     result.labels.fixed = self.session.fixedLabel
     result.receivedTime = self.session.seriesTimeStamps[result.name.replace(result.suffix, "")]
+    result.segmentationData = self.segmentationData
 
     if self.session.seriesTypeManager.isCoverProstate(self.session.currentResult.name) and \
     self.session.data.getMostRecentApprovedCoverProstateRegistration() is not None:
