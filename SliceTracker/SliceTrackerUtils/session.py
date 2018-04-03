@@ -1061,8 +1061,10 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
 
       segmentationsPath = os.path.join(os.path.dirname(os.path.dirname(imagePath)), 'Segmentations')
 
-      seriesTypeManager = SeriesTypeManager()
-      if seriesTypeManager.getSeriesType(seriesDescription) == SliceTrackerConstants.PLANNING_IMAGE:
+      import re
+      regex = self.getSetting("PLANNING_IMAGE_PATTERN", moduleName=self.MODULE_NAME)
+
+      if re.match(regex, seriesDescription) or seriesDescription == regex:
         logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
         logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
         logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))

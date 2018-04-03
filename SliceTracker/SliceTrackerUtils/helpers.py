@@ -123,10 +123,7 @@ class SeriesTypeManager(LogicBase):
     return self.assignedSeries[series]
 
   def computeSeriesType(self, series):
-    if re.match(self.getSetting("PLANNING_IMAGE_PATTERN"), series) or \
-      series == self.getSetting("PLANNING_IMAGE_PATTERN"):
-      seriesType = constants.PLANNING_IMAGE
-    elif self.getSetting("COVER_PROSTATE_PATTERN") in series:
+    if self.getSetting("COVER_PROSTATE_PATTERN") in series:
       seriesType = constants.COVER_PROSTATE
     elif self.getSetting("COVER_TEMPLATE_PATTERN") in series:
       seriesType = constants.COVER_TEMPLATE
