@@ -82,8 +82,7 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
     self.session.removeEventObserver(self.session.InitiateEvaluationEvent, self.onInitiateEvaluation)
 
   def onShowDisplacementChart(self, caller, event):
-    layout = slicer.app.layoutManager().layout
-    if layout == constants.LAYOUT_SIDE_BY_SIDE:
+    if self.layoutManager.layout != constants.LAYOUT_FOUR_UP_QUANTITATIVE:
       self.displacementChartPlugin.collapsibleButton.show()
 
   def onHideDisplacementChart(self, caller, event):

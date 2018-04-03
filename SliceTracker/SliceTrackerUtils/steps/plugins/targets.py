@@ -398,7 +398,7 @@ class SliceTrackerTargetTablePlugin(SliceTrackerPlugin):
 
     if self.layoutManager.layout == constants.LAYOUT_SIDE_BY_SIDE:
       currentTargetsSliceNodes = [self.yellowSliceNode]
-    elif self.layoutManager.layout == constants.LAYOUT_FOUR_UP_QUANTITATIVE:
+    elif self.layoutManager.layout in [constants.LAYOUT_FOUR_UP_QUANTITATIVE, constants.LAYOUT_FOUR_UP]:
       currentTargetsSliceNodes = [self.redSliceNode, self.yellowSliceNode, self.greenSliceNode]
 
     for sliceNode in currentTargetsSliceNodes:

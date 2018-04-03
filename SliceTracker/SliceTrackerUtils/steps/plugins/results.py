@@ -228,14 +228,16 @@ class SliceTrackerRegistrationResultsPlugin(SliceTrackerPlugin):
       return self.onNoResultAvailable()
     if self.currentResult.approved or self.currentResult.rejected:
       return self.onResultApprovedOrRejected()
-    self.setAvailableLayouts([constants.LAYOUT_FOUR_UP_QUANTITATIVE, constants.LAYOUT_SIDE_BY_SIDE])
+    self.setAvailableLayouts([constants.LAYOUT_FOUR_UP_QUANTITATIVE, constants.LAYOUT_SIDE_BY_SIDE,
+                              constants.LAYOUT_FOUR_UP])
 
   def onResultApprovedOrRejected(self):
     if self.session.seriesTypeManager.isCoverProstate(self.currentResult.name) and not self.session.data.usePreopData:
       self.onNoResultAvailable()
     else:
-      self.setAvailableLayouts([constants.LAYOUT_FOUR_UP_QUANTITATIVE, constants.LAYOUT_SIDE_BY_SIDE if
-                                self.currentResult.volumes.moving else constants.LAYOUT_RED_SLICE_ONLY])
+      self.setAvailableLayouts([constants.LAYOUT_FOUR_UP] + [constants.LAYOUT_FOUR_UP_QUANTITATIVE,
+                                                             constants.LAYOUT_SIDE_BY_SIDE]
+                               if self.currentResult.volumes.moving else [constants.LAYOUT_RED_SLICE_ONLY])
       self.layoutManager.setLayout(constants.LAYOUT_SIDE_BY_SIDE)
 
   def onNoResultAvailable(self):

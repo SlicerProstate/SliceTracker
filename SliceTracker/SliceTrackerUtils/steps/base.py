@@ -92,7 +92,7 @@ class SliceTrackerWidgetBase(WidgetBase):
     pass
 
   def setupFourUpView(self, volume, clearLabels=True):
-    self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP_QUANTITATIVE)
+    self.layoutManager.setLayout(constants.LAYOUT_FOUR_UP)
     self.setBackgroundToVolumeID(volume, clearLabels)
 
   def setBackgroundToVolumeID(self, volume, clearLabels=True, showLabelOutline=True):
@@ -111,7 +111,7 @@ class SliceTrackerWidgetBase(WidgetBase):
     self.updateFOV() # TODO: shall not be called here
 
   def updateFOV(self):
-    # if self.getSetting("COVER_TEMPLATE") in self.intraopSeriesSelector.currentText:
+    # if self.getSetting("COVER_TEMPLATE_PATTERN") in self.intraopSeriesSelector.currentText:
     #   self.setDefaultFOV(self.redSliceLogic, 1.0)
     #   self.setDefaultFOV(self.yellowSliceLogic, 1.0)
     #   self.setDefaultFOV(self.greenSliceLogic, 1.0)

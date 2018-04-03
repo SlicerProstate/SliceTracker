@@ -199,7 +199,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def setIntraopSeriesButtons(self, trackingPossible, selectedSeries):
     trackingPossible = trackingPossible and not self.session.data.completed
-    self.changeSeriesTypeButton.enabled = not self.session.data.exists(selectedSeries) # TODO: take zFrameRegistration into account
+    self.changeSeriesTypeButton.enabled = not self.session.data.exists(selectedSeries)
+    if self.session.seriesTypeManager.isCoverTemplate(selectedSeries):
+      self.changeSeriesTypeButton.enabled = self.session.isCoverTemplateTrackable(selectedSeries)
     self.trackTargetsButton.enabled = trackingPossible
     self.skipIntraopSeriesButton.enabled = trackingPossible and self.session.isEligibleForSkipping(selectedSeries)
 
@@ -229,11 +231,11 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.targetTablePlugin.currentTargets = None
 
   def onPreprocessingSuccessful(self, caller, event):
-    if not self.session.isLoading():
-      self.session.save()
     self.updateIntraopSeriesSelectorTable()
     self.configureRedSliceNodeForPreopData()
     self.promptUserAndApplyBiasCorrectionIfNeeded()
+    if not self.session.isLoading():
+      self.session.save()
 
   def onActivation(self):
     super(SliceTrackerOverviewStep, self).onActivation()
@@ -313,15 +315,15 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
       self.selectMostRecentEligibleSeries()
 
   def selectMostRecentEligibleSeries(self):
-    substring = self.getSetting("NEEDLE_IMAGE")
+    substring = self.getSetting("NEEDLE_IMAGE_PATTERN")
     seriesTypeManager = SeriesTypeManager()
     self.intraopSeriesSelector.blockSignals(True)
     self.intraopSeriesSelector.setCurrentIndex(-1)
     self.intraopSeriesSelector.blockSignals(False)
     index = -1
     if not self.session.data.getMostRecentApprovedCoverProstateRegistration():
-      substring = self.getSetting("COVER_TEMPLATE") \
-        if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE")
+      substring = self.getSetting("COVER_TEMPLATE_PATTERN") \
+        if not self.session.zFrameRegistrationSuccessful else self.getSetting("COVER_PROSTATE_PATTERN")
     for item in list(reversed(range(len(self.session.seriesList)))):
       series = self._seriesModel.item(item).text()
       if substring in seriesTypeManager.getSeriesType(series):
@@ -347,26 +349,29 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     # self.logic.centerViewsToProstate()
 
   def promptUserAndApplyBiasCorrectionIfNeeded(self):
-    if not self.session.data.resumed and not self.session.data.completed:
-      message = "Was an endorectal coil used for preop image acquisition?"
-      if (not self.session.data.usedAutomaticPreopSegmentation and
-            slicer.util.confirmYesNoDisplay(message, windowTitle="SliceTracker")) or \
-         (self.session.data.usedAutomaticPreopSegmentation and self.session.data.preopData.usedERC):
-        customProgressbar = CustomStatusProgressbar()
-        customProgressbar.busy = True
-        currentModule = slicer.util.getModuleGui(self.MODULE_NAME)
+    if self.session.data.resumed or self.session.data.completed:
+      return
+
+    autoPreopSeg = self.session.data.usedAutomaticPreopSegmentation
+    usedERC = (autoPreopSeg and self.session.data.preopData.usedERC is True) or \
+              (not autoPreopSeg and slicer.util.confirmYesNoDisplay("Was an endorectal coil used for preop image "
+                                                                    "acquisition?", windowTitle="SliceTracker"))
+    if usedERC:
+      customProgressbar = CustomStatusProgressbar()
+      customProgressbar.busy = True
+      currentModule = slicer.util.getModuleGui(self.MODULE_NAME)
+      if currentModule:
+        currentModule.parent().enabled = False
+      try:
+        customProgressbar.updateStatus("Bias correction running!")
+        slicer.app.processEvents()
+        self.logic.applyBiasCorrection()
+      except AttributeError:
+        pass
+      finally:
+        customProgressbar.busy = False
         if currentModule:
-          currentModule.parent().enabled = False
-        try:
-          customProgressbar.updateStatus("Bias correction running!")
-          slicer.app.processEvents()
-          self.logic.applyBiasCorrection()
-        except AttributeError:
-          pass
-        finally:
-          customProgressbar.busy = False
-          if currentModule:
-            currentModule.parent().enabled = True
-        customProgressbar.updateStatus("Bias correction done!")
-      else:
-        self.session.data.preopData.usedERC = False
+          currentModule.parent().enabled = True
+      customProgressbar.updateStatus("Bias correction done!")
+
+    self.session.data.preopData.usedERC = usedERC

@@ -191,7 +191,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.customStatusProgressBar.updateStatus(text, currentIndex)
 
   @vtk.calldata_type(vtk.VTK_STRING)
-  def onCurrentSeriesChanged(self, caller, event, callData):
+  def onCurrentSeriesChanged(self, caller, event, callData=None):
     receivedFile = self.session.loadableList[callData][0] if callData else None
     if not self.session.data.usePreopData and self.patientWatchBox.sourceFile is None:
       self.patientWatchBox.sourceFile = receivedFile
