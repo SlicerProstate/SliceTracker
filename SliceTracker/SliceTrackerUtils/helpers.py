@@ -22,11 +22,12 @@ class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
   PREFIX = "Case"
   SUFFIX = "-" + datetime.date.today().strftime("%Y%m%d")
   SUFFIX_PATTERN = "-[0-9]{8}"
-  CASE_NUMBER_DIGITS = 3
-  PATTERN = PREFIX+"[0-9]{"+str(CASE_NUMBER_DIGITS-1)+"}[0-9]{1}"+SUFFIX_PATTERN
 
   def __init__(self, destination, parent=None):
     super(NewCaseSelectionNameWidget, self).__init__(parent)
+    self.CASE_NUMBER_OF_DIGITS = int(self.getSetting("CASE_NUMBER_OF_DIGITS", moduleName="SliceTracker"))
+    self.PATTERN = self.PREFIX +"[0-9]{" + str(self.CASE_NUMBER_OF_DIGITS - 1) + "}[0-9]{1}" + self.SUFFIX_PATTERN
+
     if not os.path.exists(destination):
       raise OSError("Directory %s doesn't exist" % destination)
     self.destinationRoot = destination
@@ -47,7 +48,7 @@ class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
   def setupUI(self):
     self.setWindowTitle("Case Number Selection")
     self.spinbox = qt.QSpinBox()
-    self.spinbox.setRange(self.minimum, int("9"*self.CASE_NUMBER_DIGITS))
+    self.spinbox.setRange(self.minimum, int("9" * self.CASE_NUMBER_OF_DIGITS))
 
     self.hideInvisibleUnneededComponents()
 
@@ -88,7 +89,7 @@ class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
     self.spinbox.valueChanged.connect(self.onCaseNumberChanged)
 
   def onCaseNumberChanged(self, caseNumber):
-    formatString = '%0'+str(self.CASE_NUMBER_DIGITS)+'d'
+    formatString = '%0' + str(self.CASE_NUMBER_OF_DIGITS) + 'd'
     caseNumber = formatString % caseNumber
     directory = self.PREFIX+caseNumber+self.SUFFIX
     self.newCaseDirectory = os.path.join(self.destinationRoot, directory)
