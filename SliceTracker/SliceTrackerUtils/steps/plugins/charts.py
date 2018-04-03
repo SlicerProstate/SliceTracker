@@ -208,11 +208,20 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
 
   @onModuleSelected(SliceTrackerPlugin.MODULE_NAME)
   def onLayoutChanged(self, layout=None):
-    if layout == constants.LAYOUT_FOUR_UP_QUANTITATIVE:
-      self.collapsibleButton.hide()
+    self.collapsibleButton.visible = layout != constants.LAYOUT_FOUR_UP_QUANTITATIVE
+    if not self.collapsibleButton.visible:
       self.initializePlotWidgets()
 
+  def onActivation(self):
+    super(SliceTrackerDisplacementChartPlugin, self).onActivation()
+    defaultLayout = getattr(constants, self.getSetting("DEFAULT_EVALUATION_LAYOUT"), constants.LAYOUT_SIDE_BY_SIDE)
+    if defaultLayout != self.layoutManager.layout:
+      self.layoutManager.setLayout(defaultLayout)
+    else:
+      self.onLayoutChanged(defaultLayout)
+
   def onDeactivation(self):
+    super(SliceTrackerDisplacementChartPlugin, self).onDeactivation()
     slicer.mrmlScene.RemoveNode(self.plotWidgetViewNode)
     slicer.mrmlScene.RemoveNode(self.plotViewNode)
     self.plotWidget = None

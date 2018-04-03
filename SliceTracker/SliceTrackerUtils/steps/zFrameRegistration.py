@@ -384,19 +384,13 @@ class SliceTrackerZFrameRegistrationStep(SliceTrackerStep):
       if self.session.seriesTypeManager.isCoverTemplate(series):
         if self.logic.templateVolume and series != self.logic.templateVolume.GetName():
           if not slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one for "
-                                                 "calibration?" % self.getSetting("COVER_TEMPLATE")):
+                                                 "calibration?" % self.getSetting("COVER_TEMPLATE_PATTERN")):
             return
         self.session.currentSeries = series
         self.removeZFrameInstructionAnnotation()
         self.logic.templateVolume = self.session.currentSeriesVolume
         self.initiateZFrameRegistrationStep()
         return
-
-  # @vtk.calldata_type(vtk.VTK_STRING)
-  # def onCurrentSeriesChanged(self, caller, event, callData=None):
-  #   if callData:
-  #     self.showTemplatePathButton.checked = self.session.isTrackingPossible(callData) and \
-  #                                           self.getSetting("COVER_PROSTATE", moduleName=self.MODULE_NAME) in callData
 
   def onLoadingMetadataSuccessful(self, caller, event):
     if self.session.zFrameRegistrationSuccessful:

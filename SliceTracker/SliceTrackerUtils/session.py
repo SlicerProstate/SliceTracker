@@ -610,8 +610,9 @@ class SliceTrackerSession(StepBasedSession):
 
   def isInGeneralTrackable(self, series):
     seriesType = self.seriesTypeManager.getSeriesType(series)
-    return self.isAnyListItemInString(seriesType, [self.getSetting("COVER_TEMPLATE"), self.getSetting("COVER_PROSTATE"),
-                                                   self.getSetting("NEEDLE_IMAGE")])
+    return self.isAnyListItemInString(seriesType, [self.getSetting("COVER_TEMPLATE_PATTERN"),
+                                                   self.getSetting("COVER_PROSTATE_PATTERN"),
+                                                   self.getSetting("NEEDLE_IMAGE_PATTERN")])
 
   def resultHasNotBeenProcessed(self, series):
     return not (self.data.registrationResultWasApproved(series) or
@@ -620,7 +621,8 @@ class SliceTrackerSession(StepBasedSession):
 
   def isEligibleForSkipping(self, series):
     seriesType = self.seriesTypeManager.getSeriesType(series)
-    return not self.isAnyListItemInString(seriesType,[self.getSetting("COVER_PROSTATE"), self.getSetting("COVER_TEMPLATE")])
+    return not self.isAnyListItemInString(seriesType,[self.getSetting("COVER_PROSTATE_PATTERN"),
+                                                      self.getSetting("COVER_TEMPLATE_PATTERN")])
 
   def isLoading(self):
     self._loading = getattr(self, "_loading", False)
@@ -999,6 +1001,7 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
 
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def onSegmentationFinished(self, caller, event, labelNode):
+    # TODO: this mode should block new received images to be processed
     self.segmentationData.endTime = self.getTime()
     self.segmentationData._label = labelNode
     segmentationValidator = SliceTrackerSegmentationValidatorPlugin(self.data.initialVolume, labelNode)
@@ -1058,10 +1061,8 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
 
       segmentationsPath = os.path.join(os.path.dirname(os.path.dirname(imagePath)), 'Segmentations')
 
-      import re
-      regex = self.getSetting("PLANNING_IMAGE", moduleName=self.MODULE_NAME)
-
-      if re.match(regex, seriesDescription) or seriesDescription == regex:
+      seriesTypeManager = SeriesTypeManager()
+      if seriesTypeManager.getSeriesType(seriesDescription) == SliceTrackerConstants.PLANNING_IMAGE:
         logging.debug(' FOUND THE SERIES OF INTEREST, ITS ' + seriesName)
         logging.debug(' LOCATION OF VOLUME : ' + str(seriesMap[series]['NRRDLocation']))
         logging.debug(' LOCATION OF IMAGE path : ' + str(imagePath))

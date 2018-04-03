@@ -194,7 +194,7 @@ class SessionData(ModuleLogicMixin):
           result.consentGivenBy = value["consentGivenBy"] if value.has_key("consentGivenBy") else None
         elif attribute == 'series':
           result.receivedTime = value['receivedTime']
-          seriesType = value["seriesType"] if jsonResult.has_key("seriesType") else None
+          seriesType = value["type"] if value.has_key("type") else None
           self.seriesTypeManager.assign(name, seriesType)
         elif attribute == 'registration':
           result.startTime = value['startTime']
@@ -355,7 +355,6 @@ class SessionData(ModuleLogicMixin):
       self.customProgressBar.maximum = len(self.registrationResults)
       self.customProgressBar.updateStatus("Saving registration result for series %s" % result.name, index)
       slicer.app.processEvents()
-      print self._savedRegistrationResults
       if result not in self._savedRegistrationResults:
         successfulList, failedList = result.save(outputDir)
         failedToSave += failedList
@@ -497,11 +496,16 @@ class Serializable(object):
     raise NotImplementedError
 
   def toJSON(self):
-    return dict((key,value) for key, value in self.__dict__.iteritems()
-                    if not (key.startswith("_") or key.startswith("__")) and value not in [None, ""])
+    output = {}
+    for key, value in self.__dict__.iteritems():
+      if any(key.startswith(starter) for starter in ["_", "__"]) or value is None or value == "":
+        continue
+      output[key] = value.toJSON() if hasattr(value, "toJSON") else value
+    return output
 
   def save(self, directory):
     raise NotImplementedError
+
 
 class SegmentationData(Serializable, ModuleLogicMixin):
 
@@ -583,11 +587,6 @@ class PreopData(Serializable, ModuleLogicMixin):
       return self.segmentation.save(directory)
     return [],[]
 
-  def toJSON(self):
-    output = super(PreopData, self).toJSON()
-    if self.segmentation:
-      output["segmentation"] = self.segmentation.toJSON()
-    return output
 
 class RegistrationTypeData(AbstractRegistrationData):
 

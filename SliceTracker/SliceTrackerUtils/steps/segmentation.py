@@ -265,7 +265,7 @@ class SliceTrackerSegmentationStep(SliceTrackerStep):
       if self.session.seriesTypeManager.isCoverProstate(series):
         if series != self.session.currentSeries:
           if slicer.util.confirmYesNoDisplay("Another %s was received. Do you want to use this one?"
-                                              % self.getSetting("COVER_PROSTATE")):
+                                              % self.getSetting("COVER_PROSTATE_PATTERN")):
             self.session.currentSeries = series
             self.active = False
             self._initiateSegmentation()

@@ -28,7 +28,7 @@ class NewCaseSelectionNameWidget(qt.QMessageBox, ModuleWidgetMixin):
   def __init__(self, destination, parent=None):
     super(NewCaseSelectionNameWidget, self).__init__(parent)
     if not os.path.exists(destination):
-      raise
+      raise OSError("Directory %s doesn't exist" % destination)
     self.destinationRoot = destination
     self.newCaseDirectory = None
     self.minimum = self.getNextCaseNumber()
@@ -118,19 +118,23 @@ class SeriesTypeManager(LogicBase):
     try:
       return self.assignedSeries[series]
     except KeyError:
-      return self.computeSeriesType(series)
+      self.assignedSeries[series] = self.computeSeriesType(series)
+    return self.assignedSeries[series]
 
   def computeSeriesType(self, series):
-    if self.getSetting("COVER_PROSTATE") in series:
-      seriesType = self.getSetting("COVER_PROSTATE")
-    elif self.getSetting("COVER_TEMPLATE") in series:
-      seriesType = self.getSetting("COVER_TEMPLATE")
-    elif self.getSetting("NEEDLE_IMAGE") in series:
-      seriesType = self.getSetting("NEEDLE_IMAGE")
-    elif self.getSetting("VIBE_IMAGE") in series:
-      seriesType = self.getSetting("VIBE_IMAGE")
+    if re.match(self.getSetting("PLANNING_IMAGE_PATTERN"), series) or \
+      series == self.getSetting("PLANNING_IMAGE_PATTERN"):
+      seriesType = constants.PLANNING_IMAGE
+    elif self.getSetting("COVER_PROSTATE_PATTERN") in series:
+      seriesType = constants.COVER_PROSTATE
+    elif self.getSetting("COVER_TEMPLATE_PATTERN") in series:
+      seriesType = constants.COVER_TEMPLATE
+    elif self.getSetting("NEEDLE_IMAGE_PATTERN") in series:
+      seriesType = constants.GUIDANCE_IMAGE
+    elif self.getSetting("VIBE_IMAGE_PATTERN") in series:
+      seriesType = constants.VIBE_IMAGE
     else:
-      seriesType = self.getSetting("OTHER_IMAGE")
+      seriesType = constants.OTHER_IMAGE
     return seriesType
 
   def autoAssign(self, series):
@@ -147,28 +151,26 @@ class SeriesTypeManager(LogicBase):
       self.autoAssign(series)
 
   def isCoverProstate(self, series):
-    return self._hasSeriesType(series, self.getSetting("COVER_PROSTATE"))
+    return self._hasSeriesType(series, constants.COVER_PROSTATE)
 
   def isCoverTemplate(self, series):
-    return self._hasSeriesType(series, self.getSetting("COVER_TEMPLATE"))
+    return self._hasSeriesType(series, constants.COVER_TEMPLATE)
 
   def isGuidance(self, series):
-    return self._hasSeriesType(series, self.getSetting("NEEDLE_IMAGE"))
+    return self._hasSeriesType(series, constants.GUIDANCE_IMAGE)
 
   def isVibe(self, series):
-    return self._hasSeriesType(series, self.getSetting("VIBE_IMAGE"))
+    return self._hasSeriesType(series, constants.VIBE_IMAGE)
 
   def isOther(self, series):
-    return self._hasSeriesType(series, self.getSetting("OTHER_IMAGE")) or not (self.isCoverProstate(series) or
-                                                                               self.isCoverTemplate(series) or
-                                                                               self.isGuidance(series) or
-                                                                               self.isVibe(series))
+    return self._hasSeriesType(series, constants.OTHER_IMAGE) or not (self.isCoverProstate(series) or
+                                                                      self.isCoverTemplate(series) or
+                                                                      self.isGuidance(series) or
+                                                                      self.isVibe(series))
 
   def _hasSeriesType(self, series, seriesType):
-    if self.assignedSeries.has_key(series):
-      return self.assignedSeries[series] == seriesType
-    else:
-      return seriesType in series
+    return self.getSeriesType(series) == seriesType
+
 
 class IncomingDataMessageBoxBase(qt.QMessageBox):
 
@@ -293,7 +295,7 @@ class SeriesTypeToolButton(qt.QToolButton, ModuleBase, ModuleWidgetMixin):
     if currentType != autoType:
       icon = Icons.info
       tooltip = "Series type assignment changed!\n\n" \
-                "Original series type: {}\n\n" \
+                "Auto-calculated series type: {}\n\n" \
                 "Assigned series type: {}".format(autoType, currentType)
     else:
       icon = Icons.edit

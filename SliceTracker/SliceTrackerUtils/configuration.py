@@ -1,6 +1,7 @@
 import ConfigParser
 import inspect, os
 from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
+from constants import SliceTrackerConstants as constants
 
 
 class SliceTrackerConfiguration(ModuleWidgetMixin):
@@ -18,23 +19,21 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
     if not self.getSetting("ZFrame_Registration_Class_Name"):
       self.setSetting("ZFrame_Registration_Class_Name", config.get('ZFrame Registration', 'class'))
 
-    if not self.getSetting("PLANNING_IMAGE"):
-      self.setSetting("PLANNING_IMAGE", config.get('Series Descriptions', 'PLANNING_IMAGE'))
-    if not self.getSetting("COVER_PROSTATE"):
-      self.setSetting("COVER_PROSTATE", config.get('Series Descriptions', 'COVER_PROSTATE'))
-    if not self.getSetting("COVER_TEMPLATE"):
-      self.setSetting("COVER_TEMPLATE", config.get('Series Descriptions', 'COVER_TEMPLATE'))
-    if not self.getSetting("NEEDLE_IMAGE"):
-      self.setSetting("NEEDLE_IMAGE", config.get('Series Descriptions', 'NEEDLE_IMAGE'))
-    if not self.getSetting("VIBE_IMAGE"):
-      self.setSetting("VIBE_IMAGE", config.get('Series Descriptions', 'VIBE_IMAGE'))
-    if not self.getSetting("OTHER_IMAGE"):
-      self.setSetting("OTHER_IMAGE", config.get('Series Descriptions', 'OTHER_IMAGE'))
+    if not self.getSetting("PLANNING_IMAGE_PATTERN"):
+      self.setSetting("PLANNING_IMAGE_PATTERN", config.get('Series Descriptions', 'PLANNING_IMAGE_PATTERN'))
+    if not self.getSetting("COVER_PROSTATE_PATTERN"):
+      self.setSetting("COVER_PROSTATE_PATTERN", config.get('Series Descriptions', 'COVER_PROSTATE_PATTERN'))
+    if not self.getSetting("COVER_TEMPLATE_PATTERN"):
+      self.setSetting("COVER_TEMPLATE_PATTERN", config.get('Series Descriptions', 'COVER_TEMPLATE_PATTERN'))
+    if not self.getSetting("NEEDLE_IMAGE_PATTERN"):
+      self.setSetting("NEEDLE_IMAGE_PATTERN", config.get('Series Descriptions', 'NEEDLE_IMAGE_PATTERN'))
+    if not self.getSetting("VIBE_IMAGE_PATTERN"):
+      self.setSetting("VIBE_IMAGE_PATTERN", config.get('Series Descriptions', 'VIBE_IMAGE_PATTERN'))
 
-    if not self.getSetting("SERIES_TYPES"):
-      seriesTypes = [config.get('Series Descriptions',x) for x in ['COVER_TEMPLATE', 'COVER_PROSTATE', 'NEEDLE_IMAGE',
-                                                                   'VIBE_IMAGE', 'OTHER_IMAGE']]
-      self.setSetting("SERIES_TYPES", seriesTypes)
+    seriesTypes = [constants.COVER_TEMPLATE, constants.COVER_PROSTATE, constants.GUIDANCE_IMAGE,
+                   constants.VIBE_IMAGE, constants.OTHER_IMAGE]
+
+    self.setSetting("SERIES_TYPES", seriesTypes)
 
     if not self.getSetting("Rating_Enabled"):
       self.setSetting("Rating_Enabled", config.getboolean('Rating', 'Enabled'))
@@ -61,3 +60,13 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
 
     if not self.getSetting("Incoming_DICOM_Port"):
       self.setSetting("Incoming_DICOM_Port", config.get('DICOM', 'Incoming_Port'))
+
+    self.replaceOldValues()
+
+  def replaceOldValues(self):
+    for setting in ['PLANNING_IMAGE', 'COVER_TEMPLATE', 'COVER_PROSTATE', 'NEEDLE_IMAGE', 'VIBE_IMAGE']:
+      if self.getSetting(setting):
+        self.setSetting(setting+"_PATTERN", self.getSetting(setting))
+        self.removeSetting(setting)
+    if self.getSetting('OTHER_IMAGE'):
+      self.removeSetting('OTHER_IMAGE')
