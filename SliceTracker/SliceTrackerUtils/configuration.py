@@ -35,11 +35,6 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
 
     self.setSetting("SERIES_TYPES", seriesTypes)
 
-    if not self.getSetting("Rating_Enabled"):
-      self.setSetting("Rating_Enabled", config.getboolean('Rating', 'Enabled'))
-    if not self.getSetting("Maximum_Rating_Score"):
-      self.setSetting("Maximum_Rating_Score", config.getint('Rating', 'Maximum_Score'))
-
     if not self.getSetting("Color_File_Name") or not os.path.exists(self.getSetting("Color_File_Name")):
       colorFilename = config.get('Color File', 'FileName')
       self.setSetting("Color_File_Name", os.path.join(os.path.dirname(inspect.getfile(self.__class__)),
@@ -71,5 +66,7 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
       if self.getSetting(setting):
         self.setSetting(setting+"_PATTERN", self.getSetting(setting))
         self.removeSetting(setting)
-    if self.getSetting('OTHER_IMAGE'):
-      self.removeSetting('OTHER_IMAGE')
+
+    for other in ['OTHER_IMAGE', 'Rating_Enabled', 'Maximum_Rating_Score']:
+      if self.getSetting(other):
+        self.removeSetting(other)
