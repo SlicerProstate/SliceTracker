@@ -170,40 +170,16 @@ class SeriesTypeManager(LogicBase):
     return self.getSeriesType(series) == seriesType
 
 
-class IncomingDataMessageBoxBase(qt.QMessageBox):
+class IncomingDataMessageBox(ExtendedQMessageBox):
 
   def __init__(self, parent=None):
-    super(IncomingDataMessageBoxBase, self).__init__(parent)
-    self.setIcon(qt.QMessageBox.Question)
+    super(IncomingDataMessageBox, self).__init__(parent)
     self.setWindowTitle("Incoming image data")
-    trackButton = self.addButton('Track targets', qt.QMessageBox.AcceptRole)
+    self.setText("New data has been received. What do you want do?")
+    self.setIcon(qt.QMessageBox.Question)
+    trackButton = self.addButton(qt.QPushButton('Track targets'), qt.QMessageBox.AcceptRole)
     self.addButton(qt.QPushButton('Postpone'), qt.QMessageBox.NoRole)
     self.setDefaultButton(trackButton)
-
-
-class IncomingDataMessageBoxQt4(IncomingDataMessageBoxBase, ExtendedQMessageBox):
-
-  def __init__(self, parent=None):
-    super(IncomingDataMessageBoxQt4, self).__init__(parent)
-    self.textLabel = qt.QLabel("New data has been received. What do you want do?")
-    self.layout().addWidget(self.textLabel, 0, 1)
-
-
-class IncomingDataMessageBoxQt5(IncomingDataMessageBoxBase):
-
-  def __init__(self, parent=None):
-    super(IncomingDataMessageBoxQt5, self).__init__(parent)
-    checkbox = qt.QCheckBox("Remember the selection and do not notify again")
-    self.setCheckBox(checkbox)
-    checkbox.stateChanged.connect(self.onCheckboxStateChanged)
-    self.showMsgBoxAgain = True
-    self.setText("New data has been received. What do you want do?")
-
-  def onCheckboxStateChanged(self, state):
-    if state == 1:
-      self.showMsgBoxAgain = False
-    else:
-      self.showMsgBoxAgain = True
 
 
 class SeriesTypeToolButton(qt.QToolButton, ModuleBase, ModuleWidgetMixin):
