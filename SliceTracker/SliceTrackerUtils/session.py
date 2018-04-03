@@ -936,7 +936,7 @@ class PreopDataHandler(PreprocessedDataHandlerBase):
 
     if message or not (loadedPreopT2Label and loadedPreopVolume and loadedPreopTargets):
       if loadedPreopTargets and loadedPreopVolume and \
-          self.getSetting("Use_Deep_Learning", moduleName=self.MODULE_NAME).lower() == "true":
+          str(self.getSetting("Use_Deep_Learning", moduleName=self.MODULE_NAME)).lower() == "true":
         if slicer.util.confirmYesNoDisplay("No WholeGland segmentation found in preop data. Automatic segmentation is "
                                            "available. Would you like to proceed with the automatic segmentation?",
                                            windowTitle="SliceTracker"):
