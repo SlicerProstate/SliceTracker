@@ -163,10 +163,12 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def setupSessionObservers(self):
     self.session.addEventObserver(self.session.PreprocessingSuccessfulEvent, self.onSuccessfulPreProcessing)
     self.session.addEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
+    self.session.addEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
 
   def removeSessionObservers(self):
     self.session.removeEventObserver(self.session.PreprocessingSuccessfulEvent, self.onSuccessfulPreProcessing)
     self.session.removeEventObserver(self.session.CurrentSeriesChangedEvent, self.onCurrentSeriesChanged)
+    self.session.removeEventObserver(self.session.CloseCaseEvent, self.onCaseClosed)
 
   def onSuccessfulPreProcessing(self, caller, event):
     dicomFileName = self.logic.getFileList(self.session.preopDICOMDirectory)[0]
@@ -203,6 +205,10 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     layouts = ast.literal_eval(callData)
     for layoutButton in self.layoutButtons:
       layoutButton.enabled = layoutButton.LAYOUT in layouts
+
+  @vtk.calldata_type(vtk.VTK_STRING)
+  def onCaseClosed(self, caller, event, callData):
+    self.customStatusProgressBar.reset()
 
 
 class SliceTrackerLogic(ModuleLogicMixin):
