@@ -312,7 +312,7 @@ class SessionData(ModuleLogicMixin):
 
     self.printOutput("The following data was successfully saved:\n", successfullySavedFileNames)
     self.printOutput("The following data failed to saved:\n", failedSaveOfFileNames)
-    return (len(failedSaveOfFileNames) == 0, failedSaveOfFileNames)
+    return len(failedSaveOfFileNames) == 0, failedSaveOfFileNames
 
   def getGITRevisionInformation(self):
     import inspect
@@ -467,6 +467,8 @@ class AbstractRegistrationData(ModuleLogicMixin):
 
   @onExceptionReturnNone
   def getFileName(self, node):
+    if isinstance(node, slicer.vtkMRMLVolumeNode) and node.GetImageData() is None:
+      return None
     return self.replaceUnwantedCharacters(node.GetName()) + self.FILE_EXTENSION
 
   def getFileNameByAttributeName(self, name):
@@ -514,6 +516,12 @@ class SegmentationData(Serializable, ModuleLogicMixin):
   VALID_SEGMENTATION_TYPES = ["Prostate", "Needle"]
   VALID_ALGORITHM_TYPES = ["Manual", "Automatic"]
 
+  @onExceptionReturnNone
+  def getFileName(self, node):
+    if isinstance(node, slicer.vtkMRMLVolumeNode) and node.GetImageData() is None:
+      return None
+    return self.replaceUnwantedCharacters(node.GetName()) + self.FILE_EXTENSION
+
   @staticmethod
   def createFromJSON(data):
     segmentationData = SegmentationData(segmentationType=data["segmentationType"],
@@ -526,6 +534,7 @@ class SegmentationData(Serializable, ModuleLogicMixin):
       userModified = data["userModified"]
       segmentationData.setModified(startTime=userModified["startTime"], endTime=userModified["endTime"])
       segmentationData.userModified["fileName"] = userModified["fileName"]
+      # TODO load modified label as well
     return segmentationData
 
   def __init__(self, segmentationType, algorithm, label=None, startTime="N/A", endTime="N/A"):
@@ -540,7 +549,7 @@ class SegmentationData(Serializable, ModuleLogicMixin):
     self.note = ""
     self.startTime = startTime
     self.endTime = endTime
-    self.fileName = None
+    self.fileName = self.getFileName(label)
     self.userModified = None
     self._label = label
     self._modifiedLabel = None
@@ -549,21 +558,20 @@ class SegmentationData(Serializable, ModuleLogicMixin):
     self.userModified = {
       "startTime": startTime,
       "endTime": endTime,
-      "fileName": None
+      "fileName": self.getFileName(label)
     }
     self._modifiedLabel = label
 
   def save(self, directory):
-    assert self.FILE_EXTENSION is not None
     savedSuccessfully = []
     failedToSave = []
     if self._label:
       success, name = self.saveNodeData(self._label, directory, self.FILE_EXTENSION)
-      self.fileName = name + self.FILE_EXTENSION
+      self.fileName = name + self.FILE_EXTENSION if success else None
       self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
     if self._modifiedLabel:
       success, name = self.saveNodeData(self._modifiedLabel, directory, self.FILE_EXTENSION)
-      self.userModified["fileName"] = name + self.FILE_EXTENSION
+      self.userModified["fileName"] = name + self.FILE_EXTENSION if success else None
       self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
     return savedSuccessfully, failedToSave
 

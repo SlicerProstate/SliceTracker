@@ -104,8 +104,6 @@ class SliceTrackerEvaluationStep(SliceTrackerStep):
 
       self.currentResult.approve(registrationType=self.regResultsPlugin.registrationButtonGroup.checkedButton().name,
                                  consentedBy=self.consentGivenBy)
-    # if self.ratingWindow.isRatingEnabled():
-    #   self.ratingWindow.show(disableWidget=self.parent)
 
   def onRejectRegistrationResultButtonClicked(self):
     self.consentGivenBy = self.session._getConsent()

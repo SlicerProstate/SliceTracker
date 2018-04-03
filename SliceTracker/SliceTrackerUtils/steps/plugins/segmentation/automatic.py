@@ -24,7 +24,7 @@ class SliceTrackerAutomaticSegmentationPlugin(SliceTrackerSegmentationPluginBase
     super(SliceTrackerAutomaticSegmentationPlugin, self).setup()
 
   def onActivation(self):
-    if self.getSetting("Use_Deep_Learning").lower() == "true":
+    if str(self.getSetting("Use_Deep_Learning")).lower() == 'true':
       self.startSegmentation()
 
   def startSegmentation(self):

@@ -12,10 +12,9 @@ from plugins.training import SliceTrackerTrainingPlugin
 from plugins.charts import SliceTrackerDisplacementChartPlugin
 from ..constants import SliceTrackerConstants as constants
 from ..sessionData import RegistrationResult
-from ..helpers import IncomingDataMessageBoxQt4, IncomingDataMessageBoxQt5, SeriesTypeToolButton, SeriesTypeManager
+from ..helpers import IncomingDataMessageBox, SeriesTypeToolButton, SeriesTypeManager
 
 from SlicerDevelopmentToolboxUtils.constants import COLOR
-from SlicerDevelopmentToolboxUtils.mixins import ModuleWidgetMixin
 from SlicerDevelopmentToolboxUtils.widgets import CustomStatusProgressbar
 from SlicerDevelopmentToolboxUtils.icons import Icons
 
@@ -47,15 +46,15 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   def __init__(self):
     super(SliceTrackerOverviewStep, self).__init__()
-    self.notifyUserAboutNewData = True
+    self.cleanup()
 
   def cleanup(self):
     self._seriesModel.clear()
+    self.notifyUserAboutNewData = True
     self.changeSeriesTypeButton.enabled = False
     self.trackTargetsButton.enabled = False
     self.skipIntraopSeriesButton.enabled = False
     self.updateIntraopSeriesSelectorTable()
-    slicer.mrmlScene.Clear(0)
 
   def setupIcons(self):
     self.trackIcon = self.createIcon('icon-track.png')
@@ -226,6 +225,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     if callData != "None":
       slicer.util.infoDisplay(callData, windowTitle="SliceTracker")
     self.cleanup()
+    slicer.mrmlScene.Clear(0)
 
   def onNoRegistrationResultsAvailable(self, caller, event):
     self.targetTablePlugin.currentTargets = None
@@ -280,14 +280,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
     if self.session.isTrackingPossible(self.intraopSeriesSelector.currentText):
       if self.notifyUserAboutNewData and not self.session.data.completed:
-        if ModuleWidgetMixin.isQtVersionOlder():
-          dialog = IncomingDataMessageBoxQt4()
-          self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
-          self.notifyUserAboutNewData = not checked
-        else:
-          dialog = IncomingDataMessageBoxQt5()
-          self.notifyUserAboutNewDataAnswer = dialog.exec_()
-          self.notifyUserAboutNewData = dialog.showMsgBoxAgain
+        dialog = IncomingDataMessageBox()
+        self.notifyUserAboutNewDataAnswer, checked = dialog.exec_()
+        self.notifyUserAboutNewData = not checked
       if hasattr(self, "notifyUserAboutNewDataAnswer") and self.notifyUserAboutNewDataAnswer == qt.QMessageBox.AcceptRole:
         self.onTrackTargetsButtonClicked()
 

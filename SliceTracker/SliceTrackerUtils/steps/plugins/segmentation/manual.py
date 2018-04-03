@@ -71,7 +71,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
     self.surfaceCutToLabelWidget.colorSpin.setValue(self.session.segmentedLabelValue)
     self.surfaceCutToLabelWidget.imageVolumeSelector.setCurrentNode(self.session.fixedVolume)
     self._addSurfaceCutEventObservers()
-    if self.getSetting("Use_Deep_Learning").lower() == "false":
+    if str(self.getSetting("Use_Deep_Learning")).lower() == 'false':
       self.surfaceCutToLabelWidget.quickSegmentationButton.checked = True
 
   def onDeactivation(self):
@@ -95,7 +95,7 @@ class SliceTrackerManualSegmentationPlugin(SliceTrackerSegmentationPluginBase):
                                                      self._onSegmentationFinished)
 
   def _onSegmentationStarted(self, caller, event):
-    if self.getSetting("Use_Deep_Learning").lower() == "true":
+    if str(self.getSetting("Use_Deep_Learning")).lower() == 'true':
       if not self._preCheckExistingSegmentation():
         return
       else:

@@ -55,7 +55,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.session.removeEventObservers()
     self.session.addEventObserver(self.session.CloseCaseEvent, lambda caller, event: self.cleanup())
     self.session.addEventObserver(SlicerDevelopmentToolboxEvents.NewFileIndexedEvent, self.onNewFileIndexed)
-    self.demoMode = self.getSetting("Demo_Mode", moduleName=self.moduleName).lower() == 'true'
+    self.demoMode = str(self.getSetting("Demo_Mode", moduleName=self.moduleName)).lower() == 'true'
 
   def enter(self):
     if not slicer.dicomDatabase:
