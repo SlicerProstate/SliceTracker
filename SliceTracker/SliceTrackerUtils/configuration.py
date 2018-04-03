@@ -61,6 +61,9 @@ class SliceTrackerConfiguration(ModuleWidgetMixin):
     if not self.getSetting("Incoming_DICOM_Port"):
       self.setSetting("Incoming_DICOM_Port", config.get('DICOM', 'Incoming_Port'))
 
+    if not self.getSetting("CASE_NUMBER_OF_DIGITS"):
+      self.setSetting("CASE_NUMBER_OF_DIGITS", config.get('General', 'CASE_NUMBER_OF_DIGITS'))
+
     self.replaceOldValues()
 
   def replaceOldValues(self):
