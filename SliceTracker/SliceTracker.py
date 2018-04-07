@@ -126,7 +126,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
     self.fourUpPlotLayoutButton = FourUpPlotViewLayoutButton()
     self.layoutButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpLayoutButton, self.fourUpPlotLayoutButton]
     self.crosshairButton = CrosshairButton()
-    self.wlEffectsToolButton = WindowLevelEffectsButton()
     self.settingsButton = ModuleSettingsButton(self.moduleName)
     self.dicomConnectionTestButton = DICOMConnectionTestButton()
     self.dicomConnectionTestButton.setToolTip("Test DICOM connection")
@@ -134,7 +133,7 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
                                                    toolTip="Display annotations", checked=True)
 
     viewSettingButtons = [self.redOnlyLayoutButton, self.sideBySideLayoutButton, self.fourUpPlotLayoutButton,
-                          self.fourUpLayoutButton, self.infoButton, self.crosshairButton, self.wlEffectsToolButton,
+                          self.fourUpLayoutButton, self.infoButton, self.crosshairButton,
                           self.settingsButton, self.dicomConnectionTestButton]
 
     for step in self.session.steps:
@@ -147,7 +146,6 @@ class SliceTrackerWidget(ModuleWidgetMixin, SliceTrackerConstants, ScriptedLoada
   def resetViewSettingButtons(self):
     for step in self.session.steps:
       step.resetViewSettingButtons()
-    self.wlEffectsToolButton.checked = False
     self.crosshairButton.checked = False
 
   def setupTabBarNavigation(self):
