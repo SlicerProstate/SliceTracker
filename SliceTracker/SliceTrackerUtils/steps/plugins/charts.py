@@ -65,7 +65,7 @@ class SliceTrackerDisplacementChartPlugin(SliceTrackerPlugin):
     super(SliceTrackerDisplacementChartPlugin, self).__init__()
 
   @onModuleSelected(SliceTrackerStep.MODULE_NAME)
-  def onMrmlSceneCleared(self, caller=None, event=None):
+  def onMrmlSceneCleared(self, caller=None, event=None, callData=None):
     self.resetAndInitializeData()
 
   def resetChart(self):

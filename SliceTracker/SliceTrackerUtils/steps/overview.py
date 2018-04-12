@@ -234,7 +234,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.updateIntraopSeriesSelectorTable()
     self.configureRedSliceNodeForPreopData()
     self.promptUserAndApplyBiasCorrectionIfNeeded()
-    if not self.session.isLoading():
+    if not self.session.isBusy():
       self.session.save()
 
   def onActivation(self):
@@ -246,7 +246,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
   @vtk.calldata_type(vtk.VTK_STRING)
   def onNewImageSeriesReceived(self, caller, event, callData):
-    if not self.session.isLoading():
+    if not self.session.isBusy():
       customStatusProgressBar = CustomStatusProgressbar()
       customStatusProgressBar.text = "New image data has been received."
       if self.session.intraopDICOMReceiver:
@@ -254,7 +254,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
 
     self.updateIntraopSeriesSelectorTable()
 
-    if not self.active or self.session.isLoading():
+    if not self.active or self.session.isBusy():
       return
 
     selectedSeries = self.intraopSeriesSelector.currentText
@@ -267,10 +267,9 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
         self.takeActionOnSelectedSeries()
 
   def onCaseOpened(self, caller, event):
-    if not self.active or self.session.isLoading() or self.session.isPreProcessing():
+    if not self.active or self.session.isBusy():
       return
     self.selectMostRecentEligibleSeries()
-    self.takeActionOnSelectedSeries()
 
   def takeActionOnSelectedSeries(self):
     selectedSeries = self.intraopSeriesSelector.currentText
@@ -306,7 +305,7 @@ class SliceTrackerOverviewStep(SliceTrackerStep):
     self.intraopSeriesSelector.blockSignals(False)
     colorStyle = self.session.getColorForSelectedSeries(self.intraopSeriesSelector.currentText)
     self.intraopSeriesSelector.setStyleSheet("QComboBox{%s} QToolTip{background-color: white;}" % colorStyle)
-    if self.active and not (self.session.isLoading() or self.session.isPreProcessing()):
+    if self.active and not self.session.isBusy():
       self.selectMostRecentEligibleSeries()
 
   def selectMostRecentEligibleSeries(self):
