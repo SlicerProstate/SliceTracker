@@ -293,7 +293,7 @@ class SliceTrackerSlicelet(qt.QWidget, ModuleWidgetMixin):
   def __init__(self):
     qt.QWidget.__init__(self)
 
-    print slicer.dicomDatabase
+    logging.debug(slicer.dicomDatabase)
 
     self.mainWidget = SliceTrackerSlicelet.MainWindow()
 
@@ -342,7 +342,7 @@ class SliceTrackerSlicelet(qt.QWidget, ModuleWidgetMixin):
 
   def onSplitterMoved(self, pos, index):
     vScroll = self.scrollArea.verticalScrollBar()
-    print self.moduleFrame.width, self.widget.parent.width, self.scrollArea.width, vScroll.width
+    logging.debug(self.moduleFrame.width, self.widget.parent.width, self.scrollArea.width, vScroll.width)
     vScrollbarWidth = 4 if not vScroll.isVisible() else vScroll.width + 4 # TODO: find out, what is 4px wide
     if self.scrollArea.minimumWidth != self.widget.parent.minimumSizeHint.width() + vScrollbarWidth:
       self.scrollArea.setMinimumWidth(self.widget.parent.minimumSizeHint.width() + vScrollbarWidth)
@@ -357,6 +357,5 @@ class SliceTrackerSlicelet(qt.QWidget, ModuleWidgetMixin):
 
 if __name__ == "SliceTrackerSlicelet":
   import sys
-  print( sys.argv )
-
+  logging.debug(sys.argv)
   slicelet = SliceTrackerSlicelet()

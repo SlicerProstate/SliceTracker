@@ -11,6 +11,7 @@ from SlicerDevelopmentToolboxUtils.decorators import logmethod
 
 class SliceTrackerSegmentationValidatorPlugin(qt.QDialog, ModuleWidgetMixin):
 
+  StartedEvent = SlicerDevelopmentToolboxEvents.StartedEvent
   ModifiedEvent = SlicerDevelopmentToolboxEvents.StatusChangedEvent
   FinishedEvent = SlicerDevelopmentToolboxEvents.FinishedEvent
   CanceledEvent = SlicerDevelopmentToolboxEvents.CanceledEvent
@@ -87,6 +88,7 @@ class SliceTrackerSegmentationValidatorPlugin(qt.QDialog, ModuleWidgetMixin):
 
   @logmethod(logging.DEBUG)
   def run(self):
+    self.invokeEvent(self.StartedEvent)
     self.segmentationModified = False
     self._initializeSegmentationNode()
     self._initializeSegmentEditorNode()
