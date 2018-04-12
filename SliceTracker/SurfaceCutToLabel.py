@@ -148,7 +148,8 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     ScriptedLoadableModuleWidget.onReload(self)
 
   def cleanup(self):
-    self.layoutManager.layoutChanged.disconnect(self._onLayoutChanged)
+    if self.layoutManager:
+      self.layoutManager.layoutChanged.disconnect(self._onLayoutChanged)
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -252,6 +253,7 @@ class SurfaceCutToLabelWidget(ModuleWidgetMixin, ScriptedLoadableModuleWidget):
     self.segmentEditorWidgetButton.connect('toggled(bool)', self._onSegmentEditorGearIconChecked)
 
     self.layoutManager.layoutChanged.connect(self._onLayoutChanged)
+    slicer.app.connect('aboutToQuit()', self.cleanup)
 
   def _onSegmentEditorGearIconChecked(self, enabled):
     self.segmentEditorWidget.setVisible(enabled)
