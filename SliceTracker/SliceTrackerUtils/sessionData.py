@@ -466,10 +466,10 @@ class AbstractRegistrationData(ModuleLogicMixin):
     raise NotImplementedError
 
   @onExceptionReturnNone
-  def getFileName(self, node):
+  def getFileName(self, node, withExtension=True):
     if isinstance(node, slicer.vtkMRMLVolumeNode) and node.GetImageData() is None:
       return None
-    return self.replaceUnwantedCharacters(node.GetName()) + self.FILE_EXTENSION
+    return self.replaceUnwantedCharacters(node.GetName()) + self.FILE_EXTENSION if withExtension else ""
 
   def getFileNameByAttributeName(self, name):
     return self.getFileName(getattr(self, name))
@@ -486,8 +486,10 @@ class AbstractRegistrationData(ModuleLogicMixin):
     savedSuccessfully = []
     failedToSave = []
     for node in [node for node in self.asList() if node]:
-      success, name = self.saveNodeData(node, directory, self.FILE_EXTENSION)
-      self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
+      filename = self.getFileName(node, withExtension=False)
+      if filename:
+        success, name = self.saveNodeData(node, directory, self.FILE_EXTENSION, name=filename)
+        self.handleSaveNodeDataReturn(success, name, savedSuccessfully, failedToSave)
     return savedSuccessfully, failedToSave
 
 
