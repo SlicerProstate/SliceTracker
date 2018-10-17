@@ -160,7 +160,7 @@ class SliceTrackerSession(StepBasedSession):
     if self.isCurrentSeriesCoverProstateInNonPreopMode():
       self.data.initialTargets = value
     self._movingTargets = value
-    
+
   @property
   def fixedVolume(self):
     self._fixedVolume = getattr(self, "_fixedVolume", None)
@@ -418,6 +418,8 @@ class SliceTrackerSession(StepBasedSession):
                        ["Indexing file %s" % currentFile, len(newFileList), currentIndex].__str__())
       slicer.app.processEvents()
       currentFile = os.path.join(self.intraopDICOMDirectory, currentFile)
+      if not slicer.dicomDatabase:
+          logging.error("slicer.dicomDatabase is not initialized!")
       indexer.addFile(slicer.dicomDatabase, currentFile, None)
       series = self.makeSeriesNumberDescription(currentFile)
       if series not in self.seriesList:
