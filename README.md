@@ -35,6 +35,10 @@ Please feel free to contact us for questions, feedback, suggestions, bugs, or yo
 
 ### Acknowledgments
 
+This is the main publication describing SliceTracker:
+
+Herz, C., MacNeil, K., Behringer, P. A., Tokuda, J., Mehrtash, A., Mousavi, P., Kikinis, R., Fennessy, F. M., Tempany, C. M., Tuncali, K. & Fedorov, A. Open Source Platform for Transperineal In-bore MRI-guided Targeted Prostate Biopsy. IEEE Transactions on Biomedical Engineering 1–1 (2019). adoi:10.1109/TBME.2019.2918731
+
 Development of SliceTracker is supported in part by the following NIH grants: 
 
 * P41 EB015898 National Center for Image Guided Therapy (NCIGT), http://ncigt.org
