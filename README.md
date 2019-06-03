@@ -37,7 +37,7 @@ Please feel free to contact us for questions, feedback, suggestions, bugs, or yo
 
 This is the main publication describing SliceTracker:
 
-Herz, C., MacNeil, K., Behringer, P. A., Tokuda, J., Mehrtash, A., Mousavi, P., Kikinis, R., Fennessy, F. M., Tempany, C. M., Tuncali, K. & Fedorov, A. Open Source Platform for Transperineal In-bore MRI-guided Targeted Prostate Biopsy. IEEE Transactions on Biomedical Engineering 1–1 (2019). adoi:10.1109/TBME.2019.2918731
+Herz, C., MacNeil, K., Behringer, P. A., Tokuda, J., Mehrtash, A., Mousavi, P., Kikinis, R., Fennessy, F. M., Tempany, C. M., Tuncali, K. & Fedorov, A. Open Source Platform for Transperineal In-bore MRI-guided Targeted Prostate Biopsy. IEEE Transactions on Biomedical Engineering 1–1 (2019). DOI: [10.1109/TBME.2019.2918731](https://ieeexplore.ieee.org/document/8721095) PMID: [31135342](https://www.ncbi.nlm.nih.gov/pubmed/31135342) 
 
 Development of SliceTracker is supported in part by the following NIH grants: 
 
